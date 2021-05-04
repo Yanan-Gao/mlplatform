@@ -3,7 +3,7 @@ This repository was set up to create a place for TTD machine learning projects t
 
 There is no strict language requirements though implementing new features/models in previously unsupported languages will require operational (engineering) work that should be considered.
 
-###General Guidelines
+### General Guidelines
 * We are trying to avoid fat JARs - if you need a library to run your tools, please include it in the docker image or EMR cluster you intend to run your code on.
 
 * We are trying to prevent one project's dependencies from impacting many others.  In general, try to include your references in the build closest to your project's code (not at the root sbt or maven project)
