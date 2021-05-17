@@ -39,39 +39,6 @@ assemblyMergeStrategy in assembly := {
   case _ => MergeStrategy.first
 }
 
-lazy val vcs = Vcs.detect(new File("."))
-lazy val root = (project in file("."))
-  .enablePlugins(BuildInfoPlugin)
-  .settings(
-    buildInfoKeys := Seq[BuildInfoKey](
-      name,
-      version,
-      scalaVersion,
-      sbtVersion,
-      // actions are computed at compile time
-      BuildInfoKey.action("buildTime") {
-        LocalDateTime.now(Clock.systemUTC())
-      },
-      // actions are computed at compile time
-      BuildInfoKey.action("buildUser") {
-        val user = System.getenv("USER")
-        val username = System.getenv("USERNAME")
-        if (user != null) user
-        else if (username != null) username
-        else "Unknown"
-      },
-      BuildInfoKey.action("buildSha") {
-        // Find the current version control system and get the current hash of it
-        vcs.map(_.currentHash)
-      },
-      BuildInfoKey.action("buildBranch") {
-        // Find the current version control system and get the current hash of it
-        vcs.map(_.currentBranch)
-      }
-    ),
-    buildInfoPackage := "TheTradeDesk"
-  )
-
 fork in Test := true
 javaOptions ++= Seq("-Xms512M", "-Xmx2048M", "-XX:+CMSClassUnloadingEnabled")
 testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oD")
