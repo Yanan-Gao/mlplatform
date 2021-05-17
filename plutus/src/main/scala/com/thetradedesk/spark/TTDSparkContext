@@ -1,6 +1,5 @@
 package com.thetradedesk.spark
 
-// import TheTradeDesk.BuildInfo
 import com.thetradedesk.logging.Logger
 import org.apache.spark.sql.SparkSession
 
@@ -37,8 +36,6 @@ object TTDSparkContext extends Logger {
     spark.sqlContext.setConf("spark.sql.parquet.compression.codec", "gzip")
     spark.sparkContext.hadoopConfiguration.set("parquet.summary.metadata.level", "NONE")
 
-
-  //  log.info(s"TTD Spark context created (mode: ${if (isTestMode) "test" else "release"} branch: ${BuildInfo.buildBranch.getOrElse("none")} commit: ${BuildInfo.buildSha.getOrElse("none")} built on ${BuildInfo.buildTime} by ${BuildInfo.buildUser})")
 
     spark
   }
