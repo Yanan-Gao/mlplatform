@@ -4,7 +4,6 @@ import java.time.LocalDate
 
 import org.apache.spark.sql.{Dataset, Encoder, SparkSession}
 import com.thetradedesk.spark.sql.SQLFunctions.DataFrameExtensions
-import com.thetradedesk.spark.TTDSparkContext.spark
 
 package object data {
 
