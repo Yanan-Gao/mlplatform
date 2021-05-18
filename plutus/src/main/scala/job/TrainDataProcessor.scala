@@ -15,6 +15,7 @@ import org.apache.spark.ml.linalg.{SparseVector, Vector}
 object TrainDataProcessor {
   val date = config.getDate("date" , LocalDate.now())
   val lookBack = config.getInt("daysOfDat" , 1)
+  val mbwRatio = config.getDouble("mbwRatio" , 0.8)
   val svName = config.getString("svName", "google")
   val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc/trainingdata")
   val folderName = config.getString("folderName" , "clean/google")
@@ -119,7 +120,7 @@ val rawCols = config.getStringSeq("rawCols" , Seq(
             (col("is_imp") === 0.0) &&
               (col("mb2w") > col("b_RealBidPrice")) &&
               ((col("FloorPriceInUSD").isNullOrEmpty) || (col("mb2w") >= col("FloorPriceInUSD"))) &&
-              (round(col("b_RealBidPrice") / col("mb2w"), 1) > 0.8) &&
+              (round(col("b_RealBidPrice") / col("mb2w"), 1) > mbwRatio) &&
               ((col("mb2w") > col("FloorPriceInUSD")) || (col("FloorPriceInUSD").isNullOrEmpty))
             ), true)
           .otherwise(false)
