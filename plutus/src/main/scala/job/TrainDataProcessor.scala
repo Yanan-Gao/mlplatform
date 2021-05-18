@@ -2,6 +2,7 @@ package job
 
 import java.time.LocalDate
 
+import com.thetradedesk.data.{CleanedData, TfRecord}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.sql.SQLFunctions.ColumnExtensions
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -88,109 +89,37 @@ val rawCols = config.getStringSeq("rawCols" , Seq(
 
   def main(args: Array[String]): Unit  = {
 
-    createCleanDataset(outputPath, folderName)
+    val cd = new CleanedData
+    val df = cd.createCleanDataset(date, mbwRatio, outputPath, folderName, svName)(spark)
 
-    val df = spark.read.parquet(outputPath + folderName + "/year=${date.getYear}/month=${date.getMonthValue}/day=${date.getDayOfMonth}/")
-    val feat = hashData(df)
+    val allInputCols = inputCatCols ++ inputIntCols
 
-    writeHashedData(feat)
-    writeTabularData(df)
+    totalData.set(df.cache().count)
+    mbwDataCount.set(df.filter(col("mb2w").isNotNull).count)
+    mbwBidsCount.set(df.filter((col("mb2w").isNotNull)&&(col("RealMediaCost").isNull)).count)
+    mbwImpsCount.set(df.filter((col("mb2w").isNotNull)&&(col("RealMediaCost").isNotNull)).count)
+    mbwValidBidsCount.set(df.filter((col("mb2w").isNotNull)&&(col("RealMediaCost").isNull)).filter(col("mb2w") >= col("b_RealBidPrice")).count)
+    mbwValidImpsCount.set(df.filter((col("mb2w").isNotNull)&&(col("RealMediaCost").isNotNull)).filter(col("mb2w") <= col("RealMediaCost")).count)
 
-  }
 
-  def createCleanDataset(dataRoot: String, folderName: String) = {
-
-    val df = spark.read.parquet(s"$outputPath/$svName/year=${date.getYear}/month=${date.getMonthValue}/day=${date.getDayOfMonth}/")
-      .withColumn("is_imp", when(col("RealMediaCost").isNotNull, 1.0).otherwise(0.0))
-    // need this as was int in previous query - making it a float will make things easier later on
-
-    val df_clean = df
-      .filter((col("mb2w").isNotNull))
-      .withColumn("valid",
-        // there are cases that dont make sense - we choose to remove these for simplicity while we investigate further.
-
-        // impressions where MB2W < Media Cost and MB2W is above a floor (if present)
-        when((
-          (col("is_imp") === 1.0) &&
-            (col("mb2w") <= col("RealMediaCost")) &&
-            ((col("mb2w") >= col("FloorPriceInUSD")) || col("FloorPriceInUSD").isNullOrEmpty )
-          ), true)
-          // Bids where MB2W is > bid price AND not an extreme value AND is above floor (if present)
-          .when((
-            (col("is_imp") === 0.0) &&
-              (col("mb2w") > col("b_RealBidPrice")) &&
-              ((col("FloorPriceInUSD").isNullOrEmpty) || (col("mb2w") >= col("FloorPriceInUSD"))) &&
-              (round(col("b_RealBidPrice") / col("mb2w"), 1) > mbwRatio) &&
-              ((col("mb2w") > col("FloorPriceInUSD")) || (col("FloorPriceInUSD").isNullOrEmpty))
-            ), true)
-          .otherwise(false)
-      )
-      .filter(col("valid") === true)
-      .drop("valid")
-
-    totalData.set(df_clean.cache().count)
-    mbwDataCount.set(df_clean.filter(col("mb2w").isNotNull).count)
-    mbwBidsCount.set(df_clean.filter((col("mb2w").isNotNull)&&(col("RealMediaCost").isNull)).count)
-    mbwImpsCount.set(df_clean.filter((col("mb2w").isNotNull)&&(col("RealMediaCost").isNotNull)).count)
-    mbwValidBidsCount.set(df_clean.filter((col("mb2w").isNotNull)&&(col("RealMediaCost").isNull)).filter(col("mb2w") >= col("b_RealBidPrice")).count)
-    mbwValidImpsCount.set(df_clean.filter((col("mb2w").isNotNull)&&(col("RealMediaCost").isNotNull)).filter(col("mb2w") <= col("RealMediaCost")).count)
-
-    /*println(f"Total Data: ${df_clean.count}")
-    println(f"Total Data with MB2W: ${df_clean.filter(col("mb2w").isNotNull).count}")
-    println(f"Total Bids with MB2W: ${df_clean.filter((col("mb2w").isNotNull)&&(col("RealMediaCost").isNull)).count}")
-    println(f"Total Imps with MB2W: ${df_clean.filter((col("mb2w").isNotNull)&&(col("RealMediaCost").isNotNull)).count}")
-    println(f"Total Bids with Valid MB2W: ${df_clean.filter((col("mb2w").isNotNull)&&(col("RealMediaCost").isNull)).filter(col("mb2w") >= col("b_RealBidPrice")).count}")
-    println(f"Total Imps with Valid MB2W: ${df_clean.filter((col("mb2w").isNotNull)&&(col("RealMediaCost").isNotNull)).filter(col("mb2w") <= col("RealMediaCost")).count}")
-*/
-    println("ouputting clean data to:\n" + s"$dataRoot/$folderName/year=${date.getYear}/month=${date.getMonthValue}/day=${date.getDayOfMonth}/")
-
-    df_clean.repartition(200).write.mode(SaveMode.Overwrite).parquet(s"$dataRoot/$folderName/year=${date.getYear}/month=${date.getMonthValue}/day=${date.getDayOfMonth}/")
-
-  }
-
-  def hashData(df: DataFrame) = {
-
-    val allInputCols = inputCatCols.toArray ++ inputIntCols.toArray
-    val hasher = new FeatureHasher()
-      .setNumFeatures(dims)
-      .setInputCols(allInputCols)
-      .setCategoricalCols(allInputCols)
-      .setOutputCol("features")
-    hasher.transform(df)
-
-  }
-
-  def writeHashedData(featurised: DataFrame): Unit = {
     val vec_size = udf((v: Vector) => v.size)
     val vec_indices = udf((v: SparseVector) => v.indices)
     val vec_values = udf((v: SparseVector) => v.values)
 
-    val selection = Array(
+    val selectionTabular = inputCatCols.map(a => col(a)).toArray ++ inputIntCols.map(a => col(a)) ++ rawCols.map(a => col(a)) ++ targets.map(a => col(a))
+
+    val selectionHash = Array(
       vec_indices(col("features")).alias("i"),
       vec_size(col("features")).alias("s"),
       vec_values(col("features")).alias("v"),
     ) ++ rawCols.map(a => col(a)) ++ targets.map(a => col(a))
 
-    featurised
-      .select(selection: _*)
-      .repartition(75)
-      .write.format("tfrecords").option("recordType", "Example")
-      .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
-      .mode("overwrite").save(outputPath + folderName + tfRecordPath + "hashing/" + f"year=${date.getYear}/month=${date.getMonthValue}/day=${date.getDayOfMonth}/")
+    val tfr = new TfRecord
+    val feat = tfr.hashData(df, allInputCols)
+
+    tfr.writeData(date, folderName, tfRecordPath, "hash" , feat, selectionHash)
+    tfr.writeData(date, folderName, tfRecordPath, "tabular" , df, selectionTabular)
 
   }
-
-  def writeTabularData(df: DataFrame): Unit = {
-    val selectionTabular = inputCatCols.map(a => col(a)).toArray ++ inputIntCols.map(a => col(a)) ++ rawCols.map(a => col(a)) ++ targets.map(a => col(a))
-
-    df
-      .select(selectionTabular: _*)
-      .repartition(200)
-      .write.format("tfrecords").option("recordType", "Example")
-      .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
-      .mode("overwrite").save(outputPath + folderName + tfRecordPath + "tabular/" + f"year=${date.getYear}/month=${date.getMonthValue}/day=${date.getDayOfMonth}/")
-  }
-
-
 
 }
