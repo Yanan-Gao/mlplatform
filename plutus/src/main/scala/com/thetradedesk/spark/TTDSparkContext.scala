@@ -35,8 +35,7 @@ object TTDSparkContext extends Logger {
     spark.sqlContext.setConf("spark.sql.broadcastTimeout", "10000") // seconds - enough time for big broadcast
     spark.sqlContext.setConf("spark.sql.parquet.compression.codec", "gzip")
     spark.sparkContext.hadoopConfiguration.set("parquet.summary.metadata.level", "NONE")
-
-
     spark
   }
 }
+

@@ -30,3 +30,4 @@ object MinimumBidToWinDataset {
     .add("mb2w", DoubleType, true) // 14
 
 }
+
