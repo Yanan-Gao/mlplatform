@@ -125,8 +125,9 @@ class Bids {
         // Seems to be just identifying unknown carrier
         // BID: https://gitlab.adsrvr.org/thetradedesk/adplatform/-/blob/master/TTD/Domain/Bidding/Bidder/TTD.Domain.Bidding.Bidder/Adapters/GoogleAdapter.cs#L899
         // BID: https://gitlab.adsrvr.org/thetradedesk/adplatform/-/blob/master/TTD/DB/Provisioning/TTD.DB.Provisioning.Primitives/Bidding/InternetConnectionType.cs
-        col("InternetConnectionType.value").alias("InternetConnectionType"),
-        col("Carrier"),
+        // TODO add to bidrequest dataset
+      //  col("InternetConnectionType.value").alias("InternetConnectionType"),
+      //  col("Carrier"),
 
 
         // Geo Features
