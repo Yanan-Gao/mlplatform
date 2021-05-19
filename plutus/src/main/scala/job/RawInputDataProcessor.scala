@@ -1,6 +1,6 @@
 package job
 
-import com.thetradedesk.data.schema.GoogleMinimumBidToWinDataset
+import com.thetradedesk.data.schema.GoogleMinimumBidToWinData
 import com.thetradedesk.data._
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -20,6 +20,7 @@ object RawInputDataProcessor extends Logger {
   val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc/")
   val outputPrefix = config.getString("outputPrefix" , "raw")
   val svName = config.getString("svName", "google")
+  val ttdEnv = config.getString("ttd.env" , "dev")
 
   val prometheus = new PrometheusClient("Plutus", "TrainingDataEtl")
   val jobDurationTimer = prometheus.createGauge("training_data_raw_etl_runtime", "Time to process 1 day of bids, imppressions, lost bid data").startTimer()
@@ -28,8 +29,8 @@ object RawInputDataProcessor extends Logger {
 
   def main(args: Array[String]): Unit = {
 
-    // TODO: shouold all this logic be moved into an object?
-    val googleLostBidInfo: Dataset[GoogleMinimumBidToWinDataset] = GoogleLostBids.getLostBids(date)
+    // TODO: should all this logic be moved into an object?
+    val googleLostBidInfo: Dataset[GoogleMinimumBidToWinData] = GoogleLostBids.getLostBids(date)
 
     val (svbDf, pdaDf, dealDf) = Discrepancy.getDiscrepancyData(date)
 
@@ -44,7 +45,7 @@ object RawInputDataProcessor extends Logger {
 
     // note the date part is year=yyyy/month=m/day=d/
     rawInputDf.write.mode(SaveMode.Overwrite)
-      .parquet(s"$outputPath/$outputPrefix/$svName/${datePart(date)}")
+      .parquet(s"$outputPath/$ttdEnv/$outputPrefix/$svName/${datePart(date)}")
 
     // clean up
     jobDurationTimer.setDuration()

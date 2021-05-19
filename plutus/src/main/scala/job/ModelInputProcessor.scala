@@ -9,21 +9,84 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import io.prometheus.client.Gauge
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{Dataset, SaveMode}
-
 import java.time.LocalDate
+
+import com.thetradedesk.data.load.TfRecordWriter
+import com.thetradedesk.data.transform.CleanInputData.{cleanDataS3BasePath, cleanDataS3Path}
+import com.thetradedesk.data.transform.{CleanInputData, TrainingDataTransform}
 
 
 object ModelInputProcessor extends Logger {
 
   val date = config.getDate("date" , LocalDate.now())
-  val lookBack = config.getInt("daysOfDat" , 1)
+  val daysOfDat = config.getInt("daysOfDat" , 1)
   val svName = config.getString("svName", "google")
+  val inputPath = config.getString("inputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc/trainingdata")
   val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc/trainingdata")
+  val ttdEnv = config.getString("ttd.env" , "dev")
+
+  val folderName = config.getString("folderName" , "clean")
+  val tfRecordPath = config.getString("tfRecodPath" , "tfrecord")
+  val dims = config.getInt("dims" , 500000)
+  val inputIntCols = config.getStringSeq("inputIntCols" , Seq(
+    "RenderingContext",
+    "MatchedFoldPosition",
+    "VolumeControlPriority",
+    "UserHourOfWeek",
+    "AdsTxtSellerType",
+    "PublisherType",
+    "InternetConnectionType", // need to handle nulls
+    "DeviceType",
+    "OperatingSystemFamily",
+    "Browser"
+  ))
+  val inputCatCols = config.getStringSeq("inputCatCols", Seq(
+    "SupplyVendor",
+    "DealId",
+    "SupplyVendorPublisherId",
+    "SupplyVendorSiteId",
+    "Site",
+    "AdFormat",
+    "MatchedCategory",
+    "ImpressionPlacementId",
+    "Carrier" ,
+    "Country",
+    "Region",
+    "Metro",
+    "City",
+    "Zip",
+    "DeviceMake",
+    "DeviceModel",
+    "RequestLanguages"
+  )
+  )
+  val rawCols = config.getStringSeq("rawCols" , Seq(
+    "Latitude",
+    "Longitude",
+    "sin_hour_day",
+    "cos_hour_day",
+    "sin_hour_week",
+    "cos_hour_week",
+    "sin_minute_hour",
+    "cos_minute_hour",
+    "sin_minute_day",
+    "cos_minute_day"
+  )
+  )
+
+  val targets = config.getStringSeq("targets" , Seq(
+    "is_imp",
+    "AuctionBidPrice",
+    "RealMediaCost",
+    "mb2w",
+    "FloorPriceInUSD"
+  )
+  )
+
 
   val prometheus = new PrometheusClient("Plutus", "TrainingDataEtl")
   val jobDurationTimer = prometheus.createGauge("training_data_raw_etl_runtime", "Time to process 1 day of bids, imppressions, lost bid data").startTimer()
-  val impressionsGauge: Gauge = prometheus.createGauge("raw_impressions_count" , "count of raw impressions")
-  val bidsGauge = prometheus.createGauge("raw_bids_count", "count of raw bids")
+
 
   def main(args: Array[String]): Unit = {
 
@@ -36,6 +99,28 @@ object ModelInputProcessor extends Logger {
 
     //TODO: TFRecord. Either have it create TF record from the train/test/val dataframe or construct the train/val/test
     // from the TFRecord files.
+
+    // create TFRecord data
+
+    val cleanInputDataPath = cleanDataS3BasePath(inputPath, ttdEnv, folderName, Some(svName))
+    val df = TrainingDataTransform.loadCleanInputData(date, Some(daysOfDat), cleanInputDataPath)
+    val allInputCols = inputCatCols ++ inputIntCols
+
+    val selectionTabular = inputCatCols.map(a => col(a)).toArray ++ inputIntCols.map(a => col(a)) ++ rawCols.map(a => col(a)) ++ targets.map(a => col(a))
+
+    val selectionHash = Array(
+      vec_indices(col("features")).alias("i"),
+      vec_size(col("features")).alias("s"),
+      vec_values(col("features")).alias("v"),
+    ) ++ rawCols.map(a => col(a)) ++ targets.map(a => col(a))
+
+    val feat = TfRecordWriter.hashData(df.toDF, allInputCols, dims)
+
+
+
+    TfRecordWriter.writeData(feat, selectionHash, date, outputPath, folderName, ttdEnv, tfRecordPath, "hash")
+    TfRecordWriter.writeData(df.toDF, selectionTabular, date, outputPath, folderName, ttdEnv, tfRecordPath, "tabular")
+
 
     // clean up
     jobDurationTimer.setDuration()

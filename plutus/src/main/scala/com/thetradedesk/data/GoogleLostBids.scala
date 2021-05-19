@@ -1,8 +1,11 @@
 package com.thetradedesk.data
 
 import com.thetradedesk.data.schema.GoogleMinimumBidToWinDataset
+import com.thetradedesk.data.schema.GoogleMinimumBidToWinData
 import org.apache.spark.sql.functions.col
-import org.apache.spark.sql.{Dataset, SparkSession}
+import org.apache.spark.sql.Dataset
+import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 
 import java.time.LocalDate
 
@@ -12,9 +15,7 @@ object GoogleLostBids {
    * This will read in the minimum_bid_to_win data from google for the given date.
    * TODO: maybe have it spill over into the next day by 1 hour in case there are some trailing mb2w
    */
-  def getLostBids(date: LocalDate)(implicit spark: SparkSession): Dataset[GoogleMinimumBidToWinDataset] = {
-
-    import spark.implicits._
+  def getLostBids(date: LocalDate): Dataset[GoogleMinimumBidToWinData] = {
 
     spark.read.format("csv")
       .option("sep", "\t")
@@ -33,6 +34,6 @@ object GoogleLostBids {
         col("ttdLossReason").cast("Integer"),
         col("winCPM").cast("Double"),
         col("mb2w").cast("Double")
-      ).as[GoogleMinimumBidToWinDataset]
+      ).as[GoogleMinimumBidToWinData]
   }
 }

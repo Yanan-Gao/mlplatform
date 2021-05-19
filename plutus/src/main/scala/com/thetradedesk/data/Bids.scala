@@ -13,7 +13,6 @@ object Bids {
   /**TODO: define output schema and clean up input schema (now just full br from eldorado)
    *
    * @param date
-   * @param lookBack
    * @param svName
    * @param svbDf
    * @param pdaDf
