@@ -9,17 +9,18 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions.{avg, broadcast, coalesce, col, concat_ws, lit, round}
 import org.apache.spark.sql.types.DoubleType
 
-class AdjustedImpressions {
+object AdjustedImpressions {
 
   // tentative output schema
   // case class
-  def getAdjustedImpressions(date: LocalDate, lookBack: Int, svName: String, svbDf: DataFrame, pdaDf: DataFrame, dealDf: DataFrame, impressionsGauge: Gauge)(implicit spark: SparkSession) = {
+  def getAdjustedImpressions(date: LocalDate, svName: String, svbDf: DataFrame, pdaDf: DataFrame, dealDf: DataFrame, impressionsGauge: Gauge)(implicit spark: SparkSession) = {
     import spark.implicits._
-    val impressions = getParquetData[Impressions](date, lookBack, BidFeedbackDataset.BFS3)
+    val impressions = getParquetData[Impressions](date=date, s3path=BidFeedbackDataset.BFS3)
       .filter(col("SupplyVendor") === svName)
       .filter(col("AuctionType") === "FirstPrice")
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
 
+    //TODO: this could move to discrepancy object
 
     // Empirical Discrepancy from Impressions
     val empDisDf = impressions.alias("bf")
@@ -80,5 +81,4 @@ class AdjustedImpressions {
     (impsDf.selectAs[AdjImpressions], empDisDf.selectAs[EmpiricalDiscrepancy])
 
   }
-
 }

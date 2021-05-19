@@ -2,13 +2,13 @@ package com.thetradedesk.data.schema
 
 import org.apache.spark.sql.types.{DoubleType, IntegerType, StringType, StructType}
 
-final case class MinimumBidToWinDataset(bidRequestId: String,
-                                        svLossReason: Int,
-                                        ttdLossReason: Int,
-                                        winCPM: Double,
-                                        mb2w: Double)
+final case class GoogleMinimumBidToWinDataset(bidRequestId: String,
+                                              svLossReason: Int,
+                                              ttdLossReason: Int,
+                                              winCPM: Double,
+                                              mb2w: Double)
 
-object MinimumBidToWinDataset {
+object GoogleMinimumBidToWinDataset {
 
   def S3PATH = "s3://thetradedesk-useast-logs-2/lostbidrequest/cleansed/"
 
@@ -30,3 +30,4 @@ object MinimumBidToWinDataset {
     .add("mb2w", DoubleType, true) // 14
 
 }
+

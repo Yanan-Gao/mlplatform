@@ -8,7 +8,7 @@ import io.prometheus.client.Gauge
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 import org.apache.spark.sql.functions.{broadcast, coalesce, col, concat_ws, cos, dayofweek, hour, lit, minute, round, sin, when}
 
-class Bids {
+object Bids {
 
   /**TODO: define output schema and clean up input schema (now just full br from eldorado)
    *
@@ -24,11 +24,11 @@ class Bids {
    * @return DataFrame
    */
 
-  def getBidsData(date: LocalDate, lookBack: Int, svName: String, svbDf: DataFrame, pdaDf: DataFrame, dealDf: DataFrame, empDisDf: Dataset[EmpiricalDiscrepancy], bidsGauge: Gauge)(implicit spark: SparkSession) = {
+  def getBidsData(date: LocalDate, svName: String, svbDf: DataFrame, pdaDf: DataFrame, dealDf: DataFrame, empDisDf: Dataset[EmpiricalDiscrepancy], bidsGauge: Gauge)(implicit spark: SparkSession) = {
 
     import spark.implicits._
 
-    val bidsDf = getParquetData[BidRequestRecordV4](date, lookBack, BidRequestDataset.BIDSS3).alias("bids")
+    val bidsDf = getParquetData[BidRequestRecordV4](BidRequestDataset.BIDSS3, date).alias("bids")
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
       .filter(col("SupplyVendor") === svName)
       .filter(col("AuctionType") === 1)
@@ -160,5 +160,4 @@ class Bids {
     bidsGauge.set(bidsDf.count())
     bidsDf
   }
-
 }

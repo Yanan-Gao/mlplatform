@@ -1,34 +1,32 @@
 package com.thetradedesk.data
 
-import java.time.LocalDate
-
-import com.thetradedesk.data.schema.DiscrepancyDataset
-import com.thetradedesk.data.schema.{Deals, Pda, Svb}
-import org.apache.spark.sql.{Dataset, Encoder, SparkSession}
+import com.thetradedesk.data.schema.{Deals, DiscrepancyDataset, Pda, Svb}
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.col
 
-class Discrepancy {
+import java.time.LocalDate
 
-  def getDiscrepancyData(date: LocalDate, lookBack: Int)(implicit spark: SparkSession) = {
+object Discrepancy {
+
+  def getDiscrepancyData(date: LocalDate)(implicit spark: SparkSession) = {
     import spark.implicits._
-    val svbDf = getParquetData[Svb](date, lookBack, DiscrepancyDataset.SBVS3)
+    val svbDf = getParquetData[Svb](DiscrepancyDataset.SBVS3, date)
       .withColumn("SupplyVendor" , col("RequestName"))
       .withColumn("svbDiscrpancyAdjustment" , col("DiscrepancyAdjustment"))
       .drop("DiscrepancyAdjustment")
       .drop("RequestName")
 
 
-    val pdaDf = getParquetData[Pda](date, lookBack, DiscrepancyDataset.PDAS3)
+    val pdaDf = getParquetData[Pda](DiscrepancyDataset.PDAS3, date)
       .withColumn("SupplyVendor" , col("SupplyVendorName"))
       .withColumn("pdaDiscrpancyAdjustment" , col("DiscrepancyAdjustment"))
       .drop("DiscrepancyAdjustment")
       .drop("SupplyVendorName")
 
-    val dealDf = getParquetData[Deals](date, lookBack, DiscrepancyDataset.DEALSS3)
+    val dealDf = getParquetData[Deals](DiscrepancyDataset.DEALSS3, date)
       .join(svbDf, "SupplyVendorId")
       .select(col("SupplyVendor"), col("SupplyVendorDealCode").alias("DealId"), col("IsVariablePrice"))
 
     (svbDf, pdaDf, dealDf)
   }
-
 }

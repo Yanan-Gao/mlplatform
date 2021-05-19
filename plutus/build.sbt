@@ -8,32 +8,33 @@ version := "0.0"
 
 scalaVersion := "2.12.13"
 
-val sparkVersion = "3.0.1"
+val sparkVersion = "3.1.1"
+val prometheusVersion = "0.9.0"
 
+libraryDependencies ++= Seq(
+  "org.apache.spark" %% "spark-sql" % sparkVersion % "provided",
+  "org.apache.spark" %% "spark-mllib" % sparkVersion % "provided",
 
-libraryDependencies += "org.apache.hadoop" % "hadoop-aws" % "3.2.1"
-libraryDependencies += "org.apache.spark" %% "spark-core" % sparkVersion
-libraryDependencies += "org.apache.spark" %% "spark-sql" % sparkVersion
-libraryDependencies += "org.apache.spark" %% "spark-mllib" % sparkVersion
-libraryDependencies += "com.typesafe" % "config" % "1.3.0"
-libraryDependencies += "org.slf4s" %% "slf4s-api" % "1.7.25"
+  "com.typesafe" % "config" % "1.3.0",
 
-libraryDependencies += "io.prometheus" % "simpleclient" % "0.9.0"
-libraryDependencies += "io.prometheus" % "simpleclient_common" % "0.9.0"
-libraryDependencies += "io.prometheus" % "simpleclient_pushgateway" % "0.9.0"
-libraryDependencies += "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.0"
+  "io.prometheus" % "simpleclient" % prometheusVersion,
+  "io.prometheus" % "simpleclient_common" % prometheusVersion,
+  "io.prometheus" % "simpleclient_pushgateway" % prometheusVersion,
+
+  "org.scalactic" %% "scalactic" % "3.2.7",
+  "org.scalatest" %% "scalatest" % "3.2.7",
+  "com.holdenkarau" %% "spark-testing-base" % "3.0.1_1.0.0" % Test
+)
+
 
 
 assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
 assemblyJarName in assembly := "plutus.jar"
 
 assemblyMergeStrategy in assembly := {
-  case PathList("org", "apache", "hadoop", _@_*) => MergeStrategy.discard
+//  case PathList("org", "apache", "hadoop", _@_*) => MergeStrategy.discard
   case PathList("org", "apache", "scala", _@_*) => MergeStrategy.discard
   case PathList("org", "apache", "spark", "sql", "execution", _@_*) => MergeStrategy.discard
-  // this is to ensure we add our HLL UDTs while discarding the rest of spark
-  //case PathList("org", "apache", "spark", "sql", ps @ _*) if ps.last startsWith "UDT" => MergeStrategy.first
-  //case PathList("org", "apache", "spark", _ @ _*) => MergeStrategy.discard
   case PathList("META-INF", _@_*) => MergeStrategy.discard
 
   case _ => MergeStrategy.first
