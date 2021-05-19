@@ -3,7 +3,7 @@ package com.thetradedesk.data
 import java.time.LocalDate
 
 import com.thetradedesk.data.schema.{BidFeedbackDataset, EmpiricalDiscrepancy, AdjImpressions, Impressions}
-import com.thetradedesk.spark.sql.SQLFunctions.ColumnExtensions
+import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions , DataFrameExtensions}
 import io.prometheus.client.Gauge
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.sql.functions.{avg, broadcast, coalesce, col, concat_ws, lit, round}
@@ -77,7 +77,7 @@ class AdjustedImpressions {
 
     impressionsGauge.set(impsDf.count())
 
-    (impsDf.as[AdjImpressions], empDisDf.as[EmpiricalDiscrepancy])
+    (impsDf.selectAs[AdjImpressions], empDisDf.selectAs[EmpiricalDiscrepancy])
 
   }
 
