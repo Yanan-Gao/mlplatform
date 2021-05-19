@@ -36,11 +36,11 @@ object TrainingData extends Logger {
     val (svbDf, pdaDf, dealDf) = dis.getDiscrepancyData(date, lookBack)(spark)
 
     val ai = new AdjustedImpressions
-    val (imps, empDisDf) =  ai.getAdjustedImpressions(date, lookBack, svName, svbDf, pdaDf, dealDf, impressionsGauge)(spark)
+    val (imps, empDisDf) =  ai.getAdjustedImpressions(date, lookBack, svName, svbDf, pdaDf, dealDf.toDF, impressionsGauge)(spark)
 
     val b = new Bids
 
-    val bids = b.getBidsData(date, lookBack, svName, pdaDf, pdaDf, dealDf, empDisDf, bidsGauge)(spark)
+    val bids = b.getBidsData(date, lookBack, svName, svbDf, pdaDf, dealDf.toDF, empDisDf, bidsGauge)(spark)
 
     val bidsImpsDf = bids.join(imps, Seq("BidRequestId"), "left")
 

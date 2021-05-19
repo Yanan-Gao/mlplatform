@@ -25,8 +25,6 @@ class Discrepancy {
       .drop("SupplyVendorName")
 
     val dealDf = getParquetData[Deals](date, lookBack, DiscrepancyDataset.DEALSS3)
-      .join(svbDf, "SupplyVendorId")
-      .select(col("SupplyVendor"), col("SupplyVendorDealCode").alias("DealId"), col("IsVariablePrice"))
 
     (svbDf, pdaDf, dealDf)
   }
