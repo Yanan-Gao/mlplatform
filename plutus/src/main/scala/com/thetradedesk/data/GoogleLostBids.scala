@@ -1,28 +1,28 @@
 package com.thetradedesk.data
 
-import com.thetradedesk.data.schema.MinimumBidToWinDataset
-import org.apache.spark.sql.{Dataset, SparkSession}
+import com.thetradedesk.data.schema.GoogleMinimumBidToWinDataset
 import org.apache.spark.sql.functions.col
+import org.apache.spark.sql.{Dataset, SparkSession}
 
 import java.time.LocalDate
 
-class GoogleLostBids {
+object GoogleLostBids {
 
-  def getLostBids(date: LocalDate, lookBack: Int)(implicit spark: SparkSession): Dataset[MinimumBidToWinDataset] = {
+  /**
+   * This will read in the minimum_bid_to_win data from google for the given date.
+   * TODO: maybe have it spill over into the next day by 1 hour in case there are some trailing mb2w
+   */
+  def getLostBids(date: LocalDate)(implicit spark: SparkSession): Dataset[GoogleMinimumBidToWinDataset] = {
 
     import spark.implicits._
-
-    val lostBidPaths = (1 to lookBack).map { i =>
-      f"${MinimumBidToWinDataset.S3PATH}/${datePaddedPart(date.minusDays(i))}/*/*/*.gz"
-    }
 
     spark.read.format("csv")
       .option("sep", "\t")
       .option("header", "false")
       .option("inferSchema", "false")
       .option("mode", "DROPMALFORMED")
-      .schema(MinimumBidToWinDataset.SCHEMA)
-      .load(lostBidPaths: _*)
+      .schema(GoogleMinimumBidToWinDataset.SCHEMA)
+      .load(getCleansedDataPath(GoogleMinimumBidToWinDataset.S3PATH, date))
       .filter(col("sv") === "google")
       // is only set for won bids or mode 79
       .filter((col("svLossReason") === "1") || (col("svLossReason") === "79"))
@@ -33,6 +33,6 @@ class GoogleLostBids {
         col("ttdLossReason").cast("Integer"),
         col("winCPM").cast("Double"),
         col("mb2w").cast("Double")
-      ).as[MinimumBidToWinDataset]
+      ).as[GoogleMinimumBidToWinDataset]
   }
 }

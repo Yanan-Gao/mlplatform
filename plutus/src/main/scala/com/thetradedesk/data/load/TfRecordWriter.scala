@@ -1,14 +1,13 @@
-package com.thetradedesk.data
+package com.thetradedesk.data.load
+
+import com.thetradedesk.data.paddedDatePart
+import job.CleanInputDataProcessor.{dims, outputPath}
+import org.apache.spark.ml.feature.FeatureHasher
+import org.apache.spark.sql.{Column, DataFrame}
 
 import java.time.LocalDate
 
-import job.TrainDataProcessor.{date, dims, inputCatCols, inputIntCols, outputPath, rawCols, targets}
-import org.apache.spark.ml.feature.FeatureHasher
-import org.apache.spark.ml.linalg.{SparseVector, Vector}
-import org.apache.spark.sql.{Column, DataFrame}
-import org.apache.spark.sql.functions.{col, udf}
-
-class TfRecord {
+class TfRecordWriter {
 
   def hashData(df: DataFrame, inputCols: Seq[String]) = {
 
@@ -21,16 +20,17 @@ class TfRecord {
 
   }
 
-  def writeData(date: LocalDate, folderName:String, tfRecordPath: String, outputType: String, df: DataFrame, selection: Array[Column]): Unit = {
+  def writeData(df: DataFrame, selection: Array[Column], date: LocalDate, folderName: String, tfRecordPath: String, outputType: String): Unit = {
 
-    val d = datePaddedPart(date)
+    val d = paddedDatePart(date)
 
     df
       .select(selection: _*)
       .repartition(75)
       .write.format("tfrecords").option("recordType", "Example")
       .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
-      .mode("overwrite").save(outputPath + folderName + tfRecordPath + outputType + "/" + d)
+      .mode("overwrite")
+      .save(outputPath + folderName + tfRecordPath + outputType + "/" + d)
 
   }
 

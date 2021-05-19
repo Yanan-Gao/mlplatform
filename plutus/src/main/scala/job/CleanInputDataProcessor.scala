@@ -1,24 +1,28 @@
 package job
 
-import java.time.LocalDate
-
-import com.thetradedesk.data.{CleanedData, TfRecord}
+import com.thetradedesk.data._
+import com.thetradedesk.data.load.TfRecordWriter
+import com.thetradedesk.data.transform.CleanInputData
 import com.thetradedesk.spark.TTDSparkContext.spark
-import com.thetradedesk.spark.sql.SQLFunctions.ColumnExtensions
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.spark.sql.{DataFrame, SaveMode}
+import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
-import org.apache.spark.ml.feature.FeatureHasher
-import org.apache.spark.ml.linalg.{SparseVector, Vector}
+
+import java.time.LocalDate
 
 
-object TrainDataProcessor {
-  val date = config.getDate("date" , LocalDate.now())
+object CleanInputDataProcessor {
+  val date = config.getDate("date" , LocalDate.now()) //TODO: note this can cause bad things. Date should be required and not linked ot current date.
   val lookBack = config.getInt("daysOfDat" , 1)
-  val mbwRatio = config.getDouble("mbwRatio" , 0.8)
+
+  val inputPath = config.getString("inputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc/")
+  val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc/")
+  val inputPrefix = config.getString("inputPrefix" , "raw")
+  val outputPrefix = config.getString("outputPrefix" , "clean")
   val svName = config.getString("svName", "google")
-  val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc/trainingdata")
+  val extremeValueThreshold = config.getDouble("mbwRatio" , 0.8)
+
   val folderName = config.getString("folderName" , "clean/google")
   val tfRecordPath = config.getString("tfRecodPath" , "/tfrecord/")
   val dims = config.getInt("dims" , 500000)
@@ -89,10 +93,13 @@ val rawCols = config.getStringSeq("rawCols" , Seq(
 
   def main(args: Array[String]): Unit  = {
 
-    val cd = new CleanedData
-    val df = cd.createCleanDataset(date, mbwRatio, outputPath, folderName, svName)(spark)
+    val df = CleanInputData.createCleanDataframe(inputPath, inputPrefix, date, extremeValueThreshold)
 
-    val allInputCols = inputCatCols ++ inputIntCols
+    df
+      .repartition(200)
+      .write.mode(SaveMode.Overwrite)
+      .parquet(CleanInputData.cleanDataS3Path(outputPath, outputPrefix, date, Some(svName)))
+
 
     totalData.set(df.cache().count)
     mbwDataCount.set(df.filter(col("mb2w").isNotNull).count)
@@ -102,9 +109,9 @@ val rawCols = config.getStringSeq("rawCols" , Seq(
     mbwValidImpsCount.set(df.filter((col("mb2w").isNotNull)&&(col("RealMediaCost").isNotNull)).filter(col("mb2w") <= col("RealMediaCost")).count)
 
 
-    val vec_size = udf((v: Vector) => v.size)
-    val vec_indices = udf((v: SparseVector) => v.indices)
-    val vec_values = udf((v: SparseVector) => v.values)
+    // create TFRecord data
+
+    val allInputCols = inputCatCols ++ inputIntCols
 
     val selectionTabular = inputCatCols.map(a => col(a)).toArray ++ inputIntCols.map(a => col(a)) ++ rawCols.map(a => col(a)) ++ targets.map(a => col(a))
 
@@ -114,12 +121,11 @@ val rawCols = config.getStringSeq("rawCols" , Seq(
       vec_values(col("features")).alias("v"),
     ) ++ rawCols.map(a => col(a)) ++ targets.map(a => col(a))
 
-    val tfr = new TfRecord
+    val tfr = new TfRecordWriter
     val feat = tfr.hashData(df, allInputCols)
 
-    tfr.writeData(date, folderName, tfRecordPath, "hash" , feat, selectionHash)
-    tfr.writeData(date, folderName, tfRecordPath, "tabular" , df, selectionTabular)
+    tfr.writeData(feat, selectionHash, date, folderName, tfRecordPath, "hash")
+    tfr.writeData(df, selectionTabular, date, folderName, tfRecordPath, "tabular")
 
   }
-
 }

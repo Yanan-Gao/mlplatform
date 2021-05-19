@@ -10,7 +10,7 @@ object TTDSparkContext extends Logger {
     isTestMode = true
   }
 
-  lazy val spark: SparkSession = getSpark()
+  lazy implicit val spark: SparkSession = getSpark()
 
   private def getSpark(): SparkSession = {
     val spark: SparkSession =

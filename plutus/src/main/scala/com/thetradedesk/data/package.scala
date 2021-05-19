@@ -1,21 +1,42 @@
 package com.thetradedesk
 
-import java.time.LocalDate
-
-import org.apache.spark.sql.{Dataset, Encoder, SparkSession}
 import com.thetradedesk.spark.sql.SQLFunctions.DataFrameExtensions
+import org.apache.spark.ml.linalg.{SparseVector, Vector}
+import org.apache.spark.sql.expressions.UserDefinedFunction
+import org.apache.spark.sql.functions.udf
+import org.apache.spark.sql.{Dataset, Encoder, SparkSession}
+
+import java.time.LocalDate
 
 package object data {
 
-  def datePaddedPart(date: LocalDate): String = {
+  def paddedDatePart(date: LocalDate): String = {
     f"${date.getYear}/${date.getMonthValue}%02d/${date.getDayOfMonth}%02d"
   }
 
-  def getParquetData[T: Encoder](date: LocalDate, lookBack: Int, s3path: String)(implicit spark: SparkSession): Dataset[T] = {
-    val paths = (1 to lookBack).map{ i =>
-      s3path + f"date=${date.minusDays(i).getYear}${date.minusDays(i).getMonthValue}%02d${date.minusDays(i).getDayOfMonth}%02d/"
-    }
-    val df = spark.read.parquet(paths: _*)
-    df.selectAs[T]
+  def datePart(date: LocalDate): String = {
+    f"year=${date.getYear}/month=${date.getMonthValue}/day=${date.getDayOfMonth}"
   }
+
+  def getParquetData[T: Encoder](s3path: String, date: LocalDate, lookBack: Option[Int] = None)(implicit spark: SparkSession): Dataset[T] = {
+    val paths = (0 to lookBack.getOrElse(0)).map(i => f"$s3path/date=${paddedDatePart(date.minusDays(i))}/")
+
+    spark.read.parquet(paths: _*)
+      .selectAs[T]
+  }
+
+  def getCleansedDataPath(basePath:String, date:LocalDate): String = {
+    f"${basePath}/${paddedDatePart(date)}/*/*/*.gz"
+  }
+
+  def getCleansedDataLookbackPaths(basePath: String, endDate: LocalDate, lookBack: Int): Seq[String] = {
+    (1 to lookBack).map(i => getCleansedDataPath(basePath, endDate.minusDays(i)))
+  }
+
+
+  // useful UDFs
+  val vec_size: UserDefinedFunction = udf((v: Vector) => v.size)
+  val vec_indices: UserDefinedFunction = udf((v: SparseVector) => v.indices)
+  val vec_values: UserDefinedFunction = udf((v: SparseVector) => v.values)
+
 }
