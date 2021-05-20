@@ -22,8 +22,8 @@ libraryDependencies ++= Seq(
   "io.prometheus" % "simpleclient_pushgateway" % prometheusVersion,
 
   "org.scalactic" %% "scalactic" % "3.2.7",
-  "org.scalatest" %% "scalatest" % "3.2.7",
-  "com.holdenkarau" %% "spark-testing-base" % "3.0.1_1.0.0" % Test
+  "org.scalatest" %% "scalatest" % "3.2.7" % "test",
+  "MrPowers" % "spark-fast-tests" % "2.2.0_0.5.0" % "test"
 )
 
 

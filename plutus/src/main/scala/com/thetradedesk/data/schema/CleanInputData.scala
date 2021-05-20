@@ -1,6 +1,6 @@
 package com.thetradedesk.data.schema
 
-case class CleanInputData(supplyVendor: String,
+final case class CleanInputData(supplyVendor: String,
                           dealId: String,
                           supplyVendorPublisherId: String,
                           supplyVendorSiteId: String,

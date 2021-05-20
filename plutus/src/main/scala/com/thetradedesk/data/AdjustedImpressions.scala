@@ -15,7 +15,7 @@ object AdjustedImpressions {
   // case class
   def getAdjustedImpressions(date: LocalDate, svName: String, svbDf: DataFrame, pdaDf: DataFrame, dealDf: DataFrame, impressionsGauge: Gauge)(implicit spark: SparkSession) = {
     import spark.implicits._
-    val impressions = getParquetData[Impressions](date=date, s3path=BidFeedbackDataset.BFS3)
+    val impressions = getParquetData[Impressions](s3path=BidFeedbackDataset.BFS3, date=date)
       .filter(col("SupplyVendor") === svName)
       .filter(col("AuctionType") === "FirstPrice")
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
