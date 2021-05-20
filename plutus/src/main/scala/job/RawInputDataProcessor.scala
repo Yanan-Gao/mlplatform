@@ -45,7 +45,7 @@ object RawInputDataProcessor extends Logger {
 
     // note the date part is year=yyyy/month=m/day=d/
     rawInputDf.write.mode(SaveMode.Overwrite)
-      .parquet(s"$outputPath/$ttdEnv/$outputPrefix/$svName/${datePart(date)}")
+      .parquet(s"$outputPath/$ttdEnv/$outputPrefix/$svName/${explicitDatePart(date)}")
 
     // clean up
     jobDurationTimer.setDuration()

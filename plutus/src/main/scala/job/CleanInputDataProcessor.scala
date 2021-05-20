@@ -38,12 +38,12 @@ object CleanInputDataProcessor {
 
   def main(args: Array[String]): Unit  = {
 
-    val df = CleanInputData.createCleanDataframe(inputPath, ttdEnv, inputPrefix, date, extremeValueThreshold, Some(svName), cleanDataOutputCount)
+    val df = CleanInputData.createCleanDataset(inputPath, ttdEnv, inputPrefix, date, extremeValueThreshold, Some(svName), cleanDataOutputCount)
 
     df
       .repartition(200)
       .write.mode(SaveMode.Overwrite)
-      .parquet(CleanInputData.cleanDataS3Path(outputPath, ttdEnv, outputPrefix, date, Some(svName)))
+      .parquet(plutusDataPath(outputPath, ttdEnv, outputPrefix, Some(svName), date))
 
     totalData.set(df.cache().count)
     mbwDataCount.set(df.filter(col("mb2w").isNotNull).count)

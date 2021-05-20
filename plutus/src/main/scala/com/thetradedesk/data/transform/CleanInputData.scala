@@ -1,44 +1,31 @@
 package com.thetradedesk.data.transform
 
-import com.thetradedesk.data.datePart
+import com.thetradedesk.data.{explicitDatePart, plutusDataPath}
 import com.thetradedesk.data.schema.CleanInputData
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
 import org.apache.spark.sql.functions.{col, round, when}
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
-import java.time.LocalDate
 
+import java.time.LocalDate
 import io.prometheus.client.Gauge
 
 object CleanInputData {
 
-  val DEFAULT_SV_NAME = "google"
-
-  def cleanDataS3BasePath(s3Path: String, ttdEnv: String, prefix: String, svName: Option[String] = None) = {
-    s"$s3Path/$ttdEnv/$prefix/${svName.getOrElse(DEFAULT_SV_NAME)}/"
-  }
-
-  def cleanDataS3Path(s3Path: String, ttdEnv: String, prefix: String, date: LocalDate, svName: Option[String] = None) = {
-    cleanDataS3BasePath(s3Path, ttdEnv, prefix, svName) + f"${datePart(date)}"
-  }
-
-
   def loadRawInputDataframe(s3Path: String, ttdEnv: String, prefix: String, date: LocalDate, svName: Option[String] = None): DataFrame = {
-    spark.read.parquet(cleanDataS3Path(s3Path, ttdEnv, prefix, date, svName))
+    spark.read.parquet(plutusDataPath(s3Path, ttdEnv, prefix, svName, date))
       .withColumn("is_imp", when(col("RealMediaCost").isNotNull, 1.0).otherwise(0.0))
   }
 
-  def createCleanDataset(df: DataFrame): Dataset[CleanInputData] = {
-    df.selectAs[CleanInputData]
-  }
 
-  def createCleanDataframe(rawInputS3Path: String, ttdEnv: String, rawInputPrefix: String, date: LocalDate, extremeValueThreshold: Double, svName: Option[String] = None, cleanDataOutputCount: Gauge) = {
+
+  def createCleanDataset(rawInputS3Path: String, ttdEnv: String, rawInputPrefix: String, date: LocalDate, extremeValueThreshold: Double, svName: Option[String] = None, cleanDataOutputCount: Gauge): Dataset[CleanInputData] = {
 
     val df = loadRawInputDataframe(rawInputS3Path, ttdEnv, rawInputPrefix, date, svName)
     //TODO: counters on size etc here -> put counter on the output as this input should be captured in the raw data creation counters
 
-    val dfOut = df
+    val ds = df
       .filter(col("mb2w").isNotNull)
       .withColumn("valid",
         // there are cases that dont make sense - we choose to remove these for simplicity while we investigate further.
@@ -65,9 +52,9 @@ object CleanInputData {
           .filter(col("valid") === true)
       .drop("valid")
 
-    cleanDataOutputCount.set(dfOut.count())
+    cleanDataOutputCount.set(ds.count())
 
-    createCleanDataset(dfOut)
+    ds.selectAs[CleanInputData]
 
   }
 

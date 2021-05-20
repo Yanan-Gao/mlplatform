@@ -23,7 +23,7 @@ object GoogleLostBids {
       .option("inferSchema", "false")
       .option("mode", "DROPMALFORMED")
       .schema(GoogleMinimumBidToWinDataset.SCHEMA)
-      .load(getCleansedDataPath(GoogleMinimumBidToWinDataset.S3PATH, date))
+      .load(cleansedDataPaths(GoogleMinimumBidToWinDataset.S3PATH, date): _*)
       .filter(col("sv") === "google")
       // is only set for won bids or mode 79
       .filter((col("svLossReason") === "1") || (col("svLossReason") === "79"))
