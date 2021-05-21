@@ -47,8 +47,8 @@ object TrainingDataTransform {
     val trainDev = spark.read.parquet(trainDevPaths: _*).as[CleanInputData]
     val test = spark.read.parquet(testPath).as[CleanInputData]
 
-    val trainDevSplit = createDataSplits(trainDev)
+    val (train, dev) = createDataSplits(trainDev)
 
-    (trainDevSplit._1, trainDevSplit._2 , test)
+    (train, dev , test)
   }
 }
