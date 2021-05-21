@@ -8,7 +8,6 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.functions._
-
 import java.time.LocalDate
 
 
@@ -18,11 +17,11 @@ object ModelInputProcessor extends Logger {
   val date = config.getDate("date" , LocalDate.now())
   val daysOfDat = config.getInt("daysOfDat" , 1)
   val svName = config.getString("svName", "google")
-  val inputPath = config.getString("inputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc/trainingdata")
+  val inputPath = config.getString("inputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc")
   val inputPrefix = config.getString("inputPrefix" , "clean")
 
-  val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc/trainingdata")
-
+  val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc")
+  val outputPrefix = config.getString("outputPrefix" , "modelinput")
 
   val tfRecordPath = config.getString("tfRecodPath" , "tfrecord")
   val dims = config.getInt("dims" , 500000)
@@ -83,25 +82,32 @@ object ModelInputProcessor extends Logger {
 
 
   val prometheus = new PrometheusClient("Plutus", "TrainingDataEtl")
-  val jobDurationTimer = prometheus.createGauge("training_data_raw_etl_runtime", "Time to process 1 day of bids, imppressions, lost bid data").startTimer()
+  val jobDurationTimer = prometheus.createGauge("training_model_input_runtime", "Time to process 1 day of clean data in to model input data").startTimer()
+  val trainCount = prometheus.createGauge("train_row_count", "rows of train data")
+  val validationCount = prometheus.createGauge("validation_row_count" , "rows of validation data")
+  val testCount = prometheus.createGauge("test_row_count" , "ros of test data")
 
 
   def main(args: Array[String]): Unit = {
 
-    //TODO: Read in clean data (last N days)
-
-    //TODO: Split into train/test/validation (configurable percentages or days)
-    // eg: lookback = 10 --> train [-9, -2] val [-1] test [0]
-    // or collapse into one large dataframe and split(0.8, 0.1, 0.1) but this will lose the temporal nature of the data
-    // compromise might be to hold-out test to lookback day [0] then collapse [-9,-1] and split (0.9, 0.1)
-
-    //TODO: TFRecord. Either have it create TF record from the train/test/val dataframe or construct the train/val/test
-    // from the TFRecord files.
+    //TODO: TFRecord create TF record from the train/test/val dataframe
 
     // create TFRecord data
 
-    val df = TrainingDataTransform.inputDataPaths(inputPath, inputPrefix, ttdEnv, None, date, Some(daysOfDat))
-//    val allInputCols = inputCatCols ++ inputIntCols
+    val cleanPaths = TrainingDataTransform.inputDataPaths(inputPath, inputPrefix, ttdEnv, None, date, Some(daysOfDat))
+
+    val (train, validation, test) = TrainingDataTransform.createComboSplits(cleanPaths)
+
+    trainCount.set(train.cache.count())
+    validationCount.set(validation.cache.count())
+    testCount.set(test.cache.count())
+
+    TrainingDataTransform.writeModelInputParquetData(train, outputPath, outputPrefix, ttdEnv, None, date, Some(daysOfDat), "train")
+    TrainingDataTransform.writeModelInputParquetData(test, outputPath, outputPrefix, ttdEnv, None, date, Some(daysOfDat), "test")
+    TrainingDataTransform.writeModelInputParquetData(validation, outputPath, outputPrefix, ttdEnv, None, date, Some(daysOfDat), "validation")
+
+
+    //    val allInputCols = inputCatCols ++ inputIntCols
 //
 //    val selectionTabular = inputCatCols.map(a => col(a)).toArray ++ inputIntCols.map(a => col(a)) ++ rawCols.map(a => col(a)) ++ targets.map(a => col(a))
 //
