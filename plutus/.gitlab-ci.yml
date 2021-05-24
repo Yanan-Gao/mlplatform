@@ -1,4 +1,4 @@
-plutus_test:
+plutus:test:
   image: "$SCALA_BUILD_IMAGE"
   stage: test
   cache:
@@ -11,50 +11,53 @@ plutus_test:
     - popd
     - echo "ran plutus_test"
 
-plutus_push_bits_merge_request:
+plutus:push_bits_merge_request:
   image: "$SCALA_BUILD_IMAGE"
   stage: assembly_upload
-  needs: []
+  needs: ["plutus:test"]
   except:
     - master
     - /^release-\d{4}\.\d{2}\.\d{2}$/
   script:
     - pushd ./plutus/
-    - sbt assembly
+    - sbt "set test in assembly := {}" clean assembly
     - popd
     - echo "ran plutus_push_bits_merge_request"
 
-plutus_push_bits_master_snapshot:
+plutus:push_bits_master_snapshot:
   image: "$SCALA_BUILD_IMAGE"
   stage: assembly_upload
+  needs: ["plutus:test"]
   only:
     - master
   script:
     - pushd ./plutus/
-    - sbt assembly
+    - sbt "set test in assembly := {}" clean assembly
     - popd
     - echo "ran plutus_push_bits_master_snapshot"
 
-plutus_push_bits_release:
+plutus:push_bits_release:
   image: "$SCALA_BUILD_IMAGE"
   stage: assembly_upload
+  needs: ["plutus:test"]
   only:
     - /^release-\d{4}\.\d{2}\.\d{2}$/
   script:
     - pushd ./plutus/
-    - sbt assembly
+    - sbt "set test in assembly := {}" clean assembly
     - popd
     - echo "ran plutus_push_bits_release"
 
-plutus_deploy_release:
+plutus:deploy_release:
   image: "$SCALA_BUILD_IMAGE"
   stage: deploy
+  needs: ["plutus:test"]
   only:
     - /^release-\d{4}\.\d{2}\.\d{2}$/
   when: manual
   allow_failure: false
   script:
     - pushd ./plutus/
-    - sbt assembly
+    - sbt "set test in assembly := {}" clean assembly
     - popd
     - echo "ran plutus_deploy_release"
