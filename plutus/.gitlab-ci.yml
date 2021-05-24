@@ -1,46 +1,60 @@
 plutus_test:
-  image: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+  image: "$SCALA_BUILD_IMAGE"
   stage: test
   cache:
     policy: pull
 #  before_script:
 #    - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
   script: 
-      - sbt test
+    - pushd ./plutus/
+    - sbt test
+    - popd
       - echo "ran plutus_test"
 
 plutus_push_bits_merge_request:
-  image: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+  image: "$SCALA_BUILD_IMAGE"
   stage: assembly_upload
   needs: []
   except:
     - master
     - /^release-\d{4}\.\d{2}\.\d{2}$/
   script:
+    - pushd ./plutus/
+    - sbt assembly
+    - popd
     - echo "ran plutus_push_bits_merge_request"
 
 plutus_push_bits_master_snapshot:
-  image: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+  image: "$SCALA_BUILD_IMAGE"
   stage: assembly_upload
   only:
     - master
   script:
+    - pushd ./plutus/
+    - sbt assembly
+    - popd
     - echo "ran plutus_push_bits_master_snapshot"
 
 plutus_push_bits_release:
-  image: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+  image: "$SCALA_BUILD_IMAGE"
   stage: assembly_upload
   only:
     - /^release-\d{4}\.\d{2}\.\d{2}$/
   script:
+    - pushd ./plutus/
+    - sbt assembly
+    - popd
     - echo "ran plutus_push_bits_release"
 
 plutus_deploy_release:
-  image: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+  image: "$SCALA_BUILD_IMAGE"
   stage: deploy
   only:
     - /^release-\d{4}\.\d{2}\.\d{2}$/
   when: manual
   allow_failure: false
   script:
+    - pushd ./plutus/
+    - sbt assembly
+    - popd
     - echo "ran plutus_deploy_release"
