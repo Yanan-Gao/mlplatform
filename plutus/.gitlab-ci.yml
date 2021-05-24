@@ -8,7 +8,7 @@ plutus_test:
   script: 
     - pushd ./plutus/
     - sbt test
-    - popd
+    - popd -0
       - echo "ran plutus_test"
 
 plutus_push_bits_merge_request:
@@ -21,7 +21,7 @@ plutus_push_bits_merge_request:
   script:
     - pushd ./plutus/
     - sbt assembly
-    - popd
+    - popd -0
     - echo "ran plutus_push_bits_merge_request"
 
 plutus_push_bits_master_snapshot:
@@ -32,7 +32,7 @@ plutus_push_bits_master_snapshot:
   script:
     - pushd ./plutus/
     - sbt assembly
-    - popd
+    - popd -0
     - echo "ran plutus_push_bits_master_snapshot"
 
 plutus_push_bits_release:
@@ -43,7 +43,7 @@ plutus_push_bits_release:
   script:
     - pushd ./plutus/
     - sbt assembly
-    - popd
+    - popd -0
     - echo "ran plutus_push_bits_release"
 
 plutus_deploy_release:
@@ -56,5 +56,5 @@ plutus_deploy_release:
   script:
     - pushd ./plutus/
     - sbt assembly
-    - popd
+    - popd -0
     - echo "ran plutus_deploy_release"
