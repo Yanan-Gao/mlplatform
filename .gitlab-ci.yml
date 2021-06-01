@@ -1,7 +1,7 @@
 variables:
   SCALA_BUILD_IMAGE: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
-
-
+  LIBS_PREFIX: "s3://thetradedesk-mlplatform-us-east-1/libs/"
+  
 stages:
   - test
   - assembly_upload
@@ -20,12 +20,12 @@ default:
 
   before_script:
     #aws cli requires pip, which requires python, which the image does not have
-    #- apt-get update
-    #- apt-get install python3 -y
-    #- apt-get install python3-pip -y
-    #- export PATH=~/.local/bin:$PATH
-    #- pip3 install awscli # Install aws
-    #- apt-get install zip
+    - apt-get update
+    - apt-get install python3 -y
+    - apt-get install python3-pip -y
+    - export PATH=~/.local/bin:$PATH
+    - pip3 install awscli # Install aws
+    - apt-get install zip
     # creating a branch is needed for sbtrelease.Vcs. This is needed because gitlab
     # operates in "detached head" mode
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
