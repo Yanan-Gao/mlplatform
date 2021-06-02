@@ -1,6 +1,8 @@
 variables:
   PLUTUS_JAR_NAME: "plutus.jar"
   PLUTUS_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/jars/mergerequests"
+  PLUTUS_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/jars/snapshots"
+  PLUTUS_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/jars/prod"
   ASSEMBLY_OUT: "/builds/thetradedesk/mlplatform/plutus/target/scala-2.12/plutus.jar"
 
 plutus:test:
@@ -38,10 +40,10 @@ plutus:push_bits_master_snapshot:
   script:
     - pushd ./plutus/
     - sbt "set test in assembly := {}" clean assembly
-    # TODO: Push to proper location
+    - DEST=${PLUTUS_SNAPSHOTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - aws s3 cp ${ASSEMBLY_OUT} ${DEST}/${PLUTUS_JAR_NAME}
     - popd
     - echo "ran plutus_push_bits_master_snapshot"
-
 
 plutus:deploy_release:
   image: "$SCALA_BUILD_IMAGE"
@@ -51,6 +53,6 @@ plutus:deploy_release:
   script:
     - pushd ./plutus/
     - sbt "set test in assembly := {}" clean assembly
-    # TODO: Push to proper location
+    - aws s3 cp ${ASSEMBLY_OUT} ${PLUTUS_PROD_JAR_FOLDER}/${PLUTUS_JAR_NAME}
     - popd
     - echo "ran plutus_deploy_release"
