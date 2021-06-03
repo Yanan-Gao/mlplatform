@@ -14,12 +14,39 @@
     <artifactId>fsclient</artifactId>
     <packaging>jar</packaging>
 
+    <properties>
+
+        <org.apache.spark.version>2.4.7</org.apache.spark.version>
+        <scala.version>2.12</scala.version>
+
+    </properties>
+
     <dependencies>
 		<dependency>
 			<groupId>com.thetradedesk.mlplatform</groupId>
 			<artifactId>common</artifactId>
 			<version>0.1</version>
 		</dependency>
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-core_${scala.version}</artifactId>
+            <version>${org.apache.spark.version}</version>
+            <!--<scope>provided</scope> -->
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-streaming_${scala.version}</artifactId>
+            <version>${org.apache.spark.version}</version>
+            <!--<scope>provided</scope>-->
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.spark</groupId>
+            <artifactId>spark-sql_${scala.version}</artifactId>
+            <version>${org.apache.spark.version}</version>
+            <!--<scope>provided</scope>-->
+        </dependency>
     </dependencies>
 
     <build>

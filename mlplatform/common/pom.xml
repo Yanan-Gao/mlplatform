@@ -14,6 +14,11 @@
     <artifactId>common</artifactId>
     <packaging>jar</packaging>
 
+    <!--
+    !!!IMPORTANT!!!
+    This common library should not require any large external references
+    This common library should not force users of it to use a specific spark/flink/other library versions
+    -->
     <dependencies>
     </dependencies>
 
