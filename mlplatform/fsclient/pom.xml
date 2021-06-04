@@ -127,7 +127,7 @@
                 </executions>
 
                 <configuration>
-                    <finalName>prod-uber-thetradedesk-${project.parent.artifactId}-${project.artifactId}-${project.version}</finalName>
+                    <finalName>mlplatform-fsclient</finalName>
                     <createDependencyReducedPom>false</createDependencyReducedPom>
                     <filters>
                         <filter>

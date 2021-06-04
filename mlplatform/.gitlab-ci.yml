@@ -1,0 +1,85 @@
+variables:
+  MLPLATFORM_COMMON_ASSEMBLY_OUT: "common/target/mlplatform-common.jar"
+  MLPLATFORM_COMMON_JAR_NAME: "mlplatform-common.jar"
+  
+  MLPLATFORM_FEATURESTORE_ASSEMBLY_OUT: "fsclient/target/mlplatform-fsclient.jar"
+  MLPLATFORM_FEATURESTORE_JAR_NAME: "mlplatform-fsclient.jar"
+    
+  MLPLATFORM_API_ASSEMBLY_OUT: "api/target/mlplatform-api.jar"
+  MLPLATFORM_API_JAR_NAME: "mlplatform-api.jar"
+  
+  
+  MLPLATFORM_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/mlplatform/jars/mergerequests"
+  MLPLATFORM_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/mlplatform/jars/snapshots"
+  MLPLATFORM_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/mlplatform/jars/prod"
+  
+
+mlplatform:test:
+  image: "$SCALA_BUILD_IMAGE"
+  stage: test
+  cache:
+    policy: pull
+  only:
+    changes:
+      - mlplatform/*
+  before_script:
+    # we don't need to set up the machine for S3 in order to run tests
+    - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
+  script: 
+    - pushd ./mlplatform/
+    - mvn test
+    - popd
+    - echo "ran mlplatform_test"
+
+mlplatform:push_bits_merge_request:
+  image: "$SCALA_BUILD_IMAGE"
+  stage: assembly_upload
+  except:
+    - master
+  only:
+    changes:
+      - mlplatform/*
+  script:
+    - pushd ./mlplatform/
+    - mvn -Dmaven.test.skip=true package
+    - DEST=${MLPLATFORM_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - aws s3 cp ${MLPLATFORM_COMMON_ASSEMBLY_OUT} ${DEST}/${MLPLATFORM_COMMON_JAR_NAME}
+    - aws s3 cp ${MLPLATFORM_FEATURESTORE_ASSEMBLY_OUT} ${DEST}/${MLPLATFORM_FEATURESTORE_JAR_NAME}
+    - aws s3 cp ${MLPLATFORM_API_ASSEMBLY_OUT} ${DEST}/${MLPLATFORM_API_JAR_NAME}
+    - popd
+    - echo "ran mlplatform_push_bits_merge_request"
+
+mlplatform:push_bits_master_snapshot:
+  image: "$SCALA_BUILD_IMAGE"
+  stage: assembly_upload
+  only:
+    - master
+    changes:
+      - mlplatform/*
+  script:
+    - pushd ./mlplatform/
+    - mvn -Dmaven.test.skip=true package
+    - DEST=${MLPLATFORM_SNAPSHOTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - aws s3 cp ${MLPLATFORM_COMMON_ASSEMBLY_OUT} ${DEST}/${MLPLATFORM_COMMON_JAR_NAME}
+    - aws s3 cp ${MLPLATFORM_FEATURESTORE_ASSEMBLY_OUT} ${DEST}/${MLPLATFORM_FEATURESTORE_JAR_NAME}
+    - aws s3 cp ${MLPLATFORM_API_ASSEMBLY_OUT} ${DEST}/${MLPLATFORM_API_JAR_NAME}
+    - popd
+    - echo "ran mlplatform_push_bits_master_snapshot"
+
+mlplatform:deploy_release:
+  image: "$SCALA_BUILD_IMAGE"
+  stage: deploy
+  when: manual
+  only:
+    changes:
+      - mlplatform/*
+  allow_failure: false
+  script:
+    - pushd ./mlplatform/
+    - mvn -Dmaven.test.skip=true package
+    - aws s3 cp ${ASSEMBLY_OUT} ${MLPLATFORM_PROD_JAR_FOLDER}/${MLPLATFORM_JAR_NAME}
+    - aws s3 cp ${MLPLATFORM_COMMON_ASSEMBLY_OUT} ${MLPLATFORM_PROD_JAR_FOLDER}/${MLPLATFORM_COMMON_JAR_NAME}
+    - aws s3 cp ${MLPLATFORM_FEATURESTORE_ASSEMBLY_OUT} ${MLPLATFORM_PROD_JAR_FOLDER}/${MLPLATFORM_FEATURESTORE_JAR_NAME}
+    - aws s3 cp ${MLPLATFORM_API_ASSEMBLY_OUT} ${MLPLATFORM_PROD_JAR_FOLDER}/${MLPLATFORM_API_JAR_NAME}
+    - popd
+    - echo "ran mlplatform_deploy_release"
