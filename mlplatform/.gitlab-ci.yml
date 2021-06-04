@@ -73,6 +73,8 @@ mlplatform:deploy_release:
   stage: deploy
   when: manual
   only:
+    refs:
+      - master
     changes:
       - "mlplatform/**/*"
   allow_failure: false
