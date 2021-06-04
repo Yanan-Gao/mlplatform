@@ -21,7 +21,7 @@ mlplatform:test:
     policy: pull
   only:
     changes:
-      - mlplatform/*
+      - "^mlplatform/.*"
   before_script:
     # we don't need to set up the machine for S3 in order to run tests
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
@@ -39,7 +39,7 @@ mlplatform:push_bits_merge_request:
       - master
   only:
     changes:
-      - mlplatform/*
+      - "^mlplatform/.*"
   script:
     - pushd ./mlplatform/
     - mvn -Dmaven.test.skip=true package
@@ -57,7 +57,7 @@ mlplatform:push_bits_master_snapshot:
     refs:
       - master
     changes:
-      - mlplatform/*
+      - "^mlplatform/.*"
   script:
     - pushd ./mlplatform/
     - mvn -Dmaven.test.skip=true package
@@ -74,7 +74,7 @@ mlplatform:deploy_release:
   when: manual
   only:
     changes:
-      - mlplatform/*
+      - "^mlplatform/.*"
   allow_failure: false
   script:
     - pushd ./mlplatform/
