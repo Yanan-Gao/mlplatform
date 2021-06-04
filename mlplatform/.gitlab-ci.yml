@@ -15,7 +15,7 @@ variables:
   
 
 mlplatform:test:
-  image: "$SCALA_BUILD_IMAGE"
+  image: "$MAVEN_BUILD_IMAGE"
   stage: test
   cache:
     policy: pull
@@ -32,7 +32,7 @@ mlplatform:test:
     - echo "ran mlplatform_test"
 
 mlplatform:push_bits_merge_request:
-  image: "$SCALA_BUILD_IMAGE"
+  image: "$MAVEN_BUILD_IMAGE"
   stage: assembly_upload
   except:
     refs:
@@ -51,7 +51,7 @@ mlplatform:push_bits_merge_request:
     - echo "ran mlplatform_push_bits_merge_request"
 
 mlplatform:push_bits_master_snapshot:
-  image: "$SCALA_BUILD_IMAGE"
+  image: "$MAVEN_BUILD_IMAGE"
   stage: assembly_upload
   only:
     refs:
@@ -69,7 +69,7 @@ mlplatform:push_bits_master_snapshot:
     - echo "ran mlplatform_push_bits_master_snapshot"
 
 mlplatform:deploy_release:
-  image: "$SCALA_BUILD_IMAGE"
+  image: "$MAVEN_BUILD_IMAGE"
   stage: deploy
   when: manual
   only:
