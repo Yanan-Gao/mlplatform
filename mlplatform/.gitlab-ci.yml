@@ -35,7 +35,8 @@ mlplatform:push_bits_merge_request:
   image: "$SCALA_BUILD_IMAGE"
   stage: assembly_upload
   except:
-    - master
+    refs:
+      - master
   only:
     changes:
       - mlplatform/*
@@ -53,7 +54,8 @@ mlplatform:push_bits_master_snapshot:
   image: "$SCALA_BUILD_IMAGE"
   stage: assembly_upload
   only:
-    - master
+    refs:
+      - master
     changes:
       - mlplatform/*
   script:
