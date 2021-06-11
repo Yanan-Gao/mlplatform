@@ -8,7 +8,7 @@ import com.thetradedesk.data.schema.CleanInputData
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.sql.SQLFunctions._
-import org.apache.spark.sql.{Column, Dataset, SparkSession}
+import org.apache.spark.sql.{Column, Dataset, SaveMode, SparkSession}
 
 object TrainingDataTransform {
 
@@ -23,7 +23,7 @@ object TrainingDataTransform {
   def writeModelInputData(ds: Dataset[CleanInputData], s3Path: String, s3Prefix: String, ttdEnv: String, svName: Option[String], endDate: LocalDate, lookBack: Option[Int] = None, dataType: String, fileType: String, selection: Array[Column] ): Unit = {
     val output = outputDataPaths(s3Path, s3Prefix, ttdEnv, svName, endDate, lookBack, dataType, fileType)
     fileType match {
-      case "parquet" => ds.select(selection: _*).write.parquet(output)
+      case "parquet" => ds.select(selection: _*).write.mode(SaveMode.Overwrite).parquet(output)
       case "tfrecords" | "tfrecord" => writeData(ds.toDF(), selection, output)
       case _ => sys.error("unrecognized file type in writeModelInputData. please investigate")
     }
