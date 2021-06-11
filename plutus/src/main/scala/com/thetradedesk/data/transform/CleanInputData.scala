@@ -58,8 +58,5 @@ object CleanInputData {
 
   }
 
-  def createTabularTFRecordDataframe(cleanData: Dataset[CleanInputData]) = {
-
-  }
 
 }

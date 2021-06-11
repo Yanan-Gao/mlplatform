@@ -10,6 +10,8 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.functions._
 import java.time.LocalDate
 
+import com.thetradedesk.spark.sql.SQLFunctions.ColumnExtensions
+
 
 object ModelInputProcessor extends Logger {
 
@@ -25,49 +27,43 @@ object ModelInputProcessor extends Logger {
 
   val tfRecordPath = config.getString("tfRecodPath" , "tfrecord")
   val dims = config.getInt("dims" , 500000)
-  val inputIntCols = config.getStringSeq("inputIntCols" , Seq(
-    "RenderingContext",
-    "MatchedFoldPosition",
-    "VolumeControlPriority",
-    "UserHourOfWeek",
-    "AdsTxtSellerType",
-    "PublisherType",
-    "InternetConnectionType", // need to handle nulls
-    "DeviceType",
-    "OperatingSystemFamily",
-    "Browser"
+  val inputIntCols = config.getTupleSeq("inputIntCols" , Seq(
+    ("RenderingContext",  (3+1+1)),
+    // ("MatchedFoldPosition",  (3+1+1)),
+    // ("VolumeControlPriority",  (5+1+1)),
+    ("UserHourOfWeek",  (24*7+1+1)),
+    ("AdsTxtSellerType",  (4+1+1)),
+    ("PublisherType",  (4+1+1)),
+    // ("InternetConnectionType",  (3+1+1)), // need to handle nulls
+    ("DeviceType",  (6+1+1)),
+    ("OperatingSystemFamily", (7+1+1)),
+    ("Browser",  (15+1+1))
   ))
-  val inputCatCols = config.getStringSeq("inputCatCols", Seq(
-    "SupplyVendor",
-    "DealId",
-    "SupplyVendorPublisherId",
-    "SupplyVendorSiteId",
-    "Site",
-    "AdFormat",
-    "MatchedCategory",
-    "ImpressionPlacementId",
-    "Carrier" ,
-    "Country",
-    "Region",
-    "Metro",
-    "City",
-    "Zip",
-    "DeviceMake",
-    "DeviceModel",
-    "RequestLanguages"
+
+  val inputCatCols = config.getTupleSeq("inputCatCols", Seq(
+    ("SupplyVendor", 100),
+    ("DealId", 5000),
+    ("SupplyVendorPublisherId", 15000),
+    ("SupplyVendorSiteId", 100),
+    ("Site", 350000),
+    ("AdFormat", 100),
+    // ("MatchedCategory", 4000),
+    ("ImpressionPlacementId", 100),
+    // ("Carrier", 200),
+    ("Country", 250), // there are 195! https://www.worldometers.info/geography/how-many-countries-are-there-in-the-world/
+    ("Region", 4000),
+    ("Metro", 300),
+    ("City", 75000), // suggestion of 10000 but this is a lot higher
+    ("Zip", 90000),
+    ("DeviceMake", 1000),
+    ("DeviceModel", 10000),
+    ("RequestLanguages", 500) // suggested 6500! Probably not all on the internet
   )
+
   )
   val rawCols = config.getStringSeq("rawCols" , Seq(
     "Latitude",
     "Longitude",
-    "sin_hour_day",
-    "cos_hour_day",
-    "sin_hour_week",
-    "cos_hour_week",
-    "sin_minute_hour",
-    "cos_minute_hour",
-    "sin_minute_day",
-    "cos_minute_day"
   )
   )
 
@@ -102,29 +98,15 @@ object ModelInputProcessor extends Logger {
     validationCount.set(validation.cache.count())
     testCount.set(test.cache.count())
 
-    TrainingDataTransform.writeModelInputParquetData(train, outputPath, outputPrefix, ttdEnv, None, date, Some(daysOfDat), "train")
-    TrainingDataTransform.writeModelInputParquetData(test, outputPath, outputPrefix, ttdEnv, None, date, Some(daysOfDat), "test")
-    TrainingDataTransform.writeModelInputParquetData(validation, outputPath, outputPrefix, ttdEnv, None, date, Some(daysOfDat), "validation")
+    val selectionTabular = getHashedCatCols(inputCatCols) ++ getHashedIntCols(inputIntCols) ++ rawCols.map(a => col(a)) ++ targets.map(a => col(a))
+    val ttv = Seq((train, "train") , (test, "test"), (validation, "validation"))
 
-
-    //    val allInputCols = inputCatCols ++ inputIntCols
-//
-//    val selectionTabular = inputCatCols.map(a => col(a)).toArray ++ inputIntCols.map(a => col(a)) ++ rawCols.map(a => col(a)) ++ targets.map(a => col(a))
-//
-//    val selectionHash = Array(
-//      vec_indices(col("features")).alias("i"),
-//      vec_size(col("features")).alias("s"),
-//      vec_values(col("features")).alias("v"),
-//    ) ++ rawCols.map(a => col(a)) ++ targets.map(a => col(a))
-//
-//    val feat = TfRecordWriter.hashData(df.toDF, allInputCols, dims)
-//
-//
-//
-//    TfRecordWriter.writeData(feat, selectionHash, date, outputPath, inputPrefix, ttdEnv, tfRecordPath, "hash")
-//    TfRecordWriter.writeData(df.toDF, selectionTabular, date, outputPath, inputPrefix, ttdEnv, tfRecordPath, "tabular")
-//
-
+   ttv.foreach{case (df, dtype) =>
+      TrainingDataTransform.writeModelInputData(df, outputPath, outputPrefix, ttdEnv, None, date, Some(daysOfDat), dtype , "tfrecord", selectionTabular)
+    }
+    ttv.foreach{case (df, dtype) =>
+      TrainingDataTransform.writeModelInputData(df, outputPath, outputPrefix, ttdEnv, None, date, Some(daysOfDat), dtype , "parquet", selectionTabular)
+    }
     // clean up
     jobDurationTimer.setDuration()
     prometheus.pushMetrics()

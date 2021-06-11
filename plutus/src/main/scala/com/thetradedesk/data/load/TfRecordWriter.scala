@@ -4,10 +4,9 @@ import com.thetradedesk.data.paddedDatePart
 import org.apache.spark.ml.feature.FeatureHasher
 import org.apache.spark.sql.{Column, DataFrame}
 
-import java.time.LocalDate
-
 object TfRecordWriter {
 
+  // hashing trick hashing -> not currently in use, keeping in case we pull it out of retirement
   def hashData(df: DataFrame, inputCols: Seq[String], dims: Int) = {
 
     val hasher = new FeatureHasher()
@@ -19,17 +18,14 @@ object TfRecordWriter {
 
   }
 
-  def writeData(df: DataFrame, selection: Array[Column], date: LocalDate, outputPath: String, folderName: String, ttdEnv: String, tfRecordPath: String, outputType: String): Unit = {
-
-    val d = paddedDatePart(date)
-
+  def writeData(df: DataFrame, selection: Array[Column], outputPath: String): Unit = {
     df
       .select(selection: _*)
       .repartition(75)
-      .write.format("tfrecords").option("recordType", "Example")
+      .write.format("tfrecord").option("recordType", "Example")
       .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
       .mode("overwrite")
-      .save(outputPath + folderName + "/" + ttdEnv + tfRecordPath + outputType + "/" + d)
+      .save(outputPath)
 
   }
 

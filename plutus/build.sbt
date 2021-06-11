@@ -8,7 +8,7 @@ version := "0.0"
 
 scalaVersion := "2.12.13"
 
-val sparkVersion = "3.1.1"
+val sparkVersion = "3.0.0"
 val prometheusVersion = "0.9.0"
 
 resolvers += "bintray-spark-packages" at "https://dl.bintray.com/spark-packages/maven/"
@@ -18,6 +18,7 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-mllib" % sparkVersion % "provided",
 
   "com.typesafe" % "config" % "1.3.0",
+  "com.linkedin.sparktfrecord" % "spark-tfrecord_2.12" % "0.3.0",
 
   "io.prometheus" % "simpleclient" % prometheusVersion,
   "io.prometheus" % "simpleclient_common" % prometheusVersion,

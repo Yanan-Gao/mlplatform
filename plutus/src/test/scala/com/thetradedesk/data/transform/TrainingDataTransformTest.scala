@@ -43,15 +43,13 @@ class TrainingDataTransformTest extends AnyFlatSpec {
     val paths = Seq("s3://bucket/prob/raw/google/year=2021/month=1/day=1",
       "s3://bucket/prob/raw/google/year=2020/month=12/day=31",
       "s3://bucket/prob/raw/google/year=2020/month=12/day=30")
-    val (tr, v, ts) = TrainingDataTransform.createTemporalDataSplits(paths)
-    val expectedTrain = Seq("s3://bucket/prob/raw/google/year=2020/month=12/day=30")
-    val expectedVal = "s3://bucket/prob/raw/google/year=2020/month=12/day=31"
-    val expectedTest = "s3://bucket/prob/raw/google/year=2021/month=1/day=1"
+    val (tr, tsV) = TrainingDataTransform.createTemporalDataSplits(paths)
+    val expectedTrain = Seq("s3://bucket/prob/raw/google/year=2020/month=12/day=30","s3://bucket/prob/raw/google/year=2020/month=12/day=31")
+    val expectedValTest = "s3://bucket/prob/raw/google/year=2020/month=12/day=1"
 
     println(tr)
-    println(v)
-    println(ts)
-    (tr == expectedTrain ) && (v == expectedVal) && (ts == expectedTest)
+    println(tsV)
+    (tr == expectedTrain ) && (tsV == expectedValTest)
 
   }
 }
