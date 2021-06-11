@@ -1,6 +1,6 @@
 package com.thetradedesk.data.load
 
-import com.thetradedesk.data.paddedDatePart
+import org.apache.spark.sql.SaveMode
 import org.apache.spark.ml.feature.FeatureHasher
 import org.apache.spark.sql.{Column, DataFrame}
 
@@ -22,9 +22,11 @@ object TfRecordWriter {
     df
       .select(selection: _*)
       .repartition(75)
-      .write.format("tfrecord").option("recordType", "Example")
+      .write
+      .mode(SaveMode.Overwrite)
+      .format("tfrecord")
+      .option("recordType", "Example")
       .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
-      .mode("overwrite")
       .save(outputPath)
 
   }
