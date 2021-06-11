@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Deployment
+metadata:
+  name: mlplatform-api
+  namespace: mlplatform
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 50%
+      maxSurge: 0
+  selector:
+    matchLabels:
+      app: mlplatform-api
+  template:
+    metadata:
+      labels:
+        app: mlplatform-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "80"        
+    spec:
+      containers:
+      - name: mlplatform-api
+        image: dev.docker.adsrvr.org/mlplatform-api:latest
+        ports:
+        - containerPort: 8083
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: "1"
+            memory: 1Gi
+      imagePullSecrets:
+      - name: use-docker

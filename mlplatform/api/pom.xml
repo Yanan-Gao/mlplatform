@@ -14,18 +14,54 @@
     <artifactId>api</artifactId>
     <packaging>jar</packaging>
 
+    <properties>
+        <spring.boot.version>2.4.6</spring.boot.version>
+    </properties>
+
     <dependencies>
-		<dependency>
+		<!--<dependency>
 			<groupId>com.thetradedesk.mlplatform</groupId>
 			<artifactId>common</artifactId>
 			<version>0.1</version>
-		</dependency>
+		</dependency>-->
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <version>${spring.boot.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <version>${spring.boot.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+
     </dependencies>
 
     <build>
-        <finalName>thetradedesk-mlplatform-${project.parent.artifactId}-${project.artifactId}-${project.version}</finalName>
+        <!--<finalName>thetradedesk-mlplatform-${project.parent.artifactId}-${project.artifactId}-${project.version}</finalName>-->
         <plugins>
             <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring.boot.version}</version>
+
+                <executions>
+                    <execution>
+                        <id>repackage</id>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                        <configuration>
+                            <finalName>mlplatform-api</finalName>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!--<plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>
                 <version>${maven.shade.plugin.version}</version>
@@ -53,6 +89,7 @@
                     </filters>
                 </configuration>
             </plugin>
+            -->
         </plugins>
     </build>
 
