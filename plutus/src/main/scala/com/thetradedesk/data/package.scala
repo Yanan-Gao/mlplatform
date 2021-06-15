@@ -49,31 +49,10 @@ package object data {
       .selectAs[T]
   }
 
-  // useful UDFs
 
-  def getHashedCatCols(inputColAndDims: Seq[(String, Int)]): Array[Column] = {
-    inputColAndDims.map(x =>
-      when(col(x._1).isNotNullOrEmpty, shiftModUdf(xxhash64(col(x._1)) , lit(x._2) )).otherwise(0).alias(x._1)
-    ).toArray
-  }
-
-  def getHashedIntCols(inputColAndDims: Seq[(String, Int)]): Array[Column] = {
-    // collapse all negative values to zero (bad but we can fix later)
-    inputColAndDims.map(x =>
-      when(((col(x._1).isNotNull) && (col(x._1) >= 0)),  shiftModUdf(col(x._1), lit(x._2)) ).otherwise(0).alias(x._1)
-    ).toArray
-  }
-
-  def nonNegativeMod = udf[Long, Int]( x => {
-    val mod = Int.MaxValue -1
-    val rawMod = x % mod
-    rawMod + (if (rawMod < 0) mod else 0)
-  })
-
-
-  def shiftModUdf = udf((h: Long, m: Int) => {
-    val i = h % m
-    i + (if (i < 0) m + 1 else 1)
+  def shiftModUdf = udf((hashValue: Long, modulo: Int) => {
+    val index = hashValue % modulo
+    index + (if (index < 0) modulo + 1 else 1)
   })
 
   val vec_size: UserDefinedFunction = udf((v: Vector) => v.size)

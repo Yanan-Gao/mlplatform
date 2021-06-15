@@ -11,7 +11,7 @@ import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 import java.time.LocalDate
 import io.prometheus.client.Gauge
 
-object CleanInputData {
+object CleanInputDataTransform {
 
   def loadRawInputDataframe(s3Path: String, ttdEnv: String, prefix: String, date: LocalDate, svName: Option[String] = None): DataFrame = {
     spark.read.parquet(plutusDataPath(s3Path, ttdEnv, prefix, svName, date))

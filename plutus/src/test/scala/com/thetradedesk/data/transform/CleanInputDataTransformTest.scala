@@ -4,7 +4,7 @@ import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers._
 
 import java.time.LocalDate
-class CleanInputDataTest extends AnyFlatSpec {
+class CleanInputDataTransformTest extends AnyFlatSpec {
 
 
 
