@@ -1,20 +1,16 @@
-apiVersion: extensions/v1beta1
+apiVersion: networking.k8s.io/v1beta1
 kind: Ingress
 metadata:
+  annotations:
+    # used to select which ingress this resource should be configured on
+    kubernetes.io/ingress.class: alb
   name: mlplatform-api-ingress
   namespace: mlplatform
-  annotations:
-    kubernetes.io/ingress.class: alb
 spec:
-#  tls:
-#  - hosts:
-#    - dev-context.adsrvr.org
-#    secretName: dev-contextual-secret
   rules:
-  - host: mlplatform.adsrvr.org
-    http:
+  - http:
       paths:
       - path: /
         backend:
-          serviceName: mlplatform-svc
-          servicePort: 80
+          serviceName: mlplatform-api-svc
+          servicePort: 8083
