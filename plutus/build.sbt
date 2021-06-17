@@ -18,6 +18,7 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-mllib" % sparkVersion % "provided",
 
   "com.typesafe" % "config" % "1.3.0",
+  "com.linkedin.sparktfrecord" % "spark-tfrecord_2.12" % "0.3.0",
 
   "io.prometheus" % "simpleclient" % prometheusVersion,
   "io.prometheus" % "simpleclient_common" % prometheusVersion,

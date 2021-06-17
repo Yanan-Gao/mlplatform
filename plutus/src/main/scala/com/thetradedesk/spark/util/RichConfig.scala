@@ -102,4 +102,18 @@ case class RichConfig(underlying: Config) {
   def getStringSeq(path: String, default: Seq[String]): Seq[String] = getParsedWithDefault(path, stringSeqParser, default)
   def getStringSeqOption(path: String): Option[Seq[String]] = getParsedOption(path, stringSeqParser)
   def getStringSeqRequired(path: String): Seq[String] = getParsedRequired(path, stringSeqParser)
+
+  // TupleSeq
+  private def tupleSeqParser(value: String): Seq[(String, Int)] = {
+    value.split(",")
+      .map(_.filterNot(c => c  == '(' || c == ')' || c == ' '))
+      .grouped(2)
+      .map {
+        case Array(x, y) => (x, y.toInt)
+        case _          => sys.error("Could not parse config type Seq[(String, Int)]")
+      }.toSeq
+  }
+  def getTupleSeq(path: String, default: Seq[(String, Int)]): Seq[(String, Int)] = getParsedWithDefault(path, tupleSeqParser, default)
+  def getTupleSeqOption(path: String): Option[Seq[(String, Int)]] = getParsedOption(path, tupleSeqParser)
+  def getTupleSeqRequired(path: String): Seq[(String, Int)] = getParsedRequired(path, tupleSeqParser)
 }

@@ -1,11 +1,10 @@
-package com.thetradedesk
+package com.thetradedesk.plutus
 
-import com.thetradedesk.spark.sql.SQLFunctions.DataFrameExtensions
+import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
 import org.apache.spark.ml.linalg.{SparseVector, Vector}
 import org.apache.spark.sql.expressions.UserDefinedFunction
-import org.apache.spark.sql.functions.udf
-import org.apache.spark.sql.{Dataset, Encoder, SparkSession}
-
+import org.apache.spark.sql.functions.{col, lit, udf, when, xxhash64}
+import org.apache.spark.sql.{Column, Dataset, Encoder, SparkSession}
 import java.time.LocalDate
 
 package object data {
@@ -50,7 +49,12 @@ package object data {
       .selectAs[T]
   }
 
-  // useful UDFs
+
+  def shiftModUdf = udf((hashValue: Long, modulo: Int) => {
+    val index = hashValue % modulo
+    index + (if (index < 0) modulo + 1 else 1)
+  })
+
   val vec_size: UserDefinedFunction = udf((v: Vector) => v.size)
   val vec_indices: UserDefinedFunction = udf((v: SparseVector) => v.indices)
   val vec_values: UserDefinedFunction = udf((v: SparseVector) => v.values)

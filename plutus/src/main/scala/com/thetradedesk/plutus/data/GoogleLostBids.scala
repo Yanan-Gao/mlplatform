@@ -1,13 +1,12 @@
-package com.thetradedesk.data
+package com.thetradedesk.plutus.data
 
-import com.thetradedesk.data.schema.GoogleMinimumBidToWinDataset
-import com.thetradedesk.data.schema.GoogleMinimumBidToWinData
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.Dataset
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-
 import java.time.LocalDate
+
+import com.thetradedesk.plutus.data.schema.{GoogleMinimumBidToWinData, GoogleMinimumBidToWinDataset}
 
 object GoogleLostBids {
 

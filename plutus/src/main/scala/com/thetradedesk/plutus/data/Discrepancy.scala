@@ -1,10 +1,10 @@
-package com.thetradedesk.data
+package com.thetradedesk.plutus.data
 
-import com.thetradedesk.data.schema.{Deals, DiscrepancyDataset, Pda, Svb}
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions.col
-
 import java.time.LocalDate
+
+import com.thetradedesk.plutus.data.schema.{Deals, DiscrepancyDataset, Pda, Svb}
 
 object Discrepancy {
 

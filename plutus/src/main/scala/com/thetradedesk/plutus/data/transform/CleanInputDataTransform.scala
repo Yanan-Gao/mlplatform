@@ -1,17 +1,17 @@
-package com.thetradedesk.data.transform
+package com.thetradedesk.plutus.data.transform
 
-import com.thetradedesk.data.{explicitDatePart, plutusDataPath}
-import com.thetradedesk.data.schema.CleanInputData
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
 import org.apache.spark.sql.functions.{col, round, when}
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
-
 import java.time.LocalDate
+
+import com.thetradedesk.plutus.data.plutusDataPath
+import com.thetradedesk.plutus.data.schema.CleanInputData
 import io.prometheus.client.Gauge
 
-object CleanInputData {
+object CleanInputDataTransform {
 
   def loadRawInputDataframe(s3Path: String, ttdEnv: String, prefix: String, date: LocalDate, svName: Option[String] = None): DataFrame = {
     spark.read.parquet(plutusDataPath(s3Path, ttdEnv, prefix, svName, date))
@@ -58,8 +58,5 @@ object CleanInputData {
 
   }
 
-  def createTabularTFRecordDataframe(cleanData: Dataset[CleanInputData]) = {
-
-  }
 
 }

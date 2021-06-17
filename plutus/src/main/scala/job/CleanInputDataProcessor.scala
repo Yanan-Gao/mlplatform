@@ -1,15 +1,15 @@
 package job
 
-import com.thetradedesk.data._
-import com.thetradedesk.data.load.TfRecordWriter
-import com.thetradedesk.data.transform.CleanInputData
+
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
-
 import java.time.LocalDate
+
+import com.thetradedesk.plutus.data.plutusDataPath
+import com.thetradedesk.plutus.data.transform.CleanInputDataTransform
 
 
 object CleanInputDataProcessor {
@@ -38,7 +38,7 @@ object CleanInputDataProcessor {
 
   def main(args: Array[String]): Unit  = {
 
-    val df = CleanInputData.createCleanDataset(inputPath, ttdEnv, inputPrefix, date, extremeValueThreshold, Some(svName), cleanDataOutputCount)
+    val df = CleanInputDataTransform.createCleanDataset(inputPath, ttdEnv, inputPrefix, date, extremeValueThreshold, Some(svName), cleanDataOutputCount)
 
     df
       .repartition(200)
