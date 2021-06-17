@@ -1,15 +1,12 @@
 package job
 
-import com.thetradedesk.data._
-import com.thetradedesk.data.transform.TrainingDataTransform
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.spark.sql.functions._
 import java.time.LocalDate
 
-import com.thetradedesk.spark.sql.SQLFunctions.ColumnExtensions
+import com.thetradedesk.plutus.data.transform.TrainingDataTransform
 
 
 object ModelInputProcessor extends Logger {

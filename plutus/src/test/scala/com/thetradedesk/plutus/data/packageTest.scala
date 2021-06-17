@@ -1,4 +1,4 @@
-package com.thetradedesk.data
+package com.thetradedesk.plutus.data
 import org.scalatest._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers._

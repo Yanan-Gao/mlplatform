@@ -1,4 +1,4 @@
-package com.thetradedesk.data.schema
+package com.thetradedesk.plutus.data.schema
 
 final case class BidRequestRecordV4(GroupId: String,
                               LogEntryTime: java.sql.Timestamp,

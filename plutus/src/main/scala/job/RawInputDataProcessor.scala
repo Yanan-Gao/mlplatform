@@ -1,7 +1,6 @@
 package job
 
-import com.thetradedesk.data.schema.GoogleMinimumBidToWinData
-import com.thetradedesk.data._
+
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -9,8 +8,11 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import io.prometheus.client.Gauge
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{Dataset, SaveMode}
-
 import java.time.LocalDate
+
+import com.thetradedesk.plutus.data.{AdjustedImpressions, Bids, Discrepancy, GoogleLostBids, explicitDatePart}
+import com.thetradedesk.plutus.data.schema.GoogleMinimumBidToWinData
+
 
 
 object RawInputDataProcessor extends Logger {

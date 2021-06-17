@@ -1,4 +1,4 @@
-package com.thetradedesk.data.schema
+package com.thetradedesk.plutus.data.schema
 
 final case class ModelFeature(name: String,
                               dtype: String,

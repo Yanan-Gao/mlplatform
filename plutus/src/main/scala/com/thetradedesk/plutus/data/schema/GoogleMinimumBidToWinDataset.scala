@@ -1,4 +1,4 @@
-package com.thetradedesk.data.schema
+package com.thetradedesk.plutus.data.schema
 
 import org.apache.spark.sql.types.{DoubleType, IntegerType, StringType, StructType}
 

@@ -1,10 +1,11 @@
-package com.thetradedesk.data.transform
+package com.thetradedesk.plutus.data.plutus.transform
 
 import org.scalatest._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers._
-
 import java.time.LocalDate
+
+import com.thetradedesk.plutus.data.transform.TrainingDataTransform
 
 class TrainingDataTransformTest extends AnyFlatSpec {
 

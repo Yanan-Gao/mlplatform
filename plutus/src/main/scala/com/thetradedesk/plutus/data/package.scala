@@ -1,4 +1,4 @@
-package com.thetradedesk
+package com.thetradedesk.plutus
 
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
 import org.apache.spark.ml.linalg.{SparseVector, Vector}
