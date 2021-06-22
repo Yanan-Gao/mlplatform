@@ -1,16 +1,25 @@
-apiVersion: networking.k8s.io/v1beta1
+apiVersion: extensions/v1beta1
 kind: Ingress
 metadata:
   annotations:
     # used to select which ingress this resource should be configured on
     kubernetes.io/ingress.class: alb
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}, {"HTTPS":443}]'
+    alb.ingress.kubernetes.io/certificate-arn: arn:aws:acm:us-east-1:003576902480:certificate/0a0d91c8-7eff-4ff9-85a9-508f55b0fca0
+    alb.ingress.kubernetes.io/actions.ssl-redirect: '{"Type": "redirect", "RedirectConfig":{ "Protocol": "HTTPS", "Port": "443", "StatusCode": "HTTP_301"}}'
   name: mlplatform-api-ingress
   namespace: mlplatform
 spec:
   rules:
-  - http:
+  - host: mlplatform.dev.gen.adsrvr.org
+    http:
       paths:
-      - path: /
+      - path: /*
+        backend:
+          serviceName: ssl-redirect
+          servicePort: use-annotation
+      - path: /*
+        pathType: Prefix
         backend:
           serviceName: mlplatform-api-svc
           servicePort: 8083

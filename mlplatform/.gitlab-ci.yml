@@ -7,8 +7,7 @@ variables:
     
   MLPLATFORM_API_ASSEMBLY_OUT: "api/target/mlplatform-api.jar"
   MLPLATFORM_API_JAR_NAME: "mlplatform-api.jar"
-  
-  
+    
   MLPLATFORM_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/mlplatform/jars/mergerequests"
   MLPLATFORM_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/mlplatform/jars/snapshots"
   MLPLATFORM_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/mlplatform/jars/prod"
@@ -34,6 +33,8 @@ mlplatform:test:
 mlplatform:push_bits_merge_request:
   image: "$MAVEN_BUILD_IMAGE"
   stage: assembly_upload
+  artifacts:
+    untracked: true
   except:
     refs:
       - master
@@ -53,6 +54,8 @@ mlplatform:push_bits_merge_request:
 mlplatform:push_bits_master_snapshot:
   image: "$MAVEN_BUILD_IMAGE"
   stage: assembly_upload
+  artifacts:
+    untracked: true
   only:
     refs:
       - master
@@ -67,6 +70,26 @@ mlplatform:push_bits_master_snapshot:
     - aws s3 cp ${MLPLATFORM_API_ASSEMBLY_OUT} ${DEST}/${MLPLATFORM_API_JAR_NAME}
     - popd
     - echo "ran mlplatform_push_bits_master_snapshot"
+
+mlplatform:deploy_api_merge_request
+  image: "$DOCKER_BUILD_IMAGE"
+  stage: deploy
+  dependencies: 
+    - push_bits_merge_request
+  except:
+    refs:
+      - master
+  only:
+    changes:
+      - "mlplatform/api/**/*"
+  script:
+    - pushd ./mlplatform/api
+    - docker login ${DOCKER_INTERNAL_REGISTRY} -u "${DOCKER_INTERNAL_USER}" -p "${DOCKER_INTERNAL_PASS}"
+    - docker build -t mlplatform-api .
+    - docker tag mlplatform-api:${CI_COMMIT_SHORT_SHA} ${DOCKER_INTERNAL_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA}
+    - docker push ${DOCKER_INTERNAL_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA}
+    - popd
+    - echo "ran deploy_api_merge_request"
 
 mlplatform:deploy_release:
   image: "$MAVEN_BUILD_IMAGE"
