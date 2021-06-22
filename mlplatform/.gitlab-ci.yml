@@ -71,9 +71,9 @@ mlplatform:push_bits_master_snapshot:
     - popd
     - echo "ran mlplatform_push_bits_master_snapshot"
 
-mlplatform:deploy_api_merge_request:
+mlplatform:deploy_api_docker_image_merge_request:
   image: "$DOCKER_BUILD_IMAGE"
-  stage: assembly_upload
+  stage: deploy
   dependencies: 
     - mlplatform:push_bits_merge_request
   except:
