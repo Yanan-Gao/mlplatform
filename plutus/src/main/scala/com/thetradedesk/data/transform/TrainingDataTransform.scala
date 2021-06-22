@@ -50,14 +50,31 @@ object TrainingDataTransform {
     ModelTarget("FloorPriceInUSD", "float", nullable = true),
   )
 
+  val TRAIN = "train"
+  val VAL = "validation"
+  val TEST = "test"
+
+  val TFRECORD_FORMAT = "tfrecord"
+  val PARQUET_FORMAT = "parquet"
+  val DEFAULT_NUM_PARTITIONS = 100
+
+  val STRING_FEATURE_TYPE = "string"
+  val INT_FEATURE_TYPE = "int"
+
+  val NUM_OUTPUT_PARTITIONS = Map(
+    TRAIN -> 100,
+    VAL -> 5,
+    TEST -> 5
+  )
+
   def modelTargetCols(targets: Seq[ModelTarget]): Array[Column] = {
     targets.map(t => col(t.name).alias(t.name)).toArray
   }
 
   def intModelFeaturesCols(inputColAndDims: Seq[ModelFeature]): Array[Column] = {
     inputColAndDims.map {
-      case ModelFeature(name, "string", cardinality, modelVersion) => when(col(name).isNotNullOrEmpty, shiftModUdf(xxhash64(col(name)), lit(cardinality))).otherwise(0).alias(name)
-      case ModelFeature(name, "int", cardinality, modelVersion) => when(col(name).isNotNullOrEmpty, shiftModUdf(col(name), lit(cardinality))).otherwise(0).alias(name)
+      case ModelFeature(name, STRING_FEATURE_TYPE, cardinality, _) => when(col(name).isNotNullOrEmpty, shiftModUdf(xxhash64(col(name)), lit(cardinality))).otherwise(0).alias(name)
+      case ModelFeature(name, INT_FEATURE_TYPE, cardinality, _) => when(col(name).isNotNullOrEmpty, shiftModUdf(col(name), lit(cardinality))).otherwise(0).alias(name)
     }.toArray
   }
 
@@ -89,20 +106,20 @@ object TrainingDataTransform {
 
     outputPermutations(trainInputData, valInputData, testInputData, selectionTabular, formats)
       .foreach {
-        case ((name, df, partitions), "tfrecord") =>
+        case ((name, df, partitions), TFRECORD_FORMAT) =>
           writeTfRecord(
             df,
             partitions,
-            outputDataPaths(s3Path, outputS3Prefix, ttdEnv, svName, endDate, lookBack.get, "tfrecord", name)
+            outputDataPaths(s3Path, outputS3Prefix, ttdEnv, svName, endDate, lookBack.get, TFRECORD_FORMAT, name)
           )
 
-        case ((name, df, partitions), "parquet") =>
+        case ((name, df, partitions), PARQUET_FORMAT) =>
           df
             .repartition(partitions)
             .write
             .mode(SaveMode.Overwrite)
             .parquet(
-              outputDataPaths(s3Path, outputS3Prefix, ttdEnv, svName, endDate, lookBack.get, "tfrecord", name)
+              outputDataPaths(s3Path, outputS3Prefix, ttdEnv, svName, endDate, lookBack.get, PARQUET_FORMAT, name)
             )
         case _ =>
       }
@@ -110,9 +127,9 @@ object TrainingDataTransform {
 
   def outputPermutations(trainInputData: Dataset[CleanInputData], valInputData: Dataset[CleanInputData], testInputData: Dataset[CleanInputData], selectQuery: Array[Column], formats: Seq[String]): Seq[((String, DataFrame, Int), String)] = {
     Seq(
-      ("train", trainInputData.select(selectQuery: _*), 100),
-      ("validation", valInputData.select(selectQuery: _*), 5),
-      ("test", testInputData.select(selectQuery: _*), 5)
+      (TRAIN, trainInputData.select(selectQuery: _*), NUM_OUTPUT_PARTITIONS.getOrElse(TRAIN, DEFAULT_NUM_PARTITIONS)),
+      (VAL, valInputData.select(selectQuery: _*), NUM_OUTPUT_PARTITIONS.getOrElse(VAL, DEFAULT_NUM_PARTITIONS)),
+      (TEST, testInputData.select(selectQuery: _*), NUM_OUTPUT_PARTITIONS.getOrElse(TEST, DEFAULT_NUM_PARTITIONS))
     ).flatMap(
       x => formats.map(
         y => (x, y))
