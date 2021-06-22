@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
       - name: mlplatform-api
-        image: _DOCKER_REGISTRY_/_DOCKER_IMAGE_
+        image: _DOCKER_REGISTRY_/mlplatform:_DOCKER_IMAGE_
         ports:
         - containerPort: 8083
         resources:
