@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
       - name: mlplatform-api
-        image: dev.docker.adsrvr.org/mlplatform-api:latest
+        image: internal.docker.adsrvr.org/mlplatform-api:4d5a097a
         ports:
         - containerPort: 8083
         resources:

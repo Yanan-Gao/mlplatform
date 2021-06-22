@@ -8,6 +8,7 @@ stages:
   - test
   - assembly_upload
   - deploy
+  - k8s_deploy
   
 default:
   # As global properties it's deprecated https://docs.gitlab.com/ee/ci/yaml/#globally-defined-image-services-cache-before_script-after_script

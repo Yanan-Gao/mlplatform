@@ -83,7 +83,7 @@ mlplatform:deploy_api_docker_image_merge_request:
     - docker:dind
   after_script:
     - docker logout ${DOCKER_PRODUCTION_REGISTRY}
-    - docker logout ${DOCKER_INTERNAL_REGISTRY}
+    - docker logout ${DOCKER_DEV_REGISTRY}
   only:
     changes:
       - "mlplatform/**/*"
@@ -93,11 +93,28 @@ mlplatform:deploy_api_docker_image_merge_request:
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
   script:
     - cd ./mlplatform/api
-    - echo "logging in to ${DOCKER_INTERNAL_REGISTRY}"
-    - docker login ${DOCKER_INTERNAL_REGISTRY} -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS}
-    - docker build -t ${DOCKER_INTERNAL_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA} -t ${DOCKER_INTERNAL_REGISTRY}/mlplatform-api:latest .
-    - docker push ${DOCKER_INTERNAL_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA}
+    - echo "logging in to ${DOCKER_DEV_REGISTRY}"
+    - docker login ${DOCKER_DEV_REGISTRY} -u ${DOCKER_DEV_USER} -p ${DOCKER_DEV_PASS}
+    - docker build -t ${DOCKER_DEV_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA} -t ${DOCKER_DEV_REGISTRY}/mlplatform-api:latest .
+    - docker push ${DOCKER_DEV_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA}
     - echo "ran deploy_api_merge_request"
+    
+mplatform:deploy_api_k8s_merge_request:
+  image: lwolf/helm-kubectl-docker:latest
+  stage: k8s_deploy
+  before_script:
+    - mkdir -p /root/.kube
+    - apk add --no-cache curl openssl
+  script:
+    # set kubectl config
+    - kubectl config set-cluster general-use-non-production --server $EKS_NON_PROD_URL
+    - kubectl config set clusters.general-use-non-production.certificate-authority-data $EKS_NON_PROD_CRT
+    - kubectl config set-credentials $EKS_NON_PROD_USER --token="$EKS_NON_PROD_TOKEN"
+    - kubectl config set-context general-use-non-production --cluster=general-use-non-production --namespace mlplatform --user=$EKS_NON_PROD_USER
+    - kubectl config use-context general-use-non-production
+#    - sed "s@_IMAGE_NAME_@$CODE_HUNTER_IMAGE@g" Deployments/manifest.yml > $CODE_HUNTER_VERSION.yaml
+#    - cat $CODE_HUNTER_VERSION.yaml
+#    - kubectl apply -n ttd-secops -f $CODE_HUNTER_VERSION.yaml
 
 mlplatform:deploy_release:
   image: "$MAVEN_BUILD_IMAGE"
