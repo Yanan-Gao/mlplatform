@@ -76,6 +76,9 @@ mlplatform:deploy_api_docker_image_merge_request:
   stage: deploy
   dependencies: 
     - mlplatform:push_bits_merge_request
+  artifacts:
+    paths:
+      - mlplatform/api/target/mlplatform-api-deployment.yaml
   except:
     refs:
       - master
@@ -124,7 +127,6 @@ mplatform:deploy_api_k8s_merge_request:
     # set kubectl config
     - cd ./mlplatform/api
 #    - kubectl config set-cluster general-use-non-production --server $EKS_NON_PROD_URL
-    - echo set server to $EKS_NON_PROD_URL
 #    - kubectl config set clusters.general-use-non-production.certificate-authority-data $EKS_NON_PROD_CRT
 #    - kubectl config set-credentials $EKS_NON_PROD_USER --token="$EKS_NON_PROD_TOKEN"
 #    - kubectl config set-context general-use-non-production --cluster=general-use-non-production --namespace mlplatform --user=$EKS_NON_PROD_USER
