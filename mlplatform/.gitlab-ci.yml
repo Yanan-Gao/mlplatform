@@ -82,6 +82,10 @@ mlplatform:deploy_api_docker_image_merge_request:
   only:
     changes:
       - "mlplatform/**/*"
+  before_script:
+    # override the default before script
+    # we don't need to set up the machine for S3 in order to build and push the docker image
+    - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
   script:
     - pushd ./mlplatform/api
     - docker login ${DOCKER_INTERNAL_REGISTRY} -u "${DOCKER_INTERNAL_USER}" -p "${DOCKER_INTERNAL_PASS}"
