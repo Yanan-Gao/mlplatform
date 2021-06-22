@@ -95,7 +95,7 @@ mlplatform:deploy_api_docker_image_merge_request:
     - cd ./mlplatform/api
     - echo "logging in to ${DOCKER_INTERNAL_REGISTRY}"
     - docker login ${DOCKER_INTERNAL_REGISTRY} -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS}
-    - docker build -t ${DOCKER_INTERNAL_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA} ${DOCKER_INTERNAL_REGISTRY}/mlplatform-api:latest
+    - docker build -t ${DOCKER_INTERNAL_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA} ${DOCKER_INTERNAL_REGISTRY}/mlplatform-api:latest .
     - docker push ${DOCKER_INTERNAL_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA}
     - echo "ran deploy_api_merge_request"
 
