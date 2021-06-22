@@ -97,8 +97,9 @@ mlplatform:deploy_api_docker_image_merge_request:
     - docker login ${DOCKER_DEV_REGISTRY} -u ${DOCKER_DEV_USER} -p ${DOCKER_DEV_PASS}
     - docker build -t ${DOCKER_DEV_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA} -t ${DOCKER_DEV_REGISTRY}/mlplatform-api:latest .
     - docker push ${DOCKER_DEV_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA}
-    - sed -i "s/_DOCKER_REGISTRY_/$DOCKER_DEV_REGISTRY/g" ./k8s/mlplatform-api-deployment.yaml
-    - sed -i "s/_DOCKER_IMAGE_/$CI_COMMIT_SHORT_SHA/g" ./k8s/mlplatform-api-deployment.yaml
+    - cp ./k8s/mlplatform-api-deployment.yaml ./target/mlplatform-api-deployment.yaml
+    - sed -i "s/_DOCKER_REGISTRY_/$DOCKER_DEV_REGISTRY/g" ./target/mlplatform-api-deployment.yaml
+    - sed -i "s/_DOCKER_IMAGE_/$CI_COMMIT_SHORT_SHA/g" ./target/mlplatform-api-deployment.yaml
     - echo "ran deploy_api_merge_request"
     
 mplatform:deploy_api_k8s_merge_request:
@@ -112,16 +113,24 @@ mplatform:deploy_api_k8s_merge_request:
   before_script:
     - mkdir -p /root/.kube
     - apk add --no-cache curl openssl
+    
+    - kubectl config set clusters.general-use-non-production.certificate-authority-data $EKS_NON_PROD_CRT
+    - kubectl config set-credentials $EKS_NON_PROD_USER
+    - kubectl config set-context general-use-non-production --cluster=general-use-non-production --user=$EKS_NON_PROD_USER
+    - kubectl config use-context general-use-non-production
+    - kubectl config set-credentials $EKS_NON_PROD_USER --token=$EKS_NON_PROD_TOKEN
+    - kubectl config set-cluster general-use-non-production --server $EKS_NON_PROD_URL
   script:
     # set kubectl config
     - cd ./mlplatform/api
-    - kubectl config set-cluster general-use-non-production --server $EKS_NON_PROD_URL
-    - kubectl config set clusters.general-use-non-production.certificate-authority-data $EKS_NON_PROD_CRT
-    - kubectl config set-credentials $EKS_NON_PROD_USER --token="$EKS_NON_PROD_TOKEN"
-    - kubectl config set-context general-use-non-production --cluster=general-use-non-production --namespace mlplatform --user=$EKS_NON_PROD_USER
-    - kubectl config use-context general-use-non-production
+#    - kubectl config set-cluster general-use-non-production --server $EKS_NON_PROD_URL
+    - echo set server to $EKS_NON_PROD_URL
+#    - kubectl config set clusters.general-use-non-production.certificate-authority-data $EKS_NON_PROD_CRT
+#    - kubectl config set-credentials $EKS_NON_PROD_USER --token="$EKS_NON_PROD_TOKEN"
+#    - kubectl config set-context general-use-non-production --cluster=general-use-non-production --namespace mlplatform --user=$EKS_NON_PROD_USER
+#    - kubectl config use-context general-use-non-production
 #    - kubectl get pods
-    - kubectl apply -n mlplatform -f ./k8s/mlplatform-api-deployment.yaml
+    - kubectl apply -n mlplatform -f ./target/mlplatform-api-deployment.yaml
 
 mlplatform:deploy_release:
   image: "$MAVEN_BUILD_IMAGE"
