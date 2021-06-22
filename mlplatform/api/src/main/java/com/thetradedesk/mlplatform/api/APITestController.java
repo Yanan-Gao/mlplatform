@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RestController
 public class APITestController
 {
-    private static final String template = "You passed %s!";
+    private static final String template = "You passed %s - auto deployed!";
     private final AtomicLong counter = new AtomicLong();
 
     @GetMapping("/testcall")
