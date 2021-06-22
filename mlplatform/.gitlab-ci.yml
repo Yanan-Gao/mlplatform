@@ -87,12 +87,11 @@ mlplatform:deploy_api_docker_image_merge_request:
     # we don't need to set up the machine for S3 in order to build and push the docker image
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
   script:
-    - pushd ./mlplatform/api
+    - cd ./mlplatform/api
     - docker login ${DOCKER_INTERNAL_REGISTRY} -u "${DOCKER_INTERNAL_USER}" -p "${DOCKER_INTERNAL_PASS}"
     - docker build -t mlplatform-api .
     - docker tag mlplatform-api:${CI_COMMIT_SHORT_SHA} ${DOCKER_INTERNAL_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA}
     - docker push ${DOCKER_INTERNAL_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA}
-    - popd
     - echo "ran deploy_api_merge_request"
 
 mlplatform:deploy_release:
