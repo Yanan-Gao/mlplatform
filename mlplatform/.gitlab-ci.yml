@@ -73,7 +73,7 @@ mlplatform:push_bits_master_snapshot:
 
 mlplatform:deploy_api_merge_request:
   image: "$DOCKER_BUILD_IMAGE"
-  stage: deploy
+  stage: assembly_upload
   dependencies: 
     - mlplatform:push_bits_merge_request
   except:
@@ -81,7 +81,7 @@ mlplatform:deploy_api_merge_request:
       - master
   only:
     changes:
-      - "mlplatform/api/**/*"
+      - "mlplatform/**/*"
   script:
     - pushd ./mlplatform/api
     - docker login ${DOCKER_INTERNAL_REGISTRY} -u "${DOCKER_INTERNAL_USER}" -p "${DOCKER_INTERNAL_PASS}"
