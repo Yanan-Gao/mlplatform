@@ -72,13 +72,18 @@ mlplatform:push_bits_master_snapshot:
     - echo "ran mlplatform_push_bits_master_snapshot"
 
 mlplatform:deploy_api_docker_image_merge_request:
-  image: "$DOCKER_BUILD_IMAGE"
+  image: proxy.docker.adsrvr.org/docker:git
   stage: deploy
   dependencies: 
     - mlplatform:push_bits_merge_request
   except:
     refs:
       - master
+  services:
+    - docker:dind
+  after_script:
+    - docker logout ${DOCKER_PRODUCTION_REGISTRY}
+    - docker logout ${DOCKER_INTERNAL_REGISTRY}
   only:
     changes:
       - "mlplatform/**/*"
@@ -88,10 +93,10 @@ mlplatform:deploy_api_docker_image_merge_request:
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
   script:
     - cd ./mlplatform/api
-    - docker login internal.docker.adsrvr.org -u "${DOCKER_INTERNAL_USER}" -p "${DOCKER_INTERNAL_PASS}"
-    - docker build -t mlplatform-api .
-    - docker tag mlplatform-api:${CI_COMMIT_SHORT_SHA} internal.docker.adsrvr.org/mlplatform-api:${CI_COMMIT_SHORT_SHA}
-    - docker push internal.docker.adsrvr.org/mlplatform-api:${CI_COMMIT_SHORT_SHA}
+    - echo "logging in to ${DOCKER_INTERNAL_REGISTRY}"
+    - docker login ${DOCKER_INTERNAL_REGISTRY} -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS}
+    - docker build -t ${DOCKER_INTERNAL_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA} ${DOCKER_INTERNAL_REGISTRY}/mlplatform-api:latest
+    - docker push ${DOCKER_INTERNAL_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA}
     - echo "ran deploy_api_merge_request"
 
 mlplatform:deploy_release:
