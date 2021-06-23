@@ -7,6 +7,11 @@ import org.springframework.web.bind.annotation.*;
 @RestController
 public class HealthCheckController
 {
+    private void IncrementRequestsCounter(String requestType)
+    {
+        RestService.RequestsCounter.labels("health_check_controller",requestType, RestService.Config.Environment);
+    }
+
     @RequestMapping(value = "/healthcheck", method = RequestMethod.GET)
     @ResponseBody
     public ResponseEntity healthCheck()

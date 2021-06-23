@@ -19,11 +19,28 @@ spec:
         app: mlplatform-api
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: "80"        
+        prometheus.io/port: "5002"        
     spec:
       containers:
       - name: mlplatform-api
         image: _DOCKER_REGISTRY_/mlplatform-api:_DOCKER_IMAGE_
+        env:
+          - name: METRICS_PORT
+            value: '5002'
+          - name: ENVIRONMENT
+            value: 'test' # Change to prod when deploying to prod service
+# NOTE - THIS IS ONE WAY TO GET KUBERNETES SECRETS TO THE APP - USING ENVIRONMENT VARIABLES
+# THIS COULD BE USED FOR DB ACCESS
+#          - name: AWS_ACCESS_KEY
+#            valueFrom:
+#              secretKeyRef:
+#                name: <KUBECTL_SECRET_NAME>
+#                key: AWS_ACCESS_KEY
+#          - name: AWS_SECRET_KEY
+#            valueFrom:
+#              secretKeyRef:
+#                name: <KUBECTL_SECRET_NAME>
+#                key: AWS_SECRET_KEY
         ports:
         - containerPort: 8083
         startupProbe:
