@@ -2,6 +2,7 @@ package com.thetradedesk.mlplatform.api;
 
 import io.prometheus.client.Counter;
 import io.prometheus.client.Gauge;
+import io.prometheus.client.Summary;
 import io.prometheus.client.exporter.HTTPServer;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
@@ -16,8 +17,8 @@ public class RestService
             .help("Total requests sent to the mlplatform api.")
             .labelNames("controller","request", "env").register();
 
-    public static final Gauge RequestHandlingTimeMs = Gauge.build()
-            .name("mlplatform_api_handling_time_ms")
+    public static final Summary RequestLatencyMs = Summary.build()
+            .name("mlplatform_api_request_latency_ms")
             .help("How long in ms it takes to handle a request.")
             .labelNames("controller","request", "env").register();
 
