@@ -26,6 +26,22 @@ spec:
         image: _DOCKER_REGISTRY_/mlplatform-api:_DOCKER_IMAGE_
         ports:
         - containerPort: 8083
+        startupProbe:
+          httpGet:
+            path: /healthcheck
+            port: 8083
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 6
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 8083
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 6
+          timeoutSeconds: 5
         resources:
           limits:
             cpu: "1"

@@ -5,7 +5,8 @@ import java.io.Serializable;
 public enum FeatureType  implements Serializable
 {
     Unknown(0),
-    Parquet(1);
+    Parquet(1),
+    TSV(2);
 
     private final int value;
 
@@ -19,6 +20,8 @@ public enum FeatureType  implements Serializable
         {
             case 1:
                 return Parquet;
+            case 2:
+                return TSV;
             default:
                 return Unknown;
         }
