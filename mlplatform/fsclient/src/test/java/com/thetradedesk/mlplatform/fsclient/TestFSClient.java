@@ -22,11 +22,14 @@ public class TestFSClient
         SparkSession spark = sessionBuilder.getOrCreate();
 
         FeatureStoreClientConfig clientConfig = new FeatureStoreClientConfig();
+        clientConfig.setAPIPath("http://localhost:8083");
         FeatureStoreClient client = new FeatureStoreClient(clientConfig);
 
-        Dataset<Row> ds = client.ReadFeature(spark, 1L, 1L, 1L);
+        Dataset<Row> ds = client.ReadFeature(spark, "TestLocalFeature", 1L, 1L);
+        //Dataset<Row> ds = client.ReadFeature(spark, "UserProfiles", 1L, 1L);
 
         ds.printSchema();
+
 
     }
 

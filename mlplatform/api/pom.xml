@@ -14,9 +14,18 @@
     <artifactId>api</artifactId>
     <packaging>jar</packaging>
 
-    <properties>
-        <spring.boot.version>2.4.6</spring.boot.version>
-    </properties>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <!-- Import dependency management from Spring Boot -->
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring.boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
 		<dependency>

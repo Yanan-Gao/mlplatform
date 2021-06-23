@@ -126,12 +126,6 @@ mplatform:deploy_api_k8s_merge_request:
   script:
     # set kubectl config
     - cd ./mlplatform/api
-#    - kubectl config set-cluster general-use-non-production --server $EKS_NON_PROD_URL
-#    - kubectl config set clusters.general-use-non-production.certificate-authority-data $EKS_NON_PROD_CRT
-#    - kubectl config set-credentials $EKS_NON_PROD_USER --token="$EKS_NON_PROD_TOKEN"
-#    - kubectl config set-context general-use-non-production --cluster=general-use-non-production --namespace mlplatform --user=$EKS_NON_PROD_USER
-#    - kubectl config use-context general-use-non-production
-#    - kubectl get pods
     - kubectl apply -n mlplatform -f ./target/mlplatform-api-deployment.yaml
 
 mlplatform:deploy_release:

@@ -4,8 +4,17 @@ import java.io.Serializable;
 
 public class FeatureStoreClientConfig implements Serializable
 {
+    private String APIPath = "https://mlplatform.dev.gen.adsrvr.org";
     private String AWSAccessKey = null;
     private String AWSSecretKey = null;
+
+    public String getAPIPath() {
+        return APIPath;
+    }
+
+    public void setAPIPath(String APIPath) {
+        this.APIPath = APIPath;
+    }
 
     public String getAWSAccessKey() {
         return AWSAccessKey;

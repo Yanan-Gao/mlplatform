@@ -9,7 +9,8 @@ stages:
   - assembly_upload
   - deploy
   - k8s_deploy
-  
+ 
+# TODO: build a default image with mvn, sbt, docker, etc - so we use one image for everything
 default:
   # As global properties it's deprecated https://docs.gitlab.com/ee/ci/yaml/#globally-defined-image-services-cache-before_script-after_script
   cache:
