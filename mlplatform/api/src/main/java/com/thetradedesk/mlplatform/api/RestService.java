@@ -17,19 +17,17 @@ public class RestService
 
     public static RestServiceConfig Config;
 
+    public static HTTPServer MetricsServer;
+
     public static void main(String[] args) throws IOException
     {
         // build config from env variables
         RestService.Config = RestServiceConfig.fromEnv();
 
         // build prometheus web service
-        HTTPServer server = new HTTPServer( RestService.Config.MetricsPort );
+        RestService.MetricsServer = new HTTPServer( RestService.Config.MetricsPort );
 
-        try {
-            SpringApplication.run(RestService.class, args);
-        } finally {
-            server.stop();
-        }
+        SpringApplication.run(RestService.class, args);
 
     }
 
