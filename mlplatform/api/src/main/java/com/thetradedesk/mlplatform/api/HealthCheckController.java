@@ -9,13 +9,15 @@ public class HealthCheckController
 {
     private void IncrementRequestsCounter(String requestType)
     {
-        RestService.RequestsCounter.labels("health_check_controller",requestType, RestService.Config.Environment);
+        RestService.RequestsCounter.labels("health_check_controller",requestType, RestService.Config.Environment).inc();
     }
 
     @RequestMapping(value = "/healthcheck", method = RequestMethod.GET)
     @ResponseBody
     public ResponseEntity healthCheck()
     {
+        IncrementRequestsCounter("health_check");
+
         // Any code greater than or equal to 200 and less than 400 indicates success. Any other code indicates failure.
         // TODO: Check any important metrics you might care about here and return a different httpstatus
         return new ResponseEntity(HttpStatus.OK);

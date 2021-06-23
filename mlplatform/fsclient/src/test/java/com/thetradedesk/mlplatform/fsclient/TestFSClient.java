@@ -33,4 +33,28 @@ public class TestFSClient
 
     }
 
+    //@Test
+    public void APIGraphTest() throws IOException
+    {
+
+    FeatureStoreClientConfig clientConfig = new FeatureStoreClientConfig();
+    //clientConfig.setAPIPath("https://mlplatform.dev.gen.adsrvr.org");
+    clientConfig.setAPIPath("http://localhost:8083");
+    FeatureStoreClient client = new FeatureStoreClient(clientConfig);
+
+    long callCounter = 0;
+    while(true)
+    {
+        client.getFeatureId("TestLocalFeature");
+        callCounter++;
+        if(callCounter % 100 == 0)
+        {
+            System.err.println(String.format("Called getFeatureId %d times", callCounter));
+        }
+    }
+
+
+
+}
+
 }

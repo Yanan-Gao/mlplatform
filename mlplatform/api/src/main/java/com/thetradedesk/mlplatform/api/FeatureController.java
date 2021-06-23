@@ -2,7 +2,8 @@ package com.thetradedesk.mlplatform.api;
 
 import com.thetradedesk.mlplatform.common.featurestore.Feature;
 import com.thetradedesk.mlplatform.common.featurestore.TestFeatures;
-import io.prometheus.client.Counter;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.ArrayList;
@@ -12,9 +13,11 @@ import java.util.Optional;
 @RestController
 public class FeatureController
 {
+    public static final Logger log  = LogManager.getLogger(FeatureController.class);
+
     private void IncrementRequestsCounter(String requestType)
     {
-        RestService.RequestsCounter.labels("feature_controller",requestType, RestService.Config.Environment);
+        RestService.RequestsCounter.labels("feature_controller",requestType, RestService.Config.Environment).inc();
     }
 
     @GetMapping("/features")
@@ -22,7 +25,6 @@ public class FeatureController
     {
         this.IncrementRequestsCounter("list_features");
         return new ArrayList<>(TestFeatures.Features.values());
-
     }
 
     @PostMapping("/features")
@@ -43,6 +45,11 @@ public class FeatureController
     {
         this.IncrementRequestsCounter("get_feature");
         // TODO: Read feature info from the DB and return a Feature object
-        return TestFeatures.Features.get(featureId);
+        Feature response = TestFeatures.Features.get(featureId);
+        if(response == null)
+        {
+            log.error(String.format("Request for feature id %d failed - feature was not found", featureId));
+        }
+        return response;
     }
 }
