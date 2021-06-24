@@ -2,6 +2,7 @@ package com.thetradedesk.mlplatform.common.featurestore;
 
 import java.io.Serializable;
 
+// TODO: these need to match the DB
 public enum FeatureLocation implements Serializable
 {
     Unknown(0),

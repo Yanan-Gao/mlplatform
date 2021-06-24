@@ -48,13 +48,14 @@ public class FeatureStoreClient
         return null;
     }
 
-    //TODO: these interfaces are not set in stone yet - need to discuss with the API team and add/remove
-
+    // TODO: these interfaces are not set in stone yet - need to sync with the DB design and add/remove arguments
+    // TODO - support multiple timestamps
     public Dataset<Row> ReadFeature(SparkSession spark, String featureName, Long version, Long timestamp) throws IOException
     {
         return this.ReadFeature(spark, this.getFeatureId(featureName), version, timestamp);
     }
 
+    // TODO - support multiple timestamps
     public Dataset<Row> ReadFeature(SparkSession spark, Long featureId, Long version, Long timestamp) throws NotImplementedException, IOException
     {
         ResponseEntity<Feature> featureResponse = this.RestTemplate.getForEntity("/features/"+featureId, Feature.class);
@@ -69,10 +70,12 @@ public class FeatureStoreClient
 
         // TODO: create feature path based on location - timestamps and versions will get appended to feature path
         // TODO Handle versions and timestamps from API
+        // TODO Handle AWS authentication if the FeatureLocation in S3 and AWS credentials are specified in the client config
 
         switch (feature.FeatureType)
         {
             case Parquet:
+                // TODO: when we actually read features from multiple timestamps, we'll have multiple feature paths here to handle
                 return spark.read().parquet(feature.FeaturePath);
             default:
                 throw new NotImplementedException(String.format("ReadFeature for type `%s` not implemented", feature.FeatureType.name()));
