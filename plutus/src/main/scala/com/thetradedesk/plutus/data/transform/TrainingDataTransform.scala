@@ -12,35 +12,44 @@ import com.thetradedesk.plutus.data.schema.{CleanInputData, ModelFeature, ModelT
 import com.thetradedesk.plutus.data.{plutusDataPath, plutusDataPaths, shiftModUdf}
 
 object TrainingDataTransform {
+  val STRING_FEATURE_TYPE = "string"
+  val INT_FEATURE_TYPE = "int"
+  val FLOAT_FEATURE_TYPE = "float"
 
   val modelFeatures: Array[ModelFeature] = Array(
-
-
-    ModelFeature("SupplyVendor", "string", 102, 0),
-    ModelFeature("DealId", "string", 5002, 0),
-    ModelFeature("SupplyVendorPublisherId", "string", 15002, 0),
-    ModelFeature("SupplyVendorSiteId", "string", 102, 0),
-    ModelFeature("Site", "string", 350002, 0),
-    ModelFeature("AdFormat", "string", 102, 0),
-    ModelFeature("ImpressionPlacementId", "string", 102, 0),
-    ModelFeature("Country", "string", 252, 0),
-    ModelFeature("Region", "string", 4002, 0),
-    ModelFeature("Metro", "string", 302, 0),
-    ModelFeature("City", "string", 75002, 0),
-    ModelFeature("Zip", "string", 90002, 0),
-    ModelFeature("DeviceMake", "string", 1002, 0),
-    ModelFeature("DeviceModel", "string", 10002, 0),
-    ModelFeature("RequestLanguages", "string", 502, 0),
+    ModelFeature("SupplyVendor", STRING_FEATURE_TYPE, Some(102), 0),
+    ModelFeature("DealId", STRING_FEATURE_TYPE, Some(5002), 0),
+    ModelFeature("SupplyVendorPublisherId", STRING_FEATURE_TYPE, Some(15002), 0),
+    ModelFeature("SupplyVendorSiteId", STRING_FEATURE_TYPE, Some(102), 0),
+    ModelFeature("Site", STRING_FEATURE_TYPE, Some(350002), 0),
+    ModelFeature("AdFormat", STRING_FEATURE_TYPE, Some(102), 0),
+    ModelFeature("ImpressionPlacementId", STRING_FEATURE_TYPE, Some(102), 0),
+    ModelFeature("Country", STRING_FEATURE_TYPE, Some(252), 0),
+    ModelFeature("Region", STRING_FEATURE_TYPE, Some(4002), 0),
+    ModelFeature("Metro", STRING_FEATURE_TYPE, Some(302), 0),
+    ModelFeature("City", STRING_FEATURE_TYPE, Some(75002), 0),
+    ModelFeature("Zip", STRING_FEATURE_TYPE, Some(90002), 0),
+    ModelFeature("DeviceMake", STRING_FEATURE_TYPE, Some(1002), 0),
+    ModelFeature("DeviceModel", STRING_FEATURE_TYPE, Some(10002), 0),
+    ModelFeature("RequestLanguages", STRING_FEATURE_TYPE, Some(502), 0),
 
     // these are already integers
-    ModelFeature("RenderingContext", "int", 6, 0),
-    ModelFeature("UserHourOfWeek", "int", 24 * 7 + 2, 0),
-    ModelFeature("AdsTxtSellerType", "int", 7, 0),
-    ModelFeature("PublisherType", "int", 7, 0),
-    ModelFeature("DeviceType", "int", 9, 0),
-    ModelFeature("OperatingSystemFamily", "int", 10, 0),
-    ModelFeature("Browser", "int", 20, 0)
+    ModelFeature("RenderingContext", INT_FEATURE_TYPE, Some(6), 0),
+    ModelFeature("UserHourOfWeek", INT_FEATURE_TYPE, Some(24 * 7 + 2), 0),
+    ModelFeature("AdsTxtSellerType", INT_FEATURE_TYPE, Some(7), 0),
+    ModelFeature("PublisherType", INT_FEATURE_TYPE, Some(7), 0),
+    ModelFeature("DeviceType", INT_FEATURE_TYPE, Some(9), 0),
+    ModelFeature("OperatingSystemFamily", INT_FEATURE_TYPE, Some(10), 0),
+    ModelFeature("Browser", INT_FEATURE_TYPE, Some(20), 0),
 
+    ModelFeature("sin_hour_day", FLOAT_FEATURE_TYPE, None, 0),
+    ModelFeature("cos_hour_day", FLOAT_FEATURE_TYPE, None, 0),
+    ModelFeature("sin_minute_hour", FLOAT_FEATURE_TYPE, None, 0),
+    ModelFeature("cos_minute_hour", FLOAT_FEATURE_TYPE, None, 0),
+    ModelFeature("sin_hour_week", FLOAT_FEATURE_TYPE, None, 0),
+    ModelFeature("cos_hour_week", FLOAT_FEATURE_TYPE, None, 0),
+    ModelFeature("latitude", FLOAT_FEATURE_TYPE, None, 0),
+    ModelFeature("longitude", FLOAT_FEATURE_TYPE, None, 0)
   )
 
   val modelTargets = Vector(
@@ -51,14 +60,32 @@ object TrainingDataTransform {
     ModelTarget("FloorPriceInUSD", "float", nullable = true),
   )
 
+  val TRAIN = "train"
+  val VAL = "validation"
+  val TEST = "test"
+
+  val TFRECORD_FORMAT = "tfrecord"
+  val PARQUET_FORMAT = "parquet"
+
+
+  val DEFAULT_NUM_PARTITIONS = 100
+
+
+  val NUM_OUTPUT_PARTITIONS = Map(
+    TRAIN -> 100,
+    VAL -> 5,
+    TEST -> 5
+  )
+
   def modelTargetCols(targets: Seq[ModelTarget]): Array[Column] = {
     targets.map(t => col(t.name).alias(t.name)).toArray
   }
 
   def intModelFeaturesCols(inputColAndDims: Seq[ModelFeature]): Array[Column] = {
     inputColAndDims.map {
-      case ModelFeature(name, "string", cardinality, modelVersion) => when(col(name).isNotNullOrEmpty, shiftModUdf(xxhash64(col(name)), lit(cardinality))).otherwise(0).alias(name)
-      case ModelFeature(name, "int", cardinality, modelVersion) => when(col(name).isNotNullOrEmpty, shiftModUdf(col(name), lit(cardinality))).otherwise(0).alias(name)
+      case ModelFeature(name, STRING_FEATURE_TYPE, Some(cardinality), _) => when(col(name).isNotNullOrEmpty, shiftModUdf(xxhash64(col(name)), lit(cardinality))).otherwise(0).alias(name)
+      case ModelFeature(name, INT_FEATURE_TYPE, Some(cardinality), _) => when(col(name).isNotNullOrEmpty, shiftModUdf(col(name), lit(cardinality))).otherwise(0).alias(name)
+      case ModelFeature(name, FLOAT_FEATURE_TYPE, _, _) => col(name).alias(name)
     }.toArray
   }
 
@@ -90,20 +117,20 @@ object TrainingDataTransform {
 
     outputPermutations(trainInputData, valInputData, testInputData, selectionTabular, formats)
       .foreach {
-        case ((name, df, partitions), "tfrecord") =>
+        case ((name, df, partitions), TFRECORD_FORMAT) =>
           writeTfRecord(
             df,
             partitions,
-            outputDataPaths(s3Path, outputS3Prefix, ttdEnv, svName, endDate, lookBack.get, "tfrecord", name)
+            outputDataPaths(s3Path, outputS3Prefix, ttdEnv, svName, endDate, lookBack.get, TFRECORD_FORMAT, name)
           )
 
-        case ((name, df, partitions), "parquet") =>
+        case ((name, df, partitions), PARQUET_FORMAT) =>
           df
             .repartition(partitions)
             .write
             .mode(SaveMode.Overwrite)
             .parquet(
-              outputDataPaths(s3Path, outputS3Prefix, ttdEnv, svName, endDate, lookBack.get, "tfrecord", name)
+              outputDataPaths(s3Path, outputS3Prefix, ttdEnv, svName, endDate, lookBack.get, PARQUET_FORMAT, name)
             )
         case _ =>
       }
@@ -111,16 +138,16 @@ object TrainingDataTransform {
 
   def outputPermutations(trainInputData: Dataset[CleanInputData], valInputData: Dataset[CleanInputData], testInputData: Dataset[CleanInputData], selectQuery: Array[Column], formats: Seq[String]): Seq[((String, DataFrame, Int), String)] = {
     Seq(
-      ("train", trainInputData.select(selectQuery: _*), 100),
-      ("validation", valInputData.select(selectQuery: _*), 5),
-      ("test", testInputData.select(selectQuery: _*), 5)
+      (TRAIN, trainInputData.select(selectQuery: _*), NUM_OUTPUT_PARTITIONS.getOrElse(TRAIN, DEFAULT_NUM_PARTITIONS)),
+      (VAL, valInputData.select(selectQuery: _*), NUM_OUTPUT_PARTITIONS.getOrElse(VAL, DEFAULT_NUM_PARTITIONS)),
+      (TEST, testInputData.select(selectQuery: _*), NUM_OUTPUT_PARTITIONS.getOrElse(TEST, DEFAULT_NUM_PARTITIONS))
     ).flatMap(
       x => formats.map(
         y => (x, y))
     )
   }
 
-  def loadInputData(paths: Seq[String])(implicit spark: SparkSession): Dataset[CleanInputData] = {
+  def loadInputData(paths: Seq[String]): Dataset[CleanInputData] = {
     import spark.implicits._
     spark.read.parquet(paths: _*).selectAs[CleanInputData]
   }

@@ -13,7 +13,7 @@ package object data {
   val DEFAULT_SV_NAME = "google"
 
 
-  def paddedDatePart(date: LocalDate, separator: Option[String]= Some("")): String = {
+  def paddedDatePart(date: LocalDate, separator: Option[String] = Some("")): String = {
     separator match {
       case Some(s) => f"${date.getYear}$s${date.getMonthValue}%02d$s${date.getDayOfMonth}%02d"
     }
@@ -30,7 +30,7 @@ package object data {
     }
   }
 
-  def cleansedDataPaths(basePath:String, date:LocalDate, lookBack: Option[Int] = None): Seq[String] = {
+  def cleansedDataPaths(basePath: String, date: LocalDate, lookBack: Option[Int] = None): Seq[String] = {
     (0 to lookBack.getOrElse(0)).map(i => f"${basePath}/${paddedDatePart(date.minusDays(i), separator = Some("/"))}/*/*/*.gz")
   }
 
@@ -43,7 +43,7 @@ package object data {
     (0 to lookBack.getOrElse(0)).map(i => f"${plutusDataPath(s3Path, ttdEnv, prefix, svName, date.minusDays(i))}")
   }
 
-  def getParquetData[T: Encoder](s3path: String, date: LocalDate, source: Option[String] = None, lookBack: Option[Int] = None)(implicit spark: SparkSession): Dataset[T] = {
+  def loadParquetData[T: Encoder](s3path: String, date: LocalDate, source: Option[String] = None, lookBack: Option[Int] = None)(implicit spark: SparkSession): Dataset[T] = {
     val paths = parquetDataPaths(s3path, date, source, lookBack)
     spark.read.parquet(paths: _*)
       .selectAs[T]
