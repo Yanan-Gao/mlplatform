@@ -41,7 +41,7 @@ object RawDataTransform {
       .join(googleLostBidData, Seq("BidRequestId"), "left")
       .withColumn("is_imp", when(col("RealMediaCost").isNotNull, 1.0).otherwise(0.0))
 
-    writeOutput(rawData, outputPath, outputPrefix, ttdEnv, svName, date)
+    writeOutput(rawData, outputPath, ttdEnv, outputPrefix, svName, date)
   }
 
   def writeOutput(rawData: DataFrame, outputPath: String, ttdEnv: String, outputPrefix: String, svName: String, date: LocalDate): Unit = {
