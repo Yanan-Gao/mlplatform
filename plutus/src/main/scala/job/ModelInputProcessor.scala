@@ -1,12 +1,14 @@
 package job
 
+
+import com.thetradedesk.plutus.data.transform.TrainingDataTransform
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import java.time.LocalDate
 
-import com.thetradedesk.plutus.data.transform.TrainingDataTransform
+
+import java.time.LocalDate
 
 
 object ModelInputProcessor extends Logger {
@@ -32,8 +34,6 @@ object ModelInputProcessor extends Logger {
 
 
   def main(args: Array[String]): Unit = {
-
-
    TrainingDataTransform.transform(
       s3Path = inputPath,
       ttdEnv = ttdEnv,

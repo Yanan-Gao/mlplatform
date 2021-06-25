@@ -27,7 +27,7 @@ object Bids {
 
     import spark.implicits._
 
-    val bidsDf = getParquetData[BidRequestRecordV4](BidRequestDataset.BIDSS3, date).alias("bids")
+    val bidsDf = loadParquetData[BidRequestRecordV4](BidRequestDataset.BIDSS3, date).alias("bids")
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
       .filter(col("SupplyVendor") === svName)
       .filter(col("AuctionType") === 1)

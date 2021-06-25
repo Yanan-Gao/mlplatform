@@ -3,10 +3,10 @@ package com.thetradedesk.plutus.data.schema
 import org.apache.spark.sql.types.{DoubleType, IntegerType, StringType, StructType}
 
 final case class GoogleMinimumBidToWinData(bidRequestId: String,
-                                              svLossReason: Int,
-                                              ttdLossReason: Int,
-                                              winCPM: Double,
-                                              mb2w: Double)
+                                           svLossReason: Int,
+                                           ttdLossReason: Int,
+                                           winCPM: Double,
+                                           mb2w: Double)
 
 object GoogleMinimumBidToWinDataset {
 

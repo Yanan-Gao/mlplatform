@@ -1,7 +1,9 @@
 package com.thetradedesk.plutus.data.schema
 
-final case class Svb(RequestName: String , SupplyVendorId: String , DiscrepancyAdjustment: BigDecimal)
-final case class Pda(SupplyVendorName: String , PartnerId: String, DiscrepancyAdjustment: BigDecimal)
+final case class Svb(RequestName: String, SupplyVendorId: String, DiscrepancyAdjustment: BigDecimal)
+
+final case class Pda(SupplyVendorName: String, PartnerId: String, DiscrepancyAdjustment: BigDecimal)
+
 final case class Deals(SupplyVendorId: String, SupplyVendorDealCode: String, IsVariablePrice: Boolean)
 
 object DiscrepancyDataset {
