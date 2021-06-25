@@ -1,0 +1,70 @@
+kind: Deployment
+apiVersion: apps/v1
+metadata:
+  name: mlplatform-api
+  namespace: mlplatform
+spec:
+  replicas: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 50%
+      maxSurge: 0
+  selector:
+    matchLabels:
+      app: mlplatform-api
+  template:
+    metadata:
+      labels:
+        app: mlplatform-api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5002"        
+    spec:
+      containers:
+      - name: mlplatform-api
+        image: _DOCKER_REGISTRY_/mlplatform-api:_DOCKER_IMAGE_
+        env:
+          - name: METRICS_PORT
+            value: '5002'
+          - name: ENVIRONMENT
+            value: 'test' # Change to prod when deploying to prod service
+# NOTE - THIS IS ONE WAY TO GET KUBERNETES SECRETS TO THE APP - USING ENVIRONMENT VARIABLES
+# THIS COULD BE USED FOR DB ACCESS
+#          - name: AWS_ACCESS_KEY
+#            valueFrom:
+#              secretKeyRef:
+#                name: <KUBECTL_SECRET_NAME>
+#                key: AWS_ACCESS_KEY
+#          - name: AWS_SECRET_KEY
+#            valueFrom:
+#              secretKeyRef:
+#                name: <KUBECTL_SECRET_NAME>
+#                key: AWS_SECRET_KEY
+        ports:
+        - containerPort: 8083
+        startupProbe:
+          httpGet:
+            path: /healthcheck
+            port: 8083
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 6
+          timeoutSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /healthcheck
+            port: 8083
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          failureThreshold: 6
+          timeoutSeconds: 5
+        resources:
+          limits:
+            cpu: "1"
+            memory: 1Gi
+          requests:
+            cpu: "1"
+            memory: 1Gi
+      imagePullSecrets:
+      - name: use-docker
