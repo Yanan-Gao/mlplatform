@@ -1,7 +1,7 @@
 package job
 
 
-import com.thetradedesk.data.transform.CleanInputDataTransform
+import com.thetradedesk.plutus.data.transform.CleanInputDataTransform
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient

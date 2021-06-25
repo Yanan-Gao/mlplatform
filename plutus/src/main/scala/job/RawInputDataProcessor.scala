@@ -1,7 +1,7 @@
 package job
 
 
-import com.thetradedesk.data.transform.RawDataTransform
+import com.thetradedesk.plutus.data.transform.RawDataTransform
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -11,7 +11,6 @@ import java.time.LocalDate
 
 import com.thetradedesk.plutus.data.{AdjustedImpressions, Bids, Discrepancy, GoogleLostBids, explicitDatePart}
 import com.thetradedesk.plutus.data.schema.GoogleMinimumBidToWinData
-
 
 
 object RawInputDataProcessor extends Logger {

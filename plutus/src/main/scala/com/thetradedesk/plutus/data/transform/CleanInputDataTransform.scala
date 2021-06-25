@@ -1,8 +1,8 @@
 package com.thetradedesk.plutus.data.transform
 
 
-import com.thetradedesk.data.plutusDataPath
-import com.thetradedesk.data.schema.CleanInputData
+import com.thetradedesk.plutus.data.plutusDataPath
+import com.thetradedesk.plutus.data.schema.CleanInputData
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}

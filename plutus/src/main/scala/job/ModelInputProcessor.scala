@@ -1,7 +1,7 @@
 package job
 
 
-import com.thetradedesk.data.transform.TrainingDataTransform
+import com.thetradedesk.plutus.data.transform.TrainingDataTransform
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config

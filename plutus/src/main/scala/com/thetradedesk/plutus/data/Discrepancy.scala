@@ -10,20 +10,20 @@ object Discrepancy {
 
   def getDiscrepancyData(date: LocalDate)(implicit spark: SparkSession) = {
     import spark.implicits._
-    val svbDf = getParquetData[Svb](DiscrepancyDataset.SBVS3, date)
+    val svbDf = loadParquetData[Svb](DiscrepancyDataset.SBVS3, date)
       .withColumn("SupplyVendor" , col("RequestName"))
       .withColumn("svbDiscrpancyAdjustment" , col("DiscrepancyAdjustment"))
       .drop("DiscrepancyAdjustment")
       .drop("RequestName")
 
 
-    val pdaDf = getParquetData[Pda](DiscrepancyDataset.PDAS3, date)
+    val pdaDf = loadParquetData[Pda](DiscrepancyDataset.PDAS3, date)
       .withColumn("SupplyVendor" , col("SupplyVendorName"))
       .withColumn("pdaDiscrpancyAdjustment" , col("DiscrepancyAdjustment"))
       .drop("DiscrepancyAdjustment")
       .drop("SupplyVendorName")
 
-    val dealDf = getParquetData[Deals](DiscrepancyDataset.DEALSS3, date)
+    val dealDf = loadParquetData[Deals](DiscrepancyDataset.DEALSS3, date)
       .join(svbDf, "SupplyVendorId")
       .select(col("SupplyVendor"), col("SupplyVendorDealCode").alias("DealId"), col("IsVariablePrice"))
 
