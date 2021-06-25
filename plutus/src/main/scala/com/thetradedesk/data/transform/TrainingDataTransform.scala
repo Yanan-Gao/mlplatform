@@ -15,31 +15,39 @@ object TrainingDataTransform {
   val modelFeatures: Array[ModelFeature] = Array(
 
 
-    ModelFeature("SupplyVendor", "string", 102, 0),
-    ModelFeature("DealId", "string", 5002, 0),
-    ModelFeature("SupplyVendorPublisherId", "string", 15002, 0),
-    ModelFeature("SupplyVendorSiteId", "string", 102, 0),
-    ModelFeature("Site", "string", 350002, 0),
-    ModelFeature("AdFormat", "string", 102, 0),
-    ModelFeature("ImpressionPlacementId", "string", 102, 0),
-    ModelFeature("Country", "string", 252, 0),
-    ModelFeature("Region", "string", 4002, 0),
-    ModelFeature("Metro", "string", 302, 0),
-    ModelFeature("City", "string", 75002, 0),
-    ModelFeature("Zip", "string", 90002, 0),
-    ModelFeature("DeviceMake", "string", 1002, 0),
-    ModelFeature("DeviceModel", "string", 10002, 0),
-    ModelFeature("RequestLanguages", "string", 502, 0),
+    ModelFeature("SupplyVendor", "string", Some(102), 0),
+    ModelFeature("DealId", "string", Some(5002), 0),
+    ModelFeature("SupplyVendorPublisherId", "string", Some(15002), 0),
+    ModelFeature("SupplyVendorSiteId", "string", Some(102), 0),
+    ModelFeature("Site", "string", Some(350002), 0),
+    ModelFeature("AdFormat", "string", Some(102), 0),
+    ModelFeature("ImpressionPlacementId", "string", Some(102), 0),
+    ModelFeature("Country", "string", Some(252), 0),
+    ModelFeature("Region", "string", Some(4002), 0),
+    ModelFeature("Metro", "string", Some(302), 0),
+    ModelFeature("City", "string", Some(75002), 0),
+    ModelFeature("Zip", "string", Some(90002), 0),
+    ModelFeature("DeviceMake", "string", Some(1002), 0),
+    ModelFeature("DeviceModel", "string", Some(10002), 0),
+    ModelFeature("RequestLanguages", "string", Some(502), 0),
 
     // these are already integers
-    ModelFeature("RenderingContext", "int", 6, 0),
-    ModelFeature("UserHourOfWeek", "int", 24 * 7 + 2, 0),
-    ModelFeature("AdsTxtSellerType", "int", 7, 0),
-    ModelFeature("PublisherType", "int", 7, 0),
-    ModelFeature("DeviceType", "int", 9, 0),
-    ModelFeature("OperatingSystemFamily", "int", 10, 0),
-    ModelFeature("Browser", "int", 20, 0)
+    ModelFeature("RenderingContext", "int", Some(6), 0),
+    ModelFeature("UserHourOfWeek", "int", Some(24 * 7 + 2), 0),
+    ModelFeature("AdsTxtSellerType", "int", Some(7), 0),
+    ModelFeature("PublisherType", "int", Some(7), 0),
+    ModelFeature("DeviceType", "int", Some(9), 0),
+    ModelFeature("OperatingSystemFamily", "int", Some(10), 0),
+    ModelFeature("Browser", "int", Some(20), 0),
 
+    ModelFeature("sin_hour_day", "int", None, 0),
+    ModelFeature("cos_hour_day", "int", None, 0),
+    ModelFeature("sin_minute_hour", "int", None, 0),
+    ModelFeature("cos_minute_hour", "int", None, 0),
+    ModelFeature("sin_hour_week", "int", None, 0),
+    ModelFeature("cos_hour_week", "int", None, 0),
+    ModelFeature("latitude", "int", None, 0),
+    ModelFeature("longitude", "int", None, 0)
   )
 
   val modelTargets = Vector(
@@ -56,10 +64,12 @@ object TrainingDataTransform {
 
   val TFRECORD_FORMAT = "tfrecord"
   val PARQUET_FORMAT = "parquet"
-  val DEFAULT_NUM_PARTITIONS = 100
 
+
+  val DEFAULT_NUM_PARTITIONS = 100
   val STRING_FEATURE_TYPE = "string"
   val INT_FEATURE_TYPE = "int"
+  val FLOAT_FEATURE_TYPE = "float"
 
   val NUM_OUTPUT_PARTITIONS = Map(
     TRAIN -> 100,
@@ -73,8 +83,9 @@ object TrainingDataTransform {
 
   def intModelFeaturesCols(inputColAndDims: Seq[ModelFeature]): Array[Column] = {
     inputColAndDims.map {
-      case ModelFeature(name, STRING_FEATURE_TYPE, cardinality, _) => when(col(name).isNotNullOrEmpty, shiftModUdf(xxhash64(col(name)), lit(cardinality))).otherwise(0).alias(name)
-      case ModelFeature(name, INT_FEATURE_TYPE, cardinality, _) => when(col(name).isNotNullOrEmpty, shiftModUdf(col(name), lit(cardinality))).otherwise(0).alias(name)
+      case ModelFeature(name, STRING_FEATURE_TYPE, Some(cardinality), _) => when(col(name).isNotNullOrEmpty, shiftModUdf(xxhash64(col(name)), lit(cardinality))).otherwise(0).alias(name)
+      case ModelFeature(name, INT_FEATURE_TYPE, Some(cardinality), _) => when(col(name).isNotNullOrEmpty, shiftModUdf(col(name), lit(cardinality))).otherwise(0).alias(name)
+      case ModelFeature(name, FLOAT_FEATURE_TYPE, _, _) => col(name).alias(name)
     }.toArray
   }
 
@@ -136,7 +147,7 @@ object TrainingDataTransform {
     )
   }
 
-  def loadInputData(paths: Seq[String])(implicit spark: SparkSession): Dataset[CleanInputData] = {
+  def loadInputData(paths: Seq[String]): Dataset[CleanInputData] = {
     import spark.implicits._
     spark.read.parquet(paths: _*).selectAs[CleanInputData]
   }
