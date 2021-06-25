@@ -11,43 +11,44 @@ import org.apache.spark.sql.functions.{col, lit, when, xxhash64}
 import java.time.LocalDate
 
 object TrainingDataTransform {
+  val STRING_FEATURE_TYPE = "string"
+  val INT_FEATURE_TYPE = "int"
+  val FLOAT_FEATURE_TYPE = "float"
 
   val modelFeatures: Array[ModelFeature] = Array(
-
-
-    ModelFeature("SupplyVendor", "string", Some(102), 0),
-    ModelFeature("DealId", "string", Some(5002), 0),
-    ModelFeature("SupplyVendorPublisherId", "string", Some(15002), 0),
-    ModelFeature("SupplyVendorSiteId", "string", Some(102), 0),
-    ModelFeature("Site", "string", Some(350002), 0),
-    ModelFeature("AdFormat", "string", Some(102), 0),
-    ModelFeature("ImpressionPlacementId", "string", Some(102), 0),
-    ModelFeature("Country", "string", Some(252), 0),
-    ModelFeature("Region", "string", Some(4002), 0),
-    ModelFeature("Metro", "string", Some(302), 0),
-    ModelFeature("City", "string", Some(75002), 0),
-    ModelFeature("Zip", "string", Some(90002), 0),
-    ModelFeature("DeviceMake", "string", Some(1002), 0),
-    ModelFeature("DeviceModel", "string", Some(10002), 0),
-    ModelFeature("RequestLanguages", "string", Some(502), 0),
+    ModelFeature("SupplyVendor", STRING_FEATURE_TYPE, Some(102), 0),
+    ModelFeature("DealId", STRING_FEATURE_TYPE, Some(5002), 0),
+    ModelFeature("SupplyVendorPublisherId", STRING_FEATURE_TYPE, Some(15002), 0),
+    ModelFeature("SupplyVendorSiteId", STRING_FEATURE_TYPE, Some(102), 0),
+    ModelFeature("Site", STRING_FEATURE_TYPE, Some(350002), 0),
+    ModelFeature("AdFormat", STRING_FEATURE_TYPE, Some(102), 0),
+    ModelFeature("ImpressionPlacementId", STRING_FEATURE_TYPE, Some(102), 0),
+    ModelFeature("Country", STRING_FEATURE_TYPE, Some(252), 0),
+    ModelFeature("Region", STRING_FEATURE_TYPE, Some(4002), 0),
+    ModelFeature("Metro", STRING_FEATURE_TYPE, Some(302), 0),
+    ModelFeature("City", STRING_FEATURE_TYPE, Some(75002), 0),
+    ModelFeature("Zip", STRING_FEATURE_TYPE, Some(90002), 0),
+    ModelFeature("DeviceMake", STRING_FEATURE_TYPE, Some(1002), 0),
+    ModelFeature("DeviceModel", STRING_FEATURE_TYPE, Some(10002), 0),
+    ModelFeature("RequestLanguages", STRING_FEATURE_TYPE, Some(502), 0),
 
     // these are already integers
-    ModelFeature("RenderingContext", "int", Some(6), 0),
-    ModelFeature("UserHourOfWeek", "int", Some(24 * 7 + 2), 0),
-    ModelFeature("AdsTxtSellerType", "int", Some(7), 0),
-    ModelFeature("PublisherType", "int", Some(7), 0),
-    ModelFeature("DeviceType", "int", Some(9), 0),
-    ModelFeature("OperatingSystemFamily", "int", Some(10), 0),
-    ModelFeature("Browser", "int", Some(20), 0),
+    ModelFeature("RenderingContext", INT_FEATURE_TYPE, Some(6), 0),
+    ModelFeature("UserHourOfWeek", INT_FEATURE_TYPE, Some(24 * 7 + 2), 0),
+    ModelFeature("AdsTxtSellerType", INT_FEATURE_TYPE, Some(7), 0),
+    ModelFeature("PublisherType", INT_FEATURE_TYPE, Some(7), 0),
+    ModelFeature("DeviceType", INT_FEATURE_TYPE, Some(9), 0),
+    ModelFeature("OperatingSystemFamily", INT_FEATURE_TYPE, Some(10), 0),
+    ModelFeature("Browser", INT_FEATURE_TYPE, Some(20), 0),
 
-    ModelFeature("sin_hour_day", "int", None, 0),
-    ModelFeature("cos_hour_day", "int", None, 0),
-    ModelFeature("sin_minute_hour", "int", None, 0),
-    ModelFeature("cos_minute_hour", "int", None, 0),
-    ModelFeature("sin_hour_week", "int", None, 0),
-    ModelFeature("cos_hour_week", "int", None, 0),
-    ModelFeature("latitude", "int", None, 0),
-    ModelFeature("longitude", "int", None, 0)
+    ModelFeature("sin_hour_day", FLOAT_FEATURE_TYPE, None, 0),
+    ModelFeature("cos_hour_day", FLOAT_FEATURE_TYPE, None, 0),
+    ModelFeature("sin_minute_hour", FLOAT_FEATURE_TYPE, None, 0),
+    ModelFeature("cos_minute_hour", FLOAT_FEATURE_TYPE, None, 0),
+    ModelFeature("sin_hour_week", FLOAT_FEATURE_TYPE, None, 0),
+    ModelFeature("cos_hour_week", FLOAT_FEATURE_TYPE, None, 0),
+    ModelFeature("latitude", FLOAT_FEATURE_TYPE, None, 0),
+    ModelFeature("longitude", FLOAT_FEATURE_TYPE, None, 0)
   )
 
   val modelTargets = Vector(
@@ -67,9 +68,7 @@ object TrainingDataTransform {
 
 
   val DEFAULT_NUM_PARTITIONS = 100
-  val STRING_FEATURE_TYPE = "string"
-  val INT_FEATURE_TYPE = "int"
-  val FLOAT_FEATURE_TYPE = "float"
+
 
   val NUM_OUTPUT_PARTITIONS = Map(
     TRAIN -> 100,
