@@ -12,7 +12,7 @@ plutus:test:
     policy: pull
   only:
     changes:
-      - "plutus/**/*"
+      - "plutus/src/**/*"
   before_script:
     # we don't need to set up the machine for S3 in order to run tests
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
@@ -25,12 +25,11 @@ plutus:test:
 plutus:push_bits_merge_request:
   image: "$SCALA_BUILD_IMAGE"
   stage: assembly_upload
-  except:
-    refs:
-      - master
   only:
+    refs:
+      - merge_requests
     changes:
-      - "plutus/**/*"
+      - "plutus/src/**/*"
   script:
     - pushd ./plutus/
     - sbt "set test in assembly := {}" clean assembly
@@ -46,7 +45,7 @@ plutus:push_bits_master_snapshot:
     refs:
       - master
     changes:
-      - "plutus/**/*"
+      - "plutus/src/**/*"
   script:
     - pushd ./plutus/
     - sbt "set test in assembly := {}" clean assembly
@@ -63,7 +62,7 @@ plutus:deploy_release:
     refs:
       - master
     changes:
-      - "plutus/**/*"
+      - "plutus/src/**/*"
   allow_failure: false
   script:
     - pushd ./plutus/

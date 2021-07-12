@@ -20,7 +20,9 @@ mlplatform:test:
     policy: pull
   only:
     changes:
-      - "mlplatform/**/*"
+      - "mlplatform/common/**/*"
+      - "mlplatform/api/**/*"
+      - "mlplatform/fsclient/**/*"
   before_script:
     # we don't need to set up the machine for S3 in order to run tests
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
@@ -35,12 +37,16 @@ mlplatform:push_bits_merge_request:
   stage: assembly_upload
   artifacts:
     untracked: true
-  except:
-    refs:
-      - master
+  #except:
+  #  refs:
+  #   - master
   only:
+    refs:
+      - merge_requests
     changes:
-      - "mlplatform/**/*"
+      - "mlplatform/common/**/*"
+      - "mlplatform/api/**/*"
+      - "mlplatform/fsclient/**/*"
   script:
     - pushd ./mlplatform/
     - mvn -Dmaven.test.skip=true package
@@ -60,7 +66,9 @@ mlplatform:push_bits_master_snapshot:
     refs:
       - master
     changes:
-      - "mlplatform/**/*"
+      - "mlplatform/common/**/*"
+      - "mlplatform/api/**/*"
+      - "mlplatform/fsclient/**/*"
   script:
     - pushd ./mlplatform/
     - mvn -Dmaven.test.skip=true package
@@ -79,17 +87,18 @@ mlplatform:deploy_api_docker_image_merge_request:
   artifacts:
     paths:
       - mlplatform/api/target/mlplatform-api-deployment.yaml
-  except:
-    refs:
-      - master
   services:
     - docker:dind
   after_script:
     - docker logout ${DOCKER_PRODUCTION_REGISTRY}
     - docker logout ${DOCKER_DEV_REGISTRY}
   only:
+    refs:
+      - merge_requests
     changes:
-      - "mlplatform/**/*"
+      - "mlplatform/common/**/*"
+      - "mlplatform/api/**/*"
+      - "mlplatform/fsclient/**/*"
   before_script:
     # override the default before script
     # we don't need to set up the machine for S3 in order to build and push the docker image
@@ -110,9 +119,13 @@ mplatform:deploy_api_k8s_merge_request:
   stage: k8s_deploy
   dependencies: 
     - mlplatform:deploy_api_docker_image_merge_request
-  except:
+  only:
     refs:
-      - master
+      - merge_requests
+    changes:
+      - "mlplatform/common/**/*"
+      - "mlplatform/api/**/*"
+      - "mlplatform/fsclient/**/*"
   before_script:
     - mkdir -p /root/.kube
     - apk add --no-cache curl openssl
@@ -136,7 +149,9 @@ mlplatform:deploy_release:
     refs:
       - master
     changes:
-      - "mlplatform/**/*"
+      - "mlplatform/common/**/*"
+      - "mlplatform/api/**/*"
+      - "mlplatform/fsclient/**/*"
   allow_failure: false
   script:
     - pushd ./mlplatform/
