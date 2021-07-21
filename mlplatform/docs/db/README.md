@@ -9,8 +9,10 @@ Feature Store (FS) uses a dockerized Microsoft SQL Server as its Database (DB) [
 
 We support 2 instances of the dockerized MSSQL setup,
 
-1. one for the `test` environment 
+1. one for the `test` environment
+    * TBD
 1. one for the `prod` environment
+    * server: `mlplatformdb.adsrvr.org`
 
 The `test` instance should be a *super set* of the `prod` database--it might have extra schemas and tables used for testing.
 This setup allows us to
