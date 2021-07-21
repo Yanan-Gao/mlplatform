@@ -1,52 +1,64 @@
 variables:
   MLPLATFORM_COMMON_ASSEMBLY_OUT: "common/target/mlplatform-common.jar"
   MLPLATFORM_COMMON_JAR_NAME: "mlplatform-common.jar"
-  
+
   MLPLATFORM_FEATURESTORE_ASSEMBLY_OUT: "fsclient/target/mlplatform-fsclient.jar"
   MLPLATFORM_FEATURESTORE_JAR_NAME: "mlplatform-fsclient.jar"
-    
+
   MLPLATFORM_API_ASSEMBLY_OUT: "api/target/mlplatform-api.jar"
   MLPLATFORM_API_JAR_NAME: "mlplatform-api.jar"
-    
+
   MLPLATFORM_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/mlplatform/jars/mergerequests"
   MLPLATFORM_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/mlplatform/jars/snapshots"
   MLPLATFORM_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/mlplatform/jars/prod"
-  
+
+  MLPLATFORM_MAVEN_BUILD_IMAGE: "maven:3.8.1-jdk-8"
+
+  #This workflow rule will prevent duplicate pipelines for merge request AND branch commits
+  #BUT we should avoid defining workflow rules on the top level (repo) .gitlab-ci/yml because it seems to
+  # have weird interactions with inherited job rules from each project
+  #   If the pipeline is triggered by:
+  #
+  #   A merge request, run a merge request pipeline. For example, a merge request pipeline can be triggered by a push to a branch with an associated open merge request.
+  #   A change to a branch, but a merge request is open for that branch, do not run a branch pipeline.
+  #   A change to a branch, but without any open merge requests, run a branch pipeline.
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_COMMIT_BRANCH'
 
 mlplatform:test:
-  image: "$MAVEN_BUILD_IMAGE"
+  image: "$MLPLATFORM_MAVEN_BUILD_IMAGE"
   stage: test
   cache:
     policy: pull
-  only:
-    changes:
-      - "mlplatform/common/**/*"
-      - "mlplatform/api/**/*"
-      - "mlplatform/fsclient/**/*"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "mlplatform/**/*"
+    - if: '$CI_COMMIT_BRANCH'
+      changes:
+        - "mlplatform/**/*"
   before_script:
     # we don't need to set up the machine for S3 in order to run tests
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
-  script: 
+  script:
     - pushd ./mlplatform/
     - mvn test
     - popd
     - echo "ran mlplatform_test"
 
 mlplatform:push_bits_merge_request:
-  image: "$MAVEN_BUILD_IMAGE"
+  image: "$MLPLATFORM_MAVEN_BUILD_IMAGE"
   stage: assembly_upload
   artifacts:
     untracked: true
-  #except:
-  #  refs:
-  #   - master
-  only:
-    refs:
-      - merge_requests
-    changes:
-      - "mlplatform/common/**/*"
-      - "mlplatform/api/**/*"
-      - "mlplatform/fsclient/**/*"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "mlplatform/**/*"
   script:
     - pushd ./mlplatform/
     - mvn -Dmaven.test.skip=true package
@@ -58,17 +70,14 @@ mlplatform:push_bits_merge_request:
     - echo "ran mlplatform_push_bits_merge_request"
 
 mlplatform:push_bits_master_snapshot:
-  image: "$MAVEN_BUILD_IMAGE"
+  image: "$MLPLATFORM_MAVEN_BUILD_IMAGE"
   stage: assembly_upload
   artifacts:
     untracked: true
-  only:
-    refs:
-      - master
-    changes:
-      - "mlplatform/common/**/*"
-      - "mlplatform/api/**/*"
-      - "mlplatform/fsclient/**/*"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      changes:
+        - "mlplatform/**/*"
   script:
     - pushd ./mlplatform/
     - mvn -Dmaven.test.skip=true package
@@ -82,7 +91,7 @@ mlplatform:push_bits_master_snapshot:
 mlplatform:deploy_api_docker_image_merge_request:
   image: proxy.docker.adsrvr.org/docker:git
   stage: deploy
-  dependencies: 
+  dependencies:
     - mlplatform:push_bits_merge_request
   artifacts:
     paths:
@@ -92,13 +101,11 @@ mlplatform:deploy_api_docker_image_merge_request:
   after_script:
     - docker logout ${DOCKER_PRODUCTION_REGISTRY}
     - docker logout ${DOCKER_DEV_REGISTRY}
-  only:
-    refs:
-      - merge_requests
-    changes:
-      - "mlplatform/common/**/*"
-      - "mlplatform/api/**/*"
-      - "mlplatform/fsclient/**/*"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "mlplatform/**/Dockerfile"
+      when: manual
   before_script:
     # override the default before script
     # we don't need to set up the machine for S3 in order to build and push the docker image
@@ -113,23 +120,20 @@ mlplatform:deploy_api_docker_image_merge_request:
     - sed -i "s/_DOCKER_REGISTRY_/$DOCKER_DEV_REGISTRY/g" ./target/mlplatform-api-deployment.yaml
     - sed -i "s/_DOCKER_IMAGE_/$CI_COMMIT_SHORT_SHA/g" ./target/mlplatform-api-deployment.yaml
     - echo "ran deploy_api_merge_request"
-    
+
 mplatform:deploy_api_k8s_merge_request:
   image: lwolf/helm-kubectl-docker:latest
   stage: k8s_deploy
-  dependencies: 
+  dependencies:
     - mlplatform:deploy_api_docker_image_merge_request
-  only:
-    refs:
-      - merge_requests
-    changes:
-      - "mlplatform/common/**/*"
-      - "mlplatform/api/**/*"
-      - "mlplatform/fsclient/**/*"
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "mlplatform/Dockerfile"
   before_script:
     - mkdir -p /root/.kube
     - apk add --no-cache curl openssl
-    
+
     - kubectl config set clusters.general-use-non-production.certificate-authority-data $EKS_NON_PROD_CRT
     - kubectl config set-credentials $EKS_NON_PROD_USER
     - kubectl config set-context general-use-non-production --cluster=general-use-non-production --user=$EKS_NON_PROD_USER
@@ -142,17 +146,14 @@ mplatform:deploy_api_k8s_merge_request:
     - kubectl apply -n mlplatform -f ./target/mlplatform-api-deployment.yaml
 
 mlplatform:deploy_release:
-  image: "$MAVEN_BUILD_IMAGE"
+  image: "$MLPLATFORM_MAVEN_BUILD_IMAGE"
   stage: deploy
-  when: manual
-  only:
-    refs:
-      - master
-    changes:
-      - "mlplatform/common/**/*"
-      - "mlplatform/api/**/*"
-      - "mlplatform/fsclient/**/*"
-  allow_failure: false
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      changes:
+        - "mlplatform/**/*"
+      when: manual
+      allow_failure: false
   script:
     - pushd ./mlplatform/
     - mvn -Dmaven.test.skip=true package
