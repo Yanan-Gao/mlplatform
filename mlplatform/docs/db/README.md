@@ -10,7 +10,7 @@ Feature Store (FS) uses a dockerized Microsoft SQL Server as its Database (DB) [
 We support 2 instances of the dockerized MSSQL setup,
 
 1. one for the `test` environment
-    * TBD
+    * TBD (https://atlassian.thetradedesk.com/jira/browse/DATAOPS-4810) 
 1. one for the `prod` environment
     * server: `mlplatformdb.adsrvr.org`
 
