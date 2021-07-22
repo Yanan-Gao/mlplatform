@@ -13,28 +13,6 @@ END
 GO
 
 
-USE mlplatform
-GO
-
-----
--- Create Schema `featurestore` under `mlplatform`
-----
-IF NOT EXISTS ( SELECT * FROM information_schema.schemata WHERE schema_name = 'featurestore' )
-BEGIN
-    EXEC ('CREATE SCHEMA featurestore') -- get around limitation that CREATE SCHEMA needs to be the only statement in a batch
-END
-GO
-
-----
--- Create role `API`. This role is meant to be used by the Feature Store Service.
--- Access should map to API operations which for now are on tables only, i.e., SELECT, INSERT, UPDATE, DELETE
-----
-IF DATABASE_PRINCIPAL_ID('API') IS NULL
-BEGIN
-    CREATE ROLE API;
-END
-GO
-
 
 
 ----
