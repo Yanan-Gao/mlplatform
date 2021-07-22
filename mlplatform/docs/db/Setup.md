@@ -39,8 +39,10 @@ As a minimum default
 
 Run (you can copy paste into your DB IDE) the following files this order 
 
-1. [10setup.sql](../../db/10setup.sql)
-1. [20permissions.sql](../../db/20permission.sql)
+1. [10setup.sql](../../db/10setup.sql) to create the database and MS SQL logins and users
+1. [FeatureStoreSchema.sql](../../db/SchemaObject/Security/Schemas/FeatureStoreSchema.sql) to create the `featurestore` schema object
+1. [API.sql](../../db/SchemaObject/Security/Roles/API.sql) to add the `API` role 
+1. [20permissions.sql](../../db/20permission.sql) to grant permissions to roles and users
 
 ## Roles 
 

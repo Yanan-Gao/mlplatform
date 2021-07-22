@@ -1,5 +1,5 @@
 All SQL code run on `test` or `prod` databases should be reviewed and stored in this folder. 
-Please see [../doce/db/README](../docs/db/README.md) for more information. 
+Please see [../docs/db/README](../docs/db/README.md) for more information. 
 
 # Style 
 
