@@ -25,7 +25,8 @@ IF NOT EXISTS(
 BEGIN
 
     CREATE LOGIN feature_store_ro
-    WITH PASSWORD = 'fs!RO!1234', DEFAULT_DATABASE = mlplatform
+    WITH PASSWORD = --- FILL ME IN FROM 1PASSWORD prod.mlplatform.featurestore.rouser
+         ,DEFAULT_DATABASE = mlplatform
 
 END
 GO
@@ -41,7 +42,8 @@ IF NOT EXISTS(
 BEGIN
 
     CREATE LOGIN feature_store_service
-    WITH PASSWORD = 'fs!SRV!1234', DEFAULT_DATABASE = mlplatform
+    WITH PASSWORD = --- FILL ME IN FROM 1PASSWORD prod.mlplatform.featurestore.featurestoreserviceuser
+         , DEFAULT_DATABASE = mlplatform
 
 END
 GO
