@@ -88,7 +88,7 @@ mlplatform:push_bits_master_snapshot:
     - popd
     - echo "ran mlplatform_push_bits_master_snapshot"
 
-mlplatform:deploy_api_docker_image_merge_request:
+mlplatform:deploy_api_dev_docker_image_merge_request:
   image: proxy.docker.adsrvr.org/docker:git
   stage: deploy
   dependencies:
@@ -105,7 +105,6 @@ mlplatform:deploy_api_docker_image_merge_request:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - "mlplatform/**/Dockerfile"
-      when: manual
   before_script:
     # override the default before script
     # we don't need to set up the machine for S3 in order to build and push the docker image
@@ -119,17 +118,18 @@ mlplatform:deploy_api_docker_image_merge_request:
     - cp ./k8s/mlplatform-api-deployment.yaml ./target/mlplatform-api-deployment.yaml
     - sed -i "s/_DOCKER_REGISTRY_/$DOCKER_DEV_REGISTRY/g" ./target/mlplatform-api-deployment.yaml
     - sed -i "s/_DOCKER_IMAGE_/$CI_COMMIT_SHORT_SHA/g" ./target/mlplatform-api-deployment.yaml
-    - echo "ran deploy_api_merge_request"
+    - echo "ran deploy_api_dev_docker_image_merge_request"
 
-mplatform:deploy_api_k8s_merge_request:
+mplatform:deploy_api_dev_k8s_merge_request:
   image: lwolf/helm-kubectl-docker:latest
   stage: k8s_deploy
   dependencies:
-    - mlplatform:deploy_api_docker_image_merge_request
+    - mlplatform:deploy_api_dev_docker_image_merge_request
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "mlplatform/Dockerfile"
+        - "mlplatform/**/Dockerfile"
+      when: manual
   before_script:
     - mkdir -p /root/.kube
     - apk add --no-cache curl openssl
@@ -144,8 +144,9 @@ mplatform:deploy_api_k8s_merge_request:
     # set kubectl config
     - cd ./mlplatform/api
     - kubectl apply -n mlplatform -f ./target/mlplatform-api-deployment.yaml
+    - echo "ran deploy_api_dev_k8s_merge_request"
 
-mlplatform:deploy_release:
+mlplatform:deploy_jar_release:
   image: "$MLPLATFORM_MAVEN_BUILD_IMAGE"
   stage: deploy
   rules:
@@ -153,13 +154,11 @@ mlplatform:deploy_release:
       changes:
         - "mlplatform/**/*"
       when: manual
-      allow_failure: false
   script:
     - pushd ./mlplatform/
     - mvn -Dmaven.test.skip=true package
-    - aws s3 cp ${ASSEMBLY_OUT} ${MLPLATFORM_PROD_JAR_FOLDER}/${MLPLATFORM_JAR_NAME}
     - aws s3 cp ${MLPLATFORM_COMMON_ASSEMBLY_OUT} ${MLPLATFORM_PROD_JAR_FOLDER}/${MLPLATFORM_COMMON_JAR_NAME}
     - aws s3 cp ${MLPLATFORM_FEATURESTORE_ASSEMBLY_OUT} ${MLPLATFORM_PROD_JAR_FOLDER}/${MLPLATFORM_FEATURESTORE_JAR_NAME}
     - aws s3 cp ${MLPLATFORM_API_ASSEMBLY_OUT} ${MLPLATFORM_PROD_JAR_FOLDER}/${MLPLATFORM_API_JAR_NAME}
     - popd
-    - echo "ran mlplatform_deploy_release"
+    - echo "ran mlplatform_deploy_jar_release"
