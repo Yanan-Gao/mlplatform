@@ -105,3 +105,7 @@ project/plugins/project/
 
 *.orig
 /tmp/
+
+venv/*
+
+plutus/src/main/python/local_data/*
