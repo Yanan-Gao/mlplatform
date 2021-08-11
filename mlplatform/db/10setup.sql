@@ -13,6 +13,12 @@ END
 GO
 
 
+----
+-- Verify 
+----
+-- SELECT name, database_id, create_date
+-- FROM sys.databases ;
+----
 
 
 ----
@@ -49,6 +55,23 @@ END
 GO
 
 ----
+-- Verify 
+----
+-- SELECT sp.name AS login,
+--        sp.type_desc AS login_type,
+--        sl.password_hash,
+--        sp.create_date,
+--        sp.modify_date,
+--        CASE WHEN sp.is_disabled = 1 THEN 'Disabled'
+--             ELSE 'Enabled' END AS status
+-- FROM sys.server_principals AS sp
+-- LEFT JOIN sys.sql_logins AS sl
+--           ON sp.principal_id = sl.principal_id
+-- WHERE sp.type NOT IN ('G', 'R')
+-- ORDER BY sp.name;
+----
+
+----
 -- User creation. 1-1 mapping to login names.
 ----
 
@@ -72,3 +95,18 @@ IF NOT EXISTS ( SELECT * FROM sys.database_principals WHERE type = 'S' AND name 
 BEGIN
     CREATE USER [feature_store_service] FOR LOGIN [feature_store_service] WITH DEFAULT_SCHEMA = [featurestore]
 END
+
+----
+-- Verify
+----
+-- SELECT name AS username,
+--        create_date,
+--        modify_date,
+--        type_desc AS type,
+--        authentication_type_desc AS authentication_type
+-- FROM sys.database_principals
+-- WHERE type NOT IN ('A', 'G', 'R', 'X')
+--       AND sid IS NOT NULL
+--       AND name != 'guest'
+-- ORDER BY username;
+----

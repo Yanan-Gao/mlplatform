@@ -10,4 +10,14 @@ BEGIN
 END
 GO
 
-
+----
+-- Verify
+----
+-- SELECT s.name AS schema_name,
+--        s.schema_id,
+--        u.name AS schema_owner
+-- FROM sys.schemas AS s
+-- INNER JOIN sys.sysusers AS u
+--         ON u.uid = s.principal_id
+-- ORDER BY s.name
+----
