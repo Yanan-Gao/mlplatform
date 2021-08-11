@@ -6,6 +6,7 @@ variables:
   PLUTUS_ASSEMBLY_OUT: "/builds/thetradedesk/mlplatform/plutus/target/scala-2.12/plutus.jar"
   SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
 
+
   #This workflow rule will prevent duplicate pipelines for merge request AND branch commits
   #BUT we should avoid defining workflow rules on the top level (repo) .gitlab-ci/yml because it seems to
   # have weird interactions with inherited job rules from each project
@@ -71,6 +72,22 @@ plutus:push_bits_master_snapshot:
     - aws s3 cp ${PLUTUS_ASSEMBLY_OUT} ${DEST}/${PLUTUS_JAR_NAME}
     - popd
     - echo "ran plutus_push_bits_master_snapshot"
+
+plutus:push_set_scripts:
+  image: "$SCALA_BUILD_IMAGE"
+  stage: assembly_upload
+  when: manual
+  script:
+    - pushd ./plutus/
+    - aws s3 cp ${SCRIPTS_SOURCE} ${SCRIPTS_DEST}
+    - popd
+    - echo "ran push_set_scripts"
+  only:
+    refs:
+      - master
+    changes:
+      - "plutus/**/*"
+
 
 plutus:deploy_release:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
