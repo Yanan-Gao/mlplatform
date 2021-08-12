@@ -14,6 +14,8 @@
 .idea/**/usage.statistics.xml
 .idea/**/dictionaries
 .idea/**/shelf
+.idea/codeStyles/codeStyleConfig.xml
+.idea/aws.xml
 *.iml
 
 .bsp/
@@ -106,6 +108,16 @@ project/plugins/project/
 *.orig
 /tmp/
 
-venv/*
 
+# Default ignored files
+/shelf/
+/workspace.xml
+# Datasource local storage ignored files
+/../../../../:\dev\mlplatform\.idea/dataSources/
+/dataSources.local.xml
+# Zeppelin ignored files
+/ZeppelinRemoteNotebooks/
+
+venv/*
 plutus/src/main/python/local_data/*
+

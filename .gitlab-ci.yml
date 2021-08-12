@@ -36,3 +36,4 @@ default:
 include:
   - local: 'mlplatform/.gitlab-ci.yml'
   - local: 'plutus/.gitlab-ci.yml'
+  - local: 'contextual-features-scala/.gitlab-ci.yml'

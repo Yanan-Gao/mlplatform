@@ -1,0 +1,3 @@
+package com.ttd.ml.util.elDoradoUtilities.streaming.records.rtb
+
+case class FeeFeatureAdjustmentPredictiveCleaningContext(AdjustmentOperationType: FeeFeatureAdjustmentOperationTypeLookupRecord, FirstPriceAdjustment: BigDecimal, PredictiveClearingMode: PredictiveClearingModeLookupRecord, SubmittedBidInUSD: BigDecimal)
