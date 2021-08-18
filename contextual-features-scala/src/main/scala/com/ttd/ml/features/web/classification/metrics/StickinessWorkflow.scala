@@ -1,7 +1,6 @@
 package com.ttd.ml.features.web.classification.metrics
 
 import java.time.LocalDate
-
 import com.ttd.ml.datasets.generated.contextual.web.classification.{ContentClassificationStickinessRecord, IABContentClassification, IABContentClassificationScale, IABContentClassificationStickiness}
 import com.ttd.ml.datasets.sources.IABCategories
 import com.ttd.ml.util.elDoradoUtilities.spark.TTDConfig.config
