@@ -4,19 +4,17 @@ variables:
   CONTEXTUAL_FEATURES_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/contextual-features-scala/jars/snapshots"
   CONTEXTUAL_FEATURES_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/contextual-features-scala/jars/prod"
   CONTEXTUAL_FEATURES_ASSEMBLY_OUT: "/builds/thetradedesk/mlplatform/contextual-features-scala/target/scala-2.12/contextual-features-scala.jar"
-  SCALA_BUILD_IMAGE_2_12_12: "hseeberger/scala-sbt:11.0.7_1.3.13_2.12.12"
+  SCALA_BUILD_IMAGE_2_12_12: "hseeberger/scala-sbt:11.0.12_1.3.13_2.12.12"
   CONTEXTUAL_FEATURES_SCALA_DOCKER_IMAGE: "${DOCKER_DEV_REGISTRY}/contextual-features-scala"
   SBT_OPTS: "-Xmx4G -XX:+UseConcMarkSweepGC -XX:+CMSClassUnloadingEnabled -XX:MaxPermSize=4G -Xss4M"
-  #SBT_OPTS: "-Dsbt.global.base=sbt-cache/sbtboot -Dsbt.boot.directory=sbt-cache/boot -Dsbt.coursier.home=sbt-cache/coursier -Dsbt.ivy.home=sbt-cache/ivy -XX:+CMSClassUnloadingEnabled -XX:+UseConcMarkSweepGC -XX:MaxPermSize=2G -Xmx2G -Xss4M"
 
-  #This workflow rule will prevent duplicate pipelines for merge request AND branch commits
-  #BUT we should avoid defining workflow rules on the top level (repo) .gitlab-ci/yml because it seems to
-  # have weird interactions with inherited job rules from each project
-  #   If the pipeline is triggered by:
-  #
-  #   A merge request, run a merge request pipeline. For example, a merge request pipeline can be triggered by a push to a branch with an associated open merge request.
-  #   A change to a branch, but a merge request is open for that branch, do not run a branch pipeline.
-  #   A change to a branch, but without any open merge requests, run a branch pipeline.
+# This workflow rule will prevent duplicate pipelines for merge request AND branch commits
+# BUT we should avoid defining workflow rules on the top level (repo) .gitlab-ci/yml because it seems to
+# have weird interactions with inherited job rules from each project
+#   If the pipeline is triggered by:
+#   A merge request, run a merge request pipeline. For example, a merge request pipeline can be triggered by a push to a branch with an associated open merge request.
+#   A change to a branch, but a merge request is open for that branch, do not run a branch pipeline.
+#   A change to a branch, but without any open merge requests, run a branch pipeline.
 
 workflow:
   rules:
