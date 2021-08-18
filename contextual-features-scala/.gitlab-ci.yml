@@ -4,7 +4,7 @@ variables:
   CONTEXTUAL_FEATURES_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/contextual-features-scala/jars/snapshots"
   CONTEXTUAL_FEATURES_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/contextual-features-scala/jars/prod"
   CONTEXTUAL_FEATURES_ASSEMBLY_OUT: "/builds/thetradedesk/mlplatform/contextual-features-scala/target/scala-2.12/contextual-features-scala.jar"
-  SCALA_BUILD_IMAGE_2_12_12: "hseeberger/scala-sbt:11.0.12_1.3.13_2.12.12"
+  SCALA_BUILD_IMAGE_2_12_12: "hseeberger/scala-sbt:11.0.12_1.5.5_2.12.14"
   CONTEXTUAL_FEATURES_SCALA_DOCKER_IMAGE: "${DOCKER_DEV_REGISTRY}/contextual-features-scala"
   SBT_OPTS: "-Xmx4G -XX:+UseConcMarkSweepGC -XX:+CMSClassUnloadingEnabled -XX:MaxPermSize=4G -Xss4M"
 
