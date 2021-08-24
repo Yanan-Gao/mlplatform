@@ -50,8 +50,10 @@ package object data {
   }
 
 
-  def shiftModUdf = udf((hashValue: Long, modulo: Int) => {
+  def shiftModUdf = udf((hashValue: Long, cardinality: Int) => {
+    val modulo = math.min(cardinality - 1, Int.MaxValue - 1)
     val index = hashValue % modulo
+    // zero index is reserved for UNK
     index + (if (index < 0) modulo + 1 else 1)
   })
 
