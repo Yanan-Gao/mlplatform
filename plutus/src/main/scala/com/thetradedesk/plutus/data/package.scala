@@ -49,13 +49,20 @@ package object data {
       .selectAs[T]
   }
 
-
-  def shiftModUdf = udf((hashValue: Long, cardinality: Int) => {
+  def shiftMod(hashValue: Long, cardinality: Int): Int = {
     val modulo = math.min(cardinality - 1, Int.MaxValue - 1)
-    val index = hashValue % modulo
-    // zero index is reserved for UNK
-    index + (if (index < 0) modulo + 1 else 1)
+
+    val index = (hashValue % modulo).intValue()
+    // zero index is reserved for UNK and we do not want negative values
+    val shift = if (index < 0) modulo + 1 else 1
+    index + shift
+  }
+
+  def shiftModUdf: UserDefinedFunction = udf((hashValue: Long, cardinality: Int) => {
+    shiftMod(hashValue, cardinality)
   })
+
+
 
   val vec_size: UserDefinedFunction = udf((v: Vector) => v.size)
   val vec_indices: UserDefinedFunction = udf((v: SparseVector) => v.indices)

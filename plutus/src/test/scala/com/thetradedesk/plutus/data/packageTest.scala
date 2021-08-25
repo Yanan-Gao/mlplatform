@@ -1,4 +1,5 @@
 package com.thetradedesk.plutus.data
+import org.apache.spark.unsafe.types.UTF8String
 import org.scalatest._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers._
@@ -65,6 +66,24 @@ class packageTest extends AnyFlatSpec {
     val expected = Seq("s3://bucket/env/prefix/google/year=2021/month=1/day=1/", "s3://bucket/env/prefix/google/year=2020/month=12/day=31/", "s3://bucket/env/prefix/google/year=2020/month=12/day=30/")
     val result = plutusDataPaths(s3Path = "s3://bucket", ttdEnv = "env", prefix = "raw", svName = Some("google"), date = LocalDate.of(2021, 1, 1), lookBack = Some(2))
     expected == result
+  }
+
+  "shiftMod" should "move the value up to allow unk at zero" in {
+    val expected = 5959
+    val sparkMagicSeedNumber = 42L
+    val s = org.apache.spark.unsafe.types.UTF8String.fromString("ttd.com")
+    val hash = org.apache.spark.sql.catalyst.expressions.XXH64.hashUnsafeBytes(s.getBaseObject, s.getBaseOffset, s.numBytes(), sparkMagicSeedNumber)
+    val result = shiftMod(hash, 10000)
+    println(result)
+    assertResult(expected)(result)
+  }
+
+  "shiftMod zero" should "move the value up to allow unk at zero" in {
+    val expected = 1
+    val index = 0
+    val result = shiftMod(index, 5)
+    println(result)
+    assertResult(expected)(result)
   }
 }
 
