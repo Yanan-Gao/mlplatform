@@ -133,7 +133,6 @@ mplatform:deploy_api_dev_k8s_merge_request:
   before_script:
     - mkdir -p /root/.kube
     - apk add --no-cache curl openssl
-
     - kubectl config set clusters.general-use-non-production.certificate-authority-data $EKS_NON_PROD_CRT
     - kubectl config set-credentials $EKS_NON_PROD_USER
     - kubectl config set-context general-use-non-production --cluster=general-use-non-production --user=$EKS_NON_PROD_USER
@@ -143,6 +142,8 @@ mplatform:deploy_api_dev_k8s_merge_request:
   script:
     # set kubectl config
     - cd ./mlplatform/api
+    - kubectl create secret -n mlplatform generic test-db-user-credentials --from-literal password=${MLPLATFORM_TEST_DB_PASSWORD} -o yaml --dry-run | kubectl apply -n mlplatform -f -
+    - kubectl create secret -n mlplatform generic test-db-user-credentials --from-literal username=${MLPLATFORM_TEST_DB_USERNAME} -o yaml --dry-run | kubectl apply -n mlplatform -f -
     - kubectl apply -n mlplatform -f ./target/mlplatform-api-deployment.yaml
     - echo "ran deploy_api_dev_k8s_merge_request"
 
