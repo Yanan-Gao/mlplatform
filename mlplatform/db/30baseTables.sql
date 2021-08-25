@@ -5,9 +5,9 @@ use mlplatform
 go
 
 IF (NOT EXISTS (select *
-                 from INFORMATION_SCHEMA.TABLES
-                 where TABLE_SCHEMA = 'featurestore'
-                 and  TABLE_NAME = 'Feature'))
+                from INFORMATION_SCHEMA.TABLES
+                where TABLE_SCHEMA = 'featurestore'
+                and  TABLE_NAME = 'Feature'))
 begin
     create table dbo.Feature(
         FeatureId BIGINT IDENTITY(1,1),
@@ -22,20 +22,20 @@ begin
 end
 
 
--- INSERT INTO Feature (FeatureName, FeatureDescription)
--- VALUES ('testFeature1','testing the db table')
+--INSERT INTO Feature (FeatureName, FeatureDescription)
+--VALUES ('testFeature1','testing the db table')
 
 IF (NOT EXISTS (select *
-                 from INFORMATION_SCHEMA.TABLES
-                 where TABLE_SCHEMA = 'featurestore'
-                 and  TABLE_NAME = 'FeatureVersion'))
+                from INFORMATION_SCHEMA.TABLES
+                where TABLE_SCHEMA = 'featurestore'
+                and  TABLE_NAME = 'FeatureVersion'))
 begin
    create table dbo.FeatureVersion(
        FeatureId BIGINT not null,
        FeatureVersion INT not null,
-       CodePath varchar(128) not null
-       DocumentationPath varchar(128) not null,
-       DataLocation varchar(128) not null,
+       CodePath varchar(1024) not null,
+       DocumentationPath varchar(1024) not null,
+       DataLocation varchar(max) not null,
        SchemaString varchar(max) not null,
        CreatedDateUtc datetime default getutcdate() not null,
        LastModifiedDateUtc datetime,
@@ -45,13 +45,13 @@ begin
     )
 end
 
--- INSERT INTO FeatureVersion (FeatureId, FeatureVersion,CodePath,DocumentationPath,DataLocation,SchemaString)
--- VALUES (1,1,'s3://thetradedesk-mlplatform-us-east-1/libs/plutus/jars/prod/plutus.jar','https://ttdcorp-my.sharepoint.com/:w:/r/personal/michael_davy_thetradedesk_com/_layouts/15/guestaccess.aspx?e=6HJxdR&share=Edmad7vPi31FsGkrDLzT0J8Bvmkrk4udwLyPQibq_N-QfQ','s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/prod','col1:string,col2:int')
+--INSERT INTO FeatureVersion (FeatureId, FeatureVersion,CodePath,DocumentationPath,DataLocation,SchemaString)
+--VALUES (1,1,'s3://thetradedesk-mlplatform-us-east-1/libs/plutus/jars/prod/plutus.jar','http://tradedesk/confluence/1','s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/prod','col1:string,col2:int')
 
 IF (NOT EXISTS (select *
-                 from INFORMATION_SCHEMA.TABLES
-                 where TABLE_SCHEMA = 'featurestore'
-                 and  TABLE_NAME = 'FeatureIdLookup'))
+                from INFORMATION_SCHEMA.TABLES
+                where TABLE_SCHEMA = 'featurestore'
+                and  TABLE_NAME = 'FeatureIdLookup'))
 begin
     create table dbo.FeatureIdLookup(
         InternalFeatureId BIGINT unique not null,
@@ -65,14 +65,14 @@ begin
     )
 end
 
--- INSERT INTO FeatureIdLookup
--- (InternalFeatureId, PublicFeatureId)
--- VALUES (1)
+--INSERT INTO FeatureIdLookup
+--(InternalFeatureId, CreatedDateUtc)
+--VALUES (1, getutcdate())
 
 IF (NOT EXISTS (select *
-                 from INFORMATION_SCHEMA.TABLES
-                 where TABLE_SCHEMA = 'featurestore'
-                 and  TABLE_NAME = 'FeatureTags'))
+                from INFORMATION_SCHEMA.TABLES
+                where TABLE_SCHEMA = 'featurestore'
+                and  TABLE_NAME = 'FeatureTags'))
 begin
     create table dbo.FeatureTags(
         FeatureId BIGINT not null,
@@ -86,14 +86,14 @@ begin
     )
 end
 
--- INSERT INTO FeatureTags
--- (FeatureId, TagName,TagValue)
--- VALUES (1,'myTagName1')
+--INSERT INTO FeatureTags
+--(FeatureId, TagName)
+--VALUES (1,'myTagName1')
 
 IF (NOT EXISTS (select *
-                 from INFORMATION_SCHEMA.TABLES
-                 where TABLE_SCHEMA = 'featurestore'
-                 and  TABLE_NAME = 'FeatureDatasets'))
+                from INFORMATION_SCHEMA.TABLES
+                where TABLE_SCHEMA = 'featurestore'
+                and  TABLE_NAME = 'FeatureDatasets'))
 begin
     create table dbo.FeatureDatasets(  --aka TimeTravelTable etc
         FeatureId BIGINT not null,
@@ -109,6 +109,6 @@ begin
     )
 end
 
--- INSERT INTO FeatureDatasets
--- (FeatureId, FeatureVersion, FeatureInputStart, FeatureInputEnd)
--- VALUES (1,1,'2021-08-06','2021-08-11')
+--INSERT INTO FeatureDatasets
+--(FeatureId, FeatureVersion, FeatureInputStart, FeatureInputEnd)
+--VALUES (1,1,'2021-08-06','2021-08-11')
