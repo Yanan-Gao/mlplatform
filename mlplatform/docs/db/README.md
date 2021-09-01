@@ -7,11 +7,19 @@ Feature Store (FS) uses a dockerized Microsoft SQL Server as its Database (DB) [
 
 # Testing DB vs Prod DB
 
-We support 2 instances of the dockerized MSSQL setup,
+We support 3 instances of the dockerized MSSQL setup,
 
-1. one for the `test` environment
-    * TBD (https://atlassian.thetradedesk.com/jira/browse/DATAOPS-4810) 
-1. one for the `prod` environment
+1. one for the `local` environment
+    * Spin up test database with test data
+      * in repo root, run `ttd runr deploydatabases` or `ttd runr dev`
+      * repo will be accessible via the following:
+        * hostname = 127.0.0.1,1436
+        * username = sa
+        * password = MyC0m9l&xP@ssw0rd
+    * To tear down db, run `ttd runr down`
+2. one for the `test` environment
+    * server `TestMLPlatformDb.adsrvr.org`
+3. for the `prod` environment
     * server: `mlplatformdb.adsrvr.org`
 
 The `test` instance should be a *super set* of the `prod` database--it might have extra schemas and tables used for testing.
