@@ -1,64 +1,35 @@
 package com.thetradedesk.mlplatform.common.featurestore;
 
 import java.io.Serializable;
+import java.util.List;
+import java.util.ArrayList;
+import java.util.Date;
 
-// TODO: Make this match the DB
 public class Feature implements Serializable
 {
-    public Long getFeatureId() {
-        return FeatureId;
+    private Long featureId;
+    private String featureName;
+    private String featureDescription;
+
+    public Feature(){};
+
+    public Feature(long featureId,
+                   String featureName,
+                   String featureDescription) {
+        this.featureId = featureId;
+        this.featureName = featureName;
+        this.featureDescription = featureDescription;
     }
 
-    public void setFeatureId(Long featureId) {
-        FeatureId = featureId;
-    }
-
+    public long getFeatureId() { return this.featureId; }
     public String getFeatureName() {
-        return FeatureName;
+        return this.featureName;
     }
-
-    public void setFeatureName(String featureName) {
-        FeatureName = featureName;
+    public String getFeatureDescription() {
+        return this.featureDescription;
     }
-
-    public com.thetradedesk.mlplatform.common.featurestore.FeatureLocation getFeatureLocation() {
-        return FeatureLocation;
-    }
-
-    public void setFeatureLocation(com.thetradedesk.mlplatform.common.featurestore.FeatureLocation featureLocation) {
-        FeatureLocation = featureLocation;
-    }
-
-    public com.thetradedesk.mlplatform.common.featurestore.FeatureType getFeatureType() {
-        return FeatureType;
-    }
-
-    public void setFeatureType(com.thetradedesk.mlplatform.common.featurestore.FeatureType featureType) {
-        FeatureType = featureType;
-    }
-
-    public String getFeaturePath() {
-        return FeaturePath;
-    }
-
-    public void setFeaturePath(String featurePath) {
-        FeaturePath = featurePath;
-    }
-
-    public String getPartitionFormat() {
-        return PartitionFormat;
-    }
-
-    public void setPartitionFormat(String partitionFormat) {
-        PartitionFormat = partitionFormat;
-    }
-
-    public Long FeatureId;
-    public String FeatureName;
-    public FeatureLocation FeatureLocation;
-    public FeatureType FeatureType;
-    public String FeaturePath;
-    public String PartitionFormat;
-
+    public void setFeatureId(Long featureId) { this.featureId =  featureId; }
+    public void setFeatureName(String featureName) { this.featureName = featureName; }
+    public void setFeatureDescription(String featureDescription) { this.featureDescription = featureDescription; }
 
 }

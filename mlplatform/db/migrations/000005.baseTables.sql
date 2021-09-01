@@ -61,16 +61,16 @@ end
 IF (NOT EXISTS (select *
                 from INFORMATION_SCHEMA.TABLES
                 where TABLE_SCHEMA = 'featurestore'
-                and  TABLE_NAME = 'FeatureTags'))
+                and  TABLE_NAME = 'FeatureTag'))
 begin
-    create table featurestore.FeatureTags(
+    create table featurestore.FeatureTag(
         FeatureId BIGINT not null,
         TagName varchar(128) not null,
         CreatedDateUtc datetime default getutcdate() not null,
         LastModifiedDateUtc datetime,
 
         constraint pk_FeatureId_TagName primary key (FeatureId, TagName),
-        constraint fk_FeatureTags_FeatureId foreign key (FeatureId) references featurestore.Feature(FeatureId),
+        constraint fk_FeatureTag_FeatureId foreign key (FeatureId) references featurestore.Feature(FeatureId),
         constraint uq_FeatureId_TagName unique clustered(TagName,FeatureId) --caveat: sorting perf for the clustered index on the tagname may be nonideal
     )
 end
@@ -78,9 +78,9 @@ end
 IF (NOT EXISTS (select *
                 from INFORMATION_SCHEMA.TABLES
                 where TABLE_SCHEMA = 'featurestore'
-                and  TABLE_NAME = 'FeatureDatasets'))
+                and  TABLE_NAME = 'FeatureDataset'))
 begin
-    create table featurestore.FeatureDatasets(  --aka TimeTravelTable etc
+    create table featurestore.FeatureDataset(  --aka TimeTravelTable etc
         FeatureId BIGINT not null,
         FeatureVersion INT not null,
         FeatureProductionDate datetime default getutcdate() not null, --FeatureProductionDate is the date which the data is produced for. This could be different than the date the record is written on (CreatedDateUtc), in the case of a failed job from previous day
@@ -90,6 +90,6 @@ begin
         LastModifiedDateUtc datetime,
 
         constraint pk_FeatureId_FeatureVersion_FeatureProductionDate_FeatureInputStart_FeatureInputEnd primary key (FeatureId, FeatureVersion, FeatureProductionDate, FeatureInputStart, FeatureInputEnd),
-        constraint fk_FeatureDatasets_FeatureId foreign key (FeatureId) references featurestore.Feature(FeatureId)
+        constraint fk_FeatureDataset_FeatureId foreign key (FeatureId) references featurestore.Feature(FeatureId)
     )
 end
