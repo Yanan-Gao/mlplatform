@@ -4,17 +4,7 @@
 ----
 
 ----
--- Create Database `mlplatform`
-----
-IF NOT EXISTS ( SELECT * FROM sys.databases WHERE name='mlplatform')
-BEGIN
- CREATE DATABASE mlplatform
-END
-GO
-
-
-----
--- Verify 
+-- Verify
 ----
 -- SELECT name, database_id, create_date
 -- FROM sys.databases ;
@@ -31,7 +21,7 @@ IF NOT EXISTS(
 BEGIN
 
     CREATE LOGIN feature_store_ro
-    WITH PASSWORD = --- FILL ME IN FROM 1PASSWORD prod.mlplatform.featurestore.rouser
+    WITH PASSWORD = 'pass!word1'--- FILL ME IN FROM 1PASSWORD prod.mlplatform.featurestore.rouser
          ,DEFAULT_DATABASE = mlplatform
 
 END
@@ -48,14 +38,14 @@ IF NOT EXISTS(
 BEGIN
 
     CREATE LOGIN feature_store_service
-    WITH PASSWORD = --- FILL ME IN FROM 1PASSWORD prod.mlplatform.featurestore.featurestoreserviceuser
+    WITH PASSWORD = 'pass!word1'--- FILL ME IN FROM 1PASSWORD prod.mlplatform.featurestore.featurestoreserviceuser
          , DEFAULT_DATABASE = mlplatform
 
 END
 GO
 
 ----
--- Verify 
+-- Verify
 ----
 -- SELECT sp.name AS login,
 --        sp.type_desc AS login_type,

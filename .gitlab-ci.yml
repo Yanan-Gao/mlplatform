@@ -31,7 +31,7 @@ default:
     # creating a branch is needed for sbtrelease.Vcs. This is needed because gitlab
     # operates in "detached head" mode
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
-  
+
 # include all job ci files here:
 include:
   - local: 'mlplatform/.gitlab-ci.yml'

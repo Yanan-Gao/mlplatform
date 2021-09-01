@@ -1,0 +1,12 @@
+{
+  "runr": {
+    "Name": "Runr",
+    "Description": "Local runr build and deploy tasks, try runr build",
+    "Command": "dotnet",
+    "Args": [
+      "run",
+      "--project .infra/Build/Build.csproj",
+      "--"
+    ]
+  }
+}

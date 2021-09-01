@@ -14,6 +14,8 @@ variables:
 
   MLPLATFORM_MAVEN_BUILD_IMAGE: "maven:3.8.1-jdk-8"
 
+  MLPLATFORM_API_IMAGE_NAME: "mlplatform-api"
+
   #This workflow rule will prevent duplicate pipelines for merge request AND branch commits
   #BUT we should avoid defining workflow rules on the top level (repo) .gitlab-ci/yml because it seems to
   # have weird interactions with inherited job rules from each project
@@ -93,9 +95,6 @@ mlplatform:deploy_api_dev_docker_image_merge_request:
   stage: deploy
   dependencies:
     - mlplatform:push_bits_merge_request
-  artifacts:
-    paths:
-      - mlplatform/api/target/mlplatform-api-deployment.yaml
   services:
     - docker:dind
   after_script:
@@ -104,47 +103,64 @@ mlplatform:deploy_api_dev_docker_image_merge_request:
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "mlplatform/**/Dockerfile"
+        - "mlplatform/**/*"
+      when: manual
+      allow_failure: true # ugly but known issue - https://gitlab.com/gitlab-org/gitlab/-/issues/34077
   before_script:
     # override the default before script
     # we don't need to set up the machine for S3 in order to build and push the docker image
-    - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
+    - echo MLPLATFORM_API_IMAGE_NAME {MLPLATFORM_API_IMAGE_NAME}
+    - echo DOCKER_DEV_REGISTRY ${DOCKER_DEV_REGISTRY}
+    - DEV_IMAGE_PATH=${DOCKER_DEV_REGISTRY}/${MLPLATFORM_API_IMAGE_NAME}
+    - echo DEV_IMAGE_PATH ${DEV_IMAGE_PATH}
+    - DEV_IMAGE_PATH_SHA=${DEV_IMAGE_PATH}:${CI_COMMIT_SHORT_SHA}
+    - echo DEV_IMAGE_PATH_SHA ${DEV_IMAGE_PATH_SHA}
+    - DEV_IMAGE_PATH_LATEST=${DEV_IMAGE_PATH}:latest
+    - echo DEV_IMAGE_PATH_LATEST ${DEV_IMAGE_PATH_LATEST}
   script:
     - cd ./mlplatform/api
     - echo "logging in to ${DOCKER_DEV_REGISTRY}"
     - docker login ${DOCKER_DEV_REGISTRY} -u ${DOCKER_DEV_USER} -p ${DOCKER_DEV_PASS}
-    - docker build -t ${DOCKER_DEV_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA} -t ${DOCKER_DEV_REGISTRY}/mlplatform-api:latest .
-    - docker push ${DOCKER_DEV_REGISTRY}/mlplatform-api:${CI_COMMIT_SHORT_SHA}
-    - cp ./k8s/mlplatform-api-deployment.yaml ./target/mlplatform-api-deployment.yaml
-    - sed -i "s/_DOCKER_REGISTRY_/$DOCKER_DEV_REGISTRY/g" ./target/mlplatform-api-deployment.yaml
-    - sed -i "s/_DOCKER_IMAGE_/$CI_COMMIT_SHORT_SHA/g" ./target/mlplatform-api-deployment.yaml
+    - docker build -t ${DEV_IMAGE_PATH_SHA} .
+    - docker push ${DEV_IMAGE_PATH_SHA}
     - echo "ran deploy_api_dev_docker_image_merge_request"
 
 mplatform:deploy_api_dev_k8s_merge_request:
-  image: lwolf/helm-kubectl-docker:latest
+  image: ${DOCKER_PRODUCTION_REGISTRY}/ttd-pipeline/kubectl-kustomize:1.0.2
   stage: k8s_deploy
   dependencies:
     - mlplatform:deploy_api_dev_docker_image_merge_request
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
-        - "mlplatform/**/Dockerfile"
+        - "mlplatform/**/*"
       when: manual
+      allow_failure: true # ugly but known issue - https://gitlab.com/gitlab-org/gitlab/-/issues/34077
   before_script:
     - mkdir -p /root/.kube
-    - apk add --no-cache curl openssl
     - kubectl config set clusters.general-use-non-production.certificate-authority-data $EKS_NON_PROD_CRT
     - kubectl config set-credentials $EKS_NON_PROD_USER
-    - kubectl config set-context general-use-non-production --cluster=general-use-non-production --user=$EKS_NON_PROD_USER
+    - kubectl config set-context general-use-non-production --cluster=general-use-non-production --user=$EKS_NON_PROD_USER --namespace mlplatform
     - kubectl config use-context general-use-non-production
     - kubectl config set-credentials $EKS_NON_PROD_USER --token=$EKS_NON_PROD_TOKEN
     - kubectl config set-cluster general-use-non-production --server $EKS_NON_PROD_URL
+    - DEV_IMAGE_PATH=${DOCKER_DEV_REGISTRY}/${MLPLATFORM_API_IMAGE_NAME}
+    - echo DEV_IMAGE_PATH ${DEV_IMAGE_PATH}
+    - DEV_IMAGE_PATH_SHA=${DEV_IMAGE_PATH}:${CI_COMMIT_SHORT_SHA}
+    - echo DEV_IMAGE_PATH_SHA ${DEV_IMAGE_PATH_SHA}
   script:
-    # set kubectl config
-    - cd ./mlplatform/api
-    - kubectl create secret -n mlplatform generic test-db-user-credentials --from-literal password=${MLPLATFORM_TEST_DB_PASSWORD} -o yaml --dry-run | kubectl apply -n mlplatform -f -
-    - kubectl create secret -n mlplatform generic test-db-user-credentials --from-literal username=${MLPLATFORM_TEST_DB_USERNAME} -o yaml --dry-run | kubectl apply -n mlplatform -f -
-    - kubectl apply -n mlplatform -f ./target/mlplatform-api-deployment.yaml
+    # set kubectl ./mlplatform/k8s/feature-store/api/overlays/sandbox
+    - cd ./mlplatform/k8s/feature-store/api/overlays/sandbox
+    - echo setting image to ${DEV_IMAGE_PATH_SHA}
+    - kustomize edit add secret test-db-user-credentials --from-literal=password=${MLPLATFORM_TEST_DB_PASSWORD} && kustomize edit add secret test-db-user-credentials --from-literal=username=${MLPLATFORM_TEST_DB_USERNAME}
+    - kustomize edit set image mlplatform-api=${DEV_IMAGE_PATH_SHA} && kustomize edit add annotation gitLabJobId:${CI_JOB_ID}
+    - kustomize build . | kubectl apply -f -
+    # wait for deployment to succeed before calling this a success
+    - >
+      if ! kubectl rollout status deployment mlplatform-api; then
+        kubectl rollout undo deployment mlplatform-api
+        exit 1
+      fi
     - echo "ran deploy_api_dev_k8s_merge_request"
 
 mlplatform:deploy_jar_release:
