@@ -17,6 +17,7 @@
 .idea/codeStyles/codeStyleConfig.xml
 .idea/aws.xml
 *.iml
+.idea
 
 .bsp/
 
