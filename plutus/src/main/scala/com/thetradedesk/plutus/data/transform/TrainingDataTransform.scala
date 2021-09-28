@@ -2,13 +2,14 @@ package com.thetradedesk.plutus.data.transform
 
 
 import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions.{col, lit, when, xxhash64}
 import java.time.LocalDate
 
-import com.thetradedesk.plutus.data.schema.{CleanInputData, ModelFeature, ModelTarget}
+import com.thetradedesk.plutus.data.schema.{CleanInputData, MetaData, ModelFeature, ModelTarget}
 import com.thetradedesk.plutus.data.{plutusDataPath, plutusDataPaths, shiftModUdf}
 
 object TrainingDataTransform {
@@ -107,9 +108,20 @@ object TrainingDataTransform {
     val validationCount = prometheus.createGauge("validation_row_count", "rows of validation data")
     val testCount = prometheus.createGauge("test_row_count", "ros of test data")
 
-    trainCount.set(trainInputData.cache.count())
-    validationCount.set(valInputData.cache.count())
-    testCount.set(testInputData.cache.count())
+    val trainRows = trainInputData.cache.count()
+    val testRows = testInputData.cache.count()
+    val valRows = valInputData.cache.count()
+
+    val metaData: Dataset[MetaData] = Seq(MetaData(endDate, trainRows, testRows, valRows)).toDS()
+    val metaDataS3 = plutusDataPath(s3Path, ttdEnv, prefix = "metadata", svName, endDate)
+
+    metaData.write.option("header", "true")
+      .option("delimiter","\t")
+      .csv(metaDataS3)
+
+    trainCount.set(trainRows)
+    validationCount.set(testRows)
+    testCount.set(valRows)
 
     // convert to int (hash)
     val selectionTabular = intModelFeaturesCols(modelFeatures) ++ modelTargetCols(modelTargets)

@@ -4,7 +4,13 @@ variables:
   PLUTUS_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/jars/snapshots"
   PLUTUS_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/jars/prod"
   PLUTUS_ASSEMBLY_OUT: "/builds/thetradedesk/mlplatform/plutus/target/scala-2.12/plutus.jar"
+  SCRIPTS_SOURCE: "src/main/python"
+  MODEL_RUN_SCRIPT: "modelrun.sh"
+  SETUP_SCRIPT: "clustersetup.sh"
+  SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/scripts/"
   SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+  PYTHON_BUILD_IMAGE: "python:3.8"
+  PLUTUS_TRAINING_IMAGE: "plutus-training"
 
 
   #This workflow rule will prevent duplicate pipelines for merge request AND branch commits
@@ -73,20 +79,44 @@ plutus:push_bits_master_snapshot:
     - popd
     - echo "ran plutus_push_bits_master_snapshot"
 
-plutus:push_set_scripts:
-  image: "$SCALA_BUILD_IMAGE"
+plutus:push_scripts:
+  image: "$PYTHON_BUILD_IMAGE"
   stage: assembly_upload
-  when: manual
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      changes:
+        - "plutus/src/**/*"
+      when: manual
   script:
     - pushd ./plutus/
-    - aws s3 cp ${SCRIPTS_SOURCE} ${SCRIPTS_DEST}
+    - aws s3 cp ${SCRIPTS_SOURCE}/${SETUP_SCRIPT} ${SCRIPTS_DEST}
+    - aws s3 cp ${SCRIPTS_SOURCE}/${MODEL_RUN_SCRIPT} ${SCRIPTS_DEST}
     - popd
     - echo "ran push_set_scripts"
-  only:
-    refs:
-      - master
-    changes:
-      - "plutus/**/*"
+
+
+plutus:build_push_training_container:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: assembly_upload
+  services:
+    - docker:dind
+  before_script:
+    - apt update
+    - apt-get install docker.io -y
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      changes:
+        - "plutus/src/**/*"
+      when: manual
+  script:
+    - export DOCKER_HOST=$DOCKER_PORT
+    - pushd ./plutus/
+    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
+    - docker build -t ${PLUTUS_TRAINING_IMAGE}:latest .
+    - docker tag ${PLUTUS_TRAINING_IMAGE}:latest ${DOCKER_INTERNAL_REGISTRY}/${PLUTUS_TRAINING_IMAGE}:latest
+    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PLUTUS_TRAINING_IMAGE}:latest
+    - popd
+    - echo "latest training container pushed"
 
 
 plutus:deploy_release:
