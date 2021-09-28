@@ -33,7 +33,10 @@ object CleanInputDataTransform {
     mbwDataCount.set(cleanData.filter(col("mb2w").isNotNull).count)
     mbwBidsCount.set(cleanData.filter(col("mb2w").isNotNull && col("RealMediaCost").isNull).count)
     mbwImpsCount.set(cleanData.filter(col("mb2w").isNotNull && col("RealMediaCost").isNotNull).count)
+
+    // clean bids t
     mbwValidBidsCount.set(cleanData.filter(col("mb2w").isNotNull && col("RealMediaCost").isNull).filter(col("mb2w") >= col("b_RealBidPrice")).count)
+
     mbwValidImpsCount.set(cleanData.filter(col("mb2w").isNotNull && col("RealMediaCost").isNotNull).filter(col("mb2w") <= col("RealMediaCost")).count)
 
     val outputPath = plutusDataPath(cleanOutputS3Path, ttdEnv, cleanOutputPrefix, svName, date)
