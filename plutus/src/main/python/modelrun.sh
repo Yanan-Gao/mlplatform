@@ -27,4 +27,6 @@ sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v /mnt/tfrecords:$
       "--input_path=/var/tmp/input/tfrecords/" \
       "--meta_data_path=/var/tmp/input/metadata" \
       "--exclude_features=ImpressionPlacementId,AdFormat,DealId" \
-      "--training_verbosity=2"
+      "--training_verbosity=2" \
+      "--model_arch=dlrm" \
+      "--early_stopping_patience=5"
