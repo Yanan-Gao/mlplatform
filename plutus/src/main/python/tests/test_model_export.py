@@ -41,13 +41,21 @@ class ModelExportTestCase(unittest.TestCase):
         model.compile(tf.keras.optimizers.Adam(), loss=google_fpa_nll)
         model.fit(self.ds, epochs=self.num_epochs, verbose=1)
 
-        params_model = tf.keras.Model(model.input, model.get_layer("params").output)
-
         models_dir = Path(f'/tmp/{datetime.now().strftime("%Y%m%d/%H%M")}')
         models_dir.mkdir(parents=True, exist_ok=True)
 
         model.save(f"{models_dir.resolve().__str__()}/aaa/1")
+
+        model2 = tf.keras.models.load_model(f"{models_dir.resolve().__str__()}/aaa/1")
+        for x, y in self.ds.unbatch().batch(1).take(10):
+            print(model2(x))
+
+        params_model = tf.keras.Model(model2.input, model2.get_layer("params").output)
         params_model.save(f"{models_dir.resolve().__str__()}/aaa/2")
+
+        for x, y in self.ds.unbatch().batch(1).take(10):
+            print(params_model.predict(x))
+
 
     @unittest.skip("more of an integration test")
     def test_grpc_response(self):

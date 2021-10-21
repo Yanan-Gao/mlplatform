@@ -4,7 +4,7 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow.keras import activations
 
-from . import CpdType, ModelHeads
+from . import CpdType
 from .dist import lognorm_distr, mixture_logistic_dist
 from .embeddings import qr_embedding, int_embedding
 
@@ -35,10 +35,9 @@ class DotInteraction(tf.keras.layers.Layer):
 
     def __init__(self,
                  self_interaction: bool = False,
-                 name: Optional[str] = None,
                  **kwargs) -> None:
         self._self_interaction = self_interaction
-        super().__init__(name=name, **kwargs)
+        super().__init__(**kwargs)
 
     @tf.function(experimental_relax_shapes=True)
     def call(self, inputs: List[tf.Tensor]) -> tf.Tensor:
@@ -74,6 +73,103 @@ class DotInteraction(tf.keras.layers.Layer):
         activations = tf.boolean_mask(xactions, lower_tri_mask)
         activations = tf.reshape(activations, (batch_size, out_dim))
         return activations
+
+    def get_config(self):
+        return {"self_interaction": self._self_interaction }
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
+
+
+class LogNormLayer(tf.keras.layers.Layer):
+    """
+    LogNorm Layer
+
+    Expects Params as input.
+
+    Need to create a layer:
+    https://github.com/tensorflow/probability/issues/1350
+
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def call(self, inputs, training=False):
+        output = tfp.layers.DistributionLambda(lognorm_distr, name='lognorm')(inputs)
+        return output
+
+    def get_config(self):
+        config = dict()
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
+
+class MixtureLayer(tf.keras.layers.Layer):
+    """
+    Mixture Layer
+
+    Expects params as input
+
+    Need to create a layer:
+    https://github.com/tensorflow/probability/issues/1350
+
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def call(self, inputs, training=False):
+        output = tfp.layers.DistributionLambda(mixture_logistic_dist, name='lognorm')(inputs)
+        return output
+
+    def get_config(self):
+        config = dict()
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
+
+
+class ParamsLayer(tf.keras.layers.Layer):
+    """
+    Params layer needed as we chop off the Distribution Layer for production
+
+    Need to create a layer:
+    https://github.com/tensorflow/probability/issues/1350
+
+    """
+    def __init__(self, num_components=1, **kwargs):
+        super().__init__(**kwargs)
+        self.num_components = num_components
+        self.mu = tf.keras.layers.Dense(self.num_components, activation=tf.keras.activations.linear, name="params_mu")
+        self.sigma = tf.keras.layers.Dense(self.num_components, activation=tf.keras.activations.softplus, name="params_sigma")
+
+        if self.num_components > 1:
+            self.mixture = tf.keras.layers.Dense(self.num_components, activation=tf.keras.activations.softmax, name="params_mixture")
+
+    def call(self, inputs):
+        mu = self.mu(inputs)
+        sigma = self.sigma(inputs)
+        if self.num_components > 1:
+            mixture = self.mixture(inputs)
+            params = tf.keras.layers.concatenate([mu, sigma, mixture], name="params")
+        else:
+            params = tf.keras.layers.concatenate([mu, sigma], name="params")
+
+        return params
+
+    def get_config(self):
+        config = {"num_components": self.num_components}
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)
 
 
 def model_input_layer(model_features, emb_combiner, dense_bn=True, dropout_p=None):
@@ -150,26 +246,14 @@ def lin_bn_drop(input_layer, layer, units, bn=True, p=0.0):
 
 def output_layer(last_layer, cpd_type, mixture_components=1):
     if cpd_type == CpdType.LOGNORM:
-        # linear activations as the distribution will softplus the scale parameter
-        params_mu = tf.keras.layers.Dense(1, activation=tf.keras.activations.linear, name="params_mu")(last_layer)
-        params_sigma = tf.keras.layers.Dense(1, activation=tf.keras.activations.softplus, name="params_sigma")(last_layer)
-        params = tf.keras.layers.concatenate([params_mu, params_sigma], name="params")
-
-        # CPD
-        output = tfp.layers.DistributionLambda(lognorm_distr, name='lognorm')(params)
+        params = ParamsLayer(name="params")(last_layer)
+        return LogNormLayer()(params)
     elif cpd_type == CpdType.MIXTURE:
-        params_mu = tf.keras.layers.Dense(mixture_components, activation=tf.keras.activations.linear, name="params_mu")(last_layer)
-        params_sigma = tf.keras.layers.Dense(mixture_components, activation=tf.keras.activations.softplus, name="params_sigma")(last_layer)
-        params_mixture = tf.keras.layers.Dense(mixture_components, activation=tf.keras.activations.softmax, name="params_mixture")(last_layer)
-
-        params = tf.keras.layers.concatenate([params_mu, params_sigma, params_mixture], name="params")
-
-        output = tfp.layers.DistributionLambda(mixture_logistic_dist, name='mixture')(params)
+        params = ParamsLayer(mixture_components, name="params")(last_layer)
+        return MixtureLayer()(params)
     else:
         # Regression output
-        output = tf.keras.layers.Dense(1, activation=tf.keras.activations.linear, name="output")(last_layer)
-
-    return output
+        return tf.keras.layers.Dense(1, activation=tf.keras.activations.linear, name="output")(last_layer)
 
 
 

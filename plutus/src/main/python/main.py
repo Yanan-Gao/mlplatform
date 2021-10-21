@@ -95,6 +95,12 @@ flags.DEFINE_list("exclude_targets", default=[], help="Targets to exclude from t
 
 flags.DEFINE_enum('job', 'running', ['running', 'stopped'], 'Job status.')
 
+flags.DEFINE_string('model_creation_date',
+                    default=datetime.now().strftime("%Y%m%d%H"),
+                    help='Time the model was created. Its ISO date format YYYYMMDDHH (e.g. 2021123114) defaults now'
+                         'Not related to the date on the training data, rather is used to identify when the model was '
+                         'trained. Primary use is for model loader to load latest model to prod.')
+
 app.define_help_flags()
 app.parse_flags_with_usage(sys.argv)
 
@@ -259,8 +265,10 @@ def main(argv):
     model_tag = f"{FLAGS.output_path}model/{FLAGS.model_arch}_{FLAGS.heads}_{FLAGS.cpd_type}_{FLAGS.dropout_rate}_{FLAGS.batchnorm}/"
     model.save(model_tag)
 
-    s3_sync(model_tag, S3_MODEL_OUTPUT + str(int(time.time())))
+    params_model_tag = save_params_model(model)
 
+    s3_sync(model_tag, f"{S3_MODEL_OUTPUT}{FLAGS.model_creation_date}")
+    s3_sync(params_model_tag, f"{S3_MODEL_OUTPUT}{FLAGS.model_creation_date}")
 
     epoch_gauge = Prometheus.define_gauge('epochs', 'number of epochs')
     steps_gauge = Prometheus.define_gauge('num_steps', 'number of steps per epoch')
@@ -281,6 +289,17 @@ def main(argv):
     df_pd.to_csv(f"{FLAGS.output_path}eval/savings.csv")
 
 
+def save_params_model(model):
+    """
+    This will remove the Distribtuion from the model and output the parameters.
+    Users of this model will need to input the parameters into a library / distribution
+    """
+    model_headless = tf.keras.Model(model.inputs, model.get_layer("params").output)
+    headless_model_tag = f"{FLAGS.output_path}model/{FLAGS.model_arch}_{FLAGS.heads}_{FLAGS.cpd_type}_{FLAGS.dropout_rate}_{FLAGS.batchnorm}_params"
+    model_headless.save(headless_model_tag)
+    return headless_model_tag
+
+
 def eval():
     model_features, model_targets = get_features_targets()
 
@@ -295,6 +314,7 @@ def eval():
                                   batch_per_epoch=None)
 
     df_pd.to_csv(f"{FLAGS.output_path}eval/savings.csv")
+
 
 if __name__ == '__main__':
     app.run(main)
