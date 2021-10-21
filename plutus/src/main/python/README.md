@@ -18,6 +18,12 @@ docker run -it --rm --entrypoint=/bin/bash -t plutus/training-cpu:latest
 
 ## Build Package (?)
 
+install `build`
+
+```shell
+pip install -U build
+```
+
 ```shell
 python -m build .
 ```

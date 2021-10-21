@@ -29,17 +29,15 @@ def model_heads(all_inputs, last_layer, cpd_out, multi_output_enum):
 
 
 def super_basic_model(features,
-                activation="relu",
-                combiner=tf.keras.layers.Flatten(),
-                top_mlp_layers=[512, 256, 64],
-                cpd_type=None,
-                heads=None,
-                mixture_components=2,
-                dropout_rate=None,
-                batchnorm=False
-                ):
-
-
+                      activation="relu",
+                      combiner=tf.keras.layers.Flatten(),
+                      top_mlp_layers=[512, 256, 64],
+                      cpd_type=None,
+                      heads=None,
+                      mixture_components=2,
+                      dropout_rate=None,
+                      batchnorm=False
+                      ):
     model_inputs, input_layer = model_input_layer(features,
                                                   emb_combiner=combiner,
                                                   dense_bn=batchnorm,
@@ -61,18 +59,17 @@ def basic_model(features,
                 dropout_rate=None,
                 batchnorm=False
                 ):
-
     model_inputs, input_layer = model_input_layer(features,
                                                   emb_combiner=combiner,
                                                   dense_bn=batchnorm,
                                                   dropout_p=dropout_rate)
 
     last_layer = get_mlp(input_layer,
-                top_mlp_layers,
-                activation=activation,
-                batchnorm=batchnorm,
-                dropout_rate=dropout_rate,
-                position="top")
+                         top_mlp_layers,
+                         activation=activation,
+                         batchnorm=batchnorm,
+                         dropout_rate=dropout_rate,
+                         position="top")
 
     output = output_layer(last_layer, cpd_type, mixture_components)
     model = model_heads(model_inputs, last_layer, output, heads)
@@ -141,7 +138,8 @@ def dlrm_model(features,
     interactions = fm_layer(emb_in_list)
 
     top_input = tf.keras.layers.concatenate(emb_in_list + [interactions], name='top_input')
-    top_input = tf.keras.layers.Dropout(dropout_rate, name=f"d_top_input{dropout_rate}")(top_input) if dropout_rate is not None else top_input
+    top_input = tf.keras.layers.Dropout(dropout_rate, name=f"d_top_input{dropout_rate}")(
+        top_input) if dropout_rate is not None else top_input
 
     last_layer = get_mlp(top_input,
                          top_mlp_layers,
@@ -159,7 +157,3 @@ def dlrm_model(features,
 def replace_last_layer(model):
     params_layer = model.get_layer("params").output
     return tf.keras.Model(model.inputs, params_layer)
-
-
-
-

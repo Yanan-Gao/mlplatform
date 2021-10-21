@@ -1,8 +1,5 @@
-import math
 from unittest import TestCase
-import tensorflow as tf
-import numpy as np
-
+from datetime import datetime
 from plutus.data import *
 
 
@@ -37,3 +34,8 @@ class TestData(TestCase):
 
     def test_metadata(self):
         self.skipTest("not implemented yet")
+
+    def test_model_creation_date(self):
+        val = datetime.now().strftime("%Y%m%d%H")
+        print(val)
+        self.skipTest("nothing to test really")

@@ -18,6 +18,7 @@ TRAIN = "train"
 VAL = "validation"
 TEST = "test"
 
+
 def s3_sync(src_path, dst_path):
     sync_command = f"aws s3 sync {src_path} {dst_path}"
     os.system(sync_command)
@@ -29,14 +30,12 @@ def read_metadata(path):
     files = [str(f.resolve()) for f in list(p.glob("*.csv"))]
     return pd.read_csv(files[0], delimiter="\t")
 
+
 def get_epochs(path, batch_size, steps_per_epoch):
     df = read_metadata(path)
     batch_per_dataset = df['train'].iloc[0] // batch_size
     epochs = batch_per_dataset // steps_per_epoch
     return epochs
-
-
-
 
 
 def list_tfrecord_files(path):
@@ -91,18 +90,6 @@ def datasets(files_dict, batch_size, model_features, model_targets, eval_batch_s
                                          get_int_parser(model_features, model_targets)
                                          )
     return ds
-
-
-# def calc_epocs_per_data():
-#     batch_per_epoch = (num_train_examples // batch_size) // epoch_per_dataset
-#
-#     print(f"{num_train_examples=:>20,}")
-#     print(f"{num_val_examples=:>20,}")
-#     print(f"{num_test_examples=:>20,}")
-#
-#     print(f"{batch_size=:>20,}")
-#     print(f"{epoch_per_dataset=:>20,}")
-#     print(f"{batch_per_epoch=:>20,}")
 
 
 def _float_feature(value):
