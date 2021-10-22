@@ -1,6 +1,6 @@
 #ARG FROM_IMAGE_NAME=nvcr.io/nvidia/tensorflow:21.02-tf2-py3
 #FROM ${FROM_IMAGE_NAME}
-FROM nvidia/cuda:11.0-cudnn8-devel-ubuntu18.04
+FROM nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04
 CMD nvidia-smi
 
 RUN apt-get update && apt-get install --no-install-recommends --no-install-suggests -y curl
@@ -12,8 +12,8 @@ WORKDIR /opt/application/
 
 RUN pip3 install --upgrade pip
 RUN pip3 install --quiet --no-cache-dir \
-    'tensorflow===2.4.0' \
-    'tensorflow-probability===0.12.2' \
+    'tensorflow==2.6.0' \
+    'tensorflow_probability==0.14.1' \
     'boto3' \
     'prometheus_client' \
     'awscli' \

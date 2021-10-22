@@ -97,16 +97,16 @@ plutus:push_scripts:
 
 plutus:build_push_training_container:
   image: "$PYTHON_BUILD_IMAGE"
-  stage: assembly_upload
+  stage: test
   services:
     - docker:dind
   before_script:
     - apt update
     - apt-get install docker.io -y
   rules:
-    - if: $CI_COMMIT_BRANCH == "master"
-      changes:
-        - "plutus/src/**/*"
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+ #     changes:
+ #       - "plutus/src/**/*"
       when: manual
   script:
     - export DOCKER_HOST=$DOCKER_PORT
