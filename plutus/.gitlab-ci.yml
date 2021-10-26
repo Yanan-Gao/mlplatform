@@ -105,8 +105,8 @@ plutus:build_push_training_container:
     - apt-get install docker.io -y
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
- #     changes:
- #       - "plutus/src/**/*"
+      changes:
+        - "plutus/src/main/python/**"
       when: manual
   script:
     - export DOCKER_HOST=$DOCKER_PORT
