@@ -19,7 +19,10 @@ MODEL_INPUT = "/var/tmp/input/"
 MODEL_OUTPUT = "/var/tmp/output/"
 MODEL_LOGS = "/var/tmp/logs/"
 META_DATA_INPUT="var/tmp/input"
-S3_MODEL_OUTPUT = "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/prod/models/"
+S3_PROD = "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/prod/"
+PARAM_MODEL_OUTPUT = "models_params/"
+MODEL_OUTPUT = "models/"
+EVAL_OUTPUT = "eval_metrics/"
 
 TRAIN = "train"
 VAL = "validation"
@@ -267,8 +270,8 @@ def main(argv):
 
     params_model_tag = save_params_model(model)
 
-    s3_sync(model_tag, f"{S3_MODEL_OUTPUT}{FLAGS.model_creation_date}")
-    s3_sync(params_model_tag, f"{S3_MODEL_OUTPUT}{FLAGS.model_creation_date}")
+    s3_sync(model_tag, f"{S3_PROD}{MODEL_OUTPUT}{FLAGS.model_creation_date}")
+    s3_sync(params_model_tag, f"{S3_PROD}{PARAM_MODEL_OUTPUT}{FLAGS.model_creation_date}")
 
     epoch_gauge = Prometheus.define_gauge('epochs', 'number of epochs')
     steps_gauge = Prometheus.define_gauge('num_steps', 'number of steps per epoch')
@@ -286,7 +289,9 @@ def main(argv):
                                   batch_size=FLAGS.eval_batch_size if FLAGS.eval_batch_size is not None else FLAGS.batch_size,
                                   batch_per_epoch=None)
 
-    df_pd.to_csv(f"{FLAGS.output_path}eval/savings.csv")
+    local_eval_metrics_path = f"{FLAGS.output_path}eval/savings.csv"
+    df_pd.to_csv(local_eval_metrics_path)
+    s3_sync(local_eval_metrics_path, f"{S3_PROD}{EVAL_OUTPUT}{FLAGS.model_creation_date}" )
 
 
 def save_params_model(model):
