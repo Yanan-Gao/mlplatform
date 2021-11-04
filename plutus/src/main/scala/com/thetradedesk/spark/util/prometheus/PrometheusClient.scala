@@ -41,9 +41,10 @@ class PrometheusClient(application: String, jobName: String) {
     counter.register(registry)
   }
 
-  def createHistogram(name: String, help: String, labelNames: String*): Histogram = {
+  def createHistogram(name: String, help: String, buckStart: Double, buckWidth: Double, buckCount: Int, labelNames: String*): Histogram = {
     Histogram.build
       .name(name)
+      .linearBuckets(buckStart, buckWidth, buckCount)
       .help(help)
       .labelNames(labelNames: _*)
       .register(registry)
