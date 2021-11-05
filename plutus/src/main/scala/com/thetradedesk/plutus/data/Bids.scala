@@ -2,7 +2,7 @@ package com.thetradedesk.plutus.data
 
 import java.time.LocalDate
 
-import com.thetradedesk.plutus.data.schema.{BidRequestDataset, BidRequestRecordV4, EmpiricalDiscrepancy}
+import com.thetradedesk.plutus.data.schema.{BidRequestDataset, BidRequestRecord, EmpiricalDiscrepancy}
 import com.thetradedesk.spark.sql.SQLFunctions.ColumnExtensions
 import io.prometheus.client.Gauge
 import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
@@ -27,7 +27,7 @@ object Bids {
 
     import spark.implicits._
 
-    val bidsDf = loadParquetData[BidRequestRecordV4](BidRequestDataset.BIDSS3, date).alias("bids")
+    val bidsDf = loadParquetData[BidRequestRecord](BidRequestDataset.BIDSS3, date).alias("bids")
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
       .filter(col("SupplyVendor") === svName)
       .filter(col("AuctionType") === 1)
