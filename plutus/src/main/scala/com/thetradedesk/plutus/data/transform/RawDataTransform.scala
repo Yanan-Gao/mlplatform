@@ -160,7 +160,7 @@ object RawDataTransform {
 
 
   def bidsData(date: LocalDate, svName: String, svbDf: DataFrame, pdaDf: DataFrame, dealDf: DataFrame, empDisDf: Dataset[EmpiricalDiscrepancy]): DataFrame = {
-    val bidsDf = loadParquetData[BidRequestRecordV4](BidRequestDataset.BIDSS3, date).alias("bids")
+    val bidsDf = loadParquetData[BidRequestRecord](BidRequestDataset.BIDSS3, date).alias("bids")
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
       .filter(col("SupplyVendor") === svName)
       .filter(col("AuctionType") === 1) // Note the difference with Impression Data

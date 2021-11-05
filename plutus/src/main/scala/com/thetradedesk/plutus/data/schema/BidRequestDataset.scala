@@ -1,6 +1,6 @@
 package com.thetradedesk.plutus.data.schema
 
-final case class BidRequestRecordV4(GroupId: String,
+final case class BidRequestRecord(GroupId: String,
                                     LogEntryTime: java.sql.Timestamp,
                                     BidRequestId: String,
                                     HandlingDurationInTicks: Long,
@@ -141,6 +141,6 @@ object PredictiveClearingModeLookupRecord {
 
 object BidRequestDataset {
 
-  val BIDSS3 = f"s3://ttd-datapipe-data/parquet/rtb_bidrequest_cleanfile/v=4/"
+  val BIDSS3 = f"s3://ttd-datapipe-data/parquet/rtb_bidrequest_cleanfile/v=5/"
 
 }

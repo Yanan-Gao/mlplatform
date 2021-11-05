@@ -2,7 +2,7 @@ package com.thetradedesk.plutus.data.transform
 
 import com.thetradedesk.plutus.data.{explicitDatePart, loadParquetData}
 import com.thetradedesk.plutus.data.schema.AdGroupDataset.ADGROUPS3
-import com.thetradedesk.plutus.data.schema.{AdGroupDataset, AdGroupRecord, BidFeedbackDataset, BidRequestDataset, BidRequestRecordV4, Impressions, ReportingData, VerticaKoaVolumeControlBudgetRecord}
+import com.thetradedesk.plutus.data.schema.{AdGroupDataset, AdGroupRecord, BidFeedbackDataset, BidRequestDataset, BidRequestRecord, Impressions, ReportingData, VerticaKoaVolumeControlBudgetRecord}
 import com.thetradedesk.plutus.data.transform.RawDataTransform.googleMinimumBidToWinData
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -32,6 +32,7 @@ object ReportingDataTransform {
 
     // cache to mem/write to s3
     totalRows.set(dfFull.cache().count())
+    dfFull.write.mode(SaveMode.Overwrite).parquet(S3BASEOUT + "performancedata/fulldata/" + explicitDatePart(date))
     val verticaQueryDat = oldVerticaQuery(dfFull)
     verticaQueryDat.write.mode(SaveMode.Overwrite).parquet(S3BASEOUT + "performancedata/verticaQuery/" + explicitDatePart(date))
 
@@ -44,7 +45,7 @@ object ReportingDataTransform {
       winRate.labels(model).set(modelDat.select($"wr").head.getDouble(0))
     }
 
-    val agDat = adgroupLevel(dfFull).select($"log_points").collect.map(_.getDouble(0))
+    val agDat = adgroupLevel(dfFull).select($"log_points").filter($"log_points".isNotNull).collect.map(_.getDouble(0))
 
     agDat.foreach(i => agLogHist.observe(i))
 
@@ -67,8 +68,10 @@ object ReportingDataTransform {
           ($"BidderCacheMachineName".like("ca2%") || $"BidderCacheMachineName".like("de1%"))
       ).withColumn(
       "RealMediaCostInUSD", $"MediaCostCPMInUSD" / $"DiscrepancyAdjustmentMultiplier")
+    .drop("BidderCacheMachineName")
+      .drop("SupplyVendor")
 
-    val dfBids = loadParquetData[BidRequestRecordV4](s3path = BidRequestDataset.BIDSS3, date = date)
+    val dfBids = loadParquetData[BidRequestRecord](s3path = BidRequestDataset.BIDSS3, date = date)
       .select(
       $"BidRequestId",
       $"DeviceType.value".alias("deviceType"),
@@ -85,6 +88,9 @@ object ReportingDataTransform {
       when(
         $"TestId".like("%PCM(tfmodel%"), "plutus"
       ).when(
+        $"testId".like("%PCM(tfmodel%bba%"), "plutus_with_basebid"
+      )
+        .when(
         $"PredictiveClearingMode.value" === 0, "legacy_pc_disabled"
       ).when(
         $"PredictiveClearingMode.value" === 1, "legacy_pc_miss"
@@ -169,10 +175,6 @@ object ReportingDataTransform {
 
 
     ).withColumn("wr", $"imps" / $"bids"
-      //).filter($"deviceType")== 2
-      //).filter($"control_cohort")==RUE
-      //).filter($"bid_price_range")== "low"
-      //).filter(($"model")== "plutus") | ($"model")== "legacy_pc_hit")
     )
   }
 
@@ -182,44 +184,44 @@ object ReportingDataTransform {
     ).agg(
       mean(
         when(
-          $"model_simple".like("plutus") && $"RealMediaCostInUSD".isNotNull , $"DiscrepancyMediaCost" - $"RealMediaCostInUSD"
+          $"model_simple".like("plutus%") && $"RealMediaCostInUSD".isNotNull , $"DiscrepancyMediaCost" - $"RealMediaCostInUSD"
       )).cast(DoubleType).alias("plutus_savings_avg"),
 
       mean(
         when(
-          ( $"model_simple".like("legacy") && $"RealMediaCostInUSD".isNotNull ), $"DiscrepancyMediaCost" - $"RealMediaCostInUSD")
+          ( $"model_simple".like("legacy%") && $"RealMediaCostInUSD".isNotNull ), $"DiscrepancyMediaCost" - $"RealMediaCostInUSD")
       ).cast(DoubleType).alias("legacy_savings_avg"),
 
       mean(
         when(
-           $"model_simple".like("plutus") && ($"RealMediaCostInUSD".isNotNull ), $"AdjustedBidCPMInUSD" - $"RealMediaCostInUSD")
+           $"model_simple".like("plutus%") && ($"RealMediaCostInUSD".isNotNull ), $"AdjustedBidCPMInUSD" - $"RealMediaCostInUSD")
       ).cast(DoubleType).alias("plutus_savings_full_avg"),
 
       mean(
         when(
-           $"model_simple".like("legacy") && $"has_deal" =!= 1 && ($"RealMediaCostInUSD".isNotNull ), $"DiscrepancyMediaCost" - $"RealMediaCostInUSD"
+           $"model_simple".like("legacy%") && $"has_deal" =!= 1 && ($"RealMediaCostInUSD".isNotNull ), $"DiscrepancyMediaCost" - $"RealMediaCostInUSD"
       )).cast(DoubleType).alias("legacy_savings_non_deal_avg"),
 
       mean(
         when(
-           ($"model_simple".like("legacy") && $"RealMediaCostInUSD".isNotNull ), $"AdjustedBidCPMInUSD" - $"RealMediaCostInUSD")
+           ($"model_simple".like("legacy%") && $"RealMediaCostInUSD".isNotNull ), $"AdjustedBidCPMInUSD" - $"RealMediaCostInUSD")
       ).cast(DoubleType).alias("legacy_savings_full_avg"),
 
       mean(
         when(
-           ($"model_simple".like("plutus")) && ($"has_deal" =!= 1) && ($"RealMediaCostInUSD".isNotNull ), $"AdjustedBidCPMInUSD" - $"RealMediaCostInUSD"
+           ($"model_simple".like("plutus%")) && ($"has_deal" =!= 1) && ($"RealMediaCostInUSD".isNotNull ), $"AdjustedBidCPMInUSD" - $"RealMediaCostInUSD"
       )).cast(DoubleType).alias("plutus_savings_full_non_deal_avg"),
 
       mean(
         when(
-          ($"model_simple".like("legacy")) && ($"has_deal" =!= 1) && ($"RealMediaCostInUSD".isNotNull ), $"AdjustedBidCPMInUSD" - $"RealMediaCostInUSD"
+          ($"model_simple".like("legacy%")) && ($"has_deal" =!= 1) && ($"RealMediaCostInUSD".isNotNull ), $"AdjustedBidCPMInUSD" - $"RealMediaCostInUSD"
       )).cast(DoubleType).alias("legacy_savings_full_non_deal_avg"),
 
    // ).withColumn("log_points_non_deal", log($"plutus_savings_non_deal_avg"/$"legacy_savings_non_deal_avg")
    // ).withColumn("log_points_non_deal_full", log($"plutus_savings_full_non_deal_avg"/$"legacy_savings_full_non_deal_avg")
 
-    ).withColumn("log_points", log($"plutus_savings_avg"/$"legacy_savings_avg")
-    ).withColumn("log_points_full", log($"plutus_savings_full_avg"/$"legacy_savings_full_avg"))
+    ).withColumn("log_points", log($"plutus_savings_avg"/$"legacy_savings_avg").cast(DoubleType)
+    ).withColumn("log_points_full", log($"plutus_savings_full_avg"/$"legacy_savings_full_avg").cast(DoubleType))
   }
 
 }

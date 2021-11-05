@@ -8,6 +8,6 @@ final case class EmpiricalDiscrepancy(PartnerId: String, SupplyVendor: String, D
 
 object BidFeedbackDataset {
 
-  val BFS3 = f"s3://ttd-datapipe-data/parquet/rtb_bidfeedback_cleanfile/v=4/"
+  val BFS3 = f"s3://ttd-datapipe-data/parquet/rtb_bidfeedback_cleanfile/v=5/"
 
 }
