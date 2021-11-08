@@ -1,3 +1,4 @@
+import os
 import sys
 import time
 from datetime import datetime
@@ -63,8 +64,8 @@ flags.DEFINE_string('meta_data_path', default=META_DATA_INPUT,
                     help=f'Location of meta data. Default {META_DATA_INPUT}')
 flags.DEFINE_string('log_path', default=MODEL_LOGS, help=f'Location of model training log files. Default {MODEL_LOGS}')
 flags.DEFINE_string('output_path', default=MODEL_OUTPUT, help=f'Location of model output files. Default {MODEL_OUTPUT}')
-flags.DEFINE_string('s3_output_path', default=S3_MODEL_OUTPUT,
-                    help=f'Location of S3 model output files. Default {S3_MODEL_OUTPUT}')
+flags.DEFINE_string('s3_output_path', default=S3_PROD,
+                    help=f'Location of S3 model output files. Default {S3_PROD}')
 
 flags.DEFINE_string('log_tag', default=f"{datetime.now().strftime('%Y-%m-%d-%H')}", help='log tag')
 
@@ -289,9 +290,10 @@ def main(argv):
                                   batch_size=FLAGS.eval_batch_size if FLAGS.eval_batch_size is not None else FLAGS.batch_size,
                                   batch_per_epoch=None)
 
-    local_eval_metrics_path = f"{FLAGS.output_path}eval/savings.csv"
-    df_pd.to_csv(local_eval_metrics_path)
-    s3_sync(local_eval_metrics_path, f"{S3_PROD}{EVAL_OUTPUT}{FLAGS.model_creation_date}" )
+    local_eval_metrics_path = f"{FLAGS.output_path}eval/"
+    os.mkdir(local_eval_metrics_path)
+    df_pd.to_csv(local_eval_metrics_path + "savings.csv")
+    s3_sync(local_eval_metrics_path, f"{S3_PROD}{EVAL_OUTPUT}{FLAGS.model_creation_date}")
 
 
 def save_params_model(model):
