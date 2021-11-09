@@ -32,7 +32,7 @@ object RawDataTransform {
 
 
     val bidsGauge = prometheus.createGauge("raw_bids_count", "count of raw bids")
-    val bids = bidsData(date, svName, svbDf, pdaDf, dealDf, empiricalDiscrepancyDf)
+    val bids = bidsData(date, svName, svbDf, pdaDf, dealDf, empiricalDiscrepancyDf).cache()
     bidsGauge.set(bids.count())
 
 
