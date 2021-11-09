@@ -117,6 +117,7 @@ object TrainingDataTransform {
 
     metaData.write.option("header", "true")
       .option("delimiter","\t")
+      .mode(SaveMode.Overwrite)
       .csv(metaDataS3)
 
     trainCount.set(trainRows)
