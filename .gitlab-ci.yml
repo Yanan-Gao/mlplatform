@@ -36,3 +36,4 @@ default:
 include:
   - local: 'plutus/.gitlab-ci.yml'
   - local: 'contextual-features-scala/.gitlab-ci.yml'
+  - local: 'benchmark-suite/.gitlab-ci.yml'
