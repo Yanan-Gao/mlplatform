@@ -1,0 +1,121 @@
+variables:
+  BENCHMARK_SUITE_JAR_NAME: "benchmark-suite.jar"
+  BENCHMARK_SUITE_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/benchmark-suite/jars/mergerequests"
+  BENCHMARK_SUITE_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/benchmark-suite/jars/snapshots"
+  BENCHMARK_SUITE_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/benchmark-suite/jars/prod"
+  BENCHMARK_SUITE_ASSEMBLY_OUT: "/builds/thetradedesk/mlplatform/benchmark-suite/target/scala-2.12/benchmark-suite.jar"
+  SCALA_BUILD_IMAGE_2_12_12: "hseeberger/scala-sbt:8u312_1.5.5_2.12.15"
+  BENCHMARK_SUITE_SCALA_DOCKER_IMAGE: "${DOCKER_DEV_REGISTRY}/benchmark-suite"
+  SBT_OPTS: "-Xmx4G -XX:+UseConcMarkSweepGC -XX:+CMSClassUnloadingEnabled -XX:MaxPermSize=4G -Xss4M"
+
+# This workflow rule will prevent duplicate pipelines for merge request AND branch commits
+# BUT we should avoid defining workflow rules on the top level (repo) .gitlab-ci/yml because it seems to
+# have weird interactions with inherited job rules from each project
+#   If the pipeline is triggered by:
+#   A merge request, run a merge request pipeline. For example, a merge request pipeline can be triggered by a push to a branch with an associated open merge request.
+#   A change to a branch, but a merge request is open for that branch, do not run a branch pipeline.
+#   A change to a branch, but without any open merge requests, run a branch pipeline.
+
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_COMMIT_BRANCH'
+
+#build and push the test docker image
+benchmark-suite:deploy_dev_docker_image_merge_request:
+  image: proxy.docker.adsrvr.org/docker:git
+  stage: .pre
+  services:
+    - docker:dind
+  after_script:
+    - docker logout ${DOCKER_PRODUCTION_REGISTRY}
+    - docker logout ${DOCKER_DEV_REGISTRY}
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "benchmark-suite/Dockerfile"
+  before_script:
+    - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
+  script:
+    - cd ./benchmark-suite/
+    - echo "logging in to ${DOCKER_DEV_REGISTRY}"
+    - docker login ${DOCKER_DEV_REGISTRY} -u ${DOCKER_DEV_USER} -p ${DOCKER_DEV_PASS}
+    - echo "building ${DOCKER_DEV_REGISTRY}/benchmark-suite:${CI_COMMIT_SHORT_SHA}"
+    - docker build -t ${DOCKER_DEV_REGISTRY}/benchmark-suite:${CI_COMMIT_SHORT_SHA} -t ${DOCKER_DEV_REGISTRY}/benchmark-suite:latest .
+    - echo "pushing ${DOCKER_DEV_REGISTRY}/benchmark-suite:latest"
+    - docker push ${DOCKER_DEV_REGISTRY}/benchmark-suite:latest
+    - echo "ran deploy_dev_docker_image_merge_request"
+
+benchmark-suite:test:
+  image: "$BENCHMARK_SUITE_SCALA_DOCKER_IMAGE"
+  stage: test
+  cache:
+    policy: pull
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "benchmark-suite/src/**/*"
+    - if: '$CI_COMMIT_BRANCH'
+      changes:
+        - "benchmark-suite/src/**/*"
+  before_script:
+   - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
+  script:
+    - pushd ./benchmark-suite/
+    - sbt test
+    - popd
+    - echo "ran benchmark_suite_scala:test"
+
+benchmark-suite:push_bits_merge_request:
+  image: "$SCALA_BUILD_IMAGE_2_12_12"
+  stage: assembly_upload
+  dependencies:
+    - benchmark-suite:test
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "benchmark-suite/src/**/*"
+  script:
+    - pushd ./benchmark-suite/
+    - SBT_OPTS=${SBT_OPTS} sbt "set test in assembly := {}" clean assembly
+    - DEST=${BENCHMARK_SUITE_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - DEST_FIXED=${BENCHMARK_SUITE_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/latest
+    - aws s3 cp ${BENCHMARK_SUITE_ASSEMBLY_OUT} ${DEST}/${BENCHMARK_SUITE_JAR_NAME}
+    - aws s3 cp ${BENCHMARK_SUITE_ASSEMBLY_OUT} ${DEST_FIXED}/${BENCHMARK_SUITE_JAR_NAME}
+    - popd
+    - echo "ran benchmark_suite_scala:push_bits_merge_request"
+
+benchmark-suite:push_bits_master_snapshot:
+  image: "$SCALA_BUILD_IMAGE_2_12_12"
+  stage: assembly_upload
+  dependencies:
+    - benchmark-suite:test
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      changes:
+        - "benchmark-suite/src/**/*"
+  script:
+    - pushd ./benchmark-suite/
+    - sbt "set test in assembly := {}" clean assembly
+    - DEST=${BENCHMARK_SUITE_SNAPSHOTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - aws s3 cp ${BENCHMARK_SUITE_ASSEMBLY_OUT} ${DEST}/${BENCHMARK_SUITE_JAR_NAME}
+    - popd
+    - echo "ran benchmark_suite_scala:push_bits_master_snapshot"
+
+benchmark-suite:deploy_release:
+  image: "$SCALA_BUILD_IMAGE_2_12_12"
+  stage: deploy
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      changes:
+        - "benchmark-suite/src/**/*"
+      when: manual
+      allow_failure: false
+  script:
+    - pushd ./benchmark-suite/
+    - sbt "set test in assembly := {}" clean assembly
+    - aws s3 cp ${BENCHMARK_SUITE_ASSEMBLY_OUT} ${BENCHMARK_SUITE_PROD_JAR_FOLDER}/${BENCHMARK_SUITE_JAR_NAME}
+    - popd
+    - echo "ran BENCHMARK_SUITE_scala:deploy_release"
