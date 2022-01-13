@@ -1,5 +1,6 @@
 import unittest
 
+import plutus.metrics
 from plutus.data import tfrecord_dataset, generate_random_pandas
 from plutus.features import default_model_features, Feature
 from plutus import ModelHeads, CpdType
@@ -7,6 +8,7 @@ from plutus.layers import model_input_layer
 from plutus.models import dlrm_model, replace_last_layer, basic_model, super_basic_model, fastai_tabular_model
 from plutus.features import default_model_features, default_model_targets, get_int_parser
 from plutus.losses import google_fpa_nll, google_mse_loss
+from plutus.metrics import eval_model_with_anlp
 import tensorflow as tf
 import numpy as np
 import tempfile
@@ -31,7 +33,16 @@ class SimpleDataModelTestCase(unittest.TestCase):
 
         cls.test_dir = tempfile.TemporaryDirectory()
         cls.model_features = [
-            Feature("feat_1", True, tf.int32, 2, 0, True, 16, False, 4),
+            Feature(
+                name="feat_1",
+                sparse=True,
+                type=tf.int32,
+                cardinality=2,
+                default_value=0,
+                enabled=True,
+                embedding_dim=16,
+                qr_embed=False,
+                qr_collisions=4),
         ]
 
         def _float_feature(value):
@@ -70,6 +81,46 @@ class SimpleDataModelTestCase(unittest.TestCase):
         batch_size = 100
 
         cls.ds = tfrecord_dataset(files, batch_size, get_int_parser(cls.model_features, default_model_targets))
+
+
+    def test_mixed_precision_training(self):
+        # will not work on CPU as it does not have a 16 bit op
+        # tf.keras.mixed_precision.set_global_policy('mixed_float16')
+
+        model = dlrm_model(features=self.model_features,
+                           activation="relu",
+                           combiner=tf.keras.layers.Flatten(),
+                           top_mlp_layers=[512, 256, 64],
+                           bottom_mlp_layers=[512, 256, 64, 16],
+                           cpd_type=CpdType.LOGNORM,
+                           heads=ModelHeads.CPD,
+                           mixture_components=3,
+                           dropout_rate=None,
+                           batchnorm=False)
+
+        model.compile(tf.keras.optimizers.Adam(), loss=google_fpa_nll)
+        model.fit(self.ds, epochs=10, verbose=1)
+
+        print(model({'feat_1': tf.constant([0])}, training=False).mean())
+
+    def test_model_evaluation(self):
+        model = dlrm_model(features=self.model_features,
+                           activation="relu",
+                           combiner=tf.keras.layers.Flatten(),
+                           top_mlp_layers=[512, 256, 64],
+                           bottom_mlp_layers=[512, 256, 64, 16],
+                           cpd_type=CpdType.LOGNORM,
+                           heads=ModelHeads.CPD,
+                           mixture_components=3,
+                           dropout_rate=None,
+                           batchnorm=False)
+
+        model.compile(tf.keras.optimizers.Adam(), loss=google_fpa_nll)
+        model.fit(self.ds, epochs=10, verbose=1)
+
+        evals = eval_model_with_anlp(model=model, ds_test=self.ds)
+        print(model.metrics_names)
+        print(evals)
 
     def test_something(self):
         print(self.model_features)
@@ -150,7 +201,6 @@ class SimpleDataModelTestCase(unittest.TestCase):
 
 
 class ComplexDataModelTestCase(unittest.TestCase):
-
     @classmethod
     def tearDownClass(cls) -> None:
         cls.test_dir.cleanup()
@@ -194,7 +244,7 @@ class ComplexDataModelTestCase(unittest.TestCase):
 
         cls.ds = tfrecord_dataset(files, batch_size, get_int_parser(cls.model_features, default_model_targets))
 
-    def test_model_training(self):
+    def test_dlrm_model_training(self):
         model = dlrm_model(features=self.model_features,
                            activation="relu",
                            combiner=tf.keras.layers.Flatten(),
@@ -247,24 +297,16 @@ class ComplexDataModelTestCase(unittest.TestCase):
                                             dropout_rate=None,
                                             batchnorm=True)
 
-        ds_tf = tfrecord_dataset(["/Users/michael.davy/Downloads/train.tfrecord.gz"], 2**13, get_int_parser(self.model_features, default_model_targets))
 
         model_dlrm.compile(optimizer=tf.keras.optimizers.Adam(), loss=google_fpa_nll)
         model_fastai.compile(optimizer=tf.keras.optimizers.Adam(), loss=google_fpa_nll)
 
-        h_dlrm = model_dlrm.fit(ds_tf)
-        h_fastai = model_fastai.fit(ds_tf)
 
-        for x,y in ds_tf.take(1):
-            pred_dlrm= model_dlrm(x, training=False)
-            print(google_fpa_nll(y, pred_dlrm))
+        h_dlrm = model_dlrm.fit(self.ds, epochs=10, verbose=1)
+        h_fastai = model_fastai.fit(self.ds, epochs=10, verbose=1)
 
-            pred_fastai = model_fastai(x, training=False)
-            print(google_fpa_nll(y, pred_fastai))
-
-
-            print("done")
-
+        print(model_dlrm(self.example, training=False).mean())
+        print(model_fastai(self.example, training=False).mean())
 
 
 if __name__ == '__main__':

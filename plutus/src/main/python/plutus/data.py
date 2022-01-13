@@ -38,16 +38,16 @@ def get_epochs(path, batch_size, steps_per_epoch):
     return epochs
 
 
-def list_tfrecord_files(path):
+def tfrecord_files_dict(path):
     p = Path(f"{path}")
     files = [str(f.resolve()) for f in list(p.glob("*.gz"))]
     if len(files) == 0:
-        files_dir = {x.name: [str(f.resolve()) for f in list(Path(f"{path}/{x.name}/").glob("*.gz"))] for x in
-                     p.iterdir()
-                     if x.is_dir()}
+        files_dict = {x.name: [str(f.resolve()) for f in list(Path(f"{path}/{x.name}/").glob("*.gz"))] for x in
+                      p.iterdir()
+                      if x.is_dir()}
     else:
-        files_dir = {"train": files}
-    return files_dir
+        files_dict = {"train": files}
+    return files_dict
 
 
 def tfrecord_dataset(files, batch_size, map_fn, prefetch_num=10):
@@ -76,7 +76,7 @@ def downsample(files_dict, down_sample_rate=None):
     return files_dict
 
 
-def datasets(files_dict, batch_size, model_features, model_targets, eval_batch_size=None):
+def create_datasets_dict(files_dict, batch_size, model_features, model_targets, eval_batch_size=None):
     ds = {}
     for split, files in files_dict.items():
         if split != TRAIN:
@@ -142,7 +142,8 @@ def generate_random_grpc_query(model_features, model_name, version=None):
 
     for f in model_features:
         if f.type == tf.int32:
-            grpc_request.inputs[f.name].CopyFrom(tf.make_tensor_proto(np.random.randint(0, f.cardinality, size=1).astype(np.int32)))
+            grpc_request.inputs[f.name].CopyFrom(
+                tf.make_tensor_proto(np.random.randint(0, f.cardinality, size=1).astype(np.int32)))
 
         elif f.type == tf.float32:
             grpc_request.inputs[f.name].CopyFrom(tf.make_tensor_proto([[0.0]]))
