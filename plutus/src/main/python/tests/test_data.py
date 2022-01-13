@@ -12,7 +12,7 @@ class TestData(TestCase):
 
     def test_list_tfrecord_files(self):
         path = "/var/tmp/data/"
-        files = list_tfrecord_files(path)
+        files = tfrecord_files_dict(path)
         # ds = tf.data.TFRecordDataset(files[0], compression_type="GZIP")
         # cnt = ds.reduce(np.int64(0), lambda x, _: x + 1)
         print(files)
@@ -20,7 +20,7 @@ class TestData(TestCase):
 
     def test_downsample(self):
         path = "/var/tmp/full/"
-        files_dict = list_tfrecord_files(path)
+        files_dict = tfrecord_files_dict(path)
         downsample_rate = 0.5
         downsampled_file_dict = downsample(files_dict, downsample_rate)
         print(downsampled_file_dict)

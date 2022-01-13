@@ -1,5 +1,6 @@
 from typing import List, Optional
 
+from math import sqrt
 import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow.keras import activations
@@ -15,6 +16,12 @@ DEFAULT_MLP_LAYER_UNITS = [512, 256, 64]
 DEFAULT_FASTAI_TABULAR_MLP_LAYER_UNITS = [1000, 500]
 
 
+def register_keras_custom_object(cls):
+    tf.keras.utils.get_custom_objects()[cls.__name__] = cls
+    return cls
+
+
+@register_keras_custom_object
 class DotInteraction(tf.keras.layers.Layer):
     """Dot interaction layer.
     
@@ -56,7 +63,7 @@ class DotInteraction(tf.keras.layers.Layer):
             concat_features = tf.stack(inputs, axis=1)
         except (ValueError, tf.errors.InvalidArgumentError) as e:
             raise ValueError(f"Input tensors` dimensions must be equal, original error message: {e}")
-        
+
         # Interact features, select lower-triangular portion, and re-shape.
         xactions = tf.matmul(concat_features, concat_features, transpose_b=True)
         ones = tf.ones_like(xactions)
@@ -82,7 +89,7 @@ class DotInteraction(tf.keras.layers.Layer):
         return cls(**config)
 
 
-
+@register_keras_custom_object
 class LogNormLayer(tf.keras.layers.Layer):
     """
     LogNorm Layer
@@ -92,12 +99,16 @@ class LogNormLayer(tf.keras.layers.Layer):
     Need to create a layer:
     https://github.com/tensorflow/probability/issues/1350
 
+    Note: need to disable mixed_precision on this layer as the Distributional Lambda layer does not support it.
+    `See note about disabling mixed precision in layers
+    <https://www.tensorflow.org/guide/mixed_precision#building_the_model>`_
+
     """
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(dtype='float32', **kwargs)
 
     def call(self, inputs, training=False):
-        output = tfp.layers.DistributionLambda(lognorm_distr, name='lognorm')(inputs)
+        output = tfp.layers.DistributionLambda(lognorm_distr, name='lognorm', dtype="float32")(inputs)
         return output
 
     def get_config(self):
@@ -109,6 +120,7 @@ class LogNormLayer(tf.keras.layers.Layer):
         return cls(**config)
 
 
+@register_keras_custom_object
 class MixtureLayer(tf.keras.layers.Layer):
     """
     Mixture Layer
@@ -118,12 +130,16 @@ class MixtureLayer(tf.keras.layers.Layer):
     Need to create a layer:
     https://github.com/tensorflow/probability/issues/1350
 
+    Note: need to disable mixed_precision on this layer as the Distributional Lambda layer does not support it.
+    `See note about disabling mixed precision in layers
+    <https://www.tensorflow.org/guide/mixed_precision#building_the_model>`_
+
     """
     def __init__(self, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(dtype='float32', **kwargs)
 
     def call(self, inputs, training=False):
-        output = tfp.layers.DistributionLambda(mixture_logistic_dist, name='lognorm')(inputs)
+        output = tfp.layers.DistributionLambda(mixture_logistic_dist, name='lognorm', dtype="float32")(inputs)
         return output
 
     def get_config(self):
@@ -135,6 +151,7 @@ class MixtureLayer(tf.keras.layers.Layer):
         return cls(**config)
 
 
+@register_keras_custom_object
 class ParamsLayer(tf.keras.layers.Layer):
     """
     Params layer needed as we chop off the Distribution Layer for production
@@ -142,15 +159,28 @@ class ParamsLayer(tf.keras.layers.Layer):
     Need to create a layer:
     https://github.com/tensorflow/probability/issues/1350
 
+    Note: need to disable mixed_precision on this layer as the final layer needs to be 'float32'.
+    `See note about disabling mixed precision in layers
+    <https://www.tensorflow.org/guide/mixed_precision#building_the_model>`_
     """
     def __init__(self, num_components=1, **kwargs):
         super().__init__(**kwargs)
+
         self.num_components = num_components
-        self.mu = tf.keras.layers.Dense(self.num_components, activation=tf.keras.activations.linear, name="params_mu")
-        self.sigma = tf.keras.layers.Dense(self.num_components, activation=tf.keras.activations.softplus, name="params_sigma")
+        self.mu = tf.keras.layers.Dense(self.num_components,
+                                        activation=tf.keras.activations.linear,
+                                        dtype="float32",
+                                        name="params_mu")
+        self.sigma = tf.keras.layers.Dense(self.num_components,
+                                           activation=tf.keras.activations.softplus,
+                                           dtype="float32",
+                                           name="params_sigma")
 
         if self.num_components > 1:
-            self.mixture = tf.keras.layers.Dense(self.num_components, activation=tf.keras.activations.softmax, name="params_mixture")
+            self.mixture = tf.keras.layers.Dense(self.num_components,
+                                                 activation=tf.keras.activations.softmax,
+                                                 dtype="float32",
+                                                 name="params_mixture")
 
     def call(self, inputs):
         mu = self.mu(inputs)
@@ -244,16 +274,91 @@ def lin_bn_drop(input_layer, layer, units, bn=True, p=0.0):
     return x
 
 
-def output_layer(last_layer, cpd_type, mixture_components=1):
+def distribution_layer(params, cpd_type):
+    """
+    Create the Distribution that we will train with
+    """
     if cpd_type == CpdType.LOGNORM:
-        params = ParamsLayer(name="params")(last_layer)
         return LogNormLayer()(params)
     elif cpd_type == CpdType.MIXTURE:
-        params = ParamsLayer(mixture_components, name="params")(last_layer)
         return MixtureLayer()(params)
     else:
-        # Regression output
-        return tf.keras.layers.Dense(1, activation=tf.keras.activations.linear, name="output")(last_layer)
+        raise NotImplementedError
 
 
+def parameter_layer(pre_parameters_layer, cpd_type, mixture_components=1):
+    """
+    Layer that gives the parameters for the distribution(s)
 
+    """
+    if cpd_type == CpdType.LOGNORM:
+        params = ParamsLayer(name="params")(pre_parameters_layer)
+        return params
+    elif cpd_type == CpdType.MIXTURE:
+        params = ParamsLayer(mixture_components, name="params")(pre_parameters_layer)
+        return params
+    else:
+        raise NotImplementedError
+
+
+@register_keras_custom_object
+class GssLogNormLayer(tf.keras.layers.Layer):
+    """
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)\
+
+    golden_ratio = (sqrt(5.) + 1) / 2
+
+    @classmethod
+    @tf.function
+    def gss_fn(cls, bid_price, dist_params, floor=0.0, epsilon=0.1, max_num_iter=20):
+
+        print(bid_price)
+        print(dist_params)
+        dist = lognorm_distr(dist_params)
+
+        def surplus(bid_price, discount):
+            return (bid_price - (discount * bid_price)) * dist.cdf(discount * bid_price)
+
+        b_min, b_max = floor, 1.0
+        x_1 = b_max - (b_max - b_min) / cls.golden_ratio
+        x_2 = b_min + (b_max - b_min) / cls.golden_ratio
+
+        for i in range(max_num_iter):
+            if surplus(bid_price, x_1) > surplus(bid_price, x_2):
+                b_max = x_2
+            else:
+                b_min = x_1
+
+            # Seems that TF doesnt like break clause from loops
+            # if (b_max - b_min) < epsilon:
+            #     return (b_min + b_max) / 2
+
+            x_1 = b_max - (b_max - b_min) / cls.golden_ratio
+            x_2 = b_min + (b_max - b_min) / cls.golden_ratio
+
+        return (b_min + b_max) / 2
+
+    def call(self, params, bid_prices, training=False):
+        # params, bid_prices = inputs
+        print(params)
+        print(bid_prices)
+
+        values = tf.map_fn(
+            fn=lambda x: self.gss_fn(x[0], x[1]),
+            elems=(
+                bid_prices,
+                params
+            ),
+            fn_output_signature=tf.float32
+        )
+        return values
+
+    def get_config(self):
+        config = dict()
+        return config
+
+    @classmethod
+    def from_config(cls, config):
+        return cls(**config)

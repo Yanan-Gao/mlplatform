@@ -2,25 +2,33 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 
 from plutus import ModelHeads
-from plutus.embeddings import int_embedding
-from plutus.layers import DotInteraction, output_layer, get_mlp, fastai_tabular_mlp, model_input_layer, emb_sparse_dense
+from plutus.layers import DotInteraction, parameter_layer, get_mlp, fastai_tabular_mlp, model_input_layer, \
+    emb_sparse_dense, distribution_layer
 
 tfd = tfp.distributions
 tfb = tfp.bijectors
 
 
-def model_heads(all_inputs, last_layer, cpd_out, multi_output_enum):
+def model_heads(all_inputs, pre_parameter_layer, distribution, multi_output_enum):
+    """
+    The output of the model.
+
+    Note that if using mixed_precision training, the output should always be float32
+    `Even if the model does not end in a softmax, the outputs should still be
+    float32 <https://www.tensorflow.org/guide/mixed_precision#building_the_model>`_ .
+
+    """
     if multi_output_enum == ModelHeads.CPD_FLOOR_WIN:
-        floor_out = tf.keras.layers.Dense(1, activation=tf.keras.activations.linear, name="floor")(last_layer)
-        win_out = tf.keras.layers.Dense(1, activation=tf.keras.activations.sigmoid, name="win")(last_layer)
-        model = tf.keras.Model(inputs=all_inputs, outputs=[cpd_out, floor_out, win_out])
+        floor_out = tf.keras.layers.Dense(1, activation=tf.keras.activations.linear, name="floor", dtype="float32")(pre_parameter_layer)
+        win_out = tf.keras.layers.Dense(1, activation=tf.keras.activations.sigmoid, name="win", dtype="float32")(pre_parameter_layer)
+        model = tf.keras.Model(inputs=all_inputs, outputs=[distribution, floor_out, win_out])
 
     elif multi_output_enum == ModelHeads.CPD_FLOOR:
-        floor_out = tf.keras.layers.Dense(1, activation=tf.keras.activations.linear, name="floor")(last_layer)
-        model = tf.keras.Model(inputs=all_inputs, outputs=[cpd_out, floor_out])
+        floor_out = tf.keras.layers.Dense(1, activation=tf.keras.activations.linear, name="floor", dtype="float32")(pre_parameter_layer)
+        model = tf.keras.Model(inputs=all_inputs, outputs=[distribution, floor_out])
 
     elif multi_output_enum == ModelHeads.CPD or multi_output_enum == ModelHeads.REG:
-        model = tf.keras.Model(inputs=all_inputs, outputs=cpd_out)
+        model = tf.keras.Model(inputs=all_inputs, outputs=distribution)
 
     else:
         raise Exception("unknown model arch")
@@ -38,13 +46,14 @@ def super_basic_model(features,
                       dropout_rate=None,
                       batchnorm=False
                       ):
-    model_inputs, input_layer = model_input_layer(features,
+    model_inputs, pre_parameter_layer = model_input_layer(features,
                                                   emb_combiner=combiner,
                                                   dense_bn=batchnorm,
                                                   dropout_p=dropout_rate)
 
-    output = output_layer(input_layer, cpd_type, mixture_components)
-    model = model_heads(model_inputs, input_layer, output, heads)
+    parameters = parameter_layer(pre_parameter_layer, cpd_type, mixture_components)
+    distribution = distribution_layer(parameters, cpd_type)
+    model = model_heads(model_inputs, pre_parameter_layer, distribution, heads)
 
     return model
 
@@ -64,15 +73,17 @@ def basic_model(features,
                                                   dense_bn=batchnorm,
                                                   dropout_p=dropout_rate)
 
-    last_layer = get_mlp(input_layer,
+    pre_parameter_layer = get_mlp(input_layer,
                          top_mlp_layers,
                          activation=activation,
                          batchnorm=batchnorm,
                          dropout_rate=dropout_rate,
                          position="top")
 
-    output = output_layer(last_layer, cpd_type, mixture_components)
-    model = model_heads(model_inputs, last_layer, output, heads)
+    parameters = parameter_layer(pre_parameter_layer, cpd_type, mixture_components)
+    distribution = distribution_layer(parameters, cpd_type)
+
+    model = model_heads(model_inputs, pre_parameter_layer, distribution, heads)
 
     return model
 
@@ -96,14 +107,16 @@ def fastai_tabular_model(features,
                                                   dense_bn=batchnorm,
                                                   dropout_p=dropout_rate)
 
-    last_layer = fastai_tabular_mlp(input_layer=input_layer,
+    pre_parameter_layer = fastai_tabular_mlp(input_layer=input_layer,
                                     layers=layers,
                                     activation=activation,
                                     batchnorm=batchnorm,
                                     dropout_rate=dropout_rate)
 
-    output = output_layer(last_layer, cpd_type, mixture_components)
-    model = model_heads(model_inputs, last_layer, output, heads)
+    parameters = parameter_layer(pre_parameter_layer, cpd_type, mixture_components)
+    distribution = distribution_layer(parameters, cpd_type)
+
+    model = model_heads(model_inputs, pre_parameter_layer, distribution, heads)
 
     return model
 
@@ -141,15 +154,16 @@ def dlrm_model(features,
     top_input = tf.keras.layers.Dropout(dropout_rate, name=f"d_top_input{dropout_rate}")(
         top_input) if dropout_rate is not None else top_input
 
-    last_layer = get_mlp(top_input,
+    pre_parameter_layer = get_mlp(top_input,
                          top_mlp_layers,
                          batchnorm=batchnorm,
                          activation=activation,
                          dropout_rate=dropout_rate,
                          position="top")
 
-    output = output_layer(last_layer, cpd_type, mixture_components)
-    model = model_heads(model_inputs, last_layer, output, heads)
+    parameters = parameter_layer(pre_parameter_layer, cpd_type, mixture_components)
+    distribution = distribution_layer(parameters, cpd_type)
+    model = model_heads(model_inputs, pre_parameter_layer, distribution, heads)
 
     return model
 

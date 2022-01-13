@@ -7,17 +7,17 @@ import tensorflow as tf
 from absl import app, flags
 
 from plutus import ModelHeads, CpdType
-from plutus.data import s3_sync, list_tfrecord_files, generate_random_pandas, datasets, get_epochs
+from plutus.data import s3_sync, tfrecord_files_dict, generate_random_pandas, create_datasets_dict, get_epochs
 from plutus.features import default_model_features, default_model_targets, get_model_features, get_model_targets
 from plutus.losses import google_fpa_nll, google_mse_loss, google_bce_loss
-from plutus.metrics import evaluate_model_saving
-from plutus.models import basic_model, dlrm_model, fastai_tabular_model
+from plutus.metrics import evaluate_model_saving, eval_model_with_anlp
+from plutus.models import basic_model, dlrm_model, fastai_tabular_model, replace_last_layer
 from plutus.prometheus import Prometheus
 
 FLAGS = flags.FLAGS
 
-MODEL_INPUT = "/var/tmp/input/"
-MODEL_OUTPUT = "/var/tmp/output/"
+INPUT_PATH = "/var/tmp/input/"
+OUTPUT_PATH = "/var/tmp/output/"
 MODEL_LOGS = "/var/tmp/logs/"
 META_DATA_INPUT="var/tmp/input"
 S3_PROD = "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/prod/"
@@ -58,12 +58,12 @@ flags.DEFINE_enum("sparse_combiner", default="flatten", enum_values=['flatten', 
 flags.DEFINE_integer('num_mixture_components', default=3, help='Number of compoents for the mixture', lower_bound=2)
 
 # Paths
-flags.DEFINE_string('input_path', default=MODEL_INPUT,
-                    help=f'Location of input files (TFRecord). Default {MODEL_INPUT}')
+flags.DEFINE_string('input_path', default=INPUT_PATH,
+                    help=f'Location of input files (TFRecord). Default {INPUT_PATH}')
 flags.DEFINE_string('meta_data_path', default=META_DATA_INPUT,
                     help=f'Location of meta data. Default {META_DATA_INPUT}')
 flags.DEFINE_string('log_path', default=MODEL_LOGS, help=f'Location of model training log files. Default {MODEL_LOGS}')
-flags.DEFINE_string('output_path', default=MODEL_OUTPUT, help=f'Location of model output files. Default {MODEL_OUTPUT}')
+flags.DEFINE_string('output_path', default=OUTPUT_PATH, help=f'Location of model output files. Default {OUTPUT_PATH}')
 flags.DEFINE_string('s3_output_path', default=S3_PROD,
                     help=f'Location of S3 model output files. Default {S3_PROD}')
 
@@ -190,9 +190,9 @@ def prepare_real_data(model_features, model_targets):
 
     """
     print(FLAGS.input_path)
-    files = list_tfrecord_files(FLAGS.input_path)
+    files = tfrecord_files_dict(FLAGS.input_path)
     print(files)
-    return datasets(files, FLAGS.batch_size, model_features, model_targets, FLAGS.eval_batch_size)
+    return create_datasets_dict(files, FLAGS.batch_size, model_features, model_targets, FLAGS.eval_batch_size)
 
 
 def prepare_dummy_data(model_features, model_targets):
@@ -284,16 +284,13 @@ def main(argv):
     loss_gaug.set(history.history['loss'][-1])
     val_loss_gaug.set(history.history['val_loss'][-1])
 
-
-    df_pd = evaluate_model_saving(model=model,
-                                  dataset=datasets[TEST],
-                                  batch_size=FLAGS.eval_batch_size if FLAGS.eval_batch_size is not None else FLAGS.batch_size,
-                                  batch_per_epoch=None)
-
-    local_eval_metrics_path = f"{FLAGS.output_path}eval/"
-    os.mkdir(local_eval_metrics_path)
-    df_pd.to_csv(local_eval_metrics_path + "savings.csv")
-    s3_sync(local_eval_metrics_path, f"{S3_PROD}{EVAL_OUTPUT}{FLAGS.model_creation_date}")
+    # Evaluation with just ANLP now
+    evals = eval_model_with_anlp(
+        model=model,
+        ds_test=datasets[TEST]
+    )
+    eval_anlp_gaug = Prometheus.define_gauge('eval_anlp', 'evaluation anlp')
+    eval_anlp_gaug.set(evals[1])
 
 
 def save_params_model(model):
@@ -301,26 +298,10 @@ def save_params_model(model):
     This will remove the Distribtuion from the model and output the parameters.
     Users of this model will need to input the parameters into a library / distribution
     """
-    model_headless = tf.keras.Model(model.inputs, model.get_layer("params").output)
-    headless_model_tag = f"{FLAGS.output_path}model/{FLAGS.model_arch}_{FLAGS.heads}_{FLAGS.cpd_type}_{FLAGS.dropout_rate}_{FLAGS.batchnorm}_params"
-    model_headless.save(headless_model_tag)
-    return headless_model_tag
-
-
-def eval():
-    model_features, model_targets = get_features_targets()
-
-    datasets = prepare_dummy_data(model_features, model_targets) if FLAGS.dummy else prepare_real_data(model_features,
-                                                                                                       model_targets)
-
-    model = tf.keras.models.load_model(FLAGS.eval_model_path)
-
-    df_pd = evaluate_model_saving(model=model,
-                                  dataset=datasets[TEST],
-                                  batch_size=FLAGS.eval_batch_size if FLAGS.eval_batch_size is not None else FLAGS.batch_size,
-                                  batch_per_epoch=None)
-
-    df_pd.to_csv(f"{FLAGS.output_path}eval/savings.csv")
+    param_model = replace_last_layer(model)
+    param_model_tag = f"{FLAGS.output_path}model/{FLAGS.model_arch}_{FLAGS.heads}_{FLAGS.cpd_type}_{FLAGS.dropout_rate}_{FLAGS.batchnorm}_params"
+    param_model.save(param_model_tag)
+    return param_model_tag
 
 
 if __name__ == '__main__':

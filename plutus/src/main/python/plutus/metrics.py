@@ -1,4 +1,3 @@
-# Databricks notebook source
 import time
 
 import tensorflow as tf
@@ -19,11 +18,14 @@ class ANLP(keras.metrics.Metric):
         self.counts = self.add_weight(name="counts", initializer='zeros', aggregation=tf_variables.VariableAggregation.SUM)
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-        self.anlps.assign_add(tf.reduce_mean(y_pred.log_prob(y_true)))
-        self.counts.assign_add(1)
+        """
+        mean of mean != mean!
+        """
+        self.anlps.assign_add(tf.reduce_sum(y_pred.log_prob(y_true)))
+        self.counts.assign_add(len(y_true))
 
     def result(self):
-        return self.anlps / self.counts
+        return -(self.anlps / self.counts)
 
     def reset_states(self):
         self.anlps.assign(0)
@@ -228,3 +230,15 @@ def evaluate_model_saving(model, dataset, batch_size, batch_per_epoch=None):
         data.append([push, s, p, n_s, n_p])
 
     return pd.DataFrame(data, columns=["push", "saving", "pct", "naive_saving", "naive_pct"])
+
+
+def eval_model_with_anlp(model, ds_test):
+    # add new metrics and eval
+    # https://stackoverflow.com/questions/44267074/adding-metrics-to-existing-model-in-keras/52098123
+
+    model.compile(
+        model.optimizer,
+        metrics=[MultiTargetANLP()]
+    )
+    evals = model.evaluate(ds_test, verbose=1)
+    return evals
