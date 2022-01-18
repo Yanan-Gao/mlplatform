@@ -22,7 +22,7 @@ class packageTest extends AnyFlatSpec {
   }
 
   "explicitDatePart" should "create a date in year=yyyy month=mm day-dd format with leading zero" in {
-    val expected = "year=2021/month=1/day=1"
+    val expected = "year=2021/month=01/day=01"
     val result = explicitDatePart(LocalDate.of(2021, 1, 1))
     assert(expected == result)
   }
@@ -46,24 +46,24 @@ class packageTest extends AnyFlatSpec {
   }
 
   "parquetDataPaths for Plutus" should "create paths with s3/year=yyyy/month=mm/day=dd" in {
-    val expected = Seq("s3_path/year=2021/month=1/day=1")
+    val expected = Seq("s3_path/year=2021/month=01/day=01")
     val result = parquetDataPaths("s3_path", date=LocalDate.of(2021, 1, 1), source = Some(PLUTUS_DATA_SOURCE))
     assertResult(expected)(result)
   }
   "parquetDataPaths for Plutus" should "create multiple paths with s3/year=yyyy/month=mm/day=dd" in {
-    val expected = Seq("s3_path/year=2021/month=1/day=1", "s3_path/year=2020/month=12/day=31", "s3_path/year=2020/month=12/day=30")
+    val expected = Seq("s3_path/year=2021/month=01/day=01", "s3_path/year=2020/month=12/day=31", "s3_path/year=2020/month=12/day=30")
     val result = parquetDataPaths("s3_path", date=LocalDate.of(2021, 1, 1), source = Some(PLUTUS_DATA_SOURCE), lookBack = Some(2))
     result == expected
   }
 
   "plutusDataPath" should "return the path to s3 for clean data" in {
-    val expected = "s3://bucket/env/prefix/google/year=2021/month=1/day=1/"
+    val expected = "s3://bucket/env/prefix/google/year=2021/month=01/day=01/"
     val result = plutusDataPath(s3Path = "s3://bucket", ttdEnv = "env", prefix = "raw", svName = Some("google"), date = LocalDate.of(2021, 1, 1))
     expected == result
   }
 
   "plutusDataPaths" should "return list of path to s3 for clean data" in {
-    val expected = Seq("s3://bucket/env/prefix/google/year=2021/month=1/day=1/", "s3://bucket/env/prefix/google/year=2020/month=12/day=31/", "s3://bucket/env/prefix/google/year=2020/month=12/day=30/")
+    val expected = Seq("s3://bucket/env/prefix/google/year=2021/month=01/day=01/", "s3://bucket/env/prefix/google/year=2020/month=12/day=31/", "s3://bucket/env/prefix/google/year=2020/month=12/day=30/")
     val result = plutusDataPaths(s3Path = "s3://bucket", ttdEnv = "env", prefix = "raw", svName = Some("google"), date = LocalDate.of(2021, 1, 1), lookBack = Some(2))
     expected == result
   }

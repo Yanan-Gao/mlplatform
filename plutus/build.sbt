@@ -18,14 +18,14 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-mllib" % sparkVersion % "provided",
 
   "com.typesafe" % "config" % "1.3.0",
-  "com.linkedin.sparktfrecord" % "spark-tfrecord_2.12" % "0.3.0",
 
   "io.prometheus" % "simpleclient" % prometheusVersion,
   "io.prometheus" % "simpleclient_common" % prometheusVersion,
   "io.prometheus" % "simpleclient_pushgateway" % prometheusVersion,
 
  // "org.scalactic" %% "scalactic" % "3.2.7" ,
-  "org.scalatest" %% "scalatest" % "3.2.7" % "test",
+  "org.scalatest" %% "scalatest" % "3.2.9" % "test",
+  "org.scalatest" %% "scalatest-funsuite" % "3.2.10" % Test
  // "MrPowers" % "spark-fast-tests" % "2.2.0_0.5.0" % "test"
 )
 

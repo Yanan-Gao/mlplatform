@@ -1,0 +1,41 @@
+package job
+
+import com.thetradedesk.bidsimpression.transform.BidsImpressions
+import com.thetradedesk.plutus.data.{loadParquetData, loadParquetDataHourly}
+import com.thetradedesk.plutus.data.schema.{BidFeedbackDataset, BidRequestDataset, BidRequestRecord, Impressions}
+import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.util.TTDConfig.config
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
+
+import java.time.LocalDate
+
+object BrBf {
+
+  val date = config.getDate("date" , LocalDate.now())
+  val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/features/data/koav4/v=1/")
+  val outputPrefix = config.getString("outputPrefix" , "bidsimpressions")
+  val ttdEnv = config.getString("ttd.env" , "dev")
+
+  val hours = config.getStringSeqRequired("hours")
+
+  implicit val prometheus = new PrometheusClient("Plutus", "TrainingDataEtl")
+  val jobDurationTimer = prometheus.createGauge("training_data_bids_imps_join", "Time to process 1 day of bids, impressions").startTimer()
+
+  def main(args: Array[String]): Unit = {
+
+    val inputHours = hours.map(_.toInt)
+
+    val impressions = loadParquetDataHourly[Impressions](s3path=BidFeedbackDataset.BFS3, date, inputHours)
+    val bids = loadParquetDataHourly[BidRequestRecord](BidRequestDataset.BIDSS3, date, inputHours)
+
+
+    BidsImpressions.transform(date, outputPath, ttdEnv, outputPrefix, bids, impressions)
+
+    // clean up
+    jobDurationTimer.setDuration()
+    prometheus.pushMetrics()
+    spark.close()
+  }
+
+}

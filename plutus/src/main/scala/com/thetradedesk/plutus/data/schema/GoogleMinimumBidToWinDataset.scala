@@ -8,6 +8,24 @@ final case class GoogleMinimumBidToWinData(bidRequestId: String,
                                            winCPM: Double,
                                            mb2w: Double)
 
+final case class RawMBtoWinSchema(
+                                  LogEntryTime: String,
+                                  BidRequestId: String,
+                                  creativeId: String,
+                                  adgroupId: String,
+                                  throwAway_4: String,
+                                  throwAway_5: String,
+                                  TtdPartnerId: String,
+                                  throwAway_7: String,
+                                  throwAway_8: String,
+                                  svLossReason: Integer,
+                                  ttdLossReason: Integer,
+                                  winCPM: Double,
+                                  sv: String,
+                                  bidRequestTime: String,
+                                  mb2w: Double
+          )
+
 object GoogleMinimumBidToWinDataset {
 
   def S3PATH = "s3://thetradedesk-useast-logs-2/lostbidrequest/cleansed/"
