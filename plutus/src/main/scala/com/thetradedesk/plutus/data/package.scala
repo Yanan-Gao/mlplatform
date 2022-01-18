@@ -47,7 +47,7 @@ package object data {
   }
 
   def cleansedDataPaths(basePath: String, date: LocalDate, lookBack: Option[Int] = None): Seq[String] = {
-    (0 to lookBack.getOrElse(0)).map(i => f"${basePath}/${explicitDatePart(date.minusDays(i))}/*/*/*.gz")
+    (0 to lookBack.getOrElse(0)).map(i => f"${basePath}/${paddedDatePart(date.minusDays(i), separator = Some("/"))}/*/*/*.gz")
   }
 
 
