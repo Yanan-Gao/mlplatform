@@ -2,12 +2,12 @@ package com.thetradedesk.spark.util
 
 import java.time.format.DateTimeFormatter
 import java.time.{Duration, LocalDate, LocalDateTime, ZoneOffset}
-
-import com.typesafe.config.Config
+import com.typesafe.config.{Config, ConfigFactory}
 
 object RichConfig {
   //noinspection LanguageFeature
   implicit def configToRichConfig(config: Config): RichConfig = new RichConfig(config)
+  def default: RichConfig = RichConfig(ConfigFactory.load())
 
   def currentDateUTC(): LocalDate = LocalDate.now(ZoneOffset.UTC)
 }

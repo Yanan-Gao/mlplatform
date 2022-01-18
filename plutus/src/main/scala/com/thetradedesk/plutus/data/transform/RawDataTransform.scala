@@ -1,13 +1,11 @@
 package com.thetradedesk.plutus.data.transform
 
+import com.thetradedesk.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.plutus.data.schema._
-import com.thetradedesk.plutus.data.transform.RawDataTransform.writeOutput
-import com.thetradedesk.plutus.data.{cleansedDataPaths, explicitDatePart, loadParquetData}
-import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.plutus.data.explicitDatePart
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import io.prometheus.client.Gauge
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.DoubleType
 import org.apache.spark.sql.{DataFrame, Dataset, SaveMode}
@@ -19,47 +17,45 @@ object RawDataTransform {
   val ROUNDING_PRECISION = 3
   val EMPIRICAL_DISCREPANCY_ROUNDING_PRECISION = 2
   val TIME_ROUNDING_PRECISION = 6
+  // used for time of day features.  Pi is hardcoded here because the math.pi values differ between java/scala
+  // and c# where the time of day features are computed at bid time.
+  val TWOPI = 2 * 3.14159265359
 
-  def transform(date: LocalDate, outputPath: String, ttdEnv: String, outputPrefix: String, svName: String)(implicit prometheus: PrometheusClient): Unit = {
+  def transform(date: LocalDate, outputPath: String, ttdEnv: String, outputPrefix: String, svNames: Seq[String], bidsImpressions: Dataset[BidsImpressionsSchema], mbw: Dataset[RawMBtoWinSchema], discrepancy: (Dataset[Svb], Dataset[Pda], Dataset[Deals]), isTest: Boolean = false)(implicit prometheus: PrometheusClient): Unit = {
 
-    val googleLostBidData = googleMinimumBidToWinData(date)
+    val googleLostBidData = googleMinimumBidToWinData(mbw, date)
 
-    val (svbDf, pdaDf, dealDf) = discrepancyData(date)
+    val dealDf = dealData(discrepancy._1, discrepancy._3)
 
-    val impressionsGauge: Gauge = prometheus.createGauge("raw_impressions_count", "count of raw impressions")
-    val (imps, empiricalDiscrepancyDf) = adjustedImpressions(date, svName, svbDf, pdaDf, dealDf.toDF)
-    impressionsGauge.set(imps.count())
-
+    val empiricalDiscrepancyDf = empiricalImpressions(bidsImpressions)
 
     val bidsGauge = prometheus.createGauge("raw_bids_count", "count of raw bids")
-    val bids = bidsData(date, svName, svbDf, pdaDf, dealDf, empiricalDiscrepancyDf).cache()
+    val bids = allData(date, svNames, bidsImpressions, discrepancy._1, discrepancy._2, dealDf, empiricalDiscrepancyDf).cache()
     bidsGauge.set(bids.count())
 
-
     val rawData = bids
-      .join(imps, Seq("BidRequestId"), "left")
       .join(googleLostBidData, Seq("BidRequestId"), "left")
-      .withColumn("is_imp", when(col("RealMediaCost").isNotNull, 1.0).otherwise(0.0))
 
-    writeOutput(rawData, outputPath, ttdEnv, outputPrefix, svName, date)
+    svNames.foreach{sv =>
+      writeOutput(rawData.filter($"SupplyVendor" === sv), outputPath, ttdEnv, outputPrefix, sv, date, isTest)
+    }
+    }
+
+  def writeOutput(rawData: DataFrame, outputPath: String, ttdEnv: String, outputPrefix: String, svName: String, date: LocalDate, isTest: Boolean = false): Unit = {
+    if (isTest) {
+      rawData.show()
+    }
+    else {
+      // note the date part is year=yyyy/month=m/day=d/
+      rawData
+        .write
+        .mode(SaveMode.Overwrite)
+        .parquet(s"$outputPath/$ttdEnv/$outputPrefix/$svName/${explicitDatePart(date)}")
+    }
   }
 
-  def writeOutput(rawData: DataFrame, outputPath: String, ttdEnv: String, outputPrefix: String, svName: String, date: LocalDate): Unit = {
-    // note the date part is year=yyyy/month=m/day=d/
-    rawData
-      .write
-      .mode(SaveMode.Overwrite)
-      .parquet(s"$outputPath/$ttdEnv/$outputPrefix/$svName/${explicitDatePart(date)}")
-  }
-
-  def googleMinimumBidToWinData(date: LocalDate): Dataset[GoogleMinimumBidToWinData] = {
-    spark.read.format("csv")
-      .option("sep", "\t")
-      .option("header", "false")
-      .option("inferSchema", "false")
-      .option("mode", "DROPMALFORMED")
-      .schema(GoogleMinimumBidToWinDataset.SCHEMA)
-      .load(cleansedDataPaths(GoogleMinimumBidToWinDataset.S3PATH, date): _*)
+  def googleMinimumBidToWinData(mbw: Dataset[RawMBtoWinSchema], date: LocalDate): Dataset[GoogleMinimumBidToWinData] = {
+    mbw
       .filter(col("sv") === "google")
       // is only set for won bids or mode 79
       .filter((col("svLossReason") === "1") || (col("svLossReason") === "79"))
@@ -73,31 +69,19 @@ object RawDataTransform {
       ).as[GoogleMinimumBidToWinData]
   }
 
-  def discrepancyData(date: LocalDate): (DataFrame, DataFrame, DataFrame) = {
-    val svbDf = loadParquetData[Svb](DiscrepancyDataset.SBVS3, date)
-      .withColumn("SupplyVendor", col("RequestName"))
-      .withColumn("svbDiscrpancyAdjustment", col("DiscrepancyAdjustment"))
-      .drop("DiscrepancyAdjustment")
-      .drop("RequestName")
+  def dealData(svb: Dataset[Svb], deals: Dataset[Deals]): DataFrame = {
 
-
-    val pdaDf = loadParquetData[Pda](DiscrepancyDataset.PDAS3, date)
-      .withColumn("SupplyVendor", col("SupplyVendorName"))
-      .withColumn("pdaDiscrpancyAdjustment", col("DiscrepancyAdjustment"))
-      .drop("DiscrepancyAdjustment")
-      .drop("SupplyVendorName")
-
-    val dealDf = loadParquetData[Deals](DiscrepancyDataset.DEALSS3, date)
-      .join(svbDf, "SupplyVendorId")
+    val dealDf = deals
+      .join(svb.alias("svb"), "SupplyVendorId")
+      .withColumn("SupplyVendor", col("svb.RequestName"))
       .select(col("SupplyVendor"), col("SupplyVendorDealCode").alias("DealId"), col("IsVariablePrice"))
 
-    (svbDf, pdaDf, dealDf)
+    dealDf
   }
 
-  def adjustedImpressions(date: LocalDate, svName: String, svbDf: DataFrame, pdaDf: DataFrame, dealDf: DataFrame): (Dataset[AdjImpressions], Dataset[EmpiricalDiscrepancy]) = {
-    val impressions = loadParquetData[Impressions](s3path = BidFeedbackDataset.BFS3, date = date)
-      .filter(col("SupplyVendor") === svName)
-      .filter(col("AuctionType") === "FirstPrice")
+  def empiricalImpressions(bidsImpressions: Dataset[BidsImpressionsSchema]): Dataset[EmpiricalDiscrepancy] = {
+    val impressions = bidsImpressions
+      .filter(col("AuctionType") === "FirstPrice" && col("IsImp") === 1)
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
 
     val empiricalDiscrepancyDf = impressions.alias("bf")
@@ -111,36 +95,68 @@ object RawDataTransform {
       .groupBy("PartnerId", "SupplyVendor", "DealId", "AdFormat")
       .agg(round(avg("DiscrepancyAdjustmentMultiplier"), EMPIRICAL_DISCREPANCY_ROUNDING_PRECISION).as("EmpiricalDiscrepancy"))
 
+    empiricalDiscrepancyDf.selectAs[EmpiricalDiscrepancy]
 
-    val impsDf = impressions.alias("bf")
-      .join(empiricalDiscrepancyDf.alias("ed"), Seq("PartnerId", "SupplyVendor", "DealId", "AdFormat"), "left")
-      .join(broadcast(pdaDf).alias("pda"), Seq("PartnerId", "SupplyVendor"), "left")
-      .join(broadcast(svbDf).alias("svb"), Seq("SupplyVendor"), "left")
+  }
+
+
+  def allData(date: LocalDate, svNames: Seq[String], bidsImpressions: Dataset[BidsImpressionsSchema], svb: Dataset[Svb], pda: Dataset[Pda], dealDf: DataFrame, empDisDf: Dataset[EmpiricalDiscrepancy]): DataFrame = {
+    val bidsDf = bidsImpressions.alias("bids")
+      .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
+      .filter(col("AuctionType") === 1 && $"SupplyVendor".isin(svNames: _*)) // Note the difference with Impression Data
+
+      .join(empDisDf.alias("ed"), Seq("PartnerId", "SupplyVendor", "DealId", "AdFormat"), "left")
+      .join(broadcast(pda.withColumn("SupplyVendor", col("SupplyVendorName"))).alias("pda"), Seq("PartnerId", "SupplyVendor"), "left")
+      .join(broadcast(svb).alias("svb"), col("SupplyVendor") === col("RequestName"), "left")
       .join(broadcast(dealDf).alias("deal"), Seq("SupplyVendor", "DealId"), "left")
 
-      .withColumn("imp_adjuster",
-        coalesce(
-          'FirstPriceAdjustment / 'DiscrepancyAdjustmentMultiplier,
+      .drop("svb.RequestName")
+      .drop("pda.SupplyVendorName")
+
+      // determining how much the bid was adjusted by to back out real bid price
+      .withColumn("bid_adjuster",
+        coalesce('BidsFirstPriceAdjustment,
           lit(1) / coalesce(
-            'DiscrepancyAdjustmentMultiplier,
-            'EmpiricalDiscrepancy,
-            'pdaDiscrpancyAdjustment,
-            'svbDiscrpancyAdjustment,
+            col("EmpiricalDiscrepancy"),
+            col("pda.DiscrepancyAdjustment"),
+            col("svb.DiscrepancyAdjustment"),
             lit(1)
           )
         )
       )
+
+      // same as above, figuring out all adjustments for in bidfeedback
+      .withColumn("imp_adjuster",
+        coalesce(
+          'ImpressionsFirstPriceAdjustment / 'DiscrepancyAdjustmentMultiplier,
+          lit(1) / coalesce(
+            col("DiscrepancyAdjustmentMultiplier"),
+            col("EmpiricalDiscrepancy"),
+            col("pda.DiscrepancyAdjustment"),
+            col("svb.DiscrepancyAdjustment"),
+            lit(1)
+          )
+        )
+      )
+
       .withColumn("RealMediaCostInUSD", 'MediaCostCPMInUSD / 'DiscrepancyAdjustmentMultiplier)
       .withColumn("RealMediaCost", round('RealMediaCostInUSD, ROUNDING_PRECISION))
       .withColumn("i_RealBidPriceInUSD", 'SubmittedBidAmountInUSD * 1000 * 'imp_adjuster)
       .withColumn("i_RealBidPrice", round('i_RealBidPriceInUSD, ROUNDING_PRECISION))
 
+      .withColumn("b_RealBidPriceInUSD", 'AdjustedBidCPMInUSD * 'bid_adjuster)
+      .withColumn("b_RealBidPrice", round('b_RealBidPriceInUSD, ROUNDING_PRECISION))
+      // .withColumn("PredictiveClearingRandomControl", when(col("PredictiveClearingRandomControl"), 1).otherwise(0))
+
       // only select variable priced deals
       .filter(col("DealId").isNullOrEmpty || col("IsVariablePrice") === true)
 
       .select(
+
         col("BidRequestId"),
-        col("DealId").alias("i_DealId"),
+        col("DealId"),
+
+        // adjusted impression cols
 
         col("MediaCostCPMInUSD").cast(DoubleType).alias("MediaCostCPMInUSD"),
         col("RealMediaCostInUSD").cast(DoubleType).alias("RealMediaCostInUSD"),
@@ -148,51 +164,12 @@ object RawDataTransform {
         col("DiscrepancyAdjustmentMultiplier").cast(DoubleType).alias("DiscrepancyAdjustmentMultiplier"),
 
         col("i_RealBidPrice"),
-        (col("SubmittedBidAmountInUSD") * 1000).cast(DoubleType).alias("i_OrigninalBidPrice"),
-        col("FirstPriceAdjustment").cast(DoubleType).alias("i_FirstPriceAdjustment"),
-        col("imp_adjuster")
-      )
-
-
-    (impsDf.selectAs[AdjImpressions], empiricalDiscrepancyDf.selectAs[EmpiricalDiscrepancy])
-
-  }
-
-
-  def bidsData(date: LocalDate, svName: String, svbDf: DataFrame, pdaDf: DataFrame, dealDf: DataFrame, empDisDf: Dataset[EmpiricalDiscrepancy]): DataFrame = {
-    val bidsDf = loadParquetData[BidRequestRecord](BidRequestDataset.BIDSS3, date).alias("bids")
-      .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
-      .filter(col("SupplyVendor") === svName)
-      .filter(col("AuctionType") === 1) // Note the difference with Impression Data
-
-      .join(empDisDf.alias("ed"), Seq("PartnerId", "SupplyVendor", "DealId", "AdFormat"), "left")
-      .join(broadcast(pdaDf).alias("pda"), Seq("PartnerId", "SupplyVendor"), "left")
-      .join(broadcast(svbDf).alias("svb"), Seq("SupplyVendor"), "left")
-      .join(broadcast(dealDf).alias("deal"), Seq("SupplyVendor", "DealId"), "left")
-
-      .withColumn("bid_adjuster",
-        coalesce('FirstPriceAdjustment,
-          lit(1) / coalesce(
-            'EmpiricalDiscrepancy,
-            'pdaDiscrpancyAdjustment,
-            'svbDiscrpancyAdjustment,
-            lit(1)
-          )
-        )
-      )
-      .withColumn("b_RealBidPriceInUSD", 'AdjustedBidCPMInUSD * 'bid_adjuster)
-      .withColumn("b_RealBidPrice", round('b_RealBidPriceInUSD, ROUNDING_PRECISION))
-      .withColumn("PredictiveClearingRandomControl", when(col("PredictiveClearingRandomControl"), 1).otherwise(0))
-
-      // only select variable priced deals
-      .filter(col("DealId").isNullOrEmpty || col("IsVariablePrice") === true)
-
-      .select(
-        col("BidRequestId"),
-        col("DealId"),
+        (col("SubmittedBidAmountInUSD") * 1000).cast(DoubleType).alias("ImpressionsOriginalBidPrice"),
+        col("ImpressionsFirstPriceAdjustment"),
+        col("imp_adjuster"),
 
         col("AdjustedBidCPMInUSD").cast("double").alias("AdjustedBidCPMInUSD"),
-        col("FirstPriceAdjustment").cast("Double").alias("b_FirstPriceAdjustment"),
+        col("BidsFirstPriceAdjustment"),
         col("FloorPriceInUSD").cast("double").alias("FloorPriceInUSD"),
 
 
@@ -234,17 +211,17 @@ object RawDataTransform {
         col("LogEntryTime"),
         // https://ianlondon.github.io/blog/encoding-cyclical-features-24hour-time/ (also from Victor)
         // hour in the day
-        round(sin(lit(2 * 3.14159265359) * hour(col("LogEntryTime")) / 24), TIME_ROUNDING_PRECISION).alias("sin_hour_day"),
-        round(cos(lit(2 * 3.14159265359) * hour(col("LogEntryTime")) / 24), TIME_ROUNDING_PRECISION).alias("cos_hour_day"),
+        round(sin(lit(TWOPI) * hour(col("LogEntryTime")) / 24), TIME_ROUNDING_PRECISION).alias("sin_hour_day"),
+        round(cos(lit(TWOPI) * hour(col("LogEntryTime")) / 24), TIME_ROUNDING_PRECISION).alias("cos_hour_day"),
         // hour in the week
-        round(sin(lit(2 * 3.14159265359) * (hour(col("LogEntryTime")) + (dayofweek(col("LogEntryTime")) * 24)) / (7 * 24)), TIME_ROUNDING_PRECISION).alias("sin_hour_week"),
-        round(cos(lit(2 * 3.14159265359) * (hour(col("LogEntryTime")) + (dayofweek(col("LogEntryTime")) * 24)) / (7 * 24)), TIME_ROUNDING_PRECISION).alias("cos_hour_week"),
+        round(sin(lit(TWOPI) * (hour(col("LogEntryTime")) + (dayofweek(col("LogEntryTime")) * 24)) / (7 * 24)), TIME_ROUNDING_PRECISION).alias("sin_hour_week"),
+        round(cos(lit(TWOPI) * (hour(col("LogEntryTime")) + (dayofweek(col("LogEntryTime")) * 24)) / (7 * 24)), TIME_ROUNDING_PRECISION).alias("cos_hour_week"),
         // minute in the hour
-        round(sin(lit(2 * 3.14159265359) * minute(col("LogEntryTime")) / 60), TIME_ROUNDING_PRECISION).alias("sin_minute_hour"),
-        round(cos(lit(2 * 3.14159265359) * minute(col("LogEntryTime")) / 60), TIME_ROUNDING_PRECISION).alias("cos_minute_hour"),
+        round(sin(lit(TWOPI) * minute(col("LogEntryTime")) / 60), TIME_ROUNDING_PRECISION).alias("sin_minute_hour"),
+        round(cos(lit(TWOPI) * minute(col("LogEntryTime")) / 60), TIME_ROUNDING_PRECISION).alias("cos_minute_hour"),
         // minute in the week
-        round(sin(lit(2 * 3.14159265359) * (minute(col("LogEntryTime")) + (hour(col("LogEntryTime")) * 60)) / (24 * 60)), TIME_ROUNDING_PRECISION).alias("sin_minute_day"),
-        round(cos(lit(2 * 3.14159265359) * (minute(col("LogEntryTime")) + (hour(col("LogEntryTime")) * 60)) / (24 * 60)), TIME_ROUNDING_PRECISION).alias("cos_minute_day"),
+        round(sin(lit(TWOPI) * (minute(col("LogEntryTime")) + (hour(col("LogEntryTime")) * 60)) / (24 * 60)), TIME_ROUNDING_PRECISION).alias("sin_minute_day"),
+        round(cos(lit(TWOPI) * (minute(col("LogEntryTime")) + (hour(col("LogEntryTime")) * 60)) / (24 * 60)), TIME_ROUNDING_PRECISION).alias("cos_minute_day"),
 
 
         // Seller/Publisher Features

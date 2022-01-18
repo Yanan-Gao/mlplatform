@@ -55,6 +55,8 @@ object CleanInputDataTransform {
   def createCleanDataset(s3Path: String, extremeValueThreshold: Double): Dataset[CleanInputData] = {
 
     val df = spark.read.parquet(s3Path)
+      //python code expecting 'is_imp' target, but doesnt fit with column name style before this point, so changing name here
+      .withColumn("is_imp", col("IsImp"))
     //TODO: counters on size etc here -> put counter on the output as this input should be captured in the raw data creation counters
 
     val ds = df

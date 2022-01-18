@@ -1,11 +1,15 @@
 package com.thetradedesk.plutus
 
+import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
 import org.apache.spark.ml.linalg.{SparseVector, Vector}
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.{col, lit, udf, when, xxhash64}
-import org.apache.spark.sql.{Column, Dataset, Encoder, SparkSession}
+import org.apache.spark.sql.{Column, DataFrame, Dataset, Encoder, SparkSession}
+
 import java.time.LocalDate
+import java.util.UUID
+import scala.collection.mutable.ArrayBuffer
 
 package object data {
 
@@ -20,7 +24,7 @@ package object data {
   }
 
   def explicitDatePart(date: LocalDate): String = {
-    f"year=${date.getYear}/month=${date.getMonthValue}/day=${date.getDayOfMonth}"
+    f"year=${date.getYear}/month=${date.getMonthValue}%02d/day=${date.getDayOfMonth}%02d"
   }
 
   def parquetDataPaths(s3path: String, date: LocalDate, source: Option[String] = None, lookBack: Option[Int] = None): Seq[String] = {
@@ -30,8 +34,20 @@ package object data {
     }
   }
 
+  def parquetHourlyDataPaths(s3path: String, date: LocalDate, source: Option[String] = None, hours: Seq[Int]): Seq[String] = {
+    var paddedHours: ArrayBuffer[String] = ArrayBuffer.empty[String]
+    hours.map{i => if (i < 10) {
+      paddedHours += (f"0${i}")
+    }
+      else {
+        paddedHours += i.toString
+      }
+    }
+    paddedHours.map(i => f"$s3path/date=${paddedDatePart(date)}/hour=${i}")
+  }
+
   def cleansedDataPaths(basePath: String, date: LocalDate, lookBack: Option[Int] = None): Seq[String] = {
-    (0 to lookBack.getOrElse(0)).map(i => f"${basePath}/${paddedDatePart(date.minusDays(i), separator = Some("/"))}/*/*/*.gz")
+    (0 to lookBack.getOrElse(0)).map(i => f"${basePath}/${explicitDatePart(date.minusDays(i))}/*/*/*.gz")
   }
 
 
@@ -49,6 +65,12 @@ package object data {
       .selectAs[T]
   }
 
+  def loadParquetDataHourly[T: Encoder](s3path: String, date: LocalDate, hours: Seq[Int], source: Option[String] = None)(implicit spark: SparkSession): Dataset[T] = {
+    val paths = parquetHourlyDataPaths(s3path, date, source, hours)
+    spark.read.parquet(paths: _*)
+      .selectAs[T]
+  }
+
   def shiftMod(hashValue: Long, cardinality: Int): Int = {
     val modulo = math.min(cardinality - 1, Int.MaxValue - 1)
 
@@ -61,6 +83,19 @@ package object data {
   def shiftModUdf: UserDefinedFunction = udf((hashValue: Long, cardinality: Int) => {
     shiftMod(hashValue, cardinality)
   })
+
+  def cacheToHDFS[T: Encoder](df: Dataset[T], cacheName: String = "unnamed"): Dataset[T] = {
+    if (spark.sparkContext.master.contains("local")) {
+      //if we are running locally, we are in the middle of a test
+      Console.err.println("Skipping cacheToHDFS of " + cacheName)
+      df
+    } else {
+      // TODO: add another unpersist method so we can delete HDFS cached datasets that have this random UUID
+      val randomTempPath = "hdfs:///user/hadoop/output-temp-dir" + s"$cacheName-${UUID.randomUUID().toString}"
+      df.write.parquet(randomTempPath)
+      spark.read.parquet(randomTempPath).as[T]
+    }
+  }
 
 
 
