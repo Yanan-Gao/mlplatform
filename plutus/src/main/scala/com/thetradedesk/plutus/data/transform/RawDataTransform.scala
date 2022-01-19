@@ -263,7 +263,8 @@ object RawDataTransform {
 
         // PC Features - useful for eval but will not be model input
         col("PredictiveClearingMode.value").alias("PredictiveClearingMode"),
-        col("PredictiveClearingRandomControl")
+        col("PredictiveClearingRandomControl"),
+        col("IsImp")
       )
     bidsDf
   }
