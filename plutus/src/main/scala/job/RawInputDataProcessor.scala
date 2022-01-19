@@ -41,7 +41,9 @@ object RawInputDataProcessor extends Logger {
     val pda = loadParquetData[Pda](DiscrepancyDataset.PDAS3, date)
     val deals = loadParquetData[Deals](DiscrepancyDataset.DEALSS3, date)
 
-    val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressions.BIDSIMPRESSIONSS3, date, source = Some("plutus"))
+    val brBfLoc = BidsImpressions.BIDSIMPRESSIONSS3 + f"${ttdEnv}/bidsimpressions/"
+
+    val bidsImpressions = loadParquetData[BidsImpressionsSchema](brBfLoc, date, source = Some("plutus"))
 
     RawDataTransform.transform(date, outputPath, ttdEnv, outputPrefix, svNames, bidsImpressions, mbw, (svb, pda, deals) )
 
