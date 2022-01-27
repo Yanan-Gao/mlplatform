@@ -4,8 +4,8 @@ BASE_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/pr
 MODEL_INPUT="modelinput/google"
 META_DATA="metadata/google"
 YEAR=$(date -d "$date -1 days" +"%Y")
-MONTH=$(date -d "$date -1 days" +"%-m")
-DAY=$(date -d "$date -1 days" +"%-d")
+MONTH=$(date -d "$date -1 days" +"%m")
+DAY=$(date -d "$date -1 days" +"%d")
 DATE_PATH="year=${YEAR}/month=${MONTH}/day=${DAY}"
 LOOKBACK="7"
 DATA_SOURCE="${BASE_S3_PATH}/${MODEL_INPUT}/${DATE_PATH}/lookback=${LOOKBACK}/format=tfrecord/"

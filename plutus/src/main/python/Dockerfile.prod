@@ -1,6 +1,6 @@
 #ARG FROM_IMAGE_NAME=nvcr.io/nvidia/tensorflow:21.02-tf2-py3
 #FROM ${FROM_IMAGE_NAME}
-FROM nvidia/cuda:11.2.0-cudnn8-devel-ubuntu18.04
+FROM nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04
 CMD nvidia-smi
 
 RUN apt-get update && apt-get install --no-install-recommends --no-install-suggests -y curl
@@ -12,19 +12,19 @@ WORKDIR /opt/application/
 
 RUN pip3 install --upgrade pip
 RUN pip3 install --quiet --no-cache-dir \
-    'tensorflow==2.6.0' \
-    'tensorflow_probability==0.14.1' \
+    'tensorflow==2.7.0' \
+    'tensorflow_probability==0.15.0' \
     'boto3' \
     'prometheus_client' \
     'awscli' \
     'pandas' \
-    'tensorflow-serving-api'
+    'tensorflow-serving-api==2.7.0'
 
 
 
-COPY ./src/main/python/plutus ./plutus
-COPY ./src/main/python/setup.cfg ./
-COPY ./src/main/python/main.py ./
+COPY plutus ./plutus
+COPY setup.cfg ./
+COPY main.py ./
 
 
 ENTRYPOINT ["python3", "./main.py"]
