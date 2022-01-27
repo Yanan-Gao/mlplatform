@@ -85,8 +85,8 @@ plutus:push_scripts:
   rules:
     - if: $CI_COMMIT_BRANCH == "master"
       changes:
-        - "plutus/src/**/*"
-      when: manual
+        - "plutus/src/main/python/modelrun.sh"
+        - "plutus/src/main/python/clustersetup.sh"
   script:
     - pushd ./plutus/
     - aws s3 cp ${SCRIPTS_SOURCE}/${SETUP_SCRIPT} ${SCRIPTS_DEST}
@@ -110,14 +110,36 @@ plutus:build_push_training_container:
       when: manual
   script:
     - export DOCKER_HOST=$DOCKER_PORT
-    - pushd ./plutus/
+    - pushd ./plutus/src/main/python/
     - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
-    - docker build -t ${PLUTUS_TRAINING_IMAGE}:latest .
+    - docker build -f Dockerfile.prod -t ${PLUTUS_TRAINING_IMAGE}:latest .
     - docker tag ${PLUTUS_TRAINING_IMAGE}:latest ${DOCKER_INTERNAL_REGISTRY}/${PLUTUS_TRAINING_IMAGE}:latest
     - docker push ${DOCKER_INTERNAL_REGISTRY}/${PLUTUS_TRAINING_IMAGE}:latest
     - popd
     - echo "latest training container pushed"
 
+plutus:build_push_release_container:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: deploy
+  services:
+    - docker:dind
+  before_script:
+    - apt update
+    - apt-get install docker.io -y
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      changes:
+        - "plutus/src/main/python/**"
+      when: manual
+  script:
+    - export DOCKER_HOST=$DOCKER_PORT
+    - pushd ./plutus/src/main/python/
+    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
+    - docker build -f Dockerfile.prod -t ${PLUTUS_TRAINING_IMAGE}:release .
+    - docker tag ${PLUTUS_TRAINING_IMAGE}:release ${DOCKER_INTERNAL_REGISTRY}/${PLUTUS_TRAINING_IMAGE}:release
+    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PLUTUS_TRAINING_IMAGE}:release
+    - popd
+    - echo "latest training container pushed"
 
 plutus:deploy_release:
   image: "$SCALA_BUILD_IMAGE_2_13_0"

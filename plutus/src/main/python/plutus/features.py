@@ -99,7 +99,7 @@ def get_int_parser(model_features, model_targets):
 
         targets = tf.stack(
             [
-                data.pop('IsImp'),
+                data.pop('is_imp'),
                 data.pop('AuctionBidPrice'),
                 data.pop('RealMediaCost'),
                 data.pop('mb2w'),

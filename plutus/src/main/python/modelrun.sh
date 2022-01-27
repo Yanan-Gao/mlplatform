@@ -13,12 +13,12 @@ sudo chmod 666 /var/run/docker.sock
 
 # echo "this is what im trying to use to login: " ${DOCKER_USER} ${CREDS} ${DOCKER_INTERNAL_BASE}
 
-  eval docker login -u $DOCKER_USER -p $CREDS $DOCKER_INTERNAL_BASE
+eval docker login -u $DOCKER_USER -p $CREDS $DOCKER_INTERNAL_BASE
 
-eval docker pull ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:latest
+eval docker pull ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:release
 
 sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v /mnt/tfrecords:${MODEL_INPUT}/tfrecords -v /mnt/metadata:${MODEL_INPUT}/metadata/ \
-  ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:latest  \
+  ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:release  \
       "--nodummy" \
       "--batch_size=8192" \
       "--eval_batch_size=197934" \
