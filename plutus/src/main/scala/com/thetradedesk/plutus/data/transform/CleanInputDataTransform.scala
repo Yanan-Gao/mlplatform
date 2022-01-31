@@ -8,7 +8,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.functions.{col, round, when}
-
+import org.apache.spark.sql.types.FloatType
 import org.apache.spark.sql.{Dataset, SaveMode}
 
 import java.time.LocalDate
@@ -56,7 +56,7 @@ object CleanInputDataTransform {
 
     val df = spark.read.parquet(s3Path)
       //python code expecting 'is_imp' target, but doesnt fit with column name style before this point, so changing name here
-      .withColumn("is_imp", col("IsImp"))
+      .withColumn("is_imp", col("IsImp").cast(FloatType))
     //TODO: counters on size etc here -> put counter on the output as this input should be captured in the raw data creation counters
 
     val ds = df

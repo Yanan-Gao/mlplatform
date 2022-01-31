@@ -1,6 +1,7 @@
 package job
 
 import com.thetradedesk.bidsimpression.transform.BidsImpressions
+import com.thetradedesk.bidsimpression.transform.BidsImpressions.writeOutput
 import com.thetradedesk.plutus.data.{loadParquetData, loadParquetDataHourly}
 import com.thetradedesk.plutus.data.schema.{BidFeedbackDataset, BidRequestDataset, BidRequestRecord, Impressions}
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -16,6 +17,7 @@ object BrBf {
   val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/features/data/koav4/v=1/")
   val outputPrefix = config.getString("outputPrefix" , "bidsimpressions")
   val ttdEnv = config.getString("ttd.env" , "dev")
+  val writePartitions = config.getInt("writePartitions", 2000)
 
   val hours = config.getStringSeqRequired("hours")
 
@@ -30,7 +32,10 @@ object BrBf {
     val bids = loadParquetDataHourly[BidRequestRecord](BidRequestDataset.BIDSS3, date, inputHours)
 
 
-    BidsImpressions.transform(date, outputPath, ttdEnv, outputPrefix, bids, impressions)
+    val bfBf = BidsImpressions.transform(date, outputPath, ttdEnv, outputPrefix, bids, impressions, inputHours)
+
+    writeOutput(bfBf, outputPath, ttdEnv, outputPrefix, date, inputHours, writePartitions)
+
 
     // clean up
     jobDurationTimer.setDuration()

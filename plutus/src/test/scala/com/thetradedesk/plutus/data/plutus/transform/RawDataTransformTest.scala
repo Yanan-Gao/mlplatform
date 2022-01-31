@@ -24,8 +24,6 @@ class RawDataTransformTest extends TTDSparkTest {
       Seq(partnerSupplyVendorDiscrepancyAdj).toDS().as[Pda],
     Seq(supplyVendorDealRecord).toDS().as[Deals])
 
-    RawDataTransform.transform(date: LocalDate,
-    "", "test", "none", Seq("Google"), bidsImps, mbw, discrep, true)(new PrometheusClient("test", "not real"))
-
+    RawDataTransform.transform(date: LocalDate, Seq("Google"), bidsImps, mbw, discrep, 1)(new PrometheusClient("test", "not real"))
     }
 }

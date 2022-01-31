@@ -1,19 +1,21 @@
 package com.thetradedesk.bidsimpression.transform
 
 import com.thetradedesk.bidsimpression.schema.{BidCols, BidsImpressionsSchema, ImpressionsCols}
+import com.thetradedesk.logging.Logger
 import com.thetradedesk.plutus.data.{cacheToHDFS, explicitDatePart, loadParquetData}
 import com.thetradedesk.plutus.data.schema.{BidFeedbackDataset, BidRequestDataset, BidRequestRecord, Impressions}
 import org.apache.spark.sql.{DataFrame, Dataset, SaveMode}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
+import org.apache.spark.sql.execution.streaming.continuous.SetWriterPartitions
 import org.apache.spark.sql.functions.{col, when, xxhash64}
 
 import java.time.LocalDate
 
-object BidsImpressions {
+object BidsImpressions extends Logger {
 
-  def transform(date: LocalDate, outputPath: String, ttdEnv: String, outputPrefix: String, bids: Dataset[BidRequestRecord], impressions: Dataset[Impressions], isTest: Boolean = false) = {
+  def transform(date: LocalDate, outputPath: String, ttdEnv: String, outputPrefix: String, bids: Dataset[BidRequestRecord], impressions: Dataset[Impressions], inputHours: Seq[Int]): Dataset[BidsImpressionsSchema] = {
 
     val bidsDf = bids.select(BidCols.BIDSCOLUMNS.map(i => col(i)): _*)
       .withColumn("BidRequestIdHash" , xxhash64(col("BidRequestId")))
@@ -27,29 +29,23 @@ object BidsImpressions {
 
     val joinDf = bidsDf.alias("bids")
       .join(impressionsDf.alias("i"), Seq("BidRequestIdHash"), "leftouter")
-      .withColumn("IsImp", when(col("MediaCostCPMInUSD").isNotNull, 1).otherwise(0))
+      .withColumn("IsImp", when(col("MediaCostCPMInUSD").isNotNull, true).otherwise(false))
       .withColumn("ImpressionsFirstPriceAdjustment", col("i.FirstPriceAdjustment"))
       .withColumn("BidsFirstPriceAdjustment", col("bids.FirstPriceAdjustment"))
       .selectAs[BidsImpressionsSchema]
       .cache
 
-    // val writeDs = cacheToHDFS[BidsImpressionsSchema](joinDf)
+    log.info("join count" + joinDf.count())
 
-    println(joinDf.count())
-
-    writeOutput(joinDf, outputPath, ttdEnv, outputPrefix, date, isTest)
+    joinDf
   }
 
-  def writeOutput(rawData: Dataset[BidsImpressionsSchema], outputPath: String, ttdEnv: String, outputPrefix: String, date: LocalDate, isTest: Boolean = false): Unit = {
-    if (isTest) {
-      rawData.collect()
-    }
-    else {
-      // note the date part is year=yyyy/month=m/day=d/
+  def writeOutput(rawData: Dataset[BidsImpressionsSchema], outputPath: String, ttdEnv: String, outputPrefix: String, date: LocalDate, inputHours: Seq[Int], writePartitions: Int): Unit = {
+     // note the date part is year=yyyy/month=m/day=d/
       rawData
+        .coalesce(writePartitions)
         .write
-        .mode(SaveMode.Append)
-        .parquet(s"$outputPath/$ttdEnv/$outputPrefix/${explicitDatePart(date)}/")
+        .mode(SaveMode.Overwrite)
+        .parquet(s"$outputPath/$ttdEnv/$outputPrefix/${explicitDatePart(date)}/hourPart=${inputHours.min}/")
     }
-  }
 }

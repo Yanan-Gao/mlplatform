@@ -13,6 +13,7 @@ import com.thetradedesk.spark.sql.SQLFunctions._
 import java.time.LocalDate
 import com.thetradedesk.plutus.data.{cleansedDataPaths, explicitDatePart, loadParquetData}
 import com.thetradedesk.plutus.data.schema.{Deals, DiscrepancyDataset, GoogleMinimumBidToWinData, GoogleMinimumBidToWinDataset, Pda, RawMBtoWinSchema, Svb}
+import org.apache.spark.sql.functions.col
 
 
 object RawInputDataProcessor extends Logger {
@@ -22,6 +23,7 @@ object RawInputDataProcessor extends Logger {
   val outputPrefix = config.getString("outputPrefix" , "raw")
   val svNames = config.getStringSeq("svNames", Seq("google"))
   val ttdEnv = config.getString("ttd.env" , "dev")
+  val partitions = config.getInt("partitions", 2000)
 
   implicit val prometheus = new PrometheusClient("Plutus", "TrainingDataEtl")
   val jobDurationTimer = prometheus.createGauge("training_data_raw_etl_runtime", "Time to process 1 day of bids, imppressions, lost bid data").startTimer()
@@ -44,8 +46,14 @@ object RawInputDataProcessor extends Logger {
     val brBfLoc = BidsImpressions.BIDSIMPRESSIONSS3 + f"${ttdEnv}/bidsimpressions/"
 
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](brBfLoc, date, source = Some("plutus"))
+      .filter(col("AuctionType") === 1 && $"SupplyVendor".isin(svNames: _*)) // Note the difference with Impression Data
 
-    RawDataTransform.transform(date, outputPath, ttdEnv, outputPrefix, svNames, bidsImpressions, mbw, (svb, pda, deals) )
+
+    val rawDataDf = RawDataTransform.transform(date, svNames, bidsImpressions, mbw, (svb, pda, deals), partitions)
+
+    svNames.foreach{sv =>
+      RawDataTransform.writeOutput(rawDataDf.filter($"SupplyVendor" === sv), outputPath, ttdEnv, outputPrefix, sv, date)
+    }
 
     // clean up
     jobDurationTimer.setDuration()

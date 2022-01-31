@@ -233,7 +233,7 @@ object MockData {
                                     SubmittedBidAmountInUSD = 10.0,
                                     ImpressionsFirstPriceAdjustment = Some(1.0),
 
-                                    IsImp = 1
+                                    IsImp = true
                                   )
 
 

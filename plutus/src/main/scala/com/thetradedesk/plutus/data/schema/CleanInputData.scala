@@ -41,7 +41,7 @@ final case class CleanInputData(supplyVendor: String, // ImpressionContext.Biddi
                                 sin_hour_week: Double,
                                 cos_hour_week: Double,
 
-                                is_imp: Double,
+                                is_imp: Float,
                                 AuctionBidPrice: Double,
                                 RealMediaCost: Double,
                                 mb2w: Double,
