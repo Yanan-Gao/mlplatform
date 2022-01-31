@@ -16,6 +16,6 @@ class BidsImpressionsTransformTest extends TTDSparkTest {
     val impOne = Seq(createImpressionsRow(BidRequestId = "1", SupplyVendor = "Google")).toDS().as[Impressions]
     val reqOne = Seq(MockData.request.copy(BidRequestId="1", SupplyVendor = Some("Google"))).toDS().as[BidRequestRecord]
 
-    BidsImpressions.transform(java.time.LocalDate.parse("2021-12-12"), "s3://fake/bucket/", "", "", reqOne, impOne, true )
+    BidsImpressions.transform(java.time.LocalDate.parse("2021-12-12"), "s3://fake/bucket/", "", "", reqOne, impOne, Seq(1, 2) )
 
 }}

@@ -68,7 +68,7 @@ case class BidsImpressionsSchema(
                                   SubmittedBidAmountInUSD: BigDecimal,
                                   ImpressionsFirstPriceAdjustment: Option[BigDecimal],
 
-                                  IsImp: Int
+                                  IsImp: Boolean
                                 )
 
 object BidsImpressions {

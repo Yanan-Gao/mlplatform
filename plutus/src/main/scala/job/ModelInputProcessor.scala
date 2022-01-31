@@ -23,7 +23,7 @@ object ModelInputProcessor extends Logger {
   val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc")
   val outputPrefix = config.getString("outputPrefix" , "modelinput")
 
-  val tfRecordPath = config.getString("tfRecodPath" , "tfrecord")
+  val tfRecordPath = config.getString("tfRecordPath" , "tfrecord")
   val dims = config.getInt("dims" , 500000)
 
   val formats = config.getStringSeq("formats", Seq("tfrecord", "parquet"))

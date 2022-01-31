@@ -1,18 +1,20 @@
 package com.thetradedesk.plutus.data.transform
 
 import com.thetradedesk.bidsimpression.schema.BidsImpressionsSchema
+import com.thetradedesk.logging.Logger
 import com.thetradedesk.plutus.data.schema._
 import com.thetradedesk.plutus.data.explicitDatePart
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import org.apache.parquet.format.IntType
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.DoubleType
+import org.apache.spark.sql.types.{DoubleType, IntegerType}
 import org.apache.spark.sql.{DataFrame, Dataset, SaveMode}
 
 import java.time.LocalDate
 
-object RawDataTransform {
+object RawDataTransform extends Logger {
 
   val ROUNDING_PRECISION = 3
   val EMPIRICAL_DISCREPANCY_ROUNDING_PRECISION = 2
@@ -21,37 +23,40 @@ object RawDataTransform {
   // and c# where the time of day features are computed at bid time.
   val TWOPI = 2 * 3.14159265359
 
-  def transform(date: LocalDate, outputPath: String, ttdEnv: String, outputPrefix: String, svNames: Seq[String], bidsImpressions: Dataset[BidsImpressionsSchema], mbw: Dataset[RawMBtoWinSchema], discrepancy: (Dataset[Svb], Dataset[Pda], Dataset[Deals]), isTest: Boolean = false)(implicit prometheus: PrometheusClient): Unit = {
+  def transform(date: LocalDate, svNames: Seq[String], bidsImpressions: Dataset[BidsImpressionsSchema], mbw: Dataset[RawMBtoWinSchema], discrepancy: (Dataset[Svb], Dataset[Pda], Dataset[Deals]), partitions: Int)(implicit prometheus: PrometheusClient): DataFrame = {
 
-    val googleLostBidData = googleMinimumBidToWinData(mbw, date)
+    val googleLostBidData = googleMinimumBidToWinData(mbw, date).repartition(partitions)
+
+    log.info("google lost bid data " + googleLostBidData.cache.count())
 
     val dealDf = dealData(discrepancy._1, discrepancy._3)
 
     val empiricalDiscrepancyDf = empiricalImpressions(bidsImpressions)
 
+    discrepancy._1.cache.count()
+    discrepancy._2.cache.count()
+    dealDf.cache().count()
+    empiricalDiscrepancyDf.cache.count()
+
     val bidsGauge = prometheus.createGauge("raw_bids_count", "count of raw bids")
-    val bids = allData(date, svNames, bidsImpressions, discrepancy._1, discrepancy._2, dealDf, empiricalDiscrepancyDf).cache()
+    val bids = allData(date, svNames, bidsImpressions, discrepancy._1, discrepancy._2, dealDf, empiricalDiscrepancyDf, partitions)
+      .repartition(partitions)
+      .cache()
+
     bidsGauge.set(bids.count())
 
     val rawData = bids
       .join(googleLostBidData, Seq("BidRequestId"), "left")
 
-    svNames.foreach{sv =>
-      writeOutput(rawData.filter($"SupplyVendor" === sv), outputPath, ttdEnv, outputPrefix, sv, date, isTest)
-    }
-    }
+    rawData
+  }
 
-  def writeOutput(rawData: DataFrame, outputPath: String, ttdEnv: String, outputPrefix: String, svName: String, date: LocalDate, isTest: Boolean = false): Unit = {
-    if (isTest) {
-      rawData.show()
-    }
-    else {
+  def writeOutput(rawData: DataFrame, outputPath: String, ttdEnv: String, outputPrefix: String, svName: String, date: LocalDate): Unit = {
       // note the date part is year=yyyy/month=m/day=d/
       rawData
         .write
         .mode(SaveMode.Overwrite)
         .parquet(s"$outputPath/$ttdEnv/$outputPrefix/$svName/${explicitDatePart(date)}")
-    }
   }
 
   def googleMinimumBidToWinData(mbw: Dataset[RawMBtoWinSchema], date: LocalDate): Dataset[GoogleMinimumBidToWinData] = {
@@ -81,7 +86,7 @@ object RawDataTransform {
 
   def empiricalImpressions(bidsImpressions: Dataset[BidsImpressionsSchema]): Dataset[EmpiricalDiscrepancy] = {
     val impressions = bidsImpressions
-      .filter(col("AuctionType") === "FirstPrice" && col("IsImp") === 1)
+      .filter(col("AuctionType") === "FirstPrice" && col("IsImp"))
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
 
     val empiricalDiscrepancyDf = impressions.alias("bf")
@@ -100,10 +105,10 @@ object RawDataTransform {
   }
 
 
-  def allData(date: LocalDate, svNames: Seq[String], bidsImpressions: Dataset[BidsImpressionsSchema], svb: Dataset[Svb], pda: Dataset[Pda], dealDf: DataFrame, empDisDf: Dataset[EmpiricalDiscrepancy]): DataFrame = {
+  def allData(date: LocalDate, svNames: Seq[String], bidsImpressions: Dataset[BidsImpressionsSchema], svb: Dataset[Svb], pda: Dataset[Pda], dealDf: DataFrame, empDisDf: Dataset[EmpiricalDiscrepancy], partitions: Int): DataFrame = {
     val bidsDf = bidsImpressions.alias("bids")
-      .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
       .filter(col("AuctionType") === 1 && $"SupplyVendor".isin(svNames: _*)) // Note the difference with Impression Data
+      .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
 
       .join(empDisDf.alias("ed"), Seq("PartnerId", "SupplyVendor", "DealId", "AdFormat"), "left")
       .join(broadcast(pda.withColumn("SupplyVendor", col("SupplyVendorName"))).alias("pda"), Seq("PartnerId", "SupplyVendor"), "left")
@@ -112,6 +117,7 @@ object RawDataTransform {
 
       .drop("svb.RequestName")
       .drop("pda.SupplyVendorName")
+      .repartition(partitions)
 
       // determining how much the bid was adjusted by to back out real bid price
       .withColumn("bid_adjuster",
@@ -264,8 +270,9 @@ object RawDataTransform {
         // PC Features - useful for eval but will not be model input
         col("PredictiveClearingMode.value").alias("PredictiveClearingMode"),
         col("PredictiveClearingRandomControl"),
-        col("IsImp")
+        col("IsImp").cast(IntegerType)
       )
     bidsDf
+
   }
 }
