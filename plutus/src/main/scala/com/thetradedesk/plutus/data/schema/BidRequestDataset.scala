@@ -106,7 +106,9 @@ final case class BidRequestRecord(GroupId: String,
                                     UserAgent: Option[String] = None, AppStoreUrl: Option[String] = None,
                                     PredictiveClearingMode: Option[PredictiveClearingModeLookupRecord] = None,
                                     PredictiveClearingRandomControl: Boolean = false,
-                                    HawkId: Option[String])
+                                    HawkId: Option[String],
+                                    DoNotTrack: Option[DoNotTrackLookupRecord]
+                                 )
 
 case class DeviceTypeLookupRecord(value: Int = 0)
 
@@ -131,6 +133,8 @@ case class VideoPlaybackTypeLookupRecord(value: Int = 0)
 case class InventoryPublisherTypeLookupRecord(value: Int = 0)
 
 case class AdsTxtSellerTypeLookupRecord(value: Int = 0)
+
+case class DoNotTrackLookupRecord(value: Int = 0)
 
 object PredictiveClearingModeLookupRecord {
   val Disabled = 0

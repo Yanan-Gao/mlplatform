@@ -1,6 +1,6 @@
 package com.thetradedesk.bidsimpression.schema
 
-import com.thetradedesk.plutus.data.schema.{AdsTxtSellerTypeLookupRecord, BrowserLookupRecord, DeviceTypeLookupRecord, InventoryPublisherTypeLookupRecord, OSFamilyLookupRecord, PredictiveClearingModeLookupRecord, RenderingContextLookupRecord}
+import com.thetradedesk.plutus.data.schema.{AdsTxtSellerTypeLookupRecord, BrowserLookupRecord, DeviceTypeLookupRecord, DoNotTrackLookupRecord, InventoryPublisherTypeLookupRecord, OSFamilyLookupRecord, PredictiveClearingModeLookupRecord, RenderingContextLookupRecord}
 
 case class BidsImpressionsSchema(
                                  // bidrequest cols
@@ -68,7 +68,12 @@ case class BidsImpressionsSchema(
                                   SubmittedBidAmountInUSD: BigDecimal,
                                   ImpressionsFirstPriceAdjustment: Option[BigDecimal],
 
-                                  IsImp: Boolean
+                                  IsImp: Boolean,
+
+                                  DoNotTrack: Option[DoNotTrackLookupRecord],
+                                  CreativeId: Option[String],
+                                  PrivateContractId: Option[String]
+
                                 )
 
 object BidsImpressions {
