@@ -56,7 +56,11 @@ package com.thetradedesk.bidsimpression.schema
       "Longitude",
 
       "PredictiveClearingMode",
-      "PredictiveClearingRandomControl"
+      "PredictiveClearingRandomControl",
+
+      "CreativeId",
+      "DoNotTrack",
+      "PrivateContractId"
     )
   }
 

@@ -1,7 +1,7 @@
 package com.thetradedesk.plutus.data
 
 import com.thetradedesk.bidsimpression.schema.BidsImpressionsSchema
-import com.thetradedesk.plutus.data.schema.{AdsTxtSellerTypeLookupRecord, BidFeedbackDataset, BidRequestRecord, BrowserLookupRecord, Deals, DeviceTypeLookupRecord, Impressions, InventoryPublisherTypeLookupRecord, OSFamilyLookupRecord, OSLookupRecord, Pda, PredictiveClearingModeLookupRecord, RawMBtoWinSchema, RenderingContextLookupRecord, SkippabilityConstraintLookupRecord, Svb, VideoPlaybackTypeLookupRecord, VideoPlayerSizeLookupRecord, VideoQualityLookupRecord}
+import com.thetradedesk.plutus.data.schema.{AdsTxtSellerTypeLookupRecord, BidFeedbackDataset, BidRequestRecord, BrowserLookupRecord, Deals, DeviceTypeLookupRecord, DoNotTrackLookupRecord, Impressions, InventoryPublisherTypeLookupRecord, OSFamilyLookupRecord, OSLookupRecord, Pda, PredictiveClearingModeLookupRecord, RawMBtoWinSchema, RenderingContextLookupRecord, SkippabilityConstraintLookupRecord, Svb, VideoPlaybackTypeLookupRecord, VideoPlayerSizeLookupRecord, VideoQualityLookupRecord}
 
 import java.sql.Timestamp
 import java.time.Instant
@@ -164,7 +164,8 @@ object MockData {
     AppStoreUrl = Option(""),
     PredictiveClearingMode = Option(PredictiveClearingModeLookupRecord()),
     PredictiveClearingRandomControl = false,
-    HawkId = Option("456"))
+    HawkId = Option("456"),
+    DoNotTrack = Option(DoNotTrackLookupRecord()))
 
   val bidsImpressionsMock = BidsImpressionsSchema(
                                     // bidrequest cols
@@ -233,7 +234,12 @@ object MockData {
                                     SubmittedBidAmountInUSD = 10.0,
                                     ImpressionsFirstPriceAdjustment = Some(1.0),
 
-                                    IsImp = true
+                                    IsImp = true,
+
+                                    DoNotTrack =  Option(DoNotTrackLookupRecord()),
+                                    CreativeId =  Some(""),
+                                    PrivateContractId =  Some("")
+
                                   )
 
 
