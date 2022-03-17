@@ -26,7 +26,7 @@ object KeyphraseStrategy {
         YakePipeline.yakePipeline(
           inputCol = config.keyphraseCol,
           outputCol = "yakeKeyphrases",
-          nKeywords = config.keyphraseSlice
+          nKeywords = config.keyphraseSlice / 3 // finds unigrams, bigrams and trigrams
         ),
         WithColumn(config.keyphraseCol, slice(col("yakeKeyphrases"), 1, config.keyphraseSlice))
       ))

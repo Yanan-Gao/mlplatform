@@ -201,6 +201,7 @@ class KeywordHistoryTest extends TTDSparkTest {
       override val urlHistoryCol: String = "history.url"
       override val keyphraseCol: String = "keyphrases"
       override val keyphraseUrlCol: String = "url"
+      override val strategy: String = "bigram"
 
       // Dataset config
       override val urlHistory: ReadableDataFrame = urls.asReadableDataFrame
@@ -209,6 +210,6 @@ class KeywordHistoryTest extends TTDSparkTest {
 
     val pipe = new KeyphraseHistoryPipeline(keyphraseConfig)
 
-    println(new PipelineAnalyser().explore(pipe))
+    println(new PipelineAnalyser(10).explore(pipe))
   }
 }

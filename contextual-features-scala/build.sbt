@@ -6,7 +6,7 @@ val _name = "spark-features"
 val _version = "0.1.0"
 val _scalaVersion = "2.12.15"
 val sparkVersion = "3.2.1"
-val hadoopAWSVersion = "3.2.1"
+val hadoopAWSVersion = "3.3.2"
 
 name := _name
 version := _version
@@ -21,7 +21,8 @@ lazy val global = project
   .disablePlugins(AssemblyPlugin)
   .aggregate(
     interfaces,
-    contextual
+    contextual,
+    mycellium
   )
 
 lazy val interfaces = project
@@ -30,7 +31,6 @@ lazy val interfaces = project
     name := "feature-interfaces",
     settings,
     libraryDependencies ++= commonDependencies ++ Seq(
-      "com.github.mrpowers" %% "spark-fast-tests" % "1.0.0" % Test
     )
   )
 
@@ -48,20 +48,35 @@ lazy val contextual = project
     interfaces
   )
 
+lazy val mycellium = project
+  .enablePlugins(BuildInfoPlugin)
+  .settings(
+    name := "mycellium",
+    settings,
+    libraryDependencies ++= commonDependencies ++ Seq(
+      "com.vertica.spark" % "vertica-spark" % "3.0.3",
+    )
+  )
+  .dependsOn(
+    interfaces
+  )
+
 lazy val commonDependencies = Seq(
   "org.apache.spark" %% "spark-core" % sparkVersion % Provided,
   "org.apache.spark" %% "spark-sql" % sparkVersion % Provided,
   "org.apache.spark" %% "spark-mllib" % sparkVersion % Provided,
-  "org.apache.hadoop" % "hadoop-aws"  % hadoopAWSVersion % Provided,
-  "org.apache.hadoop" % "hadoop-client" % hadoopAWSVersion % Provided,
-  "net.ruippeixotog" %% "scala-scraper" % "2.1.0",
-  "com.typesafe" % "config" % "1.4.1",
-  "commons-io" % "commons-io" % "2.7",
+//  "org.apache.hadoop" % "hadoop-aws"  % hadoopAWSVersion % Provided,
+//  "org.apache.hadoop" % "hadoop-client" % hadoopAWSVersion % Provided,
+//  "net.ruippeixotog" %% "scala-scraper" % "2.1.0",
+  "com.typesafe" % "config" % "1.4.2",
+  "commons-io" % "commons-io" % "2.11.0",
   "com.github.nscala-time" %% "nscala-time" % "2.30.0",
+  "com.beachape" %% "enumeratum" % "1.7.0",
 
   // Test
-  "org.scalatest" %% "scalatest" % "3.2.10" % Test,
-  "org.mockito" %% "mockito-scala-scalatest" % "1.14.8" % Test
+  "org.scalatest" %% "scalatest" % "3.2.11" % Test,
+  "org.mockito" %% "mockito-scala-scalatest" % "1.17.5" % Test,
+  "com.github.mrpowers" %% "spark-fast-tests" % "1.2.0" % Test
 )
 
 

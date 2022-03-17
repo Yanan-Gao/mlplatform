@@ -2,6 +2,7 @@ package com.ttd.contextual.util
 
 import java.time.LocalDate
 
+import com.github.nscala_time.time.Imports.DateTime
 import com.ttd.contextual.util.elDoradoUtilities.datasets.core.DatePartitionedS3DataSet
 import com.ttd.contextual.spark.TTDSparkContext.spark
 import org.apache.spark.sql.{Dataset, Encoder, Encoders}

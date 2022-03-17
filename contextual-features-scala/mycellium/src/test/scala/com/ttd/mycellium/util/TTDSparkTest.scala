@@ -1,4 +1,4 @@
-package com.ttd.ml.util
+package com.ttd.mycellium.util
 
 import org.apache.spark.sql.SparkSession
 import org.scalatest.BeforeAndAfterAll
@@ -30,6 +30,7 @@ object TTDSparkContext {
       if (isTestMode)
         SparkSession
           .builder()
+          .config("fs.s3a.connection.maximum", 5000)
           .config("spark.master", "local")
           .config("spark.driver.bindAddress", "127.0.0.1")
           .config("spark.sql.shuffle.partitions", 4)
