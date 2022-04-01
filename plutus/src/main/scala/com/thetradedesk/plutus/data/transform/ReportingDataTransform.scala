@@ -1,9 +1,7 @@
 package com.thetradedesk.plutus.data.transform
 
+import com.thetradedesk.geronimo.shared.schemas.{BidFeedbackDataset, BidFeedbackRecord, BidRequestDataset, BidRequestRecord}
 import com.thetradedesk.plutus.data.{explicitDatePart, loadParquetData}
-import com.thetradedesk.plutus.data.schema.AdGroupDataset.ADGROUPS3
-import com.thetradedesk.plutus.data.schema.{AdGroupDataset, AdGroupRecord, BidFeedbackDataset, BidRequestDataset, BidRequestRecord, Impressions, ReportingData, VerticaKoaVolumeControlBudgetRecord}
-import com.thetradedesk.plutus.data.transform.RawDataTransform.googleMinimumBidToWinData
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -52,7 +50,7 @@ object ReportingDataTransform {
   }
 
   def getFullData(date: LocalDate, sspList: Seq[String]) = {
-    val dfImps = loadParquetData[Impressions](s3path = BidFeedbackDataset.BFS3, date = date)
+    val dfImps = loadParquetData[BidFeedbackRecord](s3path = BidFeedbackDataset.BFS3, date = date)
     .select(
       $"BidRequestId",
       $"SupplyVendor",

@@ -1,9 +1,10 @@
 package job
 
-import com.thetradedesk.bidsimpression.transform.BidsImpressions
-import com.thetradedesk.bidsimpression.transform.BidsImpressions.writeOutput
-import com.thetradedesk.plutus.data.{loadParquetData, loadParquetDataHourly}
-import com.thetradedesk.plutus.data.schema.{BidFeedbackDataset, BidRequestDataset, BidRequestRecord, Impressions}
+
+import com.thetradedesk.geronimo.bidsimpression.transform.BidsImpressions
+import com.thetradedesk.geronimo.bidsimpression.transform.BidsImpressions.writeOutput
+import com.thetradedesk.geronimo.shared.loadParquetDataHourly
+import com.thetradedesk.geronimo.shared.schemas.{BidRequestRecord, BidRequestDataset, BidFeedbackDataset, BidFeedbackRecord}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -28,11 +29,11 @@ object BrBf {
 
     val inputHours = hours.map(_.toInt)
 
-    val impressions = loadParquetDataHourly[Impressions](s3path=BidFeedbackDataset.BFS3, date, inputHours)
+    val impressions = loadParquetDataHourly[BidFeedbackRecord](s3path=BidFeedbackDataset.BFS3, date, inputHours)
     val bids = loadParquetDataHourly[BidRequestRecord](BidRequestDataset.BIDSS3, date, inputHours)
 
 
-    val bfBf = BidsImpressions.transform(date, outputPath, ttdEnv, outputPrefix, bids, impressions, inputHours)
+    val bfBf = BidsImpressions.transform(bids, impressions)
 
     writeOutput(bfBf, outputPath, ttdEnv, outputPrefix, date, inputHours, writePartitions)
 

@@ -1,13 +1,15 @@
-package com.thetradedesk.bidsimpression.schema
+package com.thetradedesk.geronimo.bidsimpression.schema
 
-import com.thetradedesk.plutus.data.schema.{AdsTxtSellerTypeLookupRecord, BrowserLookupRecord, DeviceTypeLookupRecord, DoNotTrackLookupRecord, InventoryPublisherTypeLookupRecord, OSFamilyLookupRecord, PredictiveClearingModeLookupRecord, RenderingContextLookupRecord}
+import com.thetradedesk.geronimo.shared.schemas.{AdsTxtSellerTypeLookupRecord, BrowserLookupRecord, DeviceTypeLookupRecord, DoNotTrackLookupRecord, InventoryPublisherTypeLookupRecord, OSFamilyLookupRecord, PredictiveClearingModeLookupRecord, RenderingContextLookupRecord}
 
 case class BidsImpressionsSchema(
                                  // bidrequest cols
                                   BidRequestId: String,
                                   DealId: String,
 
-                                  AdjustedBidCPMInUSD: BigDecimal,
+                                  UIID : Option[String],
+
+                                 AdjustedBidCPMInUSD: BigDecimal,
                                   BidsFirstPriceAdjustment: Option[BigDecimal],
                                   FloorPriceInUSD: Option[BigDecimal],
 
@@ -68,12 +70,22 @@ case class BidsImpressionsSchema(
                                   SubmittedBidAmountInUSD: BigDecimal,
                                   ImpressionsFirstPriceAdjustment: Option[BigDecimal],
 
+                                  // computed columns
                                   IsImp: Boolean,
+
+                                  sin_hour_week: Double,
+                                  cos_hour_week: Double,
+                                  sin_hour_day: Double,
+                                  cos_hour_day: Double,
+                                  sin_minute_hour: Double,
+                                  cos_minute_hour: Double,
+                                  sin_minute_day: Double,
+                                  cos_minute_day: Double,
 
                                   DoNotTrack: Option[DoNotTrackLookupRecord],
                                   CreativeId: Option[String],
-                                  PrivateContractId: Option[String]
 
+                                  PrivateContractId: String
                                 )
 
 object BidsImpressions {

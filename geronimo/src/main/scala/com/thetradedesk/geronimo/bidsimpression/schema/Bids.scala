@@ -1,9 +1,13 @@
-package com.thetradedesk.bidsimpression.schema
+package com.thetradedesk.geronimo.bidsimpression.schema
 
   object BidCols {
     val BIDSCOLUMNS: Seq[String] = Seq(
       "BidRequestId",
       "DealId",
+
+      "TDID",
+      "DeviceAdvertisingId",
+      "UnifiedId2",
 
       "AdjustedBidCPMInUSD",
       "FirstPriceAdjustment",
@@ -58,9 +62,9 @@ package com.thetradedesk.bidsimpression.schema
       "PredictiveClearingMode",
       "PredictiveClearingRandomControl",
 
-      "CreativeId",
+      "PrivateContractId",
       "DoNotTrack",
-      "PrivateContractId"
+      "CreativeId"
     )
   }
 

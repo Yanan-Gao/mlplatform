@@ -71,18 +71,6 @@ package object data {
       .selectAs[T]
   }
 
-  def shiftMod(hashValue: Long, cardinality: Int): Int = {
-    val modulo = math.min(cardinality - 1, Int.MaxValue - 1)
-
-    val index = (hashValue % modulo).intValue()
-    // zero index is reserved for UNK and we do not want negative values
-    val shift = if (index < 0) modulo + 1 else 1
-    index + shift
-  }
-
-  def shiftModUdf: UserDefinedFunction = udf((hashValue: Long, cardinality: Int) => {
-    shiftMod(hashValue, cardinality)
-  })
 
   def cacheToHDFS[T: Encoder](df: Dataset[T], cacheName: String = "unnamed"): Dataset[T] = {
     if (spark.sparkContext.master.contains("local")) {

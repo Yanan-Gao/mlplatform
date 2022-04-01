@@ -1,10 +1,11 @@
 package com.thetradedesk.plutus.data.plutus.transform
 
+import com.thetradedesk.geronimo.shared.intModelFeaturesCols
 import org.scalatest._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers._
-import java.time.LocalDate
 
+import java.time.LocalDate
 import com.thetradedesk.plutus.data.transform.TrainingDataTransform
 
 class TrainingDataTransformTest extends AnyFlatSpec {
@@ -55,7 +56,7 @@ class TrainingDataTransformTest extends AnyFlatSpec {
   }
 
   "intModelFeaturesCols" should "create a list of columns with hashing for string features" in {
-    val output = TrainingDataTransform.intModelFeaturesCols(TrainingDataTransform.modelFeatures)
+    val output = intModelFeaturesCols(TrainingDataTransform.modelFeatures)
     println(output.mkString("Array(", ", ", ")"))
   }
 
