@@ -1,4 +1,4 @@
-package com.thetradedesk.bidsimpression.schema
+package com.thetradedesk.geronimo.bidsimpression.schema
 
 object ImpressionsCols {
   val IMPRESSIONCOLUMNS: Seq[String] = Seq(
@@ -8,5 +8,6 @@ object ImpressionsCols {
     "DiscrepancyAdjustmentMultiplier",
 
     "FirstPriceAdjustment",
-    "SubmittedBidAmountInUSD")
+    "SubmittedBidAmountInUSD"
+    )
 }

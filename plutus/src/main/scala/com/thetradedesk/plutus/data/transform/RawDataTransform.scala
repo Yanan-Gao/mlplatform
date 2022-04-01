@@ -1,6 +1,8 @@
 package com.thetradedesk.plutus.data.transform
 
-import com.thetradedesk.bidsimpression.schema.BidsImpressionsSchema
+
+import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
+import com.thetradedesk.geronimo.shared.schemas.EmpiricalDiscrepancy
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.plutus.data.schema._
 import com.thetradedesk.plutus.data.explicitDatePart
@@ -18,10 +20,6 @@ object RawDataTransform extends Logger {
 
   val ROUNDING_PRECISION = 3
   val EMPIRICAL_DISCREPANCY_ROUNDING_PRECISION = 2
-  val TIME_ROUNDING_PRECISION = 6
-  // used for time of day features.  Pi is hardcoded here because the math.pi values differ between java/scala
-  // and c# where the time of day features are computed at bid time.
-  val TWOPI = 2 * 3.14159265359
 
   def transform(date: LocalDate, svNames: Seq[String], bidsImpressions: Dataset[BidsImpressionsSchema], mbw: Dataset[RawMBtoWinSchema], discrepancy: (Dataset[Svb], Dataset[Pda], Dataset[Deals]), partitions: Int)(implicit prometheus: PrometheusClient): DataFrame = {
 
@@ -217,17 +215,17 @@ object RawDataTransform extends Logger {
         col("LogEntryTime"),
         // https://ianlondon.github.io/blog/encoding-cyclical-features-24hour-time/ (also from Victor)
         // hour in the day
-        round(sin(lit(TWOPI) * hour(col("LogEntryTime")) / 24), TIME_ROUNDING_PRECISION).alias("sin_hour_day"),
-        round(cos(lit(TWOPI) * hour(col("LogEntryTime")) / 24), TIME_ROUNDING_PRECISION).alias("cos_hour_day"),
+        col("sin_hour_day"),
+        col("cos_hour_day"),
         // hour in the week
-        round(sin(lit(TWOPI) * (hour(col("LogEntryTime")) + (dayofweek(col("LogEntryTime")) * 24)) / (7 * 24)), TIME_ROUNDING_PRECISION).alias("sin_hour_week"),
-        round(cos(lit(TWOPI) * (hour(col("LogEntryTime")) + (dayofweek(col("LogEntryTime")) * 24)) / (7 * 24)), TIME_ROUNDING_PRECISION).alias("cos_hour_week"),
+        col("sin_hour_week"),
+        col("cos_hour_week"),
         // minute in the hour
-        round(sin(lit(TWOPI) * minute(col("LogEntryTime")) / 60), TIME_ROUNDING_PRECISION).alias("sin_minute_hour"),
-        round(cos(lit(TWOPI) * minute(col("LogEntryTime")) / 60), TIME_ROUNDING_PRECISION).alias("cos_minute_hour"),
+        col("sin_minute_hour"),
+        col("cos_minute_hour"),
         // minute in the week
-        round(sin(lit(TWOPI) * (minute(col("LogEntryTime")) + (hour(col("LogEntryTime")) * 60)) / (24 * 60)), TIME_ROUNDING_PRECISION).alias("sin_minute_day"),
-        round(cos(lit(TWOPI) * (minute(col("LogEntryTime")) + (hour(col("LogEntryTime")) * 60)) / (24 * 60)), TIME_ROUNDING_PRECISION).alias("cos_minute_day"),
+        col("sin_minute_day"),
+        col("cos_minute_day"),
 
 
         // Seller/Publisher Features

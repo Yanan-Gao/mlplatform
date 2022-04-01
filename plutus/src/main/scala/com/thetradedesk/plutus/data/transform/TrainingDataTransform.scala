@@ -1,16 +1,18 @@
 package com.thetradedesk.plutus.data.transform
 
 
+import com.thetradedesk.geronimo.shared.intModelFeaturesCols
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions.{col, lit, when, xxhash64}
-import java.time.LocalDate
 
-import com.thetradedesk.plutus.data.schema.{CleanInputData, MetaData, ModelFeature, ModelTarget}
-import com.thetradedesk.plutus.data.{plutusDataPath, plutusDataPaths, shiftModUdf}
+import java.time.LocalDate
+import com.thetradedesk.plutus.data.schema.{CleanInputData, MetaData, ModelTarget}
+import com.thetradedesk.plutus.data.{plutusDataPath, plutusDataPaths}
 
 object TrainingDataTransform {
   val STRING_FEATURE_TYPE = "string"
@@ -82,13 +84,7 @@ object TrainingDataTransform {
     targets.map(t => col(t.name).alias(t.name)).toArray
   }
 
-  def intModelFeaturesCols(inputColAndDims: Seq[ModelFeature]): Array[Column] = {
-    inputColAndDims.map {
-      case ModelFeature(name, STRING_FEATURE_TYPE, Some(cardinality), _) => when(col(name).isNotNullOrEmpty, shiftModUdf(xxhash64(col(name)), lit(cardinality))).otherwise(0).alias(name)
-      case ModelFeature(name, INT_FEATURE_TYPE, Some(cardinality), _) => when(col(name).isNotNull, shiftModUdf(col(name), lit(cardinality))).otherwise(0).alias(name)
-      case ModelFeature(name, FLOAT_FEATURE_TYPE, _, _) => col(name).alias(name)
-    }.toArray
-  }
+
 
   def transform(s3Path: String, ttdEnv: String, inputS3Prefix: String, outputS3Prefix: String, svName: Option[String], endDate: LocalDate, lookBack: Option[Int] = None, formats: Seq[String])
                (implicit prometheus: PrometheusClient): Unit = {

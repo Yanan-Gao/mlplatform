@@ -1,22 +1,21 @@
 import java.time.{Clock, LocalDateTime}
 
-import sbtrelease.Vcs
+name := "philo"
 
-name := "plutus"
-
-version := "0.0.0"
+version := "0.1.0"
 
 scalaVersion := "2.12.13"
 
 val sparkVersion = "3.1.1"
 val prometheusVersion = "0.9.0"
 
-resolvers += "bintray-spark-packages" at "https://dl.bintray.com/spark-packages/maven/"
-
 credentials += Credentials(
   "Sonatype Nexus Repository Manager", "nexus.adsrvr.org", System.getenv("NEXUS_MAVEN_READ_USER"), System.getenv("NEXUS_MAVEN_READ_PASS"))
 resolvers += "TTDNexusSnapshots" at "https://nexus.adsrvr.org/repository/ttd-snapshot"
 resolvers += "TTDNexusReleases" at "https://nexus.adsrvr.org/repository/ttd-release"
+
+resolvers += "bintray-spark-packages" at "https://dl.bintray.com/spark-packages/maven/"
+
 
 libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-sql" % sparkVersion % "provided",
@@ -33,7 +32,7 @@ libraryDependencies ++= Seq(
 
 
 assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
-assemblyJarName in assembly := "plutus.jar"
+assemblyJarName in assembly := "philo.jar"
 
 assemblyMergeStrategy in assembly := {
 //  case PathList("org", "apache", "hadoop", _@_*) => MergeStrategy.discard

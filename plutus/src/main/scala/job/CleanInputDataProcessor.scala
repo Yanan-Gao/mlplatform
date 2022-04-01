@@ -8,9 +8,6 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
 import java.time.LocalDate
 
-import com.thetradedesk.plutus.data.plutusDataPath
-import com.thetradedesk.plutus.data.transform.CleanInputDataTransform
-
 
 object CleanInputDataProcessor {
   val date = config.getDate("date" , LocalDate.now()) //TODO: note this can cause bad things. Date should be required and not linked ot current date.
