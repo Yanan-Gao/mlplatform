@@ -1,3 +1,5 @@
+include: '/.ci-templates/common.yml'
+
 variables:
 
   LIBS_PREFIX: "s3://thetradedesk-mlplatform-us-east-1/libs/"
@@ -7,7 +9,21 @@ stages:
   - assembly_upload
   - deploy
   - k8s_deploy
- 
+
+
+####
+## GitLab fails when using !reference inside workflow key thus the duplication here 
+## * ignore scheduled triggers 
+## * create pipelines for merge requests 
+## * create pipelines for `master` branch commits. other branches are ignored. 
+####
+workflow:
+  rules: 
+    - if: '$CI_PIPELINE_SOURCE == "schedule"'
+      when: never
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH == "master"'
+
 # TODO: build a default image with mvn, sbt, docker, etc - so we use one image for everything
 default:
   # As global properties it's deprecated https://docs.gitlab.com/ee/ci/yaml/#globally-defined-image-services-cache-before_script-after_script
@@ -31,7 +47,7 @@ default:
     # creating a branch is needed for sbtrelease.Vcs. This is needed because gitlab
     # operates in "detached head" mode
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
-    - echo "Print Env"
+    - echo "print all env variables"
     - env
 
 # include all job ci files here:
@@ -41,3 +57,13 @@ include:
   - local: 'benchmark-suite/.gitlab-ci.yml'
   - local: 'geronimo/.gitlab-ci.yml'
   - local: 'philo/.gitlab-ci.yml'
+
+env:
+  stage: test
+  image: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+  rules:
+    - !reference [.commonRuleConditions, isDefaultBranch] 
+    - !reference [.commonRuleConditions, isMR]
+  script:
+    - echo "Show env"
+    - env

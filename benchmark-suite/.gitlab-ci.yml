@@ -1,3 +1,5 @@
+include: '/.ci-templates/common.yml'
+
 variables:
   BENCHMARK_SUITE_JAR_NAME: "benchmark-suite.jar"
   BENCHMARK_SUITE_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/benchmark-suite/jars/mergerequests"
@@ -8,20 +10,6 @@ variables:
   BENCHMARK_SUITE_SCALA_DOCKER_IMAGE: "${DOCKER_DEV_REGISTRY}/benchmark-suite"
   SBT_OPTS: "-Xmx4G -XX:+UseConcMarkSweepGC -XX:+CMSClassUnloadingEnabled -XX:MaxPermSize=4G -Xss4M"
 
-# This workflow rule will prevent duplicate pipelines for merge request AND branch commits
-# BUT we should avoid defining workflow rules on the top level (repo) .gitlab-ci/yml because it seems to
-# have weird interactions with inherited job rules from each project
-#   If the pipeline is triggered by:
-#   A merge request, run a merge request pipeline. For example, a merge request pipeline can be triggered by a push to a branch with an associated open merge request.
-#   A change to a branch, but a merge request is open for that branch, do not run a branch pipeline.
-#   A change to a branch, but without any open merge requests, run a branch pipeline.
-
-workflow:
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
-      when: never
-    - if: '$CI_COMMIT_BRANCH'
 
 #build and push the test docker image
 benchmark-suite:deploy_dev_docker_image_merge_request:
@@ -33,8 +21,8 @@ benchmark-suite:deploy_dev_docker_image_merge_request:
     - docker logout ${DOCKER_PRODUCTION_REGISTRY}
     - docker logout ${DOCKER_DEV_REGISTRY}
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
+    - !reference [.commonRuleConditions, isMR]
+    - changes:
         - "benchmark-suite/Dockerfile"
   before_script:
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
@@ -54,11 +42,11 @@ benchmark-suite:test:
   cache:
     policy: pull
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      changes:
+    - !reference [.commonRuleConditions, isMR]
+    - changes:
         - "benchmark-suite/src/**/*"
-    - if: '$CI_COMMIT_BRANCH'
-      changes:
+    - !reference [.commonRuleConditions, isDefaultBranch] 
+    - changes:
         - "benchmark-suite/src/**/*"
   before_script:
    - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
@@ -74,8 +62,8 @@ benchmark-suite:push_bits_merge_request:
   dependencies:
     - benchmark-suite:test
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
+    - !reference [.commonRuleConditions, isMR]
+    - changes:
         - "benchmark-suite/src/**/*"
   script:
     - pushd ./benchmark-suite/
@@ -93,8 +81,8 @@ benchmark-suite:push_bits_master_snapshot:
   dependencies:
     - benchmark-suite:test
   rules:
-    - if: $CI_COMMIT_BRANCH == "master"
-      changes:
+    - !reference [.commonRuleConditions, isDefaultBranch] 
+    - changes:
         - "benchmark-suite/src/**/*"
   script:
     - pushd ./benchmark-suite/
@@ -108,8 +96,8 @@ benchmark-suite:deploy_release:
   image: "$SCALA_BUILD_IMAGE_2_12_12"
   stage: deploy
   rules:
-    - if: $CI_COMMIT_BRANCH == "master"
-      changes:
+    - !reference [.commonRuleConditions, isDefaultBranch] 
+    - changes:
         - "benchmark-suite/src/**/*"
       when: manual
       allow_failure: false
