@@ -1,3 +1,5 @@
+include: '/.ci-templates/common.yml'
+
 variables:
   PLUTUS_JAR_NAME: "plutus.jar"
   PLUTUS_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/jars/mergerequests"
@@ -13,32 +15,18 @@ variables:
   PLUTUS_TRAINING_IMAGE: "plutus-training"
 
 
-  #This workflow rule will prevent duplicate pipelines for merge request AND branch commits
-  #BUT we should avoid defining workflow rules on the top level (repo) .gitlab-ci/yml because it seems to
-  # have weird interactions with inherited job rules from each project
-  #   If the pipeline is triggered by:
-  #
-  #   A merge request, run a merge request pipeline. For example, a merge request pipeline can be triggered by a push to a branch with an associated open merge request.
-  #   A change to a branch, but a merge request is open for that branch, do not run a branch pipeline.
-  #   A change to a branch, but without any open merge requests, run a branch pipeline.
-workflow:
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-    - if: '$CI_COMMIT_BRANCH != $CI_DEFAULT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
-      when: never
-    - if: '$CI_COMMIT_BRANCH'
-      
+
 plutus:test:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
   stage: test
   cache:
     policy: pull
   rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      changes:
+    - !reference [.commonRuleConditions, isMR]
+    - changes:
         - "plutus/src/**/*"
-    - if: '$CI_COMMIT_BRANCH'
-      changes:
+    - !reference [.commonRuleConditions, isDefaultBranch] 
+    - changes:
         - "plutus/src/**/*"
   before_script:
     # we don't need to set up the machine for S3 in order to run tests
@@ -53,8 +41,8 @@ plutus:push_bits_merge_request:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
   stage: assembly_upload
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
+    - !reference [.commonRuleConditions, isMR]
+    - changes:
         - "plutus/src/**/*"
   script:
     - pushd ./plutus/
@@ -68,8 +56,8 @@ plutus:push_bits_master_snapshot:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
   stage: assembly_upload
   rules:
-    - if: $CI_COMMIT_BRANCH == "master"
-      changes:
+    - !reference [.commonRuleConditions, isDefaultBranch] 
+    - changes:
         - "plutus/src/**/*"
   script:
     - pushd ./plutus/
@@ -83,8 +71,8 @@ plutus:push_scripts:
   image: "$PYTHON_BUILD_IMAGE"
   stage: assembly_upload
   rules:
-    - if: $CI_COMMIT_BRANCH == "master"
-      changes:
+    - !reference [.commonRuleConditions, isDefaultBranch] 
+    - changes:
         - "plutus/src/main/python/modelrun.sh"
         - "plutus/src/main/python/clustersetup.sh"
   script:
@@ -104,8 +92,8 @@ plutus:build_push_training_container:
     - apt update
     - apt-get install docker.io -y
   rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
+    - !reference [.commonRuleConditions, isMR]
+    - changes:
         - "plutus/src/main/python/**"
       when: manual
   script:
@@ -127,8 +115,8 @@ plutus:build_push_release_container:
     - apt update
     - apt-get install docker.io -y
   rules:
-    - if: $CI_COMMIT_BRANCH == "master"
-      changes:
+    - !reference [.commonRuleConditions, isDefaultBranch] 
+    - changes:
         - "plutus/src/main/python/**"
       when: manual
   script:
@@ -145,8 +133,8 @@ plutus:deploy_release:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
   stage: deploy
   rules:
-    - if: $CI_COMMIT_BRANCH == "master"
-      changes:
+    - !reference [.commonRuleConditions, isDefaultBranch] 
+    - changes:
         - "plutus/src/**/*"
       when: manual
       allow_failure: false
