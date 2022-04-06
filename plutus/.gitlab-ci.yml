@@ -1,4 +1,3 @@
-include: '/.ci-templates/common.yml'
 
 variables:
   PLUTUS_JAR_NAME: "plutus.jar"
@@ -22,11 +21,11 @@ plutus:test:
   cache:
     policy: pull
   rules:
-    - !reference [.commonRuleConditions, isMR]
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - "plutus/src/**/*"
-    - !reference [.commonRuleConditions, isDefaultBranch] 
-    - changes:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
         - "plutus/src/**/*"
   before_script:
     # we don't need to set up the machine for S3 in order to run tests
@@ -41,8 +40,8 @@ plutus:push_bits_merge_request:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
   stage: assembly_upload
   rules:
-    - !reference [.commonRuleConditions, isMR]
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - "plutus/src/**/*"
   script:
     - pushd ./plutus/
@@ -56,8 +55,8 @@ plutus:push_bits_master_snapshot:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
   stage: assembly_upload
   rules:
-    - !reference [.commonRuleConditions, isDefaultBranch] 
-    - changes:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
         - "plutus/src/**/*"
   script:
     - pushd ./plutus/
@@ -71,8 +70,8 @@ plutus:push_scripts:
   image: "$PYTHON_BUILD_IMAGE"
   stage: assembly_upload
   rules:
-    - !reference [.commonRuleConditions, isDefaultBranch] 
-    - changes:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
         - "plutus/src/main/python/modelrun.sh"
         - "plutus/src/main/python/clustersetup.sh"
   script:
@@ -92,8 +91,8 @@ plutus:build_push_training_container:
     - apt update
     - apt-get install docker.io -y
   rules:
-    - !reference [.commonRuleConditions, isMR]
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - "plutus/src/main/python/**"
       when: manual
   script:
@@ -115,8 +114,8 @@ plutus:build_push_release_container:
     - apt update
     - apt-get install docker.io -y
   rules:
-    - !reference [.commonRuleConditions, isDefaultBranch] 
-    - changes:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
         - "plutus/src/main/python/**"
       when: manual
   script:
@@ -133,8 +132,8 @@ plutus:deploy_release:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
   stage: deploy
   rules:
-    - !reference [.commonRuleConditions, isDefaultBranch] 
-    - changes:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
         - "plutus/src/**/*"
       when: manual
       allow_failure: false

@@ -1,5 +1,3 @@
-include: '/.ci-templates/common.yml'
-
 variables:
   BENCHMARK_SUITE_JAR_NAME: "benchmark-suite.jar"
   BENCHMARK_SUITE_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/benchmark-suite/jars/mergerequests"
@@ -21,8 +19,8 @@ benchmark-suite:deploy_dev_docker_image_merge_request:
     - docker logout ${DOCKER_PRODUCTION_REGISTRY}
     - docker logout ${DOCKER_DEV_REGISTRY}
   rules:
-    - !reference [.commonRuleConditions, isMR]
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - "benchmark-suite/Dockerfile"
   before_script:
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
@@ -42,11 +40,11 @@ benchmark-suite:test:
   cache:
     policy: pull
   rules:
-    - !reference [.commonRuleConditions, isMR]
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - "benchmark-suite/src/**/*"
-    - !reference [.commonRuleConditions, isDefaultBranch] 
-    - changes:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
         - "benchmark-suite/src/**/*"
   before_script:
    - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
@@ -62,8 +60,8 @@ benchmark-suite:push_bits_merge_request:
   dependencies:
     - benchmark-suite:test
   rules:
-    - !reference [.commonRuleConditions, isMR]
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - "benchmark-suite/src/**/*"
   script:
     - pushd ./benchmark-suite/
@@ -81,8 +79,8 @@ benchmark-suite:push_bits_master_snapshot:
   dependencies:
     - benchmark-suite:test
   rules:
-    - !reference [.commonRuleConditions, isDefaultBranch] 
-    - changes:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
         - "benchmark-suite/src/**/*"
   script:
     - pushd ./benchmark-suite/
@@ -96,8 +94,8 @@ benchmark-suite:deploy_release:
   image: "$SCALA_BUILD_IMAGE_2_12_12"
   stage: deploy
   rules:
-    - !reference [.commonRuleConditions, isDefaultBranch] 
-    - changes:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
         - "benchmark-suite/src/**/*"
       when: manual
       allow_failure: false
