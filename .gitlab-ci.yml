@@ -1,4 +1,4 @@
-include: '/.ci-templates/common.yml'
+
 
 variables:
 
