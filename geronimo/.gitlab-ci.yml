@@ -1,4 +1,3 @@
-include: '/.ci-templates/common.yml'
 
 variables:
   SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
@@ -16,11 +15,11 @@ geronimo:test:
   cache:
     policy: pull
   rules:
-    - !reference [.commonRuleConditions, isMR]
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - "geronimo/src/**/*"
-    - !reference [.commonRuleConditions, isDefaultBranch] 
-    - changes:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
         - "geronimo/src/**/*"
   before_script:
     # we don't need to set up the machine for S3 in order to run tests
@@ -36,8 +35,8 @@ geronimo:push_bits_merge_request:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
   stage: assembly_upload
   rules:
-    - !reference [.commonRuleConditions, isMR]
-    - changes:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
         - "geronimo/src/**/*"
   script:
     - NEXUS_MAVEN_READ_USER=${NEXUS_MAVEN_SNAPSHOT_USER}
@@ -54,8 +53,8 @@ geronimo:push_bits_master_snapshot:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
   stage: assembly_upload
   rules:
-    - !reference [.commonRuleConditions, isDefaultBranch] 
-    - changes:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
         - "geronimo/src/**/*"
   script:
     - pushd ./geronimo/
@@ -69,8 +68,8 @@ geronimo:deploy_release:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
   stage: deploy
   rules:
-    - !reference [.commonRuleConditions, isDefaultBranch] 
-    - changes:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
         - "geronimo/src/**/*"
       when: manual
       allow_failure: false
