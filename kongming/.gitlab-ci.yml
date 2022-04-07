@@ -46,7 +46,9 @@ kongming:push_bits_merge_request:
     - pushd ./kongming/
     - sbt "set test in assembly := {}" clean assembly
     - DEST=${KONGMING_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - DEST_FIXED=${KONGMING_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/latest
     - aws s3 cp ${KONGMING_ASSEMBLY_OUT} ${DEST}/${KONGMING_JAR_NAME}
+    - aws s3 cp ${KONGMING_ASSEMBLY_OUT} ${DEST_FIXED}/${KONGMING_JAR_NAME}
     - popd
     - echo "ran KONGMING_push_bits_merge_request"
 
