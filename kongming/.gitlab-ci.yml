@@ -1,0 +1,87 @@
+
+variables:
+  SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+  KONGMING_JAR_NAME: "kongming.jar"
+  KONGMING_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/jars/mergerequests"
+  KONGMING_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/jars/snapshots"
+  KONGMING_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/jars/prod"
+  KONGMING_ASSEMBLY_OUT: "/builds/thetradedesk/mlplatform/kongming/target/scala-2.12/kongming.jar"
+
+kongming:test:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: test
+  cache:
+    policy: pull
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "kongming/src/**/*"
+        - "kongming/.gitlab-ci.yml"
+        - "kongming/build.sbt"
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "kongming/src/**/*"
+        - "kongming/.gitlab-ci.yml"
+        - "kongming/build.sbt"
+  before_script:
+    # we don't need to set up the machine for S3 in order to run tests
+    - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
+  script:
+    - pushd ./kongming/
+    - sbt test
+    - popd
+    - echo "ran KONGMING_test"
+
+
+kongming:push_bits_merge_request:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: assembly_upload
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "kongming/src/**/*"
+        - "kongming/.gitlab-ci.yml"
+        - "kongming/build.sbt"
+  script:
+    - pushd ./kongming/
+    - sbt "set test in assembly := {}" clean assembly
+    - DEST=${KONGMING_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - aws s3 cp ${KONGMING_ASSEMBLY_OUT} ${DEST}/${KONGMING_JAR_NAME}
+    - popd
+    - echo "ran KONGMING_push_bits_merge_request"
+
+kongming:push_bits_master_snapshot:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: assembly_upload
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "kongming/src/**/*"
+        - "kongming/.gitlab-ci.yml"
+        - "kongming/build.sbt"
+  script:
+    - pushd ./kongming/
+    - sbt "set test in assembly := {}" clean assembly
+    - DEST=${KONGMING_SNAPSHOTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - aws s3 cp ${KONGMING_ASSEMBLY_OUT} ${DEST}/${KONGMING_JAR_NAME}
+    - popd
+    - echo "ran KONGMING_push_bits_master_snapshot"
+
+kongming:deploy_release:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "kongming/src/**/*"
+        - "kongming/.gitlab-ci.yml"
+        - "kongming/build.sbt"
+      when: manual
+      allow_failure: false
+  script:
+    - pushd ./kongming/
+    - sbt "set test in assembly := {}" clean assembly
+    - aws s3 cp ${KONGMING_ASSEMBLY_OUT} ${KONGMING_PROD_JAR_FOLDER}/${KONGMING_JAR_NAME}
+    - popd
+    - echo "ran KONGMING_deploy_release"
+

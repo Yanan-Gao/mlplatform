@@ -11,6 +11,11 @@ scalaVersion := "2.12.13"
 val sparkVersion = "3.1.1"
 val prometheusVersion = "0.9.0"
 
+credentials += Credentials(
+  "Sonatype Nexus Repository Manager", "nexus.adsrvr.org", System.getenv("NEXUS_MAVEN_READ_USER"), System.getenv("NEXUS_MAVEN_READ_PASS"))
+resolvers += "TTDNexusSnapshots" at "https://nexus.adsrvr.org/repository/ttd-snapshot"
+resolvers += "TTDNexusReleases" at "https://nexus.adsrvr.org/repository/ttd-release"
+
 resolvers += "bintray-spark-packages" at "https://dl.bintray.com/spark-packages/maven/"
 
 libraryDependencies ++= Seq(
@@ -25,8 +30,10 @@ libraryDependencies ++= Seq(
 
  // "org.scalactic" %% "scalactic" % "3.2.7" ,
   "org.scalatest" %% "scalatest" % "3.2.9" % "test",
-  "org.scalatest" %% "scalatest-funsuite" % "3.2.10" % Test
+  "org.scalatest" %% "scalatest-funsuite" % "3.2.10" % Test,
  // "MrPowers" % "spark-fast-tests" % "2.2.0_0.5.0" % "test"
+
+  "com.thetradedesk" %% "geronimo" % "0.1.5-SNAPSHOT"
 )
 
 
