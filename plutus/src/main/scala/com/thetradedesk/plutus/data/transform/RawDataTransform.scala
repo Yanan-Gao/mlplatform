@@ -21,11 +21,11 @@ object RawDataTransform extends Logger {
   val ROUNDING_PRECISION = 3
   val EMPIRICAL_DISCREPANCY_ROUNDING_PRECISION = 2
 
-  def transform(date: LocalDate, svNames: Seq[String], bidsImpressions: Dataset[BidsImpressionsSchema], mbw: Dataset[RawMBtoWinSchema], discrepancy: (Dataset[Svb], Dataset[Pda], Dataset[Deals]), partitions: Int)(implicit prometheus: PrometheusClient): DataFrame = {
+  def transform(date: LocalDate, svNames: Seq[String], bidsImpressions: Dataset[BidsImpressionsSchema], rawLostBidData: Dataset[RawLostBidData], discrepancy: (Dataset[Svb], Dataset[Pda], Dataset[Deals]), partitions: Int)(implicit prometheus: PrometheusClient): DataFrame = {
 
-    val googleLostBidData = googleMinimumBidToWinData(mbw, date).repartition(partitions)
+    val mb2wData = minimumBidToWinData(rawLostBidData, svNames).repartition(partitions)
 
-    log.info("google lost bid data " + googleLostBidData.cache.count())
+    log.info("google lost bid data " + mb2wData.cache.count())
 
     val dealDf = dealData(discrepancy._1, discrepancy._3)
 
@@ -44,7 +44,7 @@ object RawDataTransform extends Logger {
     bidsGauge.set(bids.count())
 
     val rawData = bids
-      .join(googleLostBidData, Seq("BidRequestId"), "left")
+      .join(mb2wData, Seq("BidRequestId"), "left")
 
     rawData
   }
@@ -57,19 +57,19 @@ object RawDataTransform extends Logger {
         .parquet(s"$outputPath/$ttdEnv/$outputPrefix/$svName/${explicitDatePart(date)}")
   }
 
-  def googleMinimumBidToWinData(mbw: Dataset[RawMBtoWinSchema], date: LocalDate): Dataset[GoogleMinimumBidToWinData] = {
-    mbw
-      .filter(col("sv") === "google")
-      // is only set for won bids or mode 79
-      .filter((col("svLossReason") === "1") || (col("svLossReason") === "79"))
-      .filter(col("winCPM") =!= 0.0 || col("mb2w") =!= 0.0)
+  def minimumBidToWinData(rawLostBidData: Dataset[RawLostBidData], svNames: Seq[String]): Dataset[MinimumBidToWinData] = {
+    rawLostBidData
+      .filter(col("SupplyVendor").isin(svNames: _*))
+      // https://gitlab.adsrvr.org/thetradedesk/adplatform/-/blob/master/TTD/DB/Provisioning/TTD.DB.Provisioning.Primitives/LossReason.cs
+      .filter((col("LossReason") === "-1") || (col("LossReason") === "102"))
+      .filter(col("WinCPM") =!= 0.0 || col("mb2w") =!= 0.0)
       .select(
         col("BidRequestId").cast("String"),
-        col("svLossReason").cast("Integer"),
-        col("ttdLossReason").cast("Integer"),
-        col("winCPM").cast("Double"),
+        col("SupplyVendorLossReason").cast("Integer"),
+        col("LossReason").cast("Integer"),
+        col("WinCPM").cast("Double"),
         col("mb2w").cast("Double")
-      ).as[GoogleMinimumBidToWinData]
+      ).as[MinimumBidToWinData]
   }
 
   def dealData(svb: Dataset[Svb], deals: Dataset[Deals]): DataFrame = {

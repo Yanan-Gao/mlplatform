@@ -11,33 +11,29 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.sql.SQLFunctions._
 
 import java.time.LocalDate
-import com.thetradedesk.plutus.data.{cleansedDataPaths, explicitDatePart, loadParquetData}
-import com.thetradedesk.plutus.data.schema.{Deals, DiscrepancyDataset, GoogleMinimumBidToWinData, GoogleMinimumBidToWinDataset, Pda, RawMBtoWinSchema, Svb}
+import com.thetradedesk.plutus.data.{cleansedDataPaths, explicitDatePart, loadCsvData, loadParquetData}
+import com.thetradedesk.plutus.data.schema.{Deals, DiscrepancyDataset, MinimumBidToWinData, GoogleRawLostBidDataset, MagniteRawLostBidDataset, Pda, RawLostBidData, Svb}
 import org.apache.spark.sql.functions.col
 
 
 object RawInputDataProcessor extends Logger {
 
-  val date = config.getDate("date" , LocalDate.now())
-  val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc/")
-  val outputPrefix = config.getString("outputPrefix" , "raw")
+  val date = config.getDate("date", LocalDate.now())
+  val outputPath = config.getString("outputPath", "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc/")
+  val outputPrefix = config.getString("outputPrefix", "raw")
   val svNames = config.getStringSeq("svNames", Seq("google"))
-  val ttdEnv = config.getString("ttd.env" , "dev")
+  val ttdEnv = config.getString("ttd.env", "dev")
   val partitions = config.getInt("partitions", 2000)
 
   implicit val prometheus = new PrometheusClient("Plutus", "TrainingDataEtl")
   val jobDurationTimer = prometheus.createGauge("training_data_raw_etl_runtime", "Time to process 1 day of bids, imppressions, lost bid data").startTimer()
 
   def main(args: Array[String]): Unit = {
+    val rawGoogleLostBidData = loadCsvData[RawLostBidData](GoogleRawLostBidDataset.S3PATH, date, GoogleRawLostBidDataset.SCHEMA)
 
-    val mbw = spark.read.format("csv")
-      .option("sep", "\t")
-      .option("header", "false")
-      .option("inferSchema", "false")
-      .option("mode", "DROPMALFORMED")
-      .schema(GoogleMinimumBidToWinDataset.SCHEMA)
-      .load(cleansedDataPaths(GoogleMinimumBidToWinDataset.S3PATH, date): _*)
-      .selectAs[RawMBtoWinSchema]
+    // Note: temp fix while bidder is updated to process wins for Magnite too.
+    val rawMagniteLostBidData = loadCsvData[RawLostBidData](MagniteRawLostBidDataset.S3PATH, date, MagniteRawLostBidDataset.SCHEMA)
+    val rawLostBidData = rawGoogleLostBidData.unionAll(rawMagniteLostBidData)
 
     val svb = loadParquetData[Svb](DiscrepancyDataset.SBVS3, date)
     val pda = loadParquetData[Pda](DiscrepancyDataset.PDAS3, date)
@@ -49,9 +45,9 @@ object RawInputDataProcessor extends Logger {
       .filter(col("AuctionType") === 1 && $"SupplyVendor".isin(svNames: _*)) // Note the difference with Impression Data
 
 
-    val rawDataDf = RawDataTransform.transform(date, svNames, bidsImpressions, mbw, (svb, pda, deals), partitions)
+    val rawDataDf = RawDataTransform.transform(date, svNames, bidsImpressions, rawLostBidData, (svb, pda, deals), partitions)
 
-    svNames.foreach{sv =>
+    svNames.foreach { sv =>
       RawDataTransform.writeOutput(rawDataDf.filter($"SupplyVendor" === sv), outputPath, ttdEnv, outputPrefix, sv, date)
     }
 

@@ -1,10 +1,13 @@
 package com.thetradedesk.plutus
 
+import com.thetradedesk.plutus.data.schema.{MagniteRawLostBidDataset, RawLostBidData}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
+import job.RawInputDataProcessor.date
 import org.apache.spark.ml.linalg.{SparseVector, Vector}
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.{col, lit, udf, when, xxhash64}
+import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{Column, DataFrame, Dataset, Encoder, SparkSession}
 
 import java.time.LocalDate
@@ -64,6 +67,18 @@ package object data {
     spark.read.parquet(paths: _*)
       .selectAs[T]
   }
+
+  def loadCsvData[T: Encoder](s3path: String, date: LocalDate, schema: StructType)(implicit spark: SparkSession): Dataset[T] = {
+    spark.read.format("csv")
+      .option("sep", "\t")
+      .option("header", "false")
+      .option("inferSchema", "false")
+      .option("mode", "DROPMALFORMED")
+      .schema(schema)
+      .load(cleansedDataPaths(s3path, date): _*)
+      .selectAs[T]
+  }
+
 
   def loadParquetDataHourly[T: Encoder](s3path: String, date: LocalDate, hours: Seq[Int], source: Option[String] = None)(implicit spark: SparkSession): Dataset[T] = {
     val paths = parquetHourlyDataPaths(s3path, date, source, hours)

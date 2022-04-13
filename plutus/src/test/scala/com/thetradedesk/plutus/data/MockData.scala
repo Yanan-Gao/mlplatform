@@ -17,21 +17,20 @@ object MockData {
   def createMbToWinRow(
                         LogEntryTime: String = "2021-12-25",
                         BidRequestId: String,
-                        creativeId: String = "",
-                        adgroupId: String = "",
-                        throwAway_4: String = "",
-                        throwAway_5: String = "",
-                        TtdPartnerId: String = "",
-                        throwAway_7: String = "",
-                        throwAway_8: String = "",
-                        svLossReason: Integer = 1,
-                        ttdLossReason: Integer = 1,
-                        winCPM: Double = 1.0d,
-                        sv: String = "",
-                        bidRequestTime: String = "",
+                        CreativeId: String = "",
+                        AdGroupId: String = "",
+                        CampaignId: String = "",
+                        PrivateContractId: String = "",
+                        PartnerId: String = "",
+                        AdvertiserId: String = "",
+                        CampaignFlightId: String = "",
+                        SupplyVendorLossReason: Integer = 1,
+                        LossReason: Integer = 1,
+                        WinCPM: Double = 1.0d,
+                        SupplyVendor: String = "",
+                        BidRequestTime: String = "",
                         mb2w: Double = 1.0d                      ) =
-    RawMBtoWinSchema(LogEntryTime, BidRequestId, creativeId, adgroupId, throwAway_4, throwAway_5,
-      TtdPartnerId, throwAway_7, throwAway_8, svLossReason, ttdLossReason, winCPM, sv, bidRequestTime, mb2w)
+    RawLostBidData(LogEntryTime, BidRequestId, CreativeId, AdGroupId, CampaignId, PrivateContractId, PartnerId, AdvertiserId, CampaignFlightId, SupplyVendorLossReason, LossReason, WinCPM, SupplyVendor, BidRequestTime, mb2w)
 
 
   val bidsImpressionsMock = BidsImpressionsSchema(
