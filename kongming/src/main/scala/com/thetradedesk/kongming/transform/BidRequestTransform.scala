@@ -1,0 +1,27 @@
+package com.thetradedesk.kongming.transform
+
+import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, DailyBidRequestRecord}
+import com.thetradedesk.spark.sql.SQLFunctions._
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import org.apache.spark.sql.{Dataset, SaveMode}
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.functions.{broadcast, row_number}
+
+object BidRequestTransform {
+  val DEFAULT_NUM_PARTITION = 200
+
+  def dailyTransform(bidsImpressions: Dataset[BidsImpressionsSchema],
+                     adGroupPolicy: Dataset[AdGroupPolicyRecord])
+                    (implicit prometheus: PrometheusClient): Dataset[DailyBidRequestRecord] = {
+    val window = Window.partitionBy($"AdGroupId", $"UIID").orderBy($"LogEntryTime".desc)
+    bidsImpressions
+      .join(broadcast(adGroupPolicy), bidsImpressions("AdGroupId") === adGroupPolicy("DataAggValue"))
+      .filter($"UIID".isNotNullOrEmpty && $"UIID" =!= "00000000-0000-0000-0000-000000000000")
+      .withColumn("RecencyRank", row_number().over(window))
+      .filter($"RecencyRank" <= $"LastTouchCount")
+      .selectAs[DailyBidRequestRecord]
+  }
+
+}
