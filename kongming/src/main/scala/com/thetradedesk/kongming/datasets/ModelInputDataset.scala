@@ -1,4 +1,4 @@
-package com.thetradedesk.kongming.schema
+package com.thetradedesk.kongming.datasets
 
 case class ModelInputRecord(
 BidRequestId: String,
