@@ -27,22 +27,20 @@ package object shared {
       shiftMod(hashValue, cardinality)
     })
 
-
-    def paddedDatePart(date: LocalDate, separator: Option[String] = Some("")): String = {
-      separator match {
-        case Some(s) => f"${date.getYear}$s${date.getMonthValue}%02d$s${date.getDayOfMonth}%02d"
-      }
+    def paddedDatePart(date: LocalDate, separator: Option[String] = None): String = {
+      f"${date.getYear}${separator.getOrElse("")}${date.getMonthValue}%02d${separator.getOrElse("")}${date.getDayOfMonth}%02d"
     }
 
     def explicitDatePart(date: LocalDate): String = {
       f"year=${date.getYear}/month=${date.getMonthValue}%02d/day=${date.getDayOfMonth}%02d"
     }
 
-    def parquetDataPaths(s3path: String, date: LocalDate, source: Option[String] = None, lookBack: Option[Int] = None): Seq[String] = {
-      source match {
-        case Some(GERONIMO_DATA_SOURCE) => (0 to lookBack.getOrElse(0)).map(i => f"$s3path/${explicitDatePart(date)}")
-        case _ => (0 to lookBack.getOrElse(0)).map(i => f"$s3path/date=${paddedDatePart(date)}")
-      }
+    // we might need to come back later when there are multiple use cases for "source"
+    def parquetDataPaths(s3path: String, date: LocalDate, source: Option[String] = None, lookBack: Option[Int] = None, separator: Option[String] = None): Seq[String] = {
+      (source match {
+        case Some(GERONIMO_DATA_SOURCE) => (0 to lookBack.getOrElse(0)).map(i => f"$s3path/${explicitDatePart(date.minusDays(i))}")
+        case _ => (0 to lookBack.getOrElse(0)).map(i => f"$s3path/date=${paddedDatePart(date.minusDays(i), separator)}")
+      }).filter(FSUtils.directoryExists(_))
     }
 
     def parquetHourlyDataPaths(s3path: String, date: LocalDate, source: Option[String] = None, hours: Seq[Int]): Seq[String] = {
@@ -58,9 +56,9 @@ package object shared {
       paddedHours.map(i => f"$s3path/date=${paddedDatePart(date)}/hour=${i}")
     }
 
-    def loadParquetData[T: Encoder](s3path: String, date: LocalDate, source: Option[String] = None, lookBack: Option[Int] = None)(implicit spark: SparkSession): Dataset[T] = {
-      val paths = parquetDataPaths(s3path, date, source, lookBack)
-      spark.read.parquet(paths: _*)
+    def loadParquetData[T: Encoder](s3path: String, date: LocalDate, source: Option[String] = None, lookBack: Option[Int] = None, dateSeparator: Option[String] = None)(implicit spark: SparkSession): Dataset[T] = {
+      val paths = parquetDataPaths(s3path, date, source, lookBack, separator = dateSeparator)
+      spark.read.option("basePath",s3path).parquet(paths: _*)
         .selectAs[T]
     }
 

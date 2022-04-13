@@ -36,7 +36,8 @@ resolvers += "bintray-spark-packages" at "https://dl.bintray.com/spark-packages/
 
  // "org.scalactic" %% "scalactic" % "3.2.7" ,
   "org.scalatest" %% "scalatest" % "3.2.11" % "test",
-  "org.scalatest" %% "scalatest-funsuite" % "3.2.11" % Test
+  "org.scalatest" %% "scalatest-funsuite" % "3.2.11" % Test,
+  "joda-time" % "joda-time" % "2.9.3" % "provided"
 )
 
 
