@@ -5,7 +5,8 @@ import java.time.LocalDate
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyNegativeSampledBidRequestDataSet, DailyNegativeSampledBidRequestRecord, NegativeSamplingBidRequestGrainsRecord}
+import com.thetradedesk.kongming.NegativeTransform._
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyNegativeSampledBidRequestDataSet, DailyNegativeSampledBidRequestRecord}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -15,15 +16,15 @@ import org.apache.spark.sql.functions.broadcast
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
 object DailyNegativeSampling {
-/*
-  Input: all bids of a day
-  Output: downsampled bids per adgroup
-  Method: first randomly sample half(TBD) of bids, then sample bids by grain's frequency at adgroup level
+  /*
+    Input: all bids of a day
+    Output: downsampled bids per adgroup
+    Method: first randomly sample half(TBD) of bids, then sample bids by grain's frequency at adgroup level
 
-  With below parameters, on 2022-03-26, 216 billion -> 5.6 billion bids, all adgroup have bids
-  Negative sampling is done at adgroup level, regardless of adgroup policy aggkey.  We'll apply aggkey in next job of aggregation negatives.
+    With below parameters, on 2022-03-26, 216 billion -> 5.6 billion bids, all adgroup have bids
+    Negative sampling is done at adgroup level, regardless of adgroup policy aggkey.  We'll apply aggkey in next job of aggregation negatives.
 
- */
+   */
   def main(args: Array[String]): Unit = {
     val prometheus = new PrometheusClient("KoaV4Conversion", "DailyNegativeSampling")
 

@@ -4,22 +4,9 @@ import java.time.LocalDate
 
 import org.apache.spark.sql.{Dataset, SaveMode}
 
-final case class NegativeSamplingBidRequestGrainsRecord(
-                                                       BidRequestId: String,
-                                                       UIID: String,
-                                                       AdvertiserId: String,
-                                                       CampaignId: String,
-                                                       AdGroupId: String,
-                                                       SupplyVendor: String,
-                                                       Site: String,
-                                                       RenderingContext: String,
-                                                       Country: String,
-                                                       DeviceType: String,
-                                                       OperatingSystemFamily: String,
-                                                       Browser: String
-                                                       )
 final case class DailyNegativeSampledBidRequestRecord (
                                                         BidRequestId: String,
+                                                        LogEntryTime: java.sql.Timestamp,
                                                         UIID: String,
                                                         AdGroupId: String,
                                                         CampaignId: String,
