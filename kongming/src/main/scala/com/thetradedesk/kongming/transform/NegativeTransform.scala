@@ -4,14 +4,30 @@ import java.time.format.DateTimeFormatter
 
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, DailyNegativeSampledBidRequestRecord, NegativeSamplingBidRequestGrainsRecord}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, DailyNegativeSampledBidRequestRecord}
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions.{broadcast, count, expr, hash, lit, pow, round, when}
+import org.apache.spark.sql.functions.{broadcast, count, expr, hash, lit, pow, round, when,to_date}
 import org.apache.spark.sql.types.IntegerType
 import org.apache.spark.sql.Dataset
 
 object NegativeTransform {
+
+  final case class NegativeSamplingBidRequestGrainsRecord(
+                                                           BidRequestId: String,
+                                                           LogEntryTime: java.sql.Timestamp,
+                                                           UIID: String,
+                                                           AdvertiserId: String,
+                                                           CampaignId: String,
+                                                           AdGroupId: String,
+                                                           SupplyVendor: String,
+                                                           Site: String,
+                                                           RenderingContext: String,
+                                                           Country: String,
+                                                           DeviceType: String,
+                                                           OperatingSystemFamily: String,
+                                                           Browser: String
+                                                         )
 
   final case class AggregateNegativesRecord (
                                               DataAggKey: String,
@@ -80,23 +96,13 @@ object NegativeTransform {
                           adGroupPolicy: Dataset[AdGroupPolicyRecord])
                         (implicit prometheus:PrometheusClient): Dataset[AggregateNegativesRecord] = {
     /*
-    Code for generate training data set, we don't have the job yet, I'll put it here for now:
-        // maximum lookback from adgroup's policy
-        val maxLookback = adGroupPolicy.agg(max("DataLookBack")).first.getInt(0)
-        val dailyNegativeSampledBids = loadParquetData[DailyNegativeSampledBidRequestRecord](DailyNegativeSampledBidRequestDataSet.S3BasePath, date, lookBack = Some(maxLookback))
-      .select("BidRequestId","UIID","AdGroupId","CampaignId","AdvertiserId", "date")
-
-     */
-    val formatterYMD = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-
-    /*
      join negatives with adgroup policy at different aggregation level
      The implementation is for future use cases when campaign/advertiser level aggregation come into play. For now the hard coded dataset has no such rows then the code will just passes two of of allNeagtives.
      */
     // todo: pre-check possible aggregation levels.
     broadcast(adGroupPolicy.filter($"DataAggKey"===lit("AdGroupId")).as("t1"))
       .join(dailyNegativeSampledBids.as("t2"), $"t1.DataAggValue"===$"t2.AdGroupId")
-      .filter(expr("date_add(date, DataLookBack)")>=date.format(formatterYMD))
+      .filter(expr("date_add(LogEntryTime, DataLookBack)")>=date)
       .select($"DataAggKey",$"DataAggValue",$"BidRequestId",$"UIID")
       //      .union(
       //        broadcast(adGroupPolicy.filter($"DataAggKey"===lit("CampaignId")).as("t1"))
