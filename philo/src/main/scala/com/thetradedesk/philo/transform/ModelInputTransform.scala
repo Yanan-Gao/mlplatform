@@ -49,6 +49,8 @@ object ModelInputTransform extends Logger {
     ModelFeature("Site", STRING_FEATURE_TYPE, Some(350002), 0),
     ModelFeature("SupplyVendor", STRING_FEATURE_TYPE, Some(102), 0),
     ModelFeature("SupplyVendorPublisherId", STRING_FEATURE_TYPE, Some(15002), 0),
+    ModelFeature("SupplyVendorSiteId", STRING_FEATURE_TYPE, Some(960002), 0),
+    ModelFeature("MatchedFoldPosition", INT_FEATURE_TYPE, Some(3), 0),
     ModelFeature("UserHourOfWeek", INT_FEATURE_TYPE, Some(24 * 7 + 2), 0),
 
     ModelFeature("sin_hour_day", FLOAT_FEATURE_TYPE, None, 0),
@@ -74,7 +76,14 @@ object ModelInputTransform extends Logger {
   }
 
   def transform(clicks: Dataset[ClickTrackerRecord], bidsImpsDat: Dataset[BidsImpressionsSchema]): DataFrame = {
-    val joinedData = bidsImpsDat.join(clicks.withColumn("label", lit(1)), Seq("BidRequestId"), "left")
+    val clickLabels = clicks.withColumn("label", lit(1))
+      .withColumn("BidRequestIdHash" , xxhash64(col("BidRequestId")))
+      .drop("BidRequestId")
+
+    val bidsImpsPreJoin = bidsImpsDat
+      .withColumn("BidRequestIdHash" , xxhash64(col("BidRequestId")))
+
+      val joinedData = bidsImpsPreJoin.join(clickLabels, Seq("BidRequestIdHash"), "leftouter")
       .withColumn("label", when(col("label").isNull, 0).otherwise(1))
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
 
