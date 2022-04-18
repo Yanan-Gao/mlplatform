@@ -26,6 +26,7 @@ case class ModelInputRecord(
     SupplyVendor: String,
     SupplyVendorPublisherId: String,
     SupplyVendorSiteId: String,
+    MatchedFoldPosition: Int,
     AdWidthInPixels: String,
     AdHeightInPixels: String,
     UserHourOfWeek: Int,
