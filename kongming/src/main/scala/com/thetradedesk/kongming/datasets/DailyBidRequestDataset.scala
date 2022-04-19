@@ -7,6 +7,7 @@ final case class DailyBidRequestRecord(UIID: String,
                                        DataAggValue: String,
                                        BidRequestId: String,
                                        LogEntryTime: java.sql.Timestamp,
+                                       IsImp: Boolean,
                                        RecencyRank: Int)
 
 object DailyBidRequestDataset extends KongMingDataset[DailyBidRequestRecord](
