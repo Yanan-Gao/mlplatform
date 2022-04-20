@@ -16,7 +16,7 @@ object ModelInputProcessor extends Logger {
   val ttdEnv = config.getString("ttd.env" , "dev")
   val date = config.getDate("date" , LocalDate.now())
   val daysOfDat = config.getInt("daysOfDat" , 1)
-  val svName = config.getString("svName", "google")
+  val svNames = config.getStringSeq("svNames", Seq("google", "rubicon"))
   val inputPath = config.getString("inputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc")
   val inputPrefix = config.getString("inputPrefix" , "clean")
 
@@ -34,16 +34,18 @@ object ModelInputProcessor extends Logger {
 
 
   def main(args: Array[String]): Unit = {
-   TrainingDataTransform.transform(
-      s3Path = inputPath,
-      ttdEnv = ttdEnv,
-      inputS3Prefix = inputPrefix,
-      outputS3Prefix = outputPrefix,
-      svName = Some(svName),
-      endDate = date,
-      lookBack = Some(daysOfDat),
-      formats = formats
+    svNames.foreach { svName =>
+      TrainingDataTransform.transform(
+        s3Path = inputPath,
+        ttdEnv = ttdEnv,
+        inputS3Prefix = inputPrefix,
+        outputS3Prefix = outputPrefix,
+        svName = Some(svName),
+        endDate = date,
+        lookBack = Some(daysOfDat),
+        formats = formats
       )
+    }
 
 
     // clean up

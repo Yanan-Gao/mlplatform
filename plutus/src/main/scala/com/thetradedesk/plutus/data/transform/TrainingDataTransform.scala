@@ -100,9 +100,9 @@ object TrainingDataTransform {
     val valTestInputData = loadInputData(valTestPaths)
     val (valInputData, testInputData) = createDataSplits(valTestInputData)
 
-    val trainCount = prometheus.createGauge("train_row_count", "rows of train data")
-    val validationCount = prometheus.createGauge("validation_row_count", "rows of validation data")
-    val testCount = prometheus.createGauge("test_row_count", "ros of test data")
+    val trainCount = prometheus.createGauge("train_row_count", "rows of train data", labelNames = "ssp")
+    val validationCount = prometheus.createGauge("validation_row_count", "rows of validation data", labelNames = "ssp")
+    val testCount = prometheus.createGauge("test_row_count", "ros of test data", labelNames = "ssp")
 
     val trainRows = trainInputData.cache.count()
     val testRows = testInputData.cache.count()
@@ -116,9 +116,9 @@ object TrainingDataTransform {
       .mode(SaveMode.Overwrite)
       .csv(metaDataS3)
 
-    trainCount.set(trainRows)
-    validationCount.set(testRows)
-    testCount.set(valRows)
+    trainCount.labels(svName.getOrElse("none")).set(trainRows)
+    validationCount.labels(svName.getOrElse("none")).set(testRows)
+    testCount.labels(svName.getOrElse("none")).set(valRows)
 
     // convert to int (hash)
     val selectionTabular = intModelFeaturesCols(modelFeatures) ++ modelTargetCols(modelTargets)

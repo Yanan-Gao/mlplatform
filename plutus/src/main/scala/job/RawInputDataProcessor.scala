@@ -21,7 +21,7 @@ object RawInputDataProcessor extends Logger {
   val date = config.getDate("date", LocalDate.now())
   val outputPath = config.getString("outputPath", "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc/")
   val outputPrefix = config.getString("outputPrefix", "raw")
-  val svNames = config.getStringSeq("svNames", Seq("google"))
+  val svNames = config.getStringSeq("svNames", Seq("google", "rubicon"))
   val ttdEnv = config.getString("ttd.env", "dev")
   val partitions = config.getInt("partitions", 2000)
 

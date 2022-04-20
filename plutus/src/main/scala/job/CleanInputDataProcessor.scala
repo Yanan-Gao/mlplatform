@@ -17,7 +17,7 @@ object CleanInputDataProcessor {
   val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc")
   val inputPrefix = config.getString("inputPrefix" , "raw")
   val outputPrefix = config.getString("outputPrefix" , "clean")
-  val svName = config.getString("svName", "google")
+  val svNames = config.getStringSeq("svName", Seq("google", "rubicon"))
   val extremeValueThreshold = config.getDouble("mbwRatio" , 0.8)
   val ttdEnv = config.getString("ttd.env" , "dev")
 
@@ -28,8 +28,9 @@ object CleanInputDataProcessor {
 
 
   def main(args: Array[String]): Unit  = {
-    CleanInputDataTransform.transform(date, ttdEnv, inputPath, inputPrefix, extremeValueThreshold, Some(svName), outputPath, outputPrefix)
-
+    svNames.foreach { svName =>
+      CleanInputDataTransform.transform(date, ttdEnv, inputPath, inputPrefix, extremeValueThreshold, Some(svName), outputPath, outputPrefix)
+    }
     // clean up
     jobDurationTimer.setDuration()
     prometheus.pushMetrics()
