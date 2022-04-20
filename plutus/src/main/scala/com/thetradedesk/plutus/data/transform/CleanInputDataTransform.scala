@@ -30,7 +30,7 @@ object CleanInputDataTransform {
     val mbwValidBidsCount = prometheus.createGauge("clean_data_bids_valid_mb2w", "Total Bids with Valid MB2W", labelNames = "ssp")
     val mbwValidImpsCount = prometheus.createGauge("clean_data_impressions_valid_mb2w", "Total Impressions with Valid MB2W", labelNames = "ssp")
 
-    totalData.set(cleanData.cache().count)
+    totalData.labels(svName.getOrElse("none")).set(cleanData.cache().count)
     mbwDataCount.labels(svName.getOrElse("none")).set(cleanData.filter(col("mb2w").isNotNull).count)
     mbwBidsCount.labels(svName.getOrElse("none")).set(cleanData.filter(col("mb2w").isNotNull && col("RealMediaCost").isNull).count)
     mbwImpsCount.labels(svName.getOrElse("none")).set(cleanData.filter(col("mb2w").isNotNull && col("RealMediaCost").isNotNull).count)
