@@ -1,6 +1,6 @@
 package com.thetradedesk.plutus
 
-import com.thetradedesk.plutus.data.schema.{MagniteRawLostBidDataset, RawLostBidData}
+import com.thetradedesk.plutus.data.schema.RawLostBidData
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
 import job.RawInputDataProcessor.date
