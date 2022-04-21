@@ -12,7 +12,7 @@ import com.thetradedesk.spark.sql.SQLFunctions._
 
 import java.time.LocalDate
 import com.thetradedesk.plutus.data.{cleansedDataPaths, explicitDatePart, loadCsvData, loadParquetData}
-import com.thetradedesk.plutus.data.schema.{Deals, DiscrepancyDataset, MinimumBidToWinData, GoogleRawLostBidDataset, MagniteRawLostBidDataset, Pda, RawLostBidData, Svb}
+import com.thetradedesk.plutus.data.schema.{Deals, DiscrepancyDataset, Pda, RawLostBidData, RawLostBidDataset, Svb}
 import org.apache.spark.sql.functions.col
 
 
@@ -29,11 +29,8 @@ object RawInputDataProcessor extends Logger {
   val jobDurationTimer = prometheus.createGauge("training_data_raw_etl_runtime", "Time to process 1 day of bids, imppressions, lost bid data").startTimer()
 
   def main(args: Array[String]): Unit = {
-    val rawGoogleLostBidData = loadCsvData[RawLostBidData](GoogleRawLostBidDataset.S3PATH, date, GoogleRawLostBidDataset.SCHEMA)
+    val rawLostBidData = loadCsvData[RawLostBidData](RawLostBidDataset.S3PATH, date, RawLostBidDataset.SCHEMA)
 
-    // Note: temp fix while bidder is updated to process wins for Magnite too.
-    val rawMagniteLostBidData = loadCsvData[RawLostBidData](MagniteRawLostBidDataset.S3PATH, date, MagniteRawLostBidDataset.SCHEMA)
-    val rawLostBidData = rawGoogleLostBidData.unionAll(rawMagniteLostBidData)
 
     val svb = loadParquetData[Svb](DiscrepancyDataset.SBVS3, date)
     val pda = loadParquetData[Pda](DiscrepancyDataset.PDAS3, date)

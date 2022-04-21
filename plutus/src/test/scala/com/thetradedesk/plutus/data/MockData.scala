@@ -115,7 +115,7 @@ object MockData {
 
                                     DoNotTrack =  Option(DoNotTrackLookupRecord()),
                                     CreativeId =  Some(""),
-                                    PrivateContractId =  "",
+                                    PrivateContractId =  ""
 
 
                                   )

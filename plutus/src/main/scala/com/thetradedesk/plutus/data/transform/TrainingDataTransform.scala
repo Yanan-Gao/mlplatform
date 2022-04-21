@@ -1,14 +1,13 @@
 package com.thetradedesk.plutus.data.transform
 
-
+import job.ModelInputProcessor.prometheus
 import com.thetradedesk.geronimo.shared.intModelFeaturesCols
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
-import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import org.apache.spark.sql._
-import org.apache.spark.sql.functions.{col, lit, when, xxhash64}
+import org.apache.spark.sql.functions.col
 
 import java.time.LocalDate
 import com.thetradedesk.plutus.data.schema.{CleanInputData, MetaData, ModelTarget}
@@ -84,10 +83,12 @@ object TrainingDataTransform {
     targets.map(t => col(t.name).alias(t.name)).toArray
   }
 
+  val trainCount = prometheus.createGauge("train_row_count", "rows of train data", labelNames = "ssp")
+  val validationCount = prometheus.createGauge("validation_row_count", "rows of validation data", labelNames = "ssp")
+  val testCount = prometheus.createGauge("test_row_count", "ros of test data", labelNames = "ssp")
 
 
-  def transform(s3Path: String, ttdEnv: String, inputS3Prefix: String, outputS3Prefix: String, svName: Option[String], endDate: LocalDate, lookBack: Option[Int] = None, formats: Seq[String])
-               (implicit prometheus: PrometheusClient): Unit = {
+  def transform(s3Path: String, ttdEnv: String, inputS3Prefix: String, outputS3Prefix: String, svName: Option[String], endDate: LocalDate, lookBack: Option[Int] = None, formats: Seq[String]): Unit = {
 
     // load input data
     val paths = inputDataPaths(s3Path = s3Path, s3Prefix = inputS3Prefix, ttdEnv = ttdEnv, svName = svName, endDate = endDate, lookBack = lookBack)
@@ -99,10 +100,6 @@ object TrainingDataTransform {
     val trainInputData = loadInputData(trainPaths)
     val valTestInputData = loadInputData(valTestPaths)
     val (valInputData, testInputData) = createDataSplits(valTestInputData)
-
-    val trainCount = prometheus.createGauge("train_row_count", "rows of train data", labelNames = "ssp")
-    val validationCount = prometheus.createGauge("validation_row_count", "rows of validation data", labelNames = "ssp")
-    val testCount = prometheus.createGauge("test_row_count", "ros of test data", labelNames = "ssp")
 
     val trainRows = trainInputData.cache.count()
     val testRows = testInputData.cache.count()

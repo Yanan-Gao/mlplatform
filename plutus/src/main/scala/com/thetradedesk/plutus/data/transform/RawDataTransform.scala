@@ -25,7 +25,7 @@ object RawDataTransform extends Logger {
 
     val mb2wData = minimumBidToWinData(rawLostBidData, svNames).repartition(partitions)
 
-    log.info("google lost bid data " + mb2wData.cache.count())
+    log.info("lost bid data " + mb2wData.cache.count())
 
     val dealDf = dealData(discrepancy._1, discrepancy._3)
 

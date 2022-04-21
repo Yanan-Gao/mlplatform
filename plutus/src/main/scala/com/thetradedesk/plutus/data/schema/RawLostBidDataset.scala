@@ -45,11 +45,7 @@ trait RawLostBidSchema {
     .add("mb2w", DoubleType, true) // 14
 }
 
-object GoogleRawLostBidDataset extends RawLostBidSchema {
+object RawLostBidDataset extends RawLostBidSchema {
   def S3PATH = "s3://thetradedesk-useast-logs-2/lostbidrequest/cleansed/"
-}
-
-object MagniteRawLostBidDataset extends RawLostBidSchema {
-  def S3PATH = "s3://thetradedesk-useast-logs-2/magnitetestlostbidrequest/collected/"
 }
 

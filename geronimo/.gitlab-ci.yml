@@ -45,7 +45,7 @@ geronimo:push_bits_merge_request:
     - sbt "set test in assembly := {}" clean assembly
     - DEST=${GERONIMO_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
     - aws s3 cp ${GERONIMO_ASSEMBLY_OUT} ${DEST}/${GERONIMO_JAR_NAME}
-    - sbt +publish
+    # - sbt +publish
     - popd
     - echo "ran GERONIMO_push_bits_merge_request"
 
@@ -61,6 +61,7 @@ geronimo:push_bits_master_snapshot:
     - sbt "set test in assembly := {}" clean assembly
     - DEST=${GERONIMO_SNAPSHOTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
     - aws s3 cp ${GERONIMO_ASSEMBLY_OUT} ${DEST}/${GERONIMO_JAR_NAME}
+    - sbt +publish
     - popd
     - echo "ran geronimo_push_bits_master_snapshot"
 

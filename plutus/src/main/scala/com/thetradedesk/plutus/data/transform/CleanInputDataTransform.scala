@@ -2,6 +2,7 @@ package com.thetradedesk.plutus.data.transform
 
 
 import com.thetradedesk.plutus.data.plutusDataPath
+import job.CleanInputDataProcessor.prometheus
 import com.thetradedesk.plutus.data.schema.CleanInputData
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -17,18 +18,19 @@ object CleanInputDataTransform {
 
   val DEFAULT_NUM_PARTITION = 200
 
-  def transform(date: LocalDate, ttdEnv: String, rawInputS3Path: String, rawInputPrefix: String, extremeValueThreshold: Double, svName: Option[String] = None, cleanOutputS3Path: String, cleanOutputPrefix: String)(implicit prometheus: PrometheusClient): Unit = {
+  val totalData = prometheus.createGauge("clean_data_rows", "count of processed rows", labelNames = "ssp")
+  val mbwDataCount = prometheus.createGauge("clean_data_rows_mb2w", "Total Data with MB2W", labelNames = "ssp")
+  val mbwBidsCount = prometheus.createGauge("clean_data_bids_mb2w", "Total Bids with MB2W", labelNames = "ssp")
+  val mbwImpsCount = prometheus.createGauge("clean_data_impressions_mb2w", "Total Imps with MB2W", labelNames = "ssp")
+  val mbwValidBidsCount = prometheus.createGauge("clean_data_bids_valid_mb2w", "Total Bids with Valid MB2W", labelNames = "ssp")
+  val mbwValidImpsCount = prometheus.createGauge("clean_data_impressions_valid_mb2w", "Total Impressions with Valid MB2W", labelNames = "ssp")
+
+
+  def transform(date: LocalDate, ttdEnv: String, rawInputS3Path: String, rawInputPrefix: String, extremeValueThreshold: Double, svName: Option[String] = None, cleanOutputS3Path: String, cleanOutputPrefix: String): Unit = {
     // only reading the data from one ssp at a time so no need to filter for supply vendor here or in createCleanDataset
     val inputPath = plutusDataPath(rawInputS3Path, ttdEnv, rawInputPrefix, svName, date)
 
     val cleanData = createCleanDataset(inputPath, extremeValueThreshold)
-
-    val totalData = prometheus.createGauge("clean_data_rows", "count of processed rows", labelNames = "ssp")
-    val mbwDataCount = prometheus.createGauge("clean_data_rows_mb2w", "Total Data with MB2W", labelNames = "ssp")
-    val mbwBidsCount = prometheus.createGauge("clean_data_bids_mb2w", "Total Bids with MB2W", labelNames = "ssp")
-    val mbwImpsCount = prometheus.createGauge("clean_data_impressions_mb2w", "Total Imps with MB2W", labelNames = "ssp")
-    val mbwValidBidsCount = prometheus.createGauge("clean_data_bids_valid_mb2w", "Total Bids with Valid MB2W", labelNames = "ssp")
-    val mbwValidImpsCount = prometheus.createGauge("clean_data_impressions_valid_mb2w", "Total Impressions with Valid MB2W", labelNames = "ssp")
 
     totalData.labels(svName.getOrElse("none")).set(cleanData.cache().count)
     mbwDataCount.labels(svName.getOrElse("none")).set(cleanData.filter(col("mb2w").isNotNull).count)
