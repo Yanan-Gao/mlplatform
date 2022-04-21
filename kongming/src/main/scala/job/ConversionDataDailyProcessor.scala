@@ -65,6 +65,8 @@ object ConversionDataDailyProcessor extends Logger{
         $"ConversionTime"
       )
       .as[DailyConversionDataRecord]
+      .distinct
+
     val conversionXD = ConversionDataDailyTransform.addCrossDeviceTransform(
       transformedConvXD
       , xdSubsetDS

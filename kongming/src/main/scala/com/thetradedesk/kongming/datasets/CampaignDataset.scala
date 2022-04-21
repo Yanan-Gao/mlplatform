@@ -1,6 +1,7 @@
 package com.thetradedesk.kongming.datasets
 
 final case class CampaignRecord(CampaignId: String,
+                                AdvertiserId: String,
                                 CustomCPATypeId: Int
                               )
 

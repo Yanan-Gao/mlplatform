@@ -120,6 +120,7 @@ object ConversionDataDailyTransform {
       .filter($"CrossDeviceConfidenceLevel">=$"score")
       .drop("score")
       .selectAs[DailyConversionDataRecord]
+      .distinct
 
     convWithDeviceIdDS
   }
