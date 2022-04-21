@@ -10,22 +10,8 @@ final case class DailyConversionDataRecord( TrackingTagId: String,
                                             ConversionTime: java.sql.Timestamp
                                           )
 
-object DailyConversionDataset {
-  val S3Path: String =
-    s"s3a://thetradedesk-mlplatform-us-east-1/data/prod/kongming/dailyconversion/v=1/"
 
-  val DEFAULT_NUM_PARTITION = 100
-
-  def writePartition(dataset: Dataset[DailyConversionDataRecord],
-                     date: LocalDate,
-                     numPartitions: Option[Int] = None): Unit = {
-
-    val partitionedS3Path = S3Path+"date="+date.toString
-
-    dataset
-      .repartition(numPartitions.getOrElse(DEFAULT_NUM_PARTITION))
-      .write.mode(SaveMode.Overwrite)
-      .parquet(partitionedS3Path)
-  }
-
-}
+object DailyConversionDataset extends KongMingDataset[DailyConversionDataRecord](
+  s3DatasetPath = "dailyconversion/v=1",
+  defaultNumPartitions = 100
+)
