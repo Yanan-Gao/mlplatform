@@ -81,6 +81,7 @@ object ModelInputTransform extends Logger {
       .drop("BidRequestId")
 
     val bidsImpsPreJoin = bidsImpsDat
+      .filter(col("IsImp") === 1)
       .withColumn("BidRequestIdHash" , xxhash64(col("BidRequestId")))
 
       val joinedData = bidsImpsPreJoin.join(clickLabels, Seq("BidRequestIdHash"), "leftouter")
