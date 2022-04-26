@@ -1,0 +1,299 @@
+package com.thetradedesk.kongming.transform
+
+import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
+import com.thetradedesk.spark.sql.SQLFunctions._
+import com.thetradedesk.kongming.datasets.{AdGroupDataset, AdGroupPolicyRecord, AdGroupRecord, CampaignConversionReportingColumnDataSet, CampaignConversionReportingColumnRecord, CampaignDataset, CampaignRecord, DailyPositiveLabelRecord, TrainSetFeaturesRecord}
+import com.thetradedesk.kongming.date
+import org.apache.spark.sql.Dataset
+import com.thetradedesk.spark.sql.SQLFunctions._
+import org.apache.spark.sql._
+import org.apache.spark.sql.functions._
+import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import org.apache.spark.sql.expressions.Window
+
+import java.sql.Timestamp
+import org.apache.spark.sql.functions.unix_timestamp
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
+
+object TrainSetTransformation {
+  case class UpSamplingPosFractionRecord(
+                                          ConfigKey: String,
+                                          ConfigValue: String,
+                                          UpSamplingPosFraction: Double,
+                                        )
+
+  case class UpSamplingNegFractionRecord(
+                                          ConfigKey: String,
+                                          ConfigValue: String,
+                                          UpSamplingNegFraction: Double,
+                                        )
+
+  case class PreFeatureJoinRecord(
+                                   //                                     AdGroupId: String,
+                                   //                                       ConfigKey: String,
+                                   //                                       ConfigValue: String,
+                                   //                                       DataAggKey: String,
+                                   //                                       DataAggValue: String,
+                                   BidRequestId: String,
+                                   Weight: Double,
+                                   LogEntryTime:  java.sql.Timestamp,
+                                   Target: Int
+                                 )
+
+  case class TrainSetRecord(
+                             ConfigKey: String,
+                             ConfigValue: String,
+                             DataAggKey: String,
+                             DataAggValue: String,
+                             BidRequestId: String,
+                             Weight: Double,
+                             LogEntryTime:  java.sql.Timestamp
+                           )
+
+
+  case class PositiveWithRawWeightsRecord(
+                                           ConfigKey: String,
+                                           ConfigValue: String,
+                                           DataAggKey: String,
+                                           DataAggValue: String,
+
+                                           BidRequestId: String,
+
+                                           IsClickWindowGreater: Boolean,
+                                           IsInViewAttributionWindow: Boolean,
+                                           IsInClickAttributionWindow: Boolean,
+
+                                           NormalizedPixelWeight: Double,
+                                           NormalizedCustomCPAClickWeight: Option[Double],
+                                           NormalizedCustomCPAViewthroughWeight: Option[Double],
+                                           ConversionTime: java.sql.Timestamp,
+                                           LogEntryTime:  java.sql.Timestamp
+                                         )
+
+  def getWeightsForTrackingTags(
+                                 adGroupPolicy: Dataset[AdGroupPolicyRecord]
+                               ): DataFrame= {
+    // 1. get the latest weights per campaign and trackingtagid
+    val adGroupDS = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, date)
+    val campaignDS = loadParquetData[CampaignRecord](CampaignDataset.S3Path, date)
+    val ccrc = loadParquetData[CampaignConversionReportingColumnRecord](CampaignConversionReportingColumnDataSet.S3Path, date)
+    val ccrcWindow = Window.partitionBy($"CampaignId")
+
+    val ccrcProcessed = ccrc
+      .join(broadcast(campaignDS.select($"CampaignId", $"CustomCPATypeId", $"CustomCPAClickWeight", $"CustomCPAViewthroughWeight")), Seq("CampaignId"), "left")
+      .filter(($"CustomCPATypeId"===0 && $"ReportingColumnId"===1) || ($"CustomCPATypeId">0 && $"IncludeInCustomCPA") )
+      .withColumn("TotalWeight", sum(coalesce($"Weight", lit(0))).over(ccrcWindow))
+      .withColumn("NumberOfConversionTrackers", count($"TrackingTagId").over(ccrcWindow))
+      .withColumn("NormalizedPixelWeight",
+        when($"TotalWeight">0,$"Weight"/$"TotalWeight" )
+          .otherwise(lit(1)/$"NumberOfConversionTrackers"))
+      .withColumn("NormalizedCustomCPAClickWeight",
+        when($"CustomCPATypeId"===2, coalesce($"CustomCPAClickWeight", lit(0)) /(coalesce($"CustomCPAClickWeight", lit(0))+coalesce($"CustomCPAViewthroughWeight", lit(0))))
+          .otherwise(null)
+      )
+      .withColumn("NormalizedCustomCPAViewthroughWeight",
+        when($"CustomCPATypeId"===2, coalesce($"CustomCPAViewthroughWeight", lit(0)) /(coalesce($"CustomCPAClickWeight", lit(0))+coalesce($"CustomCPAViewthroughWeight", lit(0))))
+          .otherwise(null)
+      )
+      .select($"CampaignId",$"TrackingTagId", $"NormalizedPixelWeight",$"NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAViewthroughWeight" )
+
+    // 2. join trackingtag weights with policy table
+    adGroupPolicy
+      .join(broadcast(adGroupDS), adGroupPolicy("ConfigValue")===adGroupDS("AdGroupId"), "inner")
+      .select("CampaignId","ConfigKey", "ConfigValue", "DataAggKey", "DataAggValue")
+      .join(ccrcProcessed, Seq("CampaignId"), "inner")
+      .select($"TrackingTagId", $"ConfigKey", $"ConfigValue", $"NormalizedPixelWeight",$"NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAViewthroughWeight" ) // one trackingtagid can have different following values
+      .distinct()
+
+  }
+
+  def generateWeightForPositive(
+                                 positiveData: Dataset[PositiveWithRawWeightsRecord],
+                                 weightMethod: Option[String] = None,
+                                 ctr: Option[Double] = None
+                               )(implicit prometheus:PrometheusClient): Dataset[TrainSetRecord] = {
+    weightMethod match {
+      // todo: placeholder for time decaying weight
+//      case Some("TimeDecay") => {
+//        positiveData
+//          .withColumn("BidTimeToConvert", unix_timestamp($"ConversionTime") - unix_timestamp($"logEntryTime"))
+//
+//      }
+      case _ => { // default is linear
+        val CTR = ctr.getOrElse(1) // todo: should be a much smaller value. probably read from report data to get adgroup's ctr.
+        positiveData.withColumn("Weight",
+          when(($"NormalizedCustomCPAClickWeight".isNull)||($"NormalizedCustomCPAViewthroughWeight".isNull), $"NormalizedPixelWeight") // has pixel weight, then pixel weight
+            .when($"IsClickWindowGreater"&&(!$"IsInViewAttributionWindow"), $"NormalizedCustomCPAClickWeight" *CTR) // click window is longer, bid not in view window
+            .when($"IsClickWindowGreater"&&$"IsInViewAttributionWindow", $"NormalizedCustomCPAClickWeight" * CTR +$"NormalizedCustomCPAViewthroughWeight" ) // click window is longer, bid in view window
+            .when((!$"IsClickWindowGreater")&&$"IsInClickAttributionWindow", $"NormalizedCustomCPAClickWeight" * CTR+$"NormalizedCustomCPAViewthroughWeight" ) // view window is longer,  bid in click window
+            .otherwise($"NormalizedCustomCPAViewthroughWeight") // view window is longer, bid not in click window
+        ).selectAs[TrainSetRecord]
+      }
+    }
+  }
+
+  def attachTrainsetWithFeature(
+                          trainset: Dataset[PreFeatureJoinRecord],
+                          lookbackDays: Int
+                          )(implicit prometheus:PrometheusClient): Dataset[TrainSetFeaturesRecord] ={
+
+    val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
+
+    (0 to lookbackDays).map(lookbackDayIdx => {
+      val lookbackday = date.minusDays(lookbackDayIdx)
+      val trainsetOfDay = trainset.filter(to_date($"LogEntryTime")===lit(lookbackday.toString))
+      val bidsImpressionsOfDay =   loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, lookbackday, source = Some(GERONIMO_DATA_SOURCE))
+      broadcast(trainsetOfDay).join(bidsImpressionsOfDay, Seq("BidRequestId"), joinType =  "inner")
+        .withColumn("AdFormat",concat(col("AdWidthInPixels"),lit('x'), col("AdHeightInPixels")))
+        .withColumn("RenderingContext", $"RenderingContext.value")
+        .withColumn("DeviceType", $"DeviceType.value")
+        .withColumn("OperatingSystem", $"OperatingSystemFamily.value")
+        .withColumn("Browser", $"Browser.value")
+    }
+    )
+      .reduce(_.union(_)).selectAs[TrainSetFeaturesRecord]
+  }
+
+  def balancePosNeg(
+                     realPositives: Dataset[TrainSetRecord],
+                     realNegatives: Dataset[TrainSetRecord],
+                     desiredNegOverPos:Int = 9,
+                     maxNegativeCount: Int = 500000,
+                       method: Option[String] = None
+                   )(implicit prometheus:PrometheusClient): Tuple2[Dataset[TrainSetRecord], Dataset[TrainSetRecord]] = {
+/*
+1. upsampling vs. class weight https://datascience.stackexchange.com/questions/44755/why-doesnt-class-weight-resolve-the-imbalanced-classification-problem/44760#44760
+2. smote: https://github.com/mjuez/approx-smote
+ */
+    method match {
+      case _ => upSamplingBySamplyByKey(realPositives, realNegatives, desiredNegOverPos, maxNegativeCount)
+//        case Some("smote") =>
+    }
+
+  }
+
+  /**
+   *
+   * @param realPositives positive dataset
+   * @param realNegatives negative dataset
+   * @param desiredNegOverPos the ratio of neg over pos per adgroup to feed in model training
+   * @param maxNegativeCount an upperbound of negative samples per adgroup. will probably remove this is in the future daily negative sampling gives smaller output.
+   * @return
+   */
+  def upSamplingBySamplyByKey(
+                                realPositives: Dataset[TrainSetRecord],
+                                realNegatives: Dataset[TrainSetRecord],
+                                  desiredNegOverPos:Int = 9,
+                                maxNegativeCount: Int = 500000
+                             ): Tuple2[Dataset[TrainSetRecord], Dataset[TrainSetRecord]] ={
+
+    val negativeCountsRaw = realNegatives.groupBy("ConfigKey","ConfigValue").agg(count($"BidRequestID").as("NegBidCount"))
+      .withColumn("RetainRate", least(lit(maxNegativeCount)/$"NegBidCount", lit(1)))
+
+    val downSampledNegatives = realNegatives.join(negativeCountsRaw, Seq("ConfigKey","ConfigValue") )
+      .withColumn("Rand", rand() )
+      .filter($"Rand"<=$"RetainRate")
+      .selectAs[TrainSetRecord]
+
+    val negativeCounts = downSampledNegatives.groupBy("ConfigKey","ConfigValue").agg(count($"BidRequestID").as("NegBidCount"))
+
+    val positiveCounts = realPositives.groupBy("ConfigKey", "ConfigValue").agg(count($"BidRequestId").as("PosBidCount"))
+    val upSamplingFraction = negativeCounts.join(positiveCounts, Seq("ConfigKey", "ConfigValue"), "inner")
+      .withColumn("Criteria", $"NegBidCount"/(lit(desiredNegOverPos)*$"PosBidCount"))
+      .withColumn("UpSamplingPosFraction", when($"Criteria">1, $"Criteria").otherwise(null))
+      .withColumn("UpSamplingNegFraction", when($"Criteria"<1, lit(1)/$"Criteria").otherwise(null))
+      .cache()
+
+    // get upsampling rate for pos
+    val posUpSamplingFraction = upSamplingFraction
+      .filter($"UpSamplingPosFraction".isNotNull)
+      .selectAs[UpSamplingPosFractionRecord].rdd.map(x =>((x.ConfigKey,x.ConfigValue) , x.UpSamplingPosFraction)).collectAsMap()
+
+    // get upsampling rate for neg
+    val negUpSamplingFraction = upSamplingFraction
+      .filter($"UpSamplingNegFraction".isNotNull)
+      .selectAs[UpSamplingNegFractionRecord].rdd.map(x =>((x.ConfigKey,x.ConfigValue) , x.UpSamplingNegFraction)).collectAsMap()
+
+    // upsampling pos
+    val upSampledPos = realPositives
+      .join(upSamplingFraction.filter($"UpSamplingPosFraction".isNotNull), Seq("ConfigKey","ConfigValue"),"leftsemi").selectAs[TrainSetRecord]
+      .rdd.keyBy(x => (x.ConfigKey, x.ConfigValue)).sampleByKey(true, posUpSamplingFraction)
+      .map(x=> x._2)
+      .toDF()
+      .selectAs[TrainSetRecord]
+
+    // upsampling neg
+    val upSampledNeg = downSampledNegatives
+      .join(upSamplingFraction.filter($"UpSamplingNegFraction".isNotNull), Seq("ConfigKey","ConfigValue"),"leftsemi").selectAs[TrainSetRecord]
+      .rdd.keyBy(x => (x.ConfigKey, x.ConfigValue)).sampleByKey(true, negUpSamplingFraction)
+      .map(x=> x._2)
+      .toDF()
+      .selectAs[TrainSetRecord]
+
+    // non sampled pos ane neg
+    val nonSampledPos = realPositives.join( upSamplingFraction.filter($"UpSamplingPosFraction".isNull), Seq("ConfigKey", "ConfigValue"), "leftsemi")
+      .selectAs[TrainSetRecord]
+
+    val nonSampledNeg = downSampledNegatives.join( upSamplingFraction.filter($"UpSamplingNegFraction".isNull), Seq("ConfigKey", "ConfigValue"), "leftsemi")
+      .selectAs[TrainSetRecord]
+
+
+    (upSampledPos.union(nonSampledPos), upSampledNeg.union(nonSampledNeg))
+
+  }
+
+
+
+  //  def createArray(length:Int) = Array.fill(length){0}
+  //  val arrayUDF = udf(createArray(_))
+  //// this method take 2x time comapre to rdd samply by key
+  //  def upSamplingByExplodingArray(
+  //                                  realPositives: Dataset[TrainSetRecord],
+  //                                  realNegatives: Dataset[TrainSetRecord],
+  //                                  desiredNegOverPos:Int = 9,
+  //                                  maxNegativeCount: Int = 500000
+  //                                ): Tuple2[Dataset[TrainSetRecord], Dataset[TrainSetRecord]] = {
+  //
+  //    val negativeCountsRaw = realNegatives.groupBy("ConfigKey","ConfigValue").agg(count($"BidRequestID").as("NegBidCount"))
+  //      .withColumn("RetainRate", least(lit(maxNegativeCount)/$"NegBidCount", lit(1)))
+  //
+  //    val downSampledNegatives = realNegatives.join(negativeCountsRaw, Seq("ConfigKey","ConfigValue") )
+  //      .withColumn("Rand", rand() )
+  //      .filter($"Rand"<=$"RetainRate")
+  //      .selectAs[TrainSetRecord]
+  //
+  //    val negativeCounts = downSampledNegatives.groupBy("ConfigKey","ConfigValue").agg(count($"BidRequestID").as("NegBidCount"))
+  //
+  //    val positiveCounts = realPositives.groupBy("ConfigKey", "ConfigValue").agg(count($"BidRequestId").as("PosBidCount"))
+  //
+  //    val upSamplingFraction = negativeCounts.join(positiveCounts, Seq("ConfigKey", "ConfigValue"), "full")
+  //      .withColumn("Criteria",$"NegBidCount"/(lit(desiredNegOverPos)*$"PosBidCount"))   // is null if either posBidCount or negBidCount is null
+  //      .withColumn("UpSamplingPosFraction", when($"Criteria">1, $"Criteria").otherwise(null))
+  //      .withColumn("UpSamplingNegFraction", when($"Criteria"<1, lit(1)/$"Criteria").otherwise(null))
+  //      .cache()
+  //
+  //    // randn generate a random number from standard normal distribution with zero mean, add the samplingfraction to it meaning how many times we want this record to be replicated on average
+  //    val upSampledPos = realPositives.join(upSamplingFraction.select($"ConfigKey", $"ConfigValue", $"UpSamplingPosFraction"), Seq("ConfigKey", "ConfigValue"),"inner")
+  //      .withColumn("repeatTimes", when($"UpSamplingPosFraction".isNotNull,  lit(randn())+$"UpSamplingPosFraction").otherwise(lit(1)))
+  //      .withColumn("repeatTimesInt", round($"repeatTimes",0))
+  //      .withColumn("arrayForExplode", arrayUDF($"repeatTimesInt"))
+  //      .withColumn("dummyExplode", explode($"arrayForExplode"))
+  //      .selectAs[TrainSetRecord]
+  //
+  //    val upSampledNeg = downSampledNegatives.join(upSamplingFraction.select($"ConfigKey", $"ConfigValue", $"UpSamplingNegFraction"), Seq("ConfigKey", "ConfigValue"),"inner")
+  //      .withColumn("repeatTimes", when($"UpSamplingNegFraction".isNotNull,  lit(randn())+$"UpSamplingNegFraction").otherwise(lit(1)))
+  //      .withColumn("repeatTimesInt", round($"repeatTimes",0))
+  //      .withColumn("arrayForExplode", arrayUDF($"repeatTimesInt"))
+  //      .withColumn("dummyExplode", explode($"arrayForExplode"))
+  //      .selectAs[TrainSetRecord]
+  //
+  //    (upSampledPos, upSampledNeg)
+  //  }
+
+
+}
+
+
+

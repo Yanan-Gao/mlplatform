@@ -1,16 +1,15 @@
 package job
 
 import java.time.LocalDate
-
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.NegativeTransform._
 import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyNegativeSampledBidRequestDataSet, DailyNegativeSampledBidRequestRecord}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
-import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
+import com.thetradedesk.kongming.transform.NegativeTransform
+import com.thetradedesk.kongming.transform.NegativeTransform.NegativeSamplingBidRequestGrainsRecord
 import com.thetradedesk.spark.sql.SQLFunctions._
 import org.apache.spark.sql.functions.broadcast
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -62,17 +61,22 @@ object DailyNegativeSampling {
       "Browser"
     )
 
-    val normalizedFrequencyThreshold =  config.getDouble(path="normFreqThreshold", 0.0001 )
-    val tIndex = config.getDouble(path="tIndex", 0.85)
-    val minimumFrequencyPerGrain = config.getInt(path="minFrequencyPerGrain", 5)
+    val normalizedFrequencyThreshold =  config.getDouble(path="normalizedFrequencyThreshold", 0.0001 )
+
+    val frequencyToSampleRateCurveSmoother = config.getDouble(path="frequencyToSampleRateCurveSmoother", 0.85)
+
+    val minimumFrequencyPerGrain = config.getInt(path="minimumFrequencyPerGrain", 5)
+
+    val totalBidPenaltyCurveSmoother = config.getDouble(path="totalBidPenaltyCurveSmoother", 0.0001)
 
     val downSampledBidRequestByGrain = NegativeTransform
       .samplingByGrains(
         downSampledBidRequestWithConstantMod,
         grainsForSampling,
         normalizedFrequencyThreshold= normalizedFrequencyThreshold,
-        tIndex = tIndex,
-        minimumFrequencyPerGrain = minimumFrequencyPerGrain
+        frequencyToSampleRateCurveSmoother = frequencyToSampleRateCurveSmoother,
+        minimumFrequencyPerGrain = minimumFrequencyPerGrain,
+        totalBidPenaltyCurveSmoother = totalBidPenaltyCurveSmoother
       )(prometheus)
       .toDF()
       .selectAs[DailyNegativeSampledBidRequestRecord]
