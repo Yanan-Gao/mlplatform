@@ -32,6 +32,7 @@ libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest" % "3.2.9" % "test",
   "org.scalatest" %% "scalatest-funsuite" % "3.2.10" % Test,
  // "MrPowers" % "spark-fast-tests" % "2.2.0_0.5.0" % "test"
+  "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
 
   "com.thetradedesk" %% "geronimo" % "0.1.5-SNAPSHOT"
 )
