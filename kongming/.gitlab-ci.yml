@@ -6,6 +6,10 @@ variables:
   KONGMING_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/jars/snapshots"
   KONGMING_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/jars/prod"
   KONGMING_ASSEMBLY_OUT: "/builds/thetradedesk/mlplatform/kongming/target/scala-2.12/kongming.jar"
+  SCRIPTS_SOURCE: "src/main/bash/"
+  SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/scripts/"
+  PYTHON_BUILD_IMAGE: "python:3.8"
+  KONGMING_TRAINING_IMAGE: "kongming/training-gpu"
 
 kongming:test:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
@@ -15,13 +19,11 @@ kongming:test:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
-        - "kongming/src/**/*"
-        - "kongming/.gitlab-ci.yml"
+        - "kongming/src/main/scala/**/*"
         - "kongming/build.sbt"
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
         - "kongming/src/**/*"
-        - "kongming/.gitlab-ci.yml"
         - "kongming/build.sbt"
   before_script:
     # we don't need to set up the machine for S3 in order to run tests
@@ -39,8 +41,7 @@ kongming:push_bits_merge_request:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
-        - "kongming/src/**/*"
-        - "kongming/.gitlab-ci.yml"
+        - "kongming/src/main/scala/**/*"
         - "kongming/build.sbt"
   script:
     - pushd ./kongming/
@@ -58,7 +59,7 @@ kongming:push_bits_master_snapshot:
   rules:
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
-        - "kongming/src/**/*"
+        - "kongming/src/main/scala/**/*"
         - "kongming/.gitlab-ci.yml"
         - "kongming/build.sbt"
   script:
@@ -75,7 +76,7 @@ kongming:deploy_release:
   rules:
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
-        - "kongming/src/**/*"
+        - "kongming/src/main/scala/**/*"
         - "kongming/.gitlab-ci.yml"
         - "kongming/build.sbt"
       when: manual
@@ -86,4 +87,66 @@ kongming:deploy_release:
     - aws s3 cp ${KONGMING_ASSEMBLY_OUT} ${KONGMING_PROD_JAR_FOLDER}/${KONGMING_JAR_NAME}
     - popd
     - echo "ran KONGMING_deploy_release"
+
+kongming:push_scripts:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "kongming/src/main/bash/**/*"
+        - "kongming/.gitlab-ci.yml"
+  script:
+    - pushd ./kongming/
+    - aws s3 cp ${SCRIPTS_SOURCE} ${SCRIPTS_DEST} --recursive
+    - popd
+    - echo "ran push_set_scripts"
+
+kongming:build_push_test_container:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: k8s_deploy
+  services:
+    - docker:dind
+  before_script:
+    - apt update
+    - apt-get install docker.io -y
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "kongming/src/main/python/**/*"
+        - "kongming/.gitlab-ci.yml"
+      when: manual
+  script:
+    - export DOCKER_HOST=$DOCKER_PORT
+    - pushd ./kongming/src/main/python/
+    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
+    - docker build -f Dockerfile.prod -t ${KONGMING_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA} .
+    - docker tag ${KONGMING_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA} ${DOCKER_INTERNAL_REGISTRY}/${KONGMING_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA}
+    - docker push ${DOCKER_INTERNAL_REGISTRY}/${KONGMING_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA}
+    - popd
+    - echo "test container for commit pushed"
+
+kongming:build_push_release_container:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: k8s_deploy
+  services:
+    - docker:dind
+  before_script:
+    - apt update
+    - apt-get install docker.io -y
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      changes:
+        - "kongming/src/main/python/**/*"
+        - "kongming/.gitlab-ci.yml"
+      when: manual
+  script:
+    - export DOCKER_HOST=$DOCKER_PORT
+    - pushd ./kongming/src/main/python/
+    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
+    - docker build -f Dockerfile.prod -t ${KONGMING_TRAINING_IMAGE}:release .
+    - docker tag ${KONGMING_TRAINING_IMAGE}:release ${DOCKER_INTERNAL_REGISTRY}/${KONGMING_TRAINING_IMAGE}:release
+    - docker push ${DOCKER_INTERNAL_REGISTRY}/${KONGMING_TRAINING_IMAGE}:release
+    - popd
+    - echo "release training container pushed"
 
