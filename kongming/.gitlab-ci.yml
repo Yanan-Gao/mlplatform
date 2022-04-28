@@ -60,7 +60,6 @@ kongming:push_bits_master_snapshot:
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
         - "kongming/src/main/scala/**/*"
-        - "kongming/.gitlab-ci.yml"
         - "kongming/build.sbt"
   script:
     - pushd ./kongming/
@@ -77,7 +76,6 @@ kongming:deploy_release:
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
         - "kongming/src/main/scala/**/*"
-        - "kongming/.gitlab-ci.yml"
         - "kongming/build.sbt"
       when: manual
       allow_failure: false
