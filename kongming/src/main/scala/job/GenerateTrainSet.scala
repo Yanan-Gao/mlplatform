@@ -91,7 +91,7 @@ object GenerateTrainSet {
 
   def main(args: Array[String]): Unit = {
     val prometheus = new PrometheusClient("KoaV4Conversion", "GenerateTrainSet")
-    val trainRatio = config.getDouble("trainRatio", 0.7)
+    val trainRatio = config.getDouble("trainRatio", 0.8)
     val desiredNegOverPos = config.getInt(path="desiredPosOverNeg", 9)
     val maxNegativeCount = config.getInt(path="maxnegativecount", 500000)
     val positiveLookback = config.getInt("positivelookback", 3)
