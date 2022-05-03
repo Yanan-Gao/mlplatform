@@ -61,22 +61,22 @@ object DailyNegativeSampling {
       "Browser"
     )
 
-    val normalizedFrequencyThreshold =  config.getDouble(path="normalizedFrequencyThreshold", 0.0001 )
+    val grainSamplingStartingFrequency =  config.getInt(path="normalizedFrequencyThreshold", 100 )
 
-    val frequencyToSampleRateCurveSmoother = config.getDouble(path="frequencyToSampleRateCurveSmoother", 0.85)
+    val grainDiscardUntil = config.getInt(path="frequencyToSampleRateCurveSmoother", 30)
 
-    val minimumFrequencyPerGrain = config.getInt(path="minimumFrequencyPerGrain", 5)
+    val grainSampleRateSmoother = config.getDouble(path="minimumFrequencyPerGrain", 0.95)
 
-    val totalBidPenaltyCurveSmoother = config.getDouble(path="totalBidPenaltyCurveSmoother", 0.0001)
+    val totalBidPenalty = config.getDouble(path="totalBidPenaltyCurveSmoother", 0.5)
 
     val downSampledBidRequestByGrain = NegativeTransform
       .samplingByGrains(
         downSampledBidRequestWithConstantMod,
         grainsForSampling,
-        normalizedFrequencyThreshold= normalizedFrequencyThreshold,
-        frequencyToSampleRateCurveSmoother = frequencyToSampleRateCurveSmoother,
-        minimumFrequencyPerGrain = minimumFrequencyPerGrain,
-        totalBidPenaltyCurveSmoother = totalBidPenaltyCurveSmoother
+        grainSamplingStartingFrequency= grainSamplingStartingFrequency,
+        grainDiscardUntil = grainDiscardUntil,
+        grainSampleRateSmoother = grainSampleRateSmoother,
+        totalBidPenalty = totalBidPenalty
       )(prometheus)
       .toDF()
       .selectAs[DailyNegativeSampledBidRequestRecord]

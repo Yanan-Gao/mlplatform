@@ -51,42 +51,38 @@ object NegativeTransform {
    *  refer: https://atlassian.thetradedesk.com/confluence/display/EN/Training+Data+ETL?preview=/166441965/166445313/3340531.3412162.pdf
    * @param negativeSamplingBidWithGrains dataset to do sampling
    * @param grainsForSampling sample by those grains
-   * @param normalizedFrequencyThreshold down sample grains whose frequency is higher than this threshold
-   * @param frequencyToSampleRateCurveSmoother given an adgroup, smooth the curve between grain frequency and sample rate;  the large the tIndex, the less we sample large grains
-   * @param minimumFrequencyPerGrain  if a grain's frequency is too small, for example, less than 5, discard it
-   * @param totalBidPenaltyCurveSmoother given same grain's frequency, the more the adgroup's total bids is, the less sample rate is. large smoother will make sample rate less.
+   * @param grainSamplingStartingFrequency when grain's frequency is larger than this, start to down sample grain
+   * @param grainDiscardUntil  when grain's frequency is smaller than this, discard grain, because model can't learn from it
+   * @param grainSampleRateSmoother the large the smoother, the more we sample small grains comparing to large grains
+   * @param totalBidPenalty  the more the adgroup's total bids is, the less sample rate is. large smoother will make sample rate less.
    * @return
    */
   def samplingByGrains(
                         negativeSamplingBidWithGrains: Dataset[NegativeSamplingBidRequestGrainsRecord],
                         grainsForSampling: Seq[String],
-                        normalizedFrequencyThreshold: Double = 0.0001,
-                        frequencyToSampleRateCurveSmoother: Double = 0.85,
-                        minimumFrequencyPerGrain: Int = 5,
-                        totalBidPenaltyCurveSmoother: Double = 0.0001
+                        grainSamplingStartingFrequency: Int,
+                        grainDiscardUntil: Int,
+                        grainSampleRateSmoother: Double,
+                        totalBidPenalty: Double
                       )(implicit prometheus:PrometheusClient): Dataset[NegativeSamplingBidRequestGrainsRecord] ={
-    val maxDecimal = 5
 
     val windowAggregationKeyGrain = Window.partitionBy(grainsForSampling.head, grainsForSampling.tail:_*)
     val windowAggregationKey = Window.partitionBy($"AdGroupId")
 
     negativeSamplingBidWithGrains
-      .withColumn("BidFrequency", count($"BidRequestId").over(windowAggregationKeyGrain))
+      .withColumn("GrainFrequency", count($"BidRequestId").over(windowAggregationKeyGrain))
       .withColumn("TotalBid", count($"BidRequestId").over(windowAggregationKey))
-      .withColumn("NormalizedFrequency", round($"BidFrequency"/$"TotalBid", maxDecimal))
-      .withColumn("InverseNormalizedFrequency", lit(normalizedFrequencyThreshold)/$"NormalizedFrequency")
+      .withColumn("FlatSampleRate", lit(grainSamplingStartingFrequency)/$"GrainFrequency")
       .withColumn("SamplingRate",
         when(
-          $"TotalBid"<=1/normalizedFrequencyThreshold, lit(1)  // if adgroup's total bids are too small, remain all the bids
+          $"GrainFrequency"< grainDiscardUntil, lit(0)  // if grain show up too rarely, discard all the bids
         ).when(
-          $"BidFrequency"< minimumFrequencyPerGrain, lit(0)  // if grain show up too rarely, discard
-        ).when(
-          $"InverseNormalizedFrequency"<1,   // if normalized frequency exceeds threshold, downsampling
+          $"FlatSampleRate"<1,   // if grain frequency exceeds threshold, down sample grain
           (
-            pow($"InverseNormalizedFrequency",frequencyToSampleRateCurveSmoother)*pow(lit(1)/$"TotalBid", totalBidPenaltyCurveSmoother)
+            pow($"FlatSampleRate",grainSampleRateSmoother)*pow(lit(1)/$"TotalBid",  totalBidPenalty)
             )
         ).
-          otherwise(lit(1))   // if normalized frequency doens't exceed threshold including normalizedfrequency is 0 due to resolution， remain all the bids
+          otherwise(lit(1))   // if grain frequency is between grainDiscardUntil and grainSamplingStartingFrequency, remain all the bids
       )
       .withColumn("rand", rand())
       .filter($"rand"<$"SamplingRate")

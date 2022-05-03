@@ -94,6 +94,7 @@ object GenerateTrainSet {
     val trainRatio = config.getDouble("trainRatio", 0.7)
     val desiredNegOverPos = config.getInt(path="desiredPosOverNeg", 9)
     val maxNegativeCount = config.getInt(path="maxnegativecount", 500000)
+    val positiveLookback = config.getInt("positivelookback", 3)
 
     // test only adgroups in the policy table. since aggKey are all adgroupId, we filter by adgroup id
     val adGroupPolicyHardCodedDate = LocalDate.parse("2022-03-15")
@@ -107,7 +108,7 @@ object GenerateTrainSet {
     val aggregatedNegativeSet = aggregateNegatives(dailyNegativeSampledBids, adGroupPolicy)(prometheus)
 
     //    load aggregated positives
-    val aggregatedPositiveSet = loadParquetData[DailyPositiveLabelRecord](DailyPositiveBidRequestDataset.S3BasePath, date )
+    val aggregatedPositiveSet = loadParquetData[DailyPositiveLabelRecord](DailyPositiveBidRequestDataset.S3BasePath, date, lookBack = Some(positiveLookback) )
 
     // 1. exclude postives from negative
     val realNegatives = aggregatedNegativeSet
@@ -121,6 +122,7 @@ object GenerateTrainSet {
     val trackingTagWithWeight = getWeightsForTrackingTags(adGroupPolicy)
 
     // 3. transform weights for positive label
+    // todo: multi days positive might have different click and  view lookback window, might not alligned with latest weight
     val positivesWithRawWeight = aggregatedPositiveSet.join(trackingTagWithWeight, Seq("TrackingTagId", "ConfigKey", "ConfigValue"))
       .withColumn("NormalizedPixelWeight", $"NormalizedPixelWeight".cast(DoubleType))
       .withColumn("NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAClickWeight".cast(DoubleType))
@@ -129,7 +131,7 @@ object GenerateTrainSet {
 
     val realPositives = generateWeightForPositive(positivesWithRawWeight)(prometheus).cache()
     // todo: normalize weight for positives, otherwise pos/neg will be changed if neg has no weight
-    // todo Question: do we need to upsample or just tune weights are enough, consider the naive upsamping. Upsampling can have different strategy though.
+    // Question: do we need to upsample or just tune weights are enough, consider the naive upsamping. Upsampling can have different strategy though.
 
     // 4. balance  pos and neg
     val balancedTrainset= balancePosNeg(realPositives, realNegatives, desiredNegOverPos, maxNegativeCount)(prometheus)
@@ -144,6 +146,7 @@ object GenerateTrainSet {
     val trainDataWithFeature = attachTrainsetWithFeature(preFeatureJoinTrainSet, maxLookback)(prometheus).persist(StorageLevel.MEMORY_AND_DISK)
 
     // 6. split train and val
+    // use hash rather than rand because we replicate records.
     val adjustedTrain  = trainDataWithFeature.filter(abs(hash($"BidRequestId")%100)<=trainRatio*100).cache()
     val adjustedVal = trainDataWithFeature.filter(abs(hash($"BidRequestId")%100)>trainRatio*100).cache()
 
