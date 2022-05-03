@@ -61,13 +61,13 @@ object DailyNegativeSampling {
       "Browser"
     )
 
-    val grainSamplingStartingFrequency =  config.getInt(path="normalizedFrequencyThreshold", 100 )
+    val grainSamplingStartingFrequency =  config.getInt(path="grainSamplingStartingFrequency", 100 )
 
-    val grainDiscardUntil = config.getInt(path="frequencyToSampleRateCurveSmoother", 30)
+    val grainDiscardUntil = config.getInt(path="grainDiscardUntil", 30)
 
-    val grainSampleRateSmoother = config.getDouble(path="minimumFrequencyPerGrain", 0.95)
+    val grainSampleRateSmoother = config.getDouble(path="grainSampleRateSmoother", 0.95)
 
-    val totalBidPenalty = config.getDouble(path="totalBidPenaltyCurveSmoother", 0.5)
+    val totalBidPenalty = config.getDouble(path="totalBidPenalty", 0.5)
 
     val downSampledBidRequestByGrain = NegativeTransform
       .samplingByGrains(
