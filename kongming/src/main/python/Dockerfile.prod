@@ -1,8 +1,6 @@
 FROM nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04
 CMD nvidia-smi
 
-RUN rm /etc/apt/sources.list.d/cuda.list
-RUN rm /etc/apt/sources.list.d/nvidia-ml.list
 RUN apt-get update && apt-get install --no-install-recommends --no-install-suggests -y curl
 RUN apt-get install unzip
 RUN apt-get -y install python3.8
@@ -18,7 +16,8 @@ RUN pip3 install --quiet --no-cache-dir \
     'prometheus_client' \
     'awscli' \
     'pandas' \
-    'tensorflow-serving-api==2.7.0'
+    'tensorflow-serving-api==2.7.0' \
+    'tensorflow_addons'
 
 
 COPY kongming ./kongming

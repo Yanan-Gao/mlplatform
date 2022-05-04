@@ -3,6 +3,7 @@ from kongming.features import default_model_features, default_model_dim_group, d
 from kongming.data import parse_input_files, tfrecord_dataset, tfrecord_parser, s3_copy
 from kongming.models import dot_product_model, load_pretrained_embedding, auto_encoder_model
 from kongming.losses import AELoss
+from tensorflow_addons.losses import SigmoidFocalCrossEntropy
 import tensorflow as tf
 import sys
 from datetime import datetime
@@ -42,7 +43,7 @@ flags.DEFINE_string('model_creation_date',
 flags.DEFINE_string('activation', default='relu', help='activation to use in the MLP')
 flags.DEFINE_list("string_features", default=[], help="String features for vocab lookup")
 flags.DEFINE_list("int_features", default=[], help="int features for vocab lookup")
-flags.DEFINE_string('sample_weight_col', default=None, help='sample weight column specification')
+flags.DEFINE_string('sample_weight_col', default='Weight', help='sample weight column specification')
 
 flags.DEFINE_string('model_choice', default="basic",
                     help=f'Model under consideration.')
@@ -57,6 +58,9 @@ flags.DEFINE_string("embedding_model_name", default=None, help="Name of the trai
 
 flags.DEFINE_float('dropout_rate', default=0.3, help='Batch size for evaluation')
 flags.DEFINE_boolean('batchnorm', default=True, help='Use BatchNormalization or not.')
+
+#loss function
+flags.DEFINE_string("loss_func", default='fce', help="Loss function to choose.")
 
 # Train params
 flags.DEFINE_integer('batch_size', default=10, help='Batch size for training', lower_bound=1)
@@ -74,6 +78,7 @@ flags.DEFINE_list("profile_batches", default=[100, 120], help="batches to profil
 app.define_help_flags()
 app.parse_flags_with_usage(sys.argv)
 
+#TODO: will need to move these functions to some abstract class or within the models.py file.
 def get_features_dim_target():
 
     features = [f._replace(ppmethod='string_vocab')._replace(type=tf.string)._replace(default_value='UNK')
@@ -153,7 +158,12 @@ def get_loss(cat_dict):
         loss = {'cat':AELoss(cat_dict), 'cont':'mse'}
         return loss
     else:
-        return tf.keras.losses.BinaryCrossentropy()
+        if FLAGS.loss_func=='ce':
+            return tf.keras.losses.BinaryCrossentropy()
+        elif FLAGS.loss_func=='fce':
+            return SigmoidFocalCrossEntropy()
+        else:
+            raise Exception("Loss not supported.")
 
 def get_metrics():
     if FLAGS.model_choice == 'ae':

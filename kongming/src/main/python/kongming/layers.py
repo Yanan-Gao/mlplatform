@@ -1,6 +1,9 @@
 import tensorflow as tf
 
 
+# `VocabLookup` is a subclass of `tf.keras.layers.Layer` that takes a string tensor as input and returns a string tensor
+# as output
+# its a layer to convert an input to output according to lookup table.
 class VocabLookup(tf.keras.layers.Layer):
     def __init__(self, vocab_path):
         super(VocabLookup, self).__init__(trainable=False, dtype=tf.string)
