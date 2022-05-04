@@ -43,6 +43,10 @@ def parse_input_single_target(model_features, dim_feature, model_targets, sw_col
     feature_description.update(
         {t.name: tf.io.FixedLenFeature([], t.type, t.default_value) for t in model_targets})
 
+    if sw_col != None:
+        feature_description.update(
+            {'Weight': tf.io.FixedLenFeature([], tf.float32, None)})
+
     def parse_fun(example):
 
         data = tf.io.parse_example(example, feature_description)
@@ -50,7 +54,7 @@ def parse_input_single_target(model_features, dim_feature, model_targets, sw_col
         if sw_col == None:
             return data, target
         else:
-            sw = tf.cast(data.pop(sw_col), tf.float32)
+            sw = data.pop(sw_col)
             return data, target, sw
     return parse_fun
 
@@ -94,3 +98,4 @@ def s3_copy(src_path, dest_path):
     sync_command = f"aws s3 cp {src_path} {dest_path} --recursive"
     os.system(sync_command)
     return sync_command
+

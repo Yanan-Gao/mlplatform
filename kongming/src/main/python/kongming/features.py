@@ -86,6 +86,6 @@ def get_target_cat_map(model_targets, card_cap):
     #get categorical target dict for AE
     cat_dict={}
     cat_dict.update({f.name: f.cardinality for f in model_targets if f.type == tf.string})
-    cat_dict.update({f.name: f.cardinality for f in model_targets if f.type == tf.int64 and f.cardinality == card_cap})
+    cat_dict.update({f.name: card_cap for f in model_targets if f.type == tf.int64 and f.cardinality == card_cap})
     cat_dict.update({f.name: f.cardinality for f in model_targets if f.type == tf.int64 and f.cardinality != card_cap})
     return cat_dict
