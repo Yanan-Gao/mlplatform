@@ -8,6 +8,7 @@ final case class TrainSetFeaturesRecord (
                                           BidRequestId: String,
                                           Weight: Double,
                                           Target: Int,
+                                          IsInTrainSet: Boolean,
 
                                           SupplyVendor: Option[String],
                                           SupplyVendorPublisherId: Option[String],

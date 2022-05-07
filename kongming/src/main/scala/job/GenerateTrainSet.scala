@@ -93,8 +93,9 @@ object GenerateTrainSet {
     val prometheus = new PrometheusClient("KoaV4Conversion", "GenerateTrainSet")
     val trainRatio = config.getDouble("trainRatio", 0.8)
     val desiredNegOverPos = config.getInt(path="desiredPosOverNeg", 9)
-    val maxNegativeCount = config.getInt(path="maxnegativecount", 500000)
-    val positiveLookback = config.getInt("positivelookback", 3)
+    val maxNegativeCount = config.getInt(path="maxNegativeCount", 500000)
+    val upSamplingValSet = config.getBoolean(path = "upSamplingValSet", false)
+    val conversionLookback = config.getInt("conversionLookback", 7)
 
     // test only adgroups in the policy table. since aggKey are all adgroupId, we filter by adgroup id
     val adGroupPolicyHardCodedDate = LocalDate.parse("2022-03-15")
@@ -106,24 +107,47 @@ object GenerateTrainSet {
     // 0. load aggregated negatives
     val dailyNegativeSampledBids = loadParquetData[DailyNegativeSampledBidRequestRecord](DailyNegativeSampledBidRequestDataSet.S3BasePath, date, lookBack = Some(maxLookback))
     val aggregatedNegativeSet = aggregateNegatives(dailyNegativeSampledBids, adGroupPolicy)(prometheus)
+      .withColumn("IsInTrainSet", when(abs(hash($"BidRequestId")%100)<=trainRatio*100, lit(true)).otherwise(false))
+      .withColumn("Weight", lit(1))  // placeholder: 1. assign format with positive 2. we might weight for negative in the future, TBD.
 
     //    load aggregated positives
-    val aggregatedPositiveSet = loadParquetData[DailyPositiveLabelRecord](DailyPositiveBidRequestDataset.S3BasePath, date, lookBack = Some(positiveLookback) )
+    val aggregatedPositiveSet =  loadParquetData[DailyPositiveLabelRecord](DailyPositiveBidRequestDataset.S3BasePath, date, lookBack = Some(conversionLookback-1) )
+      .withColumn("IsInTrainSet", when(abs(hash($"BidRequestId")%100)<=trainRatio*100, lit(true)).otherwise(false))
 
-    // 1. exclude postives from negative
-    val realNegatives = aggregatedNegativeSet
+
+    // 1. exclude positives from negative;  remain pos and neg that have both train and val
+    val negativeExcludePos = aggregatedNegativeSet
       .join(aggregatedPositiveSet, Seq( "ConfigKey", "ConfigValue", "BidRequestId"), joinType = "left_anti")
-      .select($"ConfigKey" , $"ConfigValue" ,$"DataAggKey", $"DataAggValue", $"BidRequestID", $"LogEntryTime")
-      .withColumn("Weight", lit(1))  // placeholder: 1. assign format with positive 2. we might weight for negative in the future, TBD.
       .selectAs[TrainSetRecord]
       .cache()
+
+
+    //   todo: ensure that each ConfigKey/ConfigValue pairs have both train and validation data instead of just filtering them out
+    /*
+     current thought is: if there are no val set that's probably because positives are too less so the hash mod is biased.
+     The model probably is not going to perform anyways with too less positive.
+     But it's better to at least have a model.
+     */
+    val  dataHaveBothTrainVal = negativeExcludePos
+      .groupBy("ConfigKey", "ConfigValue").agg(collect_set("IsInTrainSet").as("hasValOrTrain"))
+      .filter(size($"hasValOrTrain")===lit(2))
+      .join(
+        aggregatedPositiveSet.groupBy("ConfigKey", "ConfigValue").agg(collect_set("IsInTrainSet").as("hasValOrTrain"))
+          .filter(size($"hasValOrTrain")===lit(2)),
+        Seq("ConfigKey", "ConfigValue" ),
+        "inner"
+      ).cache()
+
+    val validPositives = aggregatedPositiveSet.join(dataHaveBothTrainVal, Seq("ConfigKey", "ConfigValue" ), "left_semi" )
+    val validNegatives = negativeExcludePos.join(dataHaveBothTrainVal, Seq("ConfigKey", "ConfigValue" ), "left_semi" ).selectAs[TrainSetRecord].cache()
+
 
     // 2. get the latest weights for adgroups in policytable
     val trackingTagWithWeight = getWeightsForTrackingTags(adGroupPolicy)
 
     // 3. transform weights for positive label
     // todo: multi days positive might have different click and  view lookback window, might not alligned with latest weight
-    val positivesWithRawWeight = aggregatedPositiveSet.join(trackingTagWithWeight, Seq("TrackingTagId", "ConfigKey", "ConfigValue"))
+    val positivesWithRawWeight = validPositives.join(trackingTagWithWeight, Seq("TrackingTagId", "ConfigKey", "ConfigValue"))
       .withColumn("NormalizedPixelWeight", $"NormalizedPixelWeight".cast(DoubleType))
       .withColumn("NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAClickWeight".cast(DoubleType))
       .withColumn("NormalizedCustomCPAViewthroughWeight", $"NormalizedCustomCPAViewthroughWeight".cast(DoubleType))
@@ -133,8 +157,9 @@ object GenerateTrainSet {
     // todo: normalize weight for positives, otherwise pos/neg will be changed if neg has no weight
     // Question: do we need to upsample or just tune weights are enough, consider the naive upsamping. Upsampling can have different strategy though.
 
+
     // 4. balance  pos and neg
-    val balancedTrainset= balancePosNeg(realPositives, realNegatives, desiredNegOverPos, maxNegativeCount)(prometheus)
+    val balancedTrainset= balancePosNeg(realPositives, validNegatives, desiredNegOverPos, maxNegativeCount, upSamplingValSet = upSamplingValSet)(prometheus)
 
     val adjustedPos = balancedTrainset._1.withColumn("Target", lit(1))
     val adjustedNeg = balancedTrainset._2.withColumn("Target", lit(0))
@@ -146,9 +171,8 @@ object GenerateTrainSet {
     val trainDataWithFeature = attachTrainsetWithFeature(preFeatureJoinTrainSet, maxLookback)(prometheus).persist(StorageLevel.MEMORY_AND_DISK)
 
     // 6. split train and val
-    // use hash rather than rand because we replicate records.
-    val adjustedTrain  = trainDataWithFeature.filter(abs(hash($"BidRequestId")%100)<=trainRatio*100).cache()
-    val adjustedVal = trainDataWithFeature.filter(abs(hash($"BidRequestId")%100)>trainRatio*100).cache()
+    val adjustedTrain  = trainDataWithFeature.filter($"IsInTrainSet"===lit(true)).cache()
+    val adjustedVal = trainDataWithFeature.filter($"IsInTrainSet"===lit(false)).cache()
 
     // 7. save as tfrecord and parquet
     val selectionTabular = intModelFeaturesCols(modelFeatures ++ modelWeights)  ++ modelTargetCols(modelTargets)
@@ -159,7 +183,7 @@ object GenerateTrainSet {
       (adjustedTrain,"train", "tfrecord"),
       (adjustedVal, "val", "tfrecord")
     )
-    
+
     dfTuple.foreach{
       case (df, df_split, df_format) => {
 
