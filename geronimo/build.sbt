@@ -7,7 +7,7 @@ val prometheusVersion = "0.9.0"
 scalaVersion := "2.12.13"
 name := "geronimo"
 organization := "com.thetradedesk"
-version := "0.1.5-SNAPSHOT"
+version := "0.1.6-SNAPSHOT"
 
 publishTo := {
   if (isSnapshot.value)

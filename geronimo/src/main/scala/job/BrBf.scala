@@ -3,8 +3,8 @@ package job
 
 import com.thetradedesk.geronimo.bidsimpression.transform.BidsImpressions
 import com.thetradedesk.geronimo.bidsimpression.transform.BidsImpressions.writeOutput
-import com.thetradedesk.geronimo.shared.loadParquetDataHourly
-import com.thetradedesk.geronimo.shared.schemas.{BidRequestRecord, BidRequestDataset, BidFeedbackDataset, BidFeedbackRecord}
+import com.thetradedesk.geronimo.shared.{loadParquetData, loadParquetDataHourly}
+import com.thetradedesk.geronimo.shared.schemas.{AdvertiserDataset, AdvertiserRecord, BidFeedbackDataset, BidFeedbackRecord, BidRequestDataset, BidRequestRecord}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -31,9 +31,9 @@ object BrBf {
 
     val impressions = loadParquetDataHourly[BidFeedbackRecord](s3path=BidFeedbackDataset.BFS3, date, inputHours)
     val bids = loadParquetDataHourly[BidRequestRecord](BidRequestDataset.BIDSS3, date, inputHours)
+    val adv = loadParquetData[AdvertiserRecord](AdvertiserDataset.ADVS3, date)
 
-
-    val bfBf = BidsImpressions.transform(bids, impressions)
+    val bfBf = BidsImpressions.transform(bids, impressions, adv)
 
     writeOutput(bfBf, outputPath, ttdEnv, outputPrefix, date, inputHours, writePartitions)
 
