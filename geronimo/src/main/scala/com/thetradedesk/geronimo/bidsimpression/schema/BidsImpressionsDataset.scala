@@ -83,8 +83,13 @@ case class BidsImpressionsSchema(
 
                                   PrivateContractId: String,
 
+
                                   // advertiser columns
-                                  AdvertiserIndustryCategoryId: Option[BigInt]
+                                  AdvertiserIndustryCategoryId: Option[BigInt],
+
+                                 // contextual cols
+                                 ReferrerUrl: Option[String],
+                                 ContextualCategories: Option[Seq[Long]]
                                 )
 
 object BidsImpressions {

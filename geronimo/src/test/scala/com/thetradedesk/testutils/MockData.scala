@@ -39,7 +39,7 @@ object MockData {
     SupplyVendor = Option("nicksSSP"),
     PartnerRequestData = Option(""),
     PartnerResponseData = Option(""),
-    ReferrerUrl = Option(""),
+    ReferrerUrl = Option("https://www.usnews.com/best-schools/cs"),
     FPricingSlope = Option(10.0),
     FPricingCliff = Option(1),
     Frequency = 12L,
@@ -222,8 +222,9 @@ object MockData {
     DoNotTrack = Option(DoNotTrackLookupRecord()),
     CreativeId = Option(""),
 
-    PrivateContractId =  ""
-
+    PrivateContractId =  "", //16,777,217
+    ReferrerUrl = Some("https://www.usnews.com//best-schools/cs"),
+    ContextualCategories = Some(Seq[Long](123456789,267891234)),
   )
 
   val advertiserRecordMock = AdvertiserRecord(
@@ -279,5 +280,16 @@ object MockData {
     AdvertiserCorporationId = Some("")
   )
 
-
+  val contextual = ContextualCategoryRecord(
+    ContextualCategoryId = 123456789,
+    UrlHash = "c530646f7a1a7ce3432525c89cd87768",
+    UrlSchema = "https",
+    UrlHost = "www.usnews.com",
+    UrlPath = "/best-schools/cs",
+    UrlQuery = "",
+    UrlReference = "",
+    UrlLength = 50,
+    UpdatedDateTimeUtc =  java.sql.Timestamp.valueOf("2022-04-10 18:48:05.123"),
+    ExpireDateTimeUtc =  java.sql.Timestamp.valueOf("2022-04-15 18:48:05.123"),
+    InApp = false)
 }
