@@ -64,7 +64,9 @@ package com.thetradedesk.geronimo.bidsimpression.schema
 
       "PrivateContractId",
       "DoNotTrack",
-      "CreativeId"
+      "CreativeId",
+
+      "ReferrerUrl"
     )
   }
 
