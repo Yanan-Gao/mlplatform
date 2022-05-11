@@ -2,7 +2,7 @@ package com.thetradedesk.geronimo.bidsimpression.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidCols, BidsImpressionsSchema, ImpressionsCols}
 import com.thetradedesk.geronimo.shared.explicitDatePart
-import com.thetradedesk.geronimo.shared.schemas.{BidRequestRecord, BidFeedbackRecord}
+import com.thetradedesk.geronimo.shared.schemas.{AdvertiserRecord, BidFeedbackRecord, BidRequestRecord}
 import com.thetradedesk.logging.Logger
 import org.apache.spark.sql.{Dataset, SaveMode}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -19,7 +19,11 @@ object BidsImpressions extends Logger {
   // and c# where the time of day features are computed at bid time.
   val TWOPI = 2 * 3.14159265359
 
-  def transform(bids: Dataset[BidRequestRecord], impressions: Dataset[BidFeedbackRecord] ): Dataset[BidsImpressionsSchema] = {
+  def transform(
+                 bids: Dataset[BidRequestRecord],
+                 impressions: Dataset[BidFeedbackRecord],
+                 advertiser: Dataset[AdvertiserRecord]
+               ): Dataset[BidsImpressionsSchema] = {
 
     val bidsDf = bids.select(BidCols.BIDSCOLUMNS.map(i => col(i)): _*)
       .withColumn("BidRequestIdHash" , xxhash64(col("BidRequestId")))
@@ -31,9 +35,9 @@ object BidsImpressions extends Logger {
       .drop("BidRequestId")
       .repartition(col("BidRequestIdHash"))
 
-
     val joinDf = bidsDf.alias("bids")
       .join(impressionsDf.alias("i"), Seq("BidRequestIdHash"), "leftouter")
+      .join(advertiser.select($"AdvertiserId", $"IndustryCategoryId" as "AdvertiserIndustryCategoryId"),Seq("AdvertiserId"), "left")
       .withColumn("IsImp", when(col("MediaCostCPMInUSD").isNotNull, true).otherwise(false))
       .withColumn("ImpressionsFirstPriceAdjustment", col("i.FirstPriceAdjustment"))
       .withColumn("BidsFirstPriceAdjustment", col("bids.FirstPriceAdjustment"))

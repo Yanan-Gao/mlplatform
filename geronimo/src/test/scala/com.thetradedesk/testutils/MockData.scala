@@ -176,8 +176,7 @@ object MockData {
     AdsTxtSellerType = Option(AdsTxtSellerTypeLookupRecord()),
     PublisherType = InventoryPublisherTypeLookupRecord(),
     AuctionType = Some(1),
-
-
+    AdvertiserIndustryCategoryId = Some(2L),
 
     Country = Some(""),
     Region = Some(""),
@@ -225,6 +224,59 @@ object MockData {
 
     PrivateContractId =  ""
 
+  )
+
+  val advertiserRecordMock = AdvertiserRecord(
+    AdvertiserId = "",
+    AdvertiserIdInteger= 1,
+    PartnerId = "",
+    AdvertiserName = "",
+    AdvertiserDescription = Some(""),
+    CurrencyCodeId = "",
+    ContactId = Some(""),
+    PaymentMethodTypeId = 1,
+    AttributionClickLookbackWindowInSeconds = 1,
+    AttributionImpressionLookbackWindowInSeconds = 1,
+    ClickDedupeWindowInSeconds = 1,
+    ConversionDeDupeWindowInSeconds = 1,
+    RightMediaDefaultOfferTypeId = Some(1L),
+    RecencyBucketListId = "",
+    CreatedAt = java.sql.Timestamp.valueOf("2020-06-05 18:48:05.123"),
+    LastUpdatedAt = java.sql.Timestamp.valueOf("2020-06-05 18:48:05.123"),
+    IsVisible = true,
+    AdvertiserFacebookAccountId= Some(1L),
+    FacebookAdAccountId = Some(1L),
+    ManagerId = Some(""),
+    BuyerId= Some(""),
+    MaximumNumberOfIpRanges = 1,
+    MaximumNumberOfSiteListLines = 1,
+    IndustryCategoryId = Some(1L),
+    ExcludeFromReporting = false,
+    PrimaryAttributionCluster = Some(1),
+    DailyConversionLimit = Some(1L),
+    SecondaryAttributionCluster = Some(1),
+    AdvertiserRevenueGroupId = "",
+    HasLogo = false,
+    MaximumNumberOfTemperatureAdjustmentsPerAdGroup = 1,
+    DefaultAdGroupTemperatureBucketListId = 1,
+    ReportingTemperatureBucketListId = 1,
+    WitholdTTDMarginFromAdvertiserCostOverride = Some(false),
+    IncludeTTDMarginInAdvertiserCost = false,
+    BaiduIndustryCategoryId = Some(1L),
+    InvoiceTimeZoneId = Some(1),
+    UseMediaCostBasisForCampaignFees = false,
+    OverridePartnerDefaultImpressionTrackingUrl = false,
+    OverridePartnerDefaultImpressionTrackingUrl2 = false,
+    OverridePartnerDefaultImpressionTrackingUrl3 = false,
+    DefaultThirdPartyImpressionTrackingUrl = Some(""),
+    DefaultThirdPartyImpressionTrackingUrl2 = Some(""),
+    DefaultThirdPartyImpressionTrackingUrl3 = Some(""),
+    AdsTxtSiteUnauthorizedHandlingOverrideId = 1,
+    AdvertiserLegalName = Some(""),
+    AdvertiserBrandName = Some(""),
+    IsGdprWhitelisted = true,
+    DontUsePreGdprFirstPartyData = Some(false),
+    AdvertiserCorporationId = Some("")
   )
 
 

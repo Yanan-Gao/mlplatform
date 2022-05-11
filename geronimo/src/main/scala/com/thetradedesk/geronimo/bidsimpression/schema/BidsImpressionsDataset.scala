@@ -9,7 +9,7 @@ case class BidsImpressionsSchema(
 
                                   UIID : Option[String],
 
-                                 AdjustedBidCPMInUSD: BigDecimal,
+                                  AdjustedBidCPMInUSD: BigDecimal,
                                   BidsFirstPriceAdjustment: Option[BigDecimal],
                                   FloorPriceInUSD: Option[BigDecimal],
 
@@ -39,14 +39,11 @@ case class BidsImpressionsSchema(
                                   PublisherType: InventoryPublisherTypeLookupRecord,
                                   AuctionType: Option[Int],
 
-
-
                                   Country: Option[String],
                                   Region: Option[String],
                                   Metro: Option[String],
                                   City: Option[String],
                                   Zip: Option[String],
-
 
                                   DeviceType: Option[DeviceTypeLookupRecord],
                                   DeviceMake: Option[String],
@@ -63,7 +60,6 @@ case class BidsImpressionsSchema(
                                   PredictiveClearingRandomControl: Boolean = false,
 
                                   // bidfeedback cols
-
                                   MediaCostCPMInUSD: Option[BigDecimal],
                                   DiscrepancyAdjustmentMultiplier: Option[BigDecimal],
 
@@ -85,7 +81,10 @@ case class BidsImpressionsSchema(
                                   DoNotTrack: Option[DoNotTrackLookupRecord],
                                   CreativeId: Option[String],
 
-                                  PrivateContractId: String
+                                  PrivateContractId: String,
+
+                                  // advertiser columns
+                                  AdvertiserIndustryCategoryId: Option[BigInt]
                                 )
 
 object BidsImpressions {
