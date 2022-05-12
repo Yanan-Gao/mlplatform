@@ -28,6 +28,9 @@ object ModelInputProcessor extends Logger {
 
   val formats = config.getStringSeq("formats", Seq("tfrecord", "parquet"))
 
+  val numCsvPartitions = config.getInt("numCsvPartitions", 20)
+  val onlyWriteSingleDay = config.getBoolean("onlyWriteSingleDay", false)
+
   implicit val prometheus = new PrometheusClient("Plutus", "TrainingDataEtl")
   val jobDurationTimer = prometheus.createGauge("training_model_input_runtime", "Time to process 1 day of clean data in to model input data").startTimer()
 

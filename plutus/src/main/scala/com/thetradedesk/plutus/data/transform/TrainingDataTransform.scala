@@ -1,13 +1,13 @@
 package com.thetradedesk.plutus.data.transform
 
-import job.ModelInputProcessor.prometheus
+import job.ModelInputProcessor.{numCsvPartitions, onlyWriteSingleDay, outputPath, prometheus}
 import com.thetradedesk.geronimo.shared.intModelFeaturesCols
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import org.apache.spark.sql._
-import org.apache.spark.sql.functions.col
+import org.apache.spark.sql.functions.{coalesce, col}
 
 import java.time.LocalDate
 import com.thetradedesk.plutus.data.schema.{CleanInputData, MetaData, ModelTarget}
@@ -120,26 +120,37 @@ object TrainingDataTransform {
     // convert to int (hash)
     val selectionTabular = intModelFeaturesCols(modelFeatures) ++ modelTargetCols(modelTargets)
 
+    // single day
+    val singleDay = loadInputData(Seq(paths.head))
 
-    outputPermutations(trainInputData, valInputData, testInputData, selectionTabular, formats)
-      .foreach {
-        case ((name, df, partitions), TFRECORD_FORMAT) =>
-          writeTfRecord(
-            df,
-            partitions,
-            outputDataPaths(s3Path, outputS3Prefix, ttdEnv, svName, endDate, lookBack.get, TFRECORD_FORMAT, name)
-          )
+    singleDay.select(selectionTabular: _*)
+      .coalesce(numCsvPartitions)
+      .write
+      .option("header", "true")
+      .mode(SaveMode.Overwrite)
+      .csv(plutusDataPath(s3Path, ttdEnv, prefix = "singledayprocessed", svName, endDate))
 
-        case ((name, df, partitions), PARQUET_FORMAT) =>
-          df
-            .repartition(partitions)
-            .write
-            .mode(SaveMode.Overwrite)
-            .parquet(
-              outputDataPaths(s3Path, outputS3Prefix, ttdEnv, svName, endDate, lookBack.get, PARQUET_FORMAT, name)
+    if (!onlyWriteSingleDay) {
+      outputPermutations(trainInputData, valInputData, testInputData, selectionTabular, formats)
+        .foreach {
+          case ((name, df, partitions), TFRECORD_FORMAT) =>
+            writeTfRecord(
+              df,
+              partitions,
+              outputDataPaths(s3Path, outputS3Prefix, ttdEnv, svName, endDate, lookBack.get, TFRECORD_FORMAT, name)
             )
-        case _ =>
-      }
+
+          case ((name, df, partitions), PARQUET_FORMAT) =>
+            df
+              .repartition(partitions)
+              .write
+              .mode(SaveMode.Overwrite)
+              .parquet(
+                outputDataPaths(s3Path, outputS3Prefix, ttdEnv, svName, endDate, lookBack.get, PARQUET_FORMAT, name)
+              )
+          case _ =>
+        }
+    }
   }
 
   def outputPermutations(trainInputData: Dataset[CleanInputData], valInputData: Dataset[CleanInputData], testInputData: Dataset[CleanInputData], selectQuery: Array[Column], formats: Seq[String]): Seq[((String, DataFrame, Int), String)] = {
