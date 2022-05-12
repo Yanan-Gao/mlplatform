@@ -55,6 +55,5 @@ include:
   - local: 'plutus/.gitlab-ci.yml'
   - local: 'contextual-features-scala/.gitlab-ci.yml'
   - local: 'benchmark-suite/.gitlab-ci.yml'
-  - local: 'geronimo/.gitlab-ci.yml'
   - local: 'philo/.gitlab-ci.yml'
   - local: 'kongming/.gitlab-ci.yml'
