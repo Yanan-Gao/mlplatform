@@ -3,18 +3,12 @@ import tensorflow as tf
 
 # parse files from the input folder
 def parse_input_files(path):
-    # assume there's train and val under path
-    trainpath=path+'train/'
-    valpath=path+'val/'
-    train_files = os.listdir(trainpath)
-    val_files = os.listdir(valpath)
 
-    train_files = [ trainpath + file for file in train_files if
+    files = os.listdir(path)
+    files = [path + file for file in files if
                    file.startswith("part")]
-    val_files = [ valpath + file for file in val_files if
-                 file.startswith("part")]
 
-    return train_files, val_files
+    return files
 
 def tfrecord_dataset(files, batch_size, map_fn):
     return tf.data.TFRecordDataset(
@@ -84,6 +78,23 @@ def parse_input_ae_target(model_features, model_targets, card_cap):
 
         return data, {'cont': cont_data, 'cat': cat_data}
 
+    return parse_fun
+
+def parse_scoring_data(model_features, dim_feature, colname_map):
+
+    # parser will throw error when int32 is assigned as type
+    feature_description = {
+        f.name: tf.io.FixedLenFeature([], f.type, f.default_value) for f in
+        model_features}
+    # add dim feature
+    feature_description.update(
+        {d.name: tf.io.FixedLenFeature([], d.type, d.default_value) for d in dim_feature})
+
+    def parse_fun(example):
+        data = tf.io.parse_example(example, feature_description)
+        bidid = data.pop(colname_map.BidRequestId)
+        agid = data.pop(colname_map.AdGroupId)
+        return data, bidid, agid
     return parse_fun
 
 
