@@ -7,6 +7,6 @@ import java.time.LocalDate
 package object kongming {
   var date = config.getDate("date" , LocalDate.now())
   var ttdEnv = config.getString("ttd.env" , "dev")
-
+  val RoundUpTimeUnit = "minute"
 
 }

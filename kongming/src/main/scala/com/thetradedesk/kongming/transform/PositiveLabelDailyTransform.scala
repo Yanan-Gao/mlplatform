@@ -1,6 +1,7 @@
 package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
+import com.thetradedesk.kongming.RoundUpTimeUnit
 import com.thetradedesk.kongming.datasets.DailyConversionDataRecord
 import com.thetradedesk.kongming.datasets.DailyPositiveLabelRecord
 import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, DailyBidRequestRecord}
@@ -10,6 +11,8 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.{Dataset, SaveMode}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.expressions.Window.orderBy
+import org.apache.spark.sql.functions.date_trunc
+import org.apache.spark.sql.functions.dense_rank
 import org.apache.spark.sql.functions.greatest
 import org.apache.spark.sql.functions.least
 import org.apache.spark.sql.functions.lit
@@ -54,7 +57,7 @@ case class DailyPositiveBidRequestRecord(
       .join(broadcast(adGroupPolicy), bidsImpressions("AdGroupId") === adGroupPolicy("DataAggValue"))
       .filter($"UIID".isNotNullOrEmpty && $"UIID" =!= "00000000-0000-0000-0000-000000000000")
 
-    val window = Window.partitionBy($"DataAggKey", $"DataAggValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"LogEntryTime".desc)
+    val window = Window.partitionBy($"DataAggKey", $"DataAggValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"TruncatedLogEntryTime".desc)
       filteredBidRequest.as("t1")
       .join(dailyConversionDS.as("t2"),
         filteredBidRequest("UIID")===dailyConversionDS("UIID") &&
@@ -75,7 +78,8 @@ case class DailyPositiveBidRequestRecord(
         "t2.UIID",
         "t2.ConversionTime"
       )
-      .withColumn("RecencyRank", row_number().over(window))
+      .withColumn("TruncatedLogEntryTime", date_trunc(RoundUpTimeUnit, $"LogEntryTime"))
+      .withColumn("RecencyRank", dense_rank().over(window))
       .filter($"RecencyRank" <= $"LastTouchCount")
       .selectAs[DailyPositiveBidRequestRecord]
   }
@@ -166,7 +170,7 @@ case class DailyPositiveBidRequestRecord(
                                , adGroupPolicy: Dataset[AdGroupPolicyRecord]
                                ):Dataset[DailyPositiveLabelRecord]={
 
-    val window = Window.partitionBy($"DataAggKey", $"DataAggValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"LogEntryTime".desc)
+    val window = Window.partitionBy($"DataAggKey", $"DataAggValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"TruncatedLogEntryTime".desc)
 
     unionedMultidayPositive
     .join(broadcast(adGroupPolicy), Seq("ConfigKey","ConfigValue","DataAggKey","DataAggValue"))
@@ -178,7 +182,8 @@ case class DailyPositiveBidRequestRecord(
     )
     .withColumn("TouchConvTimeDiffInSeconds", unix_timestamp($"ConversionTime") - unix_timestamp($"LogEntryTime"))
     .filter($"lookbackInSeconds">=$"TouchConvTimeDiffInSeconds")
-    .withColumn("RecencyRank", row_number().over(window))
+    .withColumn("TruncatedLogEntryTime", date_trunc(RoundUpTimeUnit, $"LogEntryTime"))
+    .withColumn("RecencyRank", dense_rank().over(window))
     .filter($"RecencyRank" <= $"LastTouchCount")
     .withColumn(
       "IsClickWindowGreater", $"AttributionClickLookbackWindowInSeconds">$"AttributionImpressionLookbackWindowInSeconds"
