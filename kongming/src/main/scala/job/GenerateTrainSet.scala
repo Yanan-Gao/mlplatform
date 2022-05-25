@@ -18,6 +18,7 @@ import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.transform.TrainSetTransformation._
 import org.apache.spark.sql.types.DoubleType
 import org.apache.spark.storage.StorageLevel
+import job.DailyOfflineScoringSet.{keptFields, modelKeepFeatureCols}
 /*
   Generate train set for conversion model training job
   Input:
@@ -187,7 +188,10 @@ object GenerateTrainSet {
     dfTuple.foreach{
       case (df, df_split, df_format) => {
 
-        val dfTransformed= df.select(selectionTabular: _*).as[DataForModelTrainingRecord]
+        val dfTransformed = df_format match {
+          case "parquet" => df.select((modelKeepFeatureCols(keptFields) ++ selectionTabular): _*).as[DataForModelTrainingRecord]
+          case "tfrecord" => df.select(selectionTabular: _*).as[DataForModelTrainingRecord]
+        }
 
         DataForModelTrainingDataset.writePartition(
           dfTransformed,
