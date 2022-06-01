@@ -1,0 +1,149 @@
+variables:
+  SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+  AUDIENCE_JAR_NAME: "audience.jar"
+  AUDIENCE_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/mergerequests"
+  AUDIENCE_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/snapshots"
+  AUDIENCE_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/prod"
+  AUDIENCE_ASSEMBLY_OUT: "/builds/thetradedesk/mlplatform/audience/target/scala-2.12/audience.jar"
+  SCRIPTS_SOURCE: "src/main/bash/"
+  SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/scripts/"
+  PYTHON_BUILD_IMAGE: "python:3.8"
+  AUDIENCE_TRAINING_IMAGE: "audience/training-gpu"
+
+audience:test:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: test
+  cache:
+    policy: pull
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "audience/src/main/scala/**/*"
+        - "audience/build.sbt"
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "audience/src/**/*"
+        - "audience/build.sbt"
+  before_script:
+    # we don't need to set up the machine for S3 in order to run tests
+    - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
+  script:
+    - pushd ./audience/
+    - sbt test
+    - popd
+    - echo "ran AUDIENCE_test"
+
+
+audience:push_bits_merge_request:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: assembly_upload
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "audience/src/main/scala/**/*"
+        - "audience/build.sbt"
+  script:
+    - pushd ./audience/
+    - sbt "set test in assembly := {}" clean assembly
+    - DEST=${AUDIENCE_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - DEST_FIXED=${AUDIENCE_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/latest
+    - aws s3 cp ${AUDIENCE_ASSEMBLY_OUT} ${DEST}/${AUDIENCE_JAR_NAME}
+    - aws s3 cp ${AUDIENCE_ASSEMBLY_OUT} ${DEST_FIXED}/${AUDIENCE_JAR_NAME}
+    - popd
+    - echo "ran AUDIENCE_push_bits_merge_request"
+
+audience:push_bits_master_snapshot:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: assembly_upload
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "audience/src/main/scala/**/*"
+        - "audience/build.sbt"
+  script:
+    - pushd ./audience/
+    - sbt "set test in assembly := {}" clean assembly
+    - DEST=${AUDIENCE_SNAPSHOTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - aws s3 cp ${AUDIENCE_ASSEMBLY_OUT} ${DEST}/${AUDIENCE_JAR_NAME}
+    - popd
+    - echo "ran AUDIENCE_push_bits_master_snapshot"
+
+audience:deploy_release:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "audience/src/main/scala/**/*"
+        - "audience/build.sbt"
+      when: manual
+      allow_failure: false
+  script:
+    - pushd ./audience/
+    - sbt "set test in assembly := {}" clean assembly
+    - aws s3 cp ${AUDIENCE_ASSEMBLY_OUT} ${AUDIENCE_PROD_JAR_FOLDER}/${AUDIENCE_JAR_NAME}
+    - popd
+    - echo "ran AUDIENCE_deploy_release"
+
+audience:push_scripts:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "audience/src/main/bash/**/*"
+        - "audience/.gitlab-ci.yml"
+  script:
+    - pushd ./audience/
+    - aws s3 cp ${SCRIPTS_SOURCE} ${SCRIPTS_DEST} --recursive
+    - popd
+    - echo "ran push_set_scripts"
+
+#audience:build_push_test_container:
+#  image: "$PYTHON_BUILD_IMAGE"
+#  stage: k8s_deploy
+#  services:
+#    - docker:dind
+#  before_script:
+#    - apt update
+#    - apt-get install docker.io -y
+#  rules:
+#    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+#      changes:
+#        - "audience/src/main/python/**/*"
+#        - "audience/.gitlab-ci.yml"
+#      when: manual
+#  script:
+#    - export DOCKER_HOST=$DOCKER_PORT
+#    - pushd ./audience/src/main/python/
+#    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
+#    - docker build -f Dockerfile.prod -t ${AUDIENCE_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA} .
+#    - docker tag ${AUDIENCE_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA} ${DOCKER_INTERNAL_REGISTRY}/${AUDIENCE_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA}
+#    - docker push ${DOCKER_INTERNAL_REGISTRY}/${AUDIENCE_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA}
+#    - popd
+#    - echo "test container for commit pushed"
+#
+#audience:build_push_release_container:
+#  image: "$PYTHON_BUILD_IMAGE"
+#  stage: k8s_deploy
+#  services:
+#    - docker:dind
+#  before_script:
+#    - apt update
+#    - apt-get install docker.io -y
+#  rules:
+#    - if: $CI_COMMIT_BRANCH == "master"
+#      changes:
+#        - "audience/src/main/python/**/*"
+#        - "audience/.gitlab-ci.yml"
+#      when: manual
+#  script:
+#    - export DOCKER_HOST=$DOCKER_PORT
+#    - pushd ./audience/src/main/python/
+#    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
+#    - docker build -f Dockerfile.prod -t ${AUDIENCE_TRAINING_IMAGE}:release .
+#    - docker tag ${AUDIENCE_TRAINING_IMAGE}:release ${DOCKER_INTERNAL_REGISTRY}/${AUDIENCE_TRAINING_IMAGE}:release
+#    - docker push ${DOCKER_INTERNAL_REGISTRY}/${AUDIENCE_TRAINING_IMAGE}:release
+#    - popd
+#    - echo "release training container pushed"
+
