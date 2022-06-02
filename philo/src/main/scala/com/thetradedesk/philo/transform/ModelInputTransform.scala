@@ -75,7 +75,7 @@ object ModelInputTransform extends Logger {
     }.toArray
   }
 
-  def transform(clicks: Dataset[ClickTrackerRecord], bidsImpsDat: Dataset[BidsImpressionsSchema]): DataFrame = {
+  def transform(clicks: Dataset[ClickTrackerRecord], bidsImpsDat: Dataset[BidsImpressionsSchema]): (DataFrame, DataFrame) = {
     val clickLabels = clicks.withColumn("label", lit(1))
       .withColumn("BidRequestIdHash" , xxhash64(col("BidRequestId")))
       .drop("BidRequestId")
@@ -85,31 +85,41 @@ object ModelInputTransform extends Logger {
       .filter(col("IsImp"))
       .withColumn("BidRequestIdHash" , xxhash64(col("BidRequestId")))
 
-      val joinedData = bidsImpsPreJoin.join(clickLabels, Seq("BidRequestIdHash"), "leftouter")
+    val joinedData = bidsImpsPreJoin.join(clickLabels, Seq("BidRequestIdHash"), "leftouter")
       .withColumn("label", when(col("label").isNull, 0).otherwise(1))
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
 
     val flatten = flattenData(joinedData.toDF, flatten_set)
       .selectAs[ModelInputRecord]
 
+    // Get the unique labels with count for each.
+    val label_counts = flatten.groupBy("label").count()
+
     val selectionQuery = intModelFeaturesCols(modelFeatures) ++ Array(col("label"), col("BidRequestId"))
 
     val hashedData = flatten.select(selectionQuery: _*)
 
-    hashedData
+    (hashedData, label_counts)
   }
 
-  // not this is TF record and you will need to add tf record package to the packages args when running spark submit for this to work
-  def writeTfRecords(df: DataFrame, outputPath: String, ttdEnv: String, outputPrefix: String, date: LocalDate, partitions: Int): Unit = {
+  // NOTE: this is TF record and you will need to add tf record package to the packages args when running spark submit for this to work
+  def writeData(df: DataFrame, outputPath: String, ttdEnv: String, outputPrefix: String, date: LocalDate, partitions: Int, isTFRecord: Boolean = true): Unit = {
+
     // note the date part is year=yyyy/month=m/day=d/
-    df
+    var func = df
       .repartition(partitions)
       .write
       .mode(SaveMode.Overwrite)
-      .format("tfrecord")
-      .option("recordType", "Example")
-      .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
-      .save(s"$outputPath/$ttdEnv/$outputPrefix/${explicitDatePart(date)}")
+
+    if (isTFRecord) {
+      func.format("tfrecord")
+        .option("recordType", "Example")
+        .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
+        .save(s"$outputPath/$ttdEnv/$outputPrefix/${explicitDatePart(date)}")
+    } else {
+      func.option("header", "true")
+        .csv(s"$outputPath/$ttdEnv/$outputPrefix/${explicitDatePart(date)}")
+    }
   }
 
 }

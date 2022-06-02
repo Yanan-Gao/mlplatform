@@ -4,7 +4,7 @@ import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImp
 import com.thetradedesk.geronimo.shared.loadParquetData
 import com.thetradedesk.philo.schema.{ClickTrackerDataset, ClickTrackerRecord}
 import com.thetradedesk.philo.transform.ModelInputTransform
-import com.thetradedesk.philo.transform.ModelInputTransform.writeTfRecords
+import com.thetradedesk.philo.transform.ModelInputTransform.writeData
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -26,9 +26,10 @@ import java.time.LocalDate
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](brBfLoc, date, source = Some("geronimo"))
     val clicks = loadParquetData[ClickTrackerRecord](ClickTrackerDataset.CLICKSS3, date)
 
-    val trainingData = ModelInputTransform.transform(clicks, bidsImpressions)
+    val (trainingData, labelCounts) = ModelInputTransform.transform(clicks, bidsImpressions)
 
-    writeTfRecords(trainingData, outputPath, ttdEnv, outputPrefix, date, partitions)
+    writeData(trainingData, outputPath, ttdEnv, outputPrefix, date, partitions)
+    writeData(labelCounts, outputPath, ttdEnv, "metadata", date, 1, false)
 
   }
 
