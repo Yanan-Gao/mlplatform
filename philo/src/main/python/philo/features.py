@@ -3,48 +3,52 @@ from itertools import chain
 from copy import copy
 
 import tensorflow as tf
+from tensorflow.keras.initializers import RandomNormal, Zeros
+from tensorflow.keras.layers import Input, Lambda
 
 # ctr imports
-from typing import List, Optional
-# from tensorflow.keras.initializers import RandomNormal
-# from tensorflow.keras.layers import Input, Lambda
-from tensorflow.keras.initializers import Zeros
-
 from philo.layers import concat_func, Linear
 from philo.inputs import create_embedding_matrix, embedding_lookup, get_dense_input, varlen_embedding_lookup, \
     get_varlen_pooling_list, mergeDict
 from collections import defaultdict
 
+SEED = 1024
+
 Feature = namedtuple("Feature",
                      "name, sparse, type, cardinality, default_value, enabled, embedding_dim")
 
 DEFAULT_EMB_DIM = 16
-DEFAULT_CARDINALITIES = {"AdFormat": 27,
-                         "Metro": 141,
-                         "Zip": 40360,
-                         "City": 37386,
-                         "Country": 140,
-                         "Region": 1450,
-                         "DeviceMake": 931,
-                         "DeviceModel": 8766,
+DEFAULT_CARDINALITIES = {"AdFormat": 102,
+                         "AdGroupId": 1002,
+                         "AdvertiserId": 5002,
+                         "AdsTxtSellerType": 7,
+                         "PublisherType": 7,
+
+                         "Country": 252,
+                         "Region": 4002,
+                         "Metro": 302,
+                         "City": 75002,
+                         "Zip": 90002,
+
+                         "Browser": 20,
+                         "DeviceMake": 1002,
+                         "DeviceModel": 10002,
+                         "DeviceType": 9,
+
+                         "CreativeId": 5002,
+                         "DoNotTrack": 4,
                          "ImpressionPlacementId": 102,
-                         "RequestLanguages": 89,
-                         "Site": 95835,
-                         "SupplyVendor": 51,
-                         "SupplyVendorPublisherId": 13750,
-                         "SupplyVendorSiteId": 102,
-                         "Browser": 14,
-                         "OperatingSystemFamily": 8,
-                         "DeviceType": 5,
-                         "AdsTxtSellerType": 3,
-                         "PublisherType": 3,
+                         "OperatingSystemFamily": 10,
                          "RenderingContext": 6,
-                         "AdvertiserId": 163,
-                         "CreativeId": 1488,
-                         "AdGroupId": 266,
+                         "RequestLanguages": 502,
+                         "Site": 350002,
+                         "SupplyVendor": 102,
+                         "SupplyVendorPublisherId": 15002,
                          "UserHourOfWeek": 170,
-                         "PrivateContractId": 29002,
-                         "MatchedFoldPosition": 7}
+                         "PrivateContractId": 10002,
+
+                         "SupplyVendorSiteId": 960002,
+                         "MatchedFoldPosition": 3}
 
 DEFAULT_MODEL_FEATURES = [
                              Feature("SupplyVendor", True, tf.int64,
@@ -120,9 +124,38 @@ DEFAULT_MODEL_TARGET = Target(name='label', type=tf.int64, default_value=0, enab
 DEFAULT_GROUP_NAME = "default_group"
 
 
+def get_features_target(exclude_features=[]):
+    """
+    get model features and targets
+    Args:
+        exclude_features: list of features that are not used
+
+    Returns: list of features and target
+
+    """
+    return get_model_features(exclude_features), DEFAULT_MODEL_TARGET
+
+
+def get_model_features(exclude_features=[]):
+    """
+    remove the features that are in the exclude_features
+    Args:
+        exclude_features: list of features hat are not used
+
+    Returns: list of features
+
+    """
+    if not exclude_features:
+        return DEFAULT_MODEL_FEATURES
+    return [feat for feat in DEFAULT_MODEL_FEATURES if feat.name not in exclude_features]
+
+
 class VarLenSparseFeat(namedtuple('VarLenSparseFeat',
                                   ['sparsefeat', 'maxlen', 'combiner',
                                    'length_name', 'weight_name', 'weight_norm'])):
+    """
+    Currently not used, might be useful if contextual information is introduced
+    """
     __slots__ = ()
 
     def __new__(cls, sparsefeat, maxlen, combiner="mean", length_name=None, weight_name=None, weight_norm=True):
@@ -188,7 +221,7 @@ class SparseFeat(namedtuple('SparseFeat',
         if embedding_dim == "auto":
             embedding_dim = 6 * int(pow(vocabulary_size, 0.25))
         if embeddings_initializer is None:
-            embeddings_initializer = tf.keras.initializers.RandomNormal(mean=0.0, stddev=0.0001, seed=2020)
+            embeddings_initializer = RandomNormal(mean=0.0, stddev=0.0001, seed=SEED)
 
         if embedding_name is None:
             embedding_name = name
@@ -221,39 +254,40 @@ class DenseFeat(namedtuple('DenseFeat', ['name', 'dimension', 'dtype', 'transfor
     def __hash__(self):
         return self.name.__hash__()
 
-    # def __eq__(self, other):
-    #     if self.name == other.name:
-    #         return True
-    #     return False
 
-    # def __repr__(self):
-    #     return 'DenseFeat:'+self.name
-
-
-def get_feature_names(feature_columns):
-    features = build_input_features(feature_columns)
-    return list(features.keys())
+# def get_feature_names(feature_columns):
+#     features = build_input_features(feature_columns)
+#     return list(features.keys())
 
 
 def build_input_features(feature_columns, prefix=''):
+    """
+    create input layer
+    Args:
+        feature_columns: list of SparseFeat or DenseFeat
+        prefix: name prefix for the tensor
+
+    Returns:
+
+    """
     input_features = OrderedDict()
     for fc in feature_columns:
         if isinstance(fc, SparseFeat):
-            input_features[fc.name] = tf.keras.layers.Input(
+            input_features[fc.name] = Input(
                 shape=(1,), name=prefix + fc.name, dtype=fc.dtype)
         elif isinstance(fc, DenseFeat):
-            input_features[fc.name] = tf.keras.layers.Input(
+            input_features[fc.name] = Input(
                 shape=(fc.dimension,), name=prefix + fc.name, dtype=fc.dtype)
         elif isinstance(fc, VarLenSparseFeat):
-            input_features[fc.name] = tf.keras.layers.Input(shape=(fc.maxlen,), name=prefix + fc.name,
-                                                            dtype=fc.dtype)
+            input_features[fc.name] = Input(shape=(fc.maxlen,), name=prefix + fc.name,
+                                            dtype=fc.dtype)
             if fc.weight_name is not None:
-                input_features[fc.weight_name] = tf.keras.layers.Input(shape=(fc.maxlen, 1),
-                                                                       name=prefix + fc.weight_name,
-                                                                       dtype="float32")
+                input_features[fc.weight_name] = Input(shape=(fc.maxlen, 1),
+                                                       name=prefix + fc.weight_name,
+                                                       dtype="float32")
             if fc.length_name is not None:
-                input_features[fc.length_name] = tf.keras.layers.Input((1,), name=prefix + fc.length_name,
-                                                                       dtype='int32')
+                input_features[fc.length_name] = Input((1,), name=prefix + fc.length_name,
+                                                       dtype='int32')
 
         else:
             raise TypeError("Invalid feature column type,got", type(fc))
@@ -261,20 +295,37 @@ def build_input_features(feature_columns, prefix=''):
     return input_features
 
 
-def get_linear_logit(features, feature_columns, units=1, use_bias=False, seed=1024, prefix='linear',
+def get_linear_logit(features, feature_columns, units=1, use_bias=False, seed=SEED, prefix='linear',
                      l2_reg=0, sparse_feat_refine_weight=None):
+    """
+    get wide part of the dual tower structure
+    Args:
+        features: input feature tensors
+        feature_columns: An iterable containing list of linear feature columns
+        units: always equal to 1, not changed, didn't remove it to avoid unnecessary bug
+        use_bias: use bias in linear logit or not
+        seed: random seed
+        prefix: name prefix for linear logit
+        l2_reg: l2 regularization weights for linear logit
+        sparse_feat_refine_weight: sparse feature weights, not used in deepfm
+
+    Returns:
+
+    """
     linear_feature_columns = copy(feature_columns)
+    # get the original raw feature out as one of the 1st order input of FM
     for i in range(len(linear_feature_columns)):
         if isinstance(linear_feature_columns[i], SparseFeat):
-            linear_feature_columns[i] = linear_feature_columns[i]._replace(embedding_dim=1,
-                                                                           embeddings_initializer=Zeros())
+            linear_feature_columns[i] = linear_feature_columns[i]._replace(
+                embedding_dim=1, embeddings_initializer=Zeros())
         if isinstance(linear_feature_columns[i], VarLenSparseFeat):
             linear_feature_columns[i] = linear_feature_columns[i]._replace(
-                sparsefeat=linear_feature_columns[i].sparsefeat._replace(embedding_dim=1,
-                                                                         embeddings_initializer=Zeros()))
-
+                sparsefeat=linear_feature_columns[i].sparsefeat._replace(
+                    embedding_dim=1, embeddings_initializer=Zeros()))
+    # get the embedding linear logit
     linear_emb_list = [input_from_feature_columns(features, linear_feature_columns, l2_reg, seed,
                                                   prefix=prefix + str(i))[0] for i in range(units)]
+    # get the dense input for fm
     _, dense_input_list = input_from_feature_columns(features, linear_feature_columns, l2_reg, seed, prefix=prefix)
 
     linear_logit_list = []
@@ -284,20 +335,20 @@ def get_linear_logit(features, feature_columns, units=1, use_bias=False, seed=10
             sparse_input = concat_func(linear_emb_list[i])
             dense_input = concat_func(dense_input_list)
             if sparse_feat_refine_weight is not None:
-                sparse_input = tf.keras.layers.Lambda(lambda x: x[0] * tf.expand_dims(x[1], axis=1))(
+                sparse_input = Lambda(lambda x: x[0] * tf.expand_dims(x[1], axis=1))(
                     [sparse_input, sparse_feat_refine_weight])
             linear_logit = Linear(l2_reg, mode=2, use_bias=use_bias, seed=seed)([sparse_input, dense_input])
         elif len(linear_emb_list[i]) > 0:
             sparse_input = concat_func(linear_emb_list[i])
             if sparse_feat_refine_weight is not None:
-                sparse_input = tf.keras.layers.Lambda(lambda x: x[0] * tf.expand_dims(x[1], axis=1))(
+                sparse_input = Lambda(lambda x: x[0] * tf.expand_dims(x[1], axis=1))(
                     [sparse_input, sparse_feat_refine_weight])
             linear_logit = Linear(l2_reg, mode=0, use_bias=use_bias, seed=seed)(sparse_input)
         elif len(dense_input_list) > 0:
             dense_input = concat_func(dense_input_list)
             linear_logit = Linear(l2_reg, mode=1, use_bias=use_bias, seed=seed)(dense_input)
         else:  # empty feature_columns
-            return tf.keras.layers.Lambda(lambda x: tf.constant([[0.0]]))(list(features.values())[0])
+            return Lambda(lambda x: tf.constant([[0.0]]))(list(features.values())[0])
         linear_logit_list.append(linear_logit)
 
     return concat_func(linear_logit_list)
@@ -306,18 +357,18 @@ def get_linear_logit(features, feature_columns, units=1, use_bias=False, seed=10
 def input_from_feature_columns(features, feature_columns, l2_reg, seed, prefix='', seq_mask_zero=True,
                                support_dense=True, support_group=False):
     """
-    Create inputs from the model features
+    Create inputs from the model features by separating dense features and embedded features
     Args:
-        features:
-        feature_columns:
-        l2_reg:
-        seed:
-        prefix:
-        seq_mask_zero:
-        support_dense:
-        support_group:
+        features: list of input feature tensors
+        feature_columns: list of SparseFeat, VarlenFeat and DesneFeat
+        l2_reg: l2 regularization weights
+        seed: random seed
+        prefix: prefix for the name of the tensor
+        seq_mask_zero: whether mask sequence
+        support_dense: whether support dense features
+        support_group: whether support grouping features, not used in deepfm
 
-    Returns:
+    Returns: embedding list and dense list
 
     """
     sparse_feature_columns = list(
@@ -340,6 +391,7 @@ def input_from_feature_columns(features, feature_columns, l2_reg, seed, prefix='
         group_embedding_dict = list(chain.from_iterable(group_embedding_dict.values()))
     return group_embedding_dict, dense_value_list
 
+
 def get_map_function(model_features, model_target):
     """create function for transforming data during tf data pipeline
 
@@ -360,51 +412,29 @@ def get_map_function(model_features, model_target):
         return features, label
 
     return _parse_examples
-  
+
+
 def get_map_function_test(model_features, model_target, keep_id):
-        feature_description = {f.name: tf.io.FixedLenFeature(1, f.type, f.default_value)
-                               for f in model_features}
-        feature_description[model_target.name] = tf.io.FixedLenFeature(1, model_target.type, 0)
-        feature_description[keep_id] = tf.io.FixedLenFeature(1, tf.string, '0')
-
-        def _parse_examples(serial_exmp):
-            features = tf.io.parse_example(serial_exmp, features=feature_description)
-
-            labels = features.pop(model_target.name)
-            ids = features.pop(keep_id)
-            return features, labels, ids
-
-        return _parse_examples
-  
-def generate_test_data(model_features, files, model_target, keep_id="BidRequestId", batch_size=2 ** 17, prefetch=2):
-    """generate test data with BidRequestId
-
-    Args:
-        model_features (list): feature description
-        files (list): list of tfrecords
-        batch_size (int, optional): size of each batch. Defaults to 2**17.
-        prefetch (int, optional): prefetch batches. Defaults to 2.
-        model_target (str, optional): name of the label column. Defaults to 'label'.
-        
-    Returns:
-        tf.data: tf data pipeline
     """
+    get map function for testing data with a keep_id (BidRequestId)
+    Args:
+        model_features: model feature list
+        model_target: model target
+        keep_id: kept id name
 
-    def get_map_function_test(model_features, model_target):
-        feature_description = {f.name: tf.io.FixedLenFeature(1, f.type, f.default_value)
-                               for f in model_features}
-        feature_description[model_target.name] = tf.io.FixedLenFeature(1, model_target.type, 0)
-        feature_description[keep_id] = tf.io.FixedLenFeature(1, tf.string, '0')
+    Returns:
+        mapping function
+    """
+    feature_description = {f.name: tf.io.FixedLenFeature(1, f.type, f.default_value)
+                           for f in model_features}
+    feature_description[model_target.name] = tf.io.FixedLenFeature(1, model_target.type, 0)
+    feature_description[keep_id] = tf.io.FixedLenFeature(1, tf.string, '0')
 
-        def _parse_examples(serial_exmp):
-            features = tf.io.parse_example(serial_exmp, features=feature_description)
+    def _parse_examples(serial_exmp):
+        features = tf.io.parse_example(serial_exmp, features=feature_description)
 
-            labels = features.pop(model_target.name)
-            ids = features.pop(keep_id)
-            return features, labels, ids
+        labels = features.pop(model_target.name)
+        ids = features.pop(keep_id)
+        return features, labels, ids
 
-        return _parse_examples
-
-    test = tf.data.TFRecordDataset(files).batch(batch_size=batch_size).map(
-        get_map_function_test(model_features, label_col=label_col)).prefetch(prefetch)
-    return test
+    return _parse_examples
