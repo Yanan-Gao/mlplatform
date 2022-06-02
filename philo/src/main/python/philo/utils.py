@@ -1,9 +1,6 @@
 import tensorflow as tf
-from pathlib import Path
 import numpy as np
 import pandas as pd
-from philo.features import SparseFeat, DenseFeat, get_feature_names
-from philo.models import DeepFM
 
 
 def get_callbacks(log_path, profile_batches, early_stopping_patience, checkpoint_base_path):
@@ -26,7 +23,7 @@ def get_callbacks(log_path, profile_batches, early_stopping_patience, checkpoint
                                              restore_best_weights=True)
 
     # checkpoint_base_path = f"{output_path}checkpoints/"
-    checkpoint_filepath = checkpoint_base_path  # + "weights.{epoch:02d}-{val_loss:.2f}"
+    checkpoint_filepath = checkpoint_base_path + "weights.{epoch:02d}-{val_loss:.2f}"
     chkp_cb = tf.keras.callbacks.ModelCheckpoint(
         filepath=checkpoint_filepath,
         save_weights_only=True,

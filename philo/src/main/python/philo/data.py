@@ -14,6 +14,7 @@ TRAIN = "train"
 VAL = "validation"
 TEST = "test"
 
+
 def s3_sync(src_path, dst_path):
     sync_command = f"aws s3 sync {src_path} {dst_path}"
     os.system(sync_command)
@@ -32,20 +33,25 @@ def s3_sync(src_path, dst_path):
 #     return epochs
 
 
-def list_tfrecord_files(path):
+def list_tfrecord_files(path, format=None):
     """create a dictionary with each key represents a list of corresponding
        tfrecord files
 
     Args:
         path (string): path to the tfrecord files
+        format (str): gzip or tf
 
     Returns:
         dict: dictionary for train validate test
     """
     p = Path(f"{path}")
-    files = [str(f.resolve()) for f in list(p.glob("part*"))]
+    if format == "gzip":
+        glob_str = "*.gz"
+    else:
+        glob_str = "part*"
+    files = [str(f.resolve()) for f in list(p.glob(glob_str))]
     if len(files) == 0:
-        files_dir = {x.name: [str(f.resolve()) for f in list(Path(f"{path}/{x.name}/").glob("part*"))] for x in
+        files_dir = {x.name: [str(f.resolve()) for f in list(Path(f"{path}/{x.name}/").glob(glob_str))] for x in
                      p.iterdir()
                      if x.is_dir()}
     else:
@@ -53,18 +59,6 @@ def list_tfrecord_files(path):
     return files_dir
 
 
-# def list_tfrecord_files(path):
-#     p = Path(f"{path}")
-#     files = [str(f.resolve()) for f in list(p.glob("*.gz"))]
-#     if len(files) == 0:
-#         files_dir = {x.name: [str(f.resolve()) for f in list(Path(f"{path}/{x.name}/").glob("*.gz"))] for x in
-#                      p.iterdir()
-#                      if x.is_dir()}
-#     else:
-#         files_dir = {"train": files}
-#     return files_dir
-#
-#
 def tfrecord_dataset(files, batch_size, map_fn, compression_type=None, prefetch_num=10):
     """
     create tf data pipeline
@@ -73,6 +67,8 @@ def tfrecord_dataset(files, batch_size, map_fn, compression_type=None, prefetch_
         batch_size: batch size
         map_fn: transformation function
         compression_type: type of compression
+                          None (if data is produced without compression)
+                          or GZIP (if data is produced through pipeline)
         prefetch_num: prefetch batches
 
     Returns: tf data pipeline
@@ -91,6 +87,8 @@ def tfrecord_dataset(files, batch_size, map_fn, compression_type=None, prefetch_
     ).prefetch(
         prefetch_num
     )
+
+
 #
 #
 # def downsample(files_dict, down_sample_rate=None):
@@ -103,11 +101,28 @@ def tfrecord_dataset(files, batch_size, map_fn, compression_type=None, prefetch_
 #     return files_dict
 #
 #
-def datasets(files_dict, batch_size, model_features, 
-             model_target, map_function=get_map_function, 
-             map_function_test=get_map_function_test,
-             compression_type=None, eval_batch_size=None, 
-             test_batch_size=2**17, keep_id="BidRequestId"):
+def create_datasets(files_dict, batch_size, model_features,
+                    model_target, map_function=get_map_function,
+                    map_function_test=get_map_function_test,
+                    compression_type=None, eval_batch_size=None,
+                    test_batch_size=2 ** 17, offline_test=False):
+    """
+    create tf data
+    Args:
+        files_dict: dictionary of train validate and test
+        batch_size: batch size for train
+        model_features: list of features
+        model_target: model target
+        map_function: transformation function
+        map_function_test: transformation function during offline testing
+        compression_type: type of tfrecords compression format
+        eval_batch_size: batch size for evaluation
+        test_batch_size: batch size for testing
+        offline_test: do offline test or not, this decides whether test data will generate bidrequestid
+
+    Returns:
+
+    """
     ds = {}
     for split, files in files_dict.items():
         if split == TRAIN:
@@ -116,16 +131,25 @@ def datasets(files_dict, batch_size, model_features,
                                          map_function(model_features, model_target), compression_type
                                          )
         elif split == TEST:
-            ds[split] = tfrecord_dataset(files,
-                                         test_batch_size if test_batch_size is not None else batch_size,
-                                         map_function_test(model_features, model_target, keep_id), compression_type
-                                         )
+            if offline_test:
+                ds[split] = tfrecord_dataset(files,
+                                             test_batch_size if test_batch_size is not None else batch_size,
+                                             map_function_test(model_features, model_target, "BidRequestId"),
+                                             compression_type
+                                             )
+            else:
+                ds[split] = tfrecord_dataset(files,
+                                             eval_batch_size if eval_batch_size is not None else batch_size,
+                                             map_function(model_features, model_target), compression_type
+                                             )
         else:
             ds[split] = tfrecord_dataset(files,
                                          eval_batch_size if eval_batch_size is not None else batch_size,
                                          map_function(model_features, model_target), compression_type
                                          )
     return ds
+
+
 #
 #
 # # def calc_epocs_per_data():
@@ -162,25 +186,70 @@ def datasets(files_dict, batch_size, model_features,
 #     return tf.train.Example(features=tf.train.Features(feature=features))
 #
 #
-# def generate_random_pandas(model_features, model_targets, num_examples=1000):
-#     features = {}
-#     for f in model_features:
-#         if f.type == tf.int32:
-#             features[f.name] = np.random.randint(0, f.cardinality, size=num_examples)
-#
-#         elif f.type == tf.float32:
-#             features[f.name] = np.random.random_sample(size=num_examples).astype(np.float32)
-#
-#     targets = {}
-#     for t in model_targets:
-#         if t.binary:
-#             targets[t.name] = np.random.binomial(n=1, p=0.3, size=num_examples).astype(np.float32)
-#         else:
-#             targets[t.name] = np.random.random_sample(size=num_examples).astype(np.float32)
-#
-#     return pd.DataFrame(features), pd.DataFrame(targets)
-#
-#
+def generate_random_pandas(model_features, model_target, num_examples=1000):
+    """
+    generate artificial pandas data
+    Args:
+        model_features: list of model features
+        model_target: model target
+        num_examples: number of samples
+
+    Returns: artificial data
+
+    """
+    features = {}
+    for f in model_features:
+        if f.sparse:
+            features[f.name] = np.random.randint(0, f.cardinality, size=num_examples)
+
+        else:
+            features[f.name] = np.random.random_sample(size=num_examples).astype(np.float32)
+
+    if model_target.binary:
+        targets = np.random.binomial(n=1, p=0.01, size=num_examples).astype(np.float32)
+    else:
+        targets = np.random.random_sample(size=num_examples).astype(np.float32)
+
+    return pd.DataFrame(features), targets
+
+
+def prepare_dummy_data(model_features, model_target, batch_size):
+    """
+    Used for testing. This creates a dummy dataset from random data.
+    """
+
+    def generate_tensor_slices(num):
+        x, y = generate_random_pandas(model_features, model_target, num)
+        return dict(x), y
+
+    return {
+        TRAIN: tf.data.Dataset.from_tensor_slices(generate_tensor_slices(1000)).batch(batch_size),
+        VAL: tf.data.Dataset.from_tensor_slices(generate_tensor_slices(100)).batch(batch_size),
+        TEST: tf.data.Dataset.from_tensor_slices(generate_tensor_slices(100)).batch(batch_size)
+    }
+
+
+def prepare_real_data(model_features, model_target, input_path, batch_size, eval_batch_size, offline_test=False):
+    """
+    create real dataset
+    Args:
+        model_features: list of model feature settings
+        model_target: model target setting
+        input_path: input path for data
+        batch_size: batch size for training
+        eval_batch_size: batch size for evaluating
+        offline_test: if true, generate bidrequest id besides features and target
+
+    Returns:
+
+    """
+    print(input_path)
+    files = list_tfrecord_files(input_path)
+    print(files)
+    return create_datasets(files_dict=files, batch_size=batch_size, model_features=model_features,
+                           model_target=model_target, compression_type="GZIP", eval_batch_size=eval_batch_size,
+                           offline_test=offline_test)
+
 def generate_random_grpc_query(model_features, model_name, version=None):
     """
 
@@ -201,9 +270,11 @@ def generate_random_grpc_query(model_features, model_name, version=None):
     for f in model_features:
         if f.type == tf.int32:
             grpc_request.inputs[f.name].CopyFrom(
-                  tf.make_tensor_proto(np.random.randint(0, f.cardinality, size=1).astype(np.int32)))
+                tf.make_tensor_proto(np.random.randint(0, f.cardinality, size=1).astype(np.int32).reshape(-1, 1)))
 
         elif f.type == tf.float32:
             grpc_request.inputs[f.name].CopyFrom(tf.make_tensor_proto([[0.0]]))
 
     return grpc_request
+
+

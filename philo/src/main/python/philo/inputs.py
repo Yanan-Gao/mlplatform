@@ -8,7 +8,7 @@ from philo.layers import Hash, WeightedSequenceLayer, SequencePoolingLayer
 
 def create_embedding_matrix(feature_columns, l2_reg, seed, prefix="", seq_mask_zero=True):
     """
-    create embedding matrix for sparse features
+    separate sparse and varribale length features and create embedding matrix for it
     Args:
         feature_columns: all the features
         l2_reg: l2 regularization weights
@@ -16,7 +16,7 @@ def create_embedding_matrix(feature_columns, l2_reg, seed, prefix="", seq_mask_z
         prefix: prefix for the name of node
         seq_mask_zero: whether use mask for sequence data
 
-    Returns:
+    Returns: dictionary of embedding layers
 
     """
     from . import features as fc_lib
@@ -43,7 +43,7 @@ def create_embedding_dict(sparse_feature_columns, varlen_sparse_feature_columns,
         prefix: prefix of the name of the sparse features
         seq_mask_zero: whether mask zeros
 
-    Returns:
+    Returns: dictionary of embedding layers
 
     """
     sparse_embedding = {}
@@ -76,7 +76,7 @@ def embedding_lookup(sparse_embedding_dict, sparse_input_dict, sparse_feature_co
     Args:
         sparse_embedding_dict: embedding dictionary
         sparse_input_dict: dictionary for lookup
-        sparse_feature_columns:  list of SparseFeat
+        sparse_feature_columns:  list of sparse features
         return_feat_list: not used
         mask_feat_list: feature that needs to be masked
         to_list: whether return list of dict
