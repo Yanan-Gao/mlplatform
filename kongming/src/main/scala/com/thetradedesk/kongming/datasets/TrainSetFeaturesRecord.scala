@@ -1,7 +1,5 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.geronimo.shared.schemas.{AdsTxtSellerTypeLookupRecord, BrowserLookupRecord, DeviceTypeLookupRecord, DoNotTrackLookupRecord, InventoryPublisherTypeLookupRecord, OSFamilyLookupRecord, PredictiveClearingModeLookupRecord, RenderingContextLookupRecord}
-
 final case class TrainSetFeaturesRecord (
 
                                           AdGroupId: String,
@@ -28,6 +26,7 @@ final case class TrainSetFeaturesRecord (
                                           DeviceType: Option[Int],
                                           OperatingSystem: Option[Int],
                                           Browser: Option[Int],
+                                          InternetConnectionType: Option[Int],
                                           MatchedFoldPosition: Int,
 
                                           sin_hour_week: Double,
@@ -38,6 +37,5 @@ final case class TrainSetFeaturesRecord (
                                           cos_minute_hour: Double,
                                           Latitude: Option[Double],
                                           Longitude: Option[Double]
-//                                          InternetConnectionType
                                         )
 

@@ -36,6 +36,7 @@ object OfflineScoringSetTransform {
       .withColumn("DeviceType", $"DeviceType.value")
       .withColumn("OperatingSystem", $"OperatingSystemFamily.value")
       .withColumn("Browser", $"Browser.value")
+      .withColumn("InternetConnectionType", $"InternetConnectionType.value")
       .select(selectionTabular: _*)
       .as[DailyOfflineScoringRecord]
   }

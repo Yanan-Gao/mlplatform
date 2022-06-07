@@ -155,6 +155,7 @@ object TrainSetTransformation {
         .withColumn("DeviceType", $"DeviceType.value")
         .withColumn("OperatingSystem", $"OperatingSystemFamily.value")
         .withColumn("Browser", $"Browser.value")
+        .withColumn("InternetConnectionType", $"InternetConnectionType.value")
     }
     )
       .reduce(_.union(_)).selectAs[TrainSetFeaturesRecord]
