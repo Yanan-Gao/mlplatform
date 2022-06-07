@@ -66,7 +66,7 @@ object GenerateTrainSet {
     ModelFeature("DeviceType", INT_FEATURE_TYPE, Some(9), 0),
     ModelFeature("OperatingSystem", INT_FEATURE_TYPE, Some(72), 0),
     ModelFeature("Browser", INT_FEATURE_TYPE, Some(15), 0),
-//    ModelFeature("InternetConnectionType", INT_FEATURE_TYPE, Some(10), 0),
+    ModelFeature("InternetConnectionType", INT_FEATURE_TYPE, Some(10), 0),
     ModelFeature("MatchedFoldPosition", INT_FEATURE_TYPE, Some(5), 0),
 
     ModelFeature("sin_hour_day", FLOAT_FEATURE_TYPE, None, 0),

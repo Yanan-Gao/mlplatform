@@ -23,6 +23,7 @@ final case class DailyOfflineScoringRecord(
                                            DeviceType: Option[Int],
                                            OperatingSystem: Option[Int],
                                            Browser: Option[Int],
+                                           InternetConnectionType: Option[Int],
                                            MatchedFoldPosition: Int,
 
                                            sin_hour_week: Double,
