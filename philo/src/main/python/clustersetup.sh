@@ -1,17 +1,14 @@
 #!/bin/bash
 
-BASE_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod"
-MODEL_INPUT="modelinput"
-YEAR=$(date -d "$date -1 days" +"%Y")
-MONTH=$(date -d "$date -1 days" +"%m")
-DAY=$(date -d "$date -1 days" +"%d")
-DATE_PATH="year=${YEAR}/month=${MONTH}/day=${DAY}"
-LOOKBACK="14"
-DATA_SOURCE="${BASE_S3_PATH}/${MODEL_INPUT}/${DATE_PATH}/lookback=${LOOKBACK}/format=tfrecord/"
-
+BASE_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1"
+PREFIX="processed"
+LOOKBACK=9
+ENV="prod"
+DATA_SOURCE="${BASE_S3_PATH}/${ENV}/${PREFIX}"
+META_SOURCE=""
 
 MNT="../../../../../../mnt/"
-SYNC_DEST="tfrecords/"
+SYNC_DEST="tfrecords"
 
 echo "installing updates.... \n"
 sudo yum update -y
@@ -37,9 +34,31 @@ sudo systemctl restart docker
 
 echo "nvidia docker tool set up complete \n starting s3 sync.. \n"
 
+cd ${MNT}
 
-echo "syncing from ${DATA_SOURCE} to ${SYNC_DEST}"
-cd ${MNT} && aws s3 sync ${DATA_SOURCE} ${SYNC_DEST} --quiet
+##not bash doesnt support variable exapnsion here, so hardcoded '9'
+for i in {1..9}; do
+
+    YEAR=$(date -d "$date -$i days" +"%Y")
+    MONTH=$(date -d "$date -$i days" +"%m")
+    DAY=$(date -d "$date -$i days" +"%d")
+    S3_SOURCE="${DATA_SOURCE}/year=${YEAR}/month=${MONTH}/day=${DAY}/"
+    if ((i <= 7))
+      then echo "syncing from ${S3_SOURCE} to "${SYNC_DEST}/train""
+      aws s3 sync ${S3_SOURCE} "${SYNC_DEST}/train/" --exclude "*" --include "part-*0000?*.gz" --quiet
+     fi
+
+    if ((i == 8))
+      then echo "syncing from ${S3_SOURCE}  to "${SYNC_DEST}/train""
+      aws s3 sync ${S3_SOURCE} "${SYNC_DEST}/test/" --exclude "*" --include "part-*0000?*.gz" --quiet
+    fi
+
+    if ((i == 9))
+      then echo "syncing from ${S3_SOURCE}  to "${SYNC_DEST}/train""
+      aws s3 sync ${S3_SOURCE} "${SYNC_DEST}/validation/" --exclude "*" --include "part-*0000?*.gz" --quiet
+    fi
+
+done
 
 echo "syncing meta data form ${META_SOURCE} to ${META_DEST}"
 aws s3 sync ${META_SOURCE} ${META_DEST} --quiet

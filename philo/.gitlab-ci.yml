@@ -6,6 +6,12 @@ variables:
   PHILO_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/philo/jars/snapshots"
   PHILO_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/philo/jars/prod"
   PHILO_ASSEMBLY_OUT: "/builds/thetradedesk/mlplatform/philo/target/scala-2.12/philo.jar"
+  SCRIPTS_SOURCE: "src/main/python"
+  MODEL_RUN_SCRIPT: "modelrun.sh"
+  SETUP_SCRIPT: "clustersetup.sh"
+  SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/philo/scripts/"
+  PYTHON_BUILD_IMAGE: "python:3.8"
+  PHILO_TRAINING_IMAGE: "philo-training"
 
 philo:test:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
@@ -26,7 +32,7 @@ philo:test:
     - pushd ./philo/
     - sbt test
     - popd
-    - echo "ran PHILO_test"
+    - echo "ran philo_test"
 
 
 philo:push_bits_merge_request:
@@ -59,6 +65,69 @@ philo:push_bits_master_snapshot:
     - popd
     - echo "ran PHILO_push_bits_master_snapshot"
 
+philo:push_scripts:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: assembly_upload
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "philo/src/main/python/modelrun.sh"
+        - "philo/src/main/python/clustersetup.sh"
+  script:
+    - pushd ./philo/
+    - aws s3 cp ${SCRIPTS_SOURCE}/${SETUP_SCRIPT} ${SCRIPTS_DEST}
+    - aws s3 cp ${SCRIPTS_SOURCE}/${MODEL_RUN_SCRIPT} ${SCRIPTS_DEST}
+    - popd
+    - echo "ran push_set_scripts"
+
+
+philo:build_push_training_container:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: test
+  services:
+    - docker:dind
+  before_script:
+    - apt update
+    - apt-get install docker.io -y
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "philo/src/main/python/*"
+      when: manual
+  script:
+    - export DOCKER_HOST=$DOCKER_PORT
+    - pushd ./philo/src/main/python/
+    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
+    - docker build -f Dockerfile.prod -t ${PHILO_TRAINING_IMAGE}:latest .
+    - docker tag ${PHILO_TRAINING_IMAGE}:latest ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:latest
+    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:latest
+    - popd
+    - echo "latest training container pushed"
+
+philo:build_push_release_container:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: deploy
+  services:
+    - docker:dind
+  before_script:
+    - apt update
+    - apt-get install docker.io -y
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "philo/src/main/python/*"
+      when: manual
+  script:
+    - export DOCKER_HOST=$DOCKER_PORT
+    - pushd ./philo/src/main/python/
+    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
+    - docker build -f Dockerfile.prod -t ${PHILO_TRAINING_IMAGE}:release .
+    - docker tag ${PHILO_TRAINING_IMAGE}:release ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:release
+    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:release
+    - popd
+    - echo "latest training container pushed"
+
+
 philo:deploy_release:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
   stage: deploy
@@ -73,5 +142,5 @@ philo:deploy_release:
     - sbt "set test in assembly := {}" clean assembly
     - aws s3 cp ${PHILO_ASSEMBLY_OUT} ${PHILO_PROD_JAR_FOLDER}/${PHILO_JAR_NAME}
     - popd
-    - echo "ran PHILO_deploy_release"
+    - echo "ran philo_deploy_release"
 
