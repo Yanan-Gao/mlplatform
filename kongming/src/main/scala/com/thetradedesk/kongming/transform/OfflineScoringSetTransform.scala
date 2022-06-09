@@ -34,7 +34,7 @@ object OfflineScoringSetTransform {
       .withColumn("AdFormat",concat(col("AdWidthInPixels"),lit('x'), col("AdHeightInPixels")))
       .withColumn("RenderingContext", $"RenderingContext.value")
       .withColumn("DeviceType", $"DeviceType.value")
-      .withColumn("OperatingSystem", $"OperatingSystemFamily.value")
+      .withColumn("OperatingSystem", $"OperatingSystem.value")
       .withColumn("Browser", $"Browser.value")
       .withColumn("InternetConnectionType", $"InternetConnectionType.value")
       .select(selectionTabular: _*)
