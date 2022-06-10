@@ -1,5 +1,5 @@
 from absl import app, flags
-import training, scoring
+import training, scoring, calibration
 import sys
 
 app.define_help_flags()
@@ -10,6 +10,8 @@ def main(argv):
     training.main(argv)
     print('Starting scoring step...')
     scoring.main(argv)
+    print('Starting calibration step...')
+    calibration.main(argv)
 
 if __name__ == '__main__':
     app.run(main)

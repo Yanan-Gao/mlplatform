@@ -76,9 +76,9 @@ def predict(model, input):
 
   return df_final
 
-def get_model(model_path):
+def get_model(model_path, to_compile=True):
     model_folder = model_path + os.listdir(model_path)[0]
-    model = tf.keras.models.load_model(model_folder)
+    model = tf.keras.models.load_model(model_folder, compile=to_compile)
     return model
 
 def main(argv):

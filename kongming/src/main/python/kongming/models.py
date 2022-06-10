@@ -1,8 +1,8 @@
 import math
 
-from tensorflow import keras
-from tensorflow.keras.models import Model
-from tensorflow.keras.layers import Dense, Lambda, Input, Dropout
+import keras
+from keras.models import Model
+from keras.layers import Dense, Lambda, Input, Dropout
 from kongming.preprocessing import *
 from kongming.layers import add_linbndrop, LinBnDrop
 import tensorflow as tf
@@ -93,7 +93,8 @@ def dot_product_model(features,
 
     dot_lambda = lambda array: tf.keras.layers.dot([array[0], array[1]], axes=1)
 
-    output = Dense(1, activation='sigmoid', name="Output")(Lambda(dot_lambda, name='lambda_layer')([feature_layer, dim_layer]))
+    output = Dense(1, activation='sigmoid', name="Score")(Lambda(dot_lambda, name='lambda_layer')([feature_layer, dim_layer]))
+
 
     model = Model(
         inputs=model_input,
