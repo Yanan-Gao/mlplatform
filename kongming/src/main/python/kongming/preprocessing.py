@@ -1,4 +1,5 @@
-import tensorflow.keras as keras
+import keras
+from keras.layers import Embedding
 import pandas as pd
 from kongming.layers import VocabLookup
 from kongming.features import *

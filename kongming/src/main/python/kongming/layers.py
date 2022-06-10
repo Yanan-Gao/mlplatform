@@ -5,18 +5,25 @@ import tensorflow as tf
 # as output
 # its a layer to convert an input to output according to lookup table.
 class VocabLookup(tf.keras.layers.Layer):
-    def __init__(self, vocab_path):
-        super(VocabLookup, self).__init__(trainable=False, dtype=tf.string)
+    def __init__(self, vocab_path, key_dtype=tf.string, value_dtype=tf.string, name=None):
+        super(VocabLookup, self).__init__(trainable=False, name=name)
         self.vocab_path = vocab_path
+        self.key_dtype = key_dtype
+        self.value_dtype = value_dtype
 
     def build(self, input_shape):
-        table_init = tf.lookup.TextFileInitializer( filename = self.vocab_path,
-                                                    key_dtype = tf.string,
-                                                    key_index = 0,
-                                                    value_dtype = tf.string,
-                                                    value_index = 1,
-                                                    delimiter = ",")
-        self.table = tf.lookup.StaticHashTable(table_init, 'UNK')
+        table_init = tf.lookup.TextFileInitializer( filename=self.vocab_path,
+                                                    key_dtype=self.key_dtype,
+                                                    key_index=0,
+                                                    value_dtype=self.value_dtype,
+                                                    value_index=1,
+                                                    delimiter=",")
+        if self.value_dtype==tf.string:
+            self.table = tf.lookup.StaticHashTable(table_init, 'UNK')
+        elif self.value_dtype==tf.float64:
+            self.table = tf.lookup.StaticHashTable(table_init, 0.0)
+        else:
+            raise Exception("unknown lookup table value type.")
         self.built = True
 
     def call(self, input_text):
