@@ -1,15 +1,20 @@
 package com.thetradedesk.kongming.transform
 
-import java.time.format.DateTimeFormatter
+import com.thetradedesk.geronimo.shared.loadParquetData
+import com.thetradedesk.kongming
+
+
 import com.thetradedesk.kongming._
+import com.thetradedesk.kongming.datasets.AdGroupDataset
+import com.thetradedesk.kongming.datasets.AdGroupRecord
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, DailyNegativeSampledBidRequestRecord}
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions.{broadcast, count, expr, hash, lit, pow, round, when,to_date, date_add,rand}
-import org.apache.spark.sql.types.IntegerType
+import org.apache.spark.sql.functions.{count, date_add, hash, lit, pow, rand, when}
 import org.apache.spark.sql.Dataset
+import com.thetradedesk.spark.TTDSparkContext.spark
 
 object NegativeTransform {
 
@@ -103,20 +108,13 @@ object NegativeTransform {
      The implementation is for future use cases when campaign/advertiser level aggregation come into play. For now the hard coded dataset has no such rows then the code will just passes two of of allNeagtives.
      */
     // todo: pre-check possible aggregation levels.
-    broadcast(adGroupPolicy.filter($"DataAggKey"===lit("AdgroupId")).as("t1"))
-      .join(dailyNegativeSampledBids.as("t2"), $"t1.DataAggValue"===$"t2.AdGroupId")
-      .filter(date_add($"LogEntryTime", $"DataLookBack")>=date)
-      //      .union(
-      //        broadcast(adGroupPolicy.filter($"DataAggKey"===lit("CampaignId")).as("t1"))
-      //          .join(allNegatives.as("t2"), $"t1.DataAggValue"===$"t2.CampaignId")
-      //          .filter(expr("date_add(date, DataLookBack)")>=date.format(formatterYMD))
-      //          .select($"DataAggKey",$"DataAggValue",$"BidRequestId",$"UIID")
-      //      ).union(
-      //      broadcast(adGroupPolicy.filter($"DataAggKey"===lit("AdvertiserId")).as("t1"))
-      //        .join(allNegatives.as("t2"), $"t1.DataAggValue"===$"t2.AdvertiserId")
-      //        .filter(expr("date_add(date, DataLookBack)")>=date.format(formatterYMD))
-      //        .select($"DataAggKey",$"DataAggValue",$"BidRequestId",$"UIID")
-      //    )
-      .selectAs[AggregateNegativesRecord]
+
+    val adGroupDS = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, kongming.date)
+    val prefilteredDS = preFilteringWithPolicy[DailyNegativeSampledBidRequestRecord](dailyNegativeSampledBids, adGroupPolicy, adGroupDS)
+
+    val filterCondition = date_add($"LogEntryTime", $"DataLookBack")>=date
+    val dailyNegativeSampledBidsFilterByPolicy = multiLevelJoinWithPolicy[AggregateNegativesRecord](prefilteredDS, adGroupPolicy, filterCondition)
+
+    dailyNegativeSampledBidsFilterByPolicy
   }
 }

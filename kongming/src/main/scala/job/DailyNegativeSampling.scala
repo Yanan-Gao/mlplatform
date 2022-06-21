@@ -3,7 +3,11 @@ package job
 import java.time.LocalDate
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
+import com.thetradedesk.kongming
 import com.thetradedesk.kongming._
+import com.thetradedesk.kongming.datasets.AdGroupDataset
+import com.thetradedesk.kongming.datasets.AdGroupRecord
+import com.thetradedesk.kongming.datasets.BidRequestPolicyRecord
 import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyNegativeSampledBidRequestDataSet, DailyNegativeSampledBidRequestRecord}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -31,13 +35,16 @@ object DailyNegativeSampling {
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
     // test only adgroups in the policy table. since aggKey are all adgroupId, we filter by adgroup id
-    val adGroupPolicyHardCodedDate = LocalDate.parse("2022-03-15")
+    val adGroupPolicyHardCodedDate = policyDate
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate)
-      .select($"ConfigValue".alias("AdGroupId"))
+
+
+    val adGroupDS = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, kongming.date)
+    val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
+    val bidsImpressionFilterByPolicy = multiLevelJoinWithPolicy[BidsImpressionsSchema](prefilteredDS, adGroupPolicy)
 
     // one day's bidrequest
-    val initialBidRequests =bidsImpressions
-      .join(broadcast(adGroupPolicy), Seq("AdGroupId"),"inner")
+    val initialBidRequests =bidsImpressionFilterByPolicy
       .withColumn("RenderingContext", $"RenderingContext.value")
       .withColumn("DeviceType", $"DeviceType.value")
       .withColumn("OperatingSystemFamily", $"OperatingSystemFamily.value")

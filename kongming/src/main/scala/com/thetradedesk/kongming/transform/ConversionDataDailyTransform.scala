@@ -57,16 +57,11 @@ object ConversionDataDailyTransform {
     // output would be <aggkey, trackingtagid, weight>
 
     //1.process ccrc
-    val ccrcWindow = Window.partitionBy($"CampaignId")
-
     //TODO: we will move adding weight to later stage when we finished getting the positive labels.
     // Daily job on conversion will be just collection converison data.
     val ccrcProcessed = ccrc
       .join(broadcast(campaignDS.select($"CampaignId", $"CustomCPATypeId")), Seq("CampaignId"), "left")
       .filter(($"CustomCPATypeId"===0 && $"ReportingColumnId"===1) || ($"CustomCPATypeId">0 && $"IncludeInCustomCPA") )
-      //.withColumn("Weight", when(!$"IncludeInCustomCPA", 1.0).otherwise("Weight") )
-      //.withColumn("TotalWeight", sum($"Weight").over(ccrcWindow))
-      //.withColumn("Weight", $"Weight"/($"TotalWeight"+lit(1e-16)))
       .select("CampaignId","TrackingTagId")//, "Weight")
 
     val trackingTagWithWeight = adGroupPolicy
