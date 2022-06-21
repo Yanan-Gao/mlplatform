@@ -12,6 +12,7 @@ import com.thetradedesk.kongming.date
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.geronimo.shared.{intModelFeaturesCols, loadParquetData}
+import com.thetradedesk.kongming.policyDate
 import com.thetradedesk.kongming.transform.NegativeTransform.aggregateNegatives
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.sql.SQLFunctions._
@@ -99,7 +100,7 @@ object GenerateTrainSet {
     val conversionLookback = config.getInt("conversionLookback", 7)
 
     // test only adgroups in the policy table. since aggKey are all adgroupId, we filter by adgroup id
-    val adGroupPolicyHardCodedDate = LocalDate.parse("2022-03-15")
+    val adGroupPolicyHardCodedDate = policyDate
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate).cache()
 
     // maximum lookback from adgroup's policy

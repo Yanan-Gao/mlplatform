@@ -2,30 +2,39 @@ package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.kongming.RoundUpTimeUnit
+import com.thetradedesk.kongming.datasets.AdGroupRecord
 import com.thetradedesk.kongming.datasets.DailyConversionDataRecord
 import com.thetradedesk.kongming.datasets.DailyPositiveLabelRecord
 import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, DailyBidRequestRecord}
+import com.thetradedesk.kongming.multiLevelJoinWithPolicy
+import com.thetradedesk.kongming.preFilteringWithPolicy
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.{Dataset, SaveMode}
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.expressions.Window.orderBy
+import org.apache.spark.sql.functions.broadcast
 import org.apache.spark.sql.functions.date_trunc
 import org.apache.spark.sql.functions.dense_rank
 import org.apache.spark.sql.functions.greatest
 import org.apache.spark.sql.functions.least
-import org.apache.spark.sql.functions.lit
 import org.apache.spark.sql.functions.unix_timestamp
 import org.apache.spark.sql.functions.when
-import org.apache.spark.sql.functions.{broadcast, row_number}
-
-import java.time.LocalDateTime
-import java.sql.Timestamp
 
 object PositiveLabelDailyTransform {
+case class IntraDayBidRequestWithPolicyRecord(
+                                               ConfigKey: String,
+                                               ConfigValue: String,
+                                               DataAggKey: String,
+                                               DataAggValue: String,
+                                               BidRequestId: String,
+                                               UIID: String,
+                                               LogEntryTime: java.sql.Timestamp,
+                                               IsImp: Boolean,
+                                               LastTouchCount: Int
+                                             )
 
-case class DailyPositiveBidRequestRecord(
+  case class DailyPositiveBidRequestRecord(
                                           ConfigKey: String,
                                           ConfigValue: String,
                                           DataAggKey: String,
@@ -48,24 +57,26 @@ case class DailyPositiveBidRequestRecord(
   def intraDayConverterNTouchesTransform(
                                          bidsImpressions: Dataset[BidsImpressionsSchema],
                                          adGroupPolicy: Dataset[AdGroupPolicyRecord],
-                                         dailyConversionDS : Dataset[DailyConversionDataRecord]
+                                         dailyConversionDS : Dataset[DailyConversionDataRecord],
+                                         adGroupDS: Dataset[AdGroupRecord]
                                        )
                     (implicit prometheus: PrometheusClient): Dataset[DailyPositiveBidRequestRecord] = {
 
-    val filteredBidRequest= bidsImpressions
-      //TODO: assumed aggValue is on adgroup level, will need to be more comprehensive later on.
-      .join(broadcast(adGroupPolicy), bidsImpressions("AdGroupId") === adGroupPolicy("DataAggValue"))
-      .filter($"UIID".isNotNullOrEmpty && $"UIID" =!= "00000000-0000-0000-0000-000000000000")
+    //filtering bidImpressions based on policy
+    val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
+    val filteredBidRequest = multiLevelJoinWithPolicy[IntraDayBidRequestWithPolicyRecord](prefilteredDS, adGroupPolicy)
 
     val window = Window.partitionBy($"DataAggKey", $"DataAggValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"TruncatedLogEntryTime".desc)
-      filteredBidRequest.as("t1")
+
+    filteredBidRequest.as("t1")
+      .filter($"UIID".isNotNullOrEmpty && $"UIID" =!= "00000000-0000-0000-0000-000000000000")
       .join(dailyConversionDS.as("t2"),
-        filteredBidRequest("UIID")===dailyConversionDS("UIID") &&
-        filteredBidRequest("DataAggKey")===dailyConversionDS("DataAggKey") &&
-        filteredBidRequest("DataAggValue")===dailyConversionDS("DataAggValue") &&
-        filteredBidRequest("LogEntryTime")<=dailyConversionDS("ConversionTime"),
-        "inner"
-      )
+            filteredBidRequest("UIID")===dailyConversionDS("UIID") &&
+            filteredBidRequest("DataAggKey")===dailyConversionDS("DataAggKey") &&
+            filteredBidRequest("DataAggValue")===dailyConversionDS("DataAggValue") &&
+            filteredBidRequest("LogEntryTime")<=dailyConversionDS("ConversionTime"),
+            "inner"
+          )
       .select("t1.BidRequestId",
       "t1.ConfigKey",
         "t1.ConfigValue",
@@ -73,6 +84,7 @@ case class DailyPositiveBidRequestRecord(
         "t1.DataAggValue",
         "t1.LogEntryTime",
         "t1.IsImp",
+        "t1.LastTouchCount",
         "t1.BidRequestId",
         "t2.TrackingTagId",
         "t2.UIID",
@@ -101,23 +113,20 @@ case class DailyPositiveBidRequestRecord(
                                 (implicit prometheus: PrometheusClient): Dataset[DailyPositiveBidRequestRecord] = {
 
     // TODO: code will break if data agg key is not adgroupid. will need to revisit this later.
-    val window = Window.partitionBy($"DataAggKey", $"DataAggValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"LogEntryTime".desc)
+    //val window = Window.partitionBy($"DataAggKey", $"DataAggValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"LogEntryTime".desc)
+
+    val dailyConversionDSWithConfig = dailyConversionDS
+      .join(broadcast(adGroupPolicy.select("ConfigKey","ConfigValue","DataAggKey","DataAggValue")),
+            Seq("DataAggValue", "DataAggKey"),
+            "inner"
+      )
+      .drop("DataAggKey","DataAggValue")
 
     multidayBidImpressionDS
-      .join(broadcast(adGroupPolicy), Seq("ConfigKey","ConfigValue","DataAggKey","DataAggValue"))
-      .join(dailyConversionDS,
-        Seq("UIID","DataAggValue", "DataAggKey"),
+      .join(dailyConversionDSWithConfig,
+        Seq("UIID","ConfigKey", "ConfigValue"),
         "inner"
       )
-//      .withColumn("DataLookBackInSeconds", $"DataLookBack"*24*3600)
-//      .withColumn("lookbackInSeconds",
-//        least(
-//          greatest($"AttributionClickLookbackWindowInSeconds",$"AttributionImpressionLookbackWindowInSeconds")
-//          , $"DataLookBackInSeconds")
-//      )
-//      .filter($"lookbackInSeconds">=unix_timestamp(lit(Timestamp.valueOf(endDateTime)) )- unix_timestamp($"logEntryTime"))
-//      .withColumn("RecencyRank", row_number().over(window))
-//      .filter($"RecencyRank" <= $"LastTouchCount")
       .selectAs[DailyPositiveBidRequestRecord]
   }
   //TODO: below function is commented out but might be worth testing for calculation efficiency.
@@ -173,7 +182,7 @@ case class DailyPositiveBidRequestRecord(
     val window = Window.partitionBy($"DataAggKey", $"DataAggValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"TruncatedLogEntryTime".desc)
 
     unionedMultidayPositive
-    .join(broadcast(adGroupPolicy), Seq("ConfigKey","ConfigValue","DataAggKey","DataAggValue"))
+    .join(broadcast(adGroupPolicy.drop("DataAggKey","DataAggValue")), Seq("ConfigKey","ConfigValue"))
     .withColumn("DataLookBackInSeconds", $"DataLookBack"*24*3600)
     .withColumn("lookbackInSeconds",
       least(

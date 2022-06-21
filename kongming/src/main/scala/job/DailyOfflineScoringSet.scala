@@ -34,7 +34,7 @@ object DailyOfflineScoringSet {
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
-    val adGroupPolicyHardCodedDate = LocalDate.parse("2022-03-15")
+    val adGroupPolicyHardCodedDate = policyDate
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate)
 
     val selectionTabular = intModelFeaturesCols(modelFeatures) ++ modelKeepFeatureCols(keptFields)

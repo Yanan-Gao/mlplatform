@@ -13,6 +13,7 @@ import com.thetradedesk.kongming.transform.ConversionDataDailyTransform
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.kongming.date
+import com.thetradedesk.kongming.policyDate
 
 import java.time.LocalDate
 
@@ -29,7 +30,7 @@ object ConversionDataDailyProcessor extends Logger{
     val ccrc = loadParquetData[CampaignConversionReportingColumnRecord](CampaignConversionReportingColumnDataSet.S3Path, date)
 
     // read master policy
-    val adGroupPolicyHardCodedDate = LocalDate.parse("2022-03-15")
+    val adGroupPolicyHardCodedDate = policyDate
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate)
 
     // read adgroup table to get adgroup campaign mapping

@@ -5,6 +5,8 @@ import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.geronimo.shared.GERONIMO_DATA_SOURCE
 import com.thetradedesk.geronimo.shared.loadParquetData
+import com.thetradedesk.kongming
+import com.thetradedesk.kongming.datasets.AdGroupDataset
 import com.thetradedesk.kongming.datasets.DailyBidRequestDataset
 import com.thetradedesk.kongming.datasets.DailyBidRequestRecord
 import com.thetradedesk.kongming.datasets.DailyConversionDataRecord
@@ -13,12 +15,15 @@ import com.thetradedesk.kongming.datasets.DailyPositiveBidRequestDataset
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset}
+import com.thetradedesk.kongming.datasets.AdGroupPolicyDataset
+import com.thetradedesk.kongming.datasets.AdGroupRecord
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.kongming.date
+import com.thetradedesk.kongming.policyDate
 import com.thetradedesk.kongming.transform.PositiveLabelDailyTransform
 import org.apache.spark.sql.functions._
+
 import java.time.LocalDate
 
 /**
@@ -42,8 +47,9 @@ object PositiveLabelGenerator extends Logger{
     val prometheus = new PrometheusClient("KoaV4Conversion", "PositiveLabeling")
 
     // read master policy
-    val adGroupPolicyHardCodedDate = LocalDate.parse("2022-03-15")
+    val adGroupPolicyHardCodedDate = policyDate
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate).cache
+    val adGroupDS = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, kongming.date)
 
     // resolve for maxLookback
     val maxPolicyLookbackInDays = adGroupPolicy.agg(max($"DataLookBack")).head.getAs[Int](0)
@@ -58,11 +64,13 @@ object PositiveLabelGenerator extends Logger{
     //single day data
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
+
     val dailyConversionDS = loadParquetData[DailyConversionDataRecord](DailyConversionDataset.S3BasePath, date).cache
     val sameDayPositiveBidRequestDS = PositiveLabelDailyTransform.intraDayConverterNTouchesTransform(
       bidsImpressions
       , adGroupPolicy
       , dailyConversionDS
+      , adGroupDS
     )(prometheus)
 
     //join conversion and unioned dataset to get the final result
