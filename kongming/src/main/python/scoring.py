@@ -13,12 +13,11 @@ FLAGS = flags.FLAGS
 # DEFAULTS
 SCORE_SET_PATH = "./scoreset/"
 
-# this folder will need to be pre-generated.
 PRED_PATH = "./prediction/"
 
 MODEL_PATH = "./output/model/"
 
-S3_OFFLINE_PRED = "s3://thetradedesk-mlplatform-us-east-1/measurement/kongming/offline/"
+S3_OFFLINE_PRED = "s3://thetradedesk-mlplatform-us-east-1/measurement/kongming/offline"
 # path
 
 flags.DEFINE_string('score_set_path', default=SCORE_SET_PATH,
@@ -86,16 +85,17 @@ def main(argv):
     additional_str_grain_map = GrainNameMap(FLAGS.colname_bidrequest, FLAGS.colname_adgroup)
     model_features, model_dim_feature = get_features_dim_target(additional_str_grain_map)
 
-    for d in FLAGS.score_dates:
-        scoring_set = get_scoring_data(model_features, [model_dim_feature], additional_str_grain_map, d)
+    for date in FLAGS.score_dates:
+        scoring_set = get_scoring_data(model_features, [model_dim_feature], additional_str_grain_map, date)
         model = get_model(FLAGS.model_path)
         pred = predict(model, scoring_set)
 
-        result_location = f"{FLAGS.pred_path}pred.csv"
-        pred.to_csv(result_location, header=True, index=False, mode='w')
+        os.makedirs(FLAGS.pred_path, exist_ok=True)
+        result_location = f"{FLAGS.pred_path}pred.csv.gz"
+        pred.to_csv(result_location, header=True, index=False, mode='w', compression="gzip")
 
         #output file to S3
-        s3_output_path = f"{FLAGS.s3_offline_path}/{FLAGS.env}/date={FLAGS.model_creation_date}/scored_date={d}"
+        s3_output_path = f"{FLAGS.s3_offline_path}/{FLAGS.env}/date={FLAGS.model_creation_date}/scored_date={date}"
         s3_copy(FLAGS.pred_path, s3_output_path)
 
 

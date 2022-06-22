@@ -1,26 +1,72 @@
 #!/bin/bash
 
-ENV="prod"
+ENV="dev"
 if [ ! -z "$1" ]
-  then
-    ENV=$1
+then
+  ENV=$1
 fi
 
 DATE_PARTITION=$(date -d "$date -1 days" +"%Y%m%d")
 if [ ! -z "$2" ]
-  then
-    DATE_PARTITION=$2
+then
+  DATE_PARTITION=$2
 fi
 
-MODEL_INPUT="/opt/application/"
+SCORING_LOOKBACK_IN_DAYS=7
+if [ ! -z "$3" ]
+then
+  SCORING_LOOKBACK_IN_DAYS=$3
+fi
+
+NUM_DAYS_TO_SCORE=2
+if [ ! -z "$4" ]
+then
+  NUM_DAYS_TO_SCORE=$4
+fi
+
 DOCKER_IMAGE_NAME="kongming/training-gpu"
 DOCKER_IMAGE_VERSION="release"
 DOCKER_INTERNAL_BASE="internal.docker.adsrvr.org"
 DOCKER_USER="svc.emr-docker-ro"
 HOME_HADOOP="/mnt"
 
+
+BASE_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/data/${ENV}/kongming"
+TRAINING_DATA="trainset/v=1"
+SCORING_DATA="dailyofflinescore/v=1"
+DATE_PATH="date=${DATE_PARTITION}"
+
+TRAINING_DATA_SOURCE="${BASE_S3_PATH}/${TRAINING_DATA}/${DATE_PATH}/split=train_tfrecord/"
+VALIDATION_DATA_SOURCE="${BASE_S3_PATH}/${TRAINING_DATA}/${DATE_PATH}/split=val_tfrecord/"
+SCORING_DATA_MODEL_S3_LOCATION="${BASE_S3_PATH}/${SCORING_DATA}/"
+
 INPUT_DEST="/mnt/input/"
-META_DEST="/mnt/assets_string/"
+TRAINING_DATA_DEST="/mnt/input/train"
+VALIDATION_DATA_DEST="/mnt/input/val"
+SCORING_DATA_DEST="/mnt/scoringdata"
+
+echo "starting training data transfer"
+
+aws s3 cp ${TRAINING_DATA_SOURCE} ${TRAINING_DATA_DEST} --recursive --include "*.tfrecord.gz" --quiet
+aws s3 cp ${VALIDATION_DATA_SOURCE} ${VALIDATION_DATA_DEST} --recursive --include "*.tfrecord.gz" --quiet
+
+#copy scoring data
+FIRST_SCORING_DATE=$(date -d "$DATE_PARTITION -$SCORING_LOOKBACK_IN_DAYS days")
+ALL_SCORING_PARTITIONS=""
+iter=0
+until [ $iter -gt $(($NUM_DAYS_TO_SCORE-1)) ]
+do
+  if [ $iter -gt 0 ]
+  then
+    ALL_SCORING_PARTITIONS+=","
+  fi
+
+  SCORING_PARTITION=$(date -d "$FIRST_SCORING_DATE +$iter days" +"%Y%m%d")
+  ALL_SCORING_PARTITIONS+="$SCORING_PARTITION"
+  aws s3 cp ${SCORING_DATA_MODEL_S3_LOCATION} ${SCORING_DATA_DEST} --recursive --exclude "*" --include "date=${SCORING_PARTITION}*.tfrecord.gz" --quiet
+
+  ((iter=iter+1))
+done
 
 SECRETJSON=$(aws secretsmanager get-secret-value --secret-id svc.emr-docker-ro --query SecretString --output text)
 CREDS=$(echo $SECRETJSON | jq .emr_docker_ro)
@@ -33,12 +79,16 @@ eval docker pull ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_VER
 
 sudo docker run --gpus all \
            -v ${INPUT_DEST}:/opt/application/input/ \
+           -v ${SCORING_DATA_DEST}:/opt/application/scoreset/ \
            ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_VERSION} \
       "--env=${ENV}" \
+      "--run_train=true" \
       "--model_creation_date=${DATE_PARTITION}" \
       "--batch_size=8192" \
       "--eval_batch_size=197934" \
       "--num_epochs=1" \
       "--model_choice=basic" \
-      "--early_stopping_patience=5"
+      "--early_stopping_patience=5" \
+      "--run_score=true" \
+      "--score_dates=${ALL_SCORING_PARTITIONS}"
 

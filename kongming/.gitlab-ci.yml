@@ -77,7 +77,6 @@ kongming:deploy_release:
       changes:
         - "kongming/src/main/scala/**/*"
         - "kongming/build.sbt"
-      when: manual
       allow_failure: false
   script:
     - pushd ./kongming/
@@ -137,7 +136,6 @@ kongming:build_push_release_container:
       changes:
         - "kongming/src/main/python/**/*"
         - "kongming/.gitlab-ci.yml"
-      when: manual
   script:
     - export DOCKER_HOST=$DOCKER_PORT
     - pushd ./kongming/src/main/python/
