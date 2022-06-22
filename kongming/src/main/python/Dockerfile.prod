@@ -10,6 +10,7 @@ WORKDIR /opt/application/
 
 RUN pip3 install --upgrade pip
 RUN pip3 install --quiet --no-cache-dir \
+    'protobuf==3.20.1' \
     'tensorflow==2.7.0' \
     'tensorflow_probability==0.15.0' \
     'boto3' \
@@ -25,7 +26,7 @@ RUN pip3 install --quiet --no-cache-dir \
 
 COPY kongming ./kongming
 COPY setup.cfg ./
-COPY  ["training.py", "scoring.py", "calibration.py", "main.py", "./"]
+COPY ["training.py", "scoring.py", "calibration.py", "main.py", "./"]
 RUN mkdir -p output/calibration_log
 RUN mkdir -p conversion-python/asset_string
 
