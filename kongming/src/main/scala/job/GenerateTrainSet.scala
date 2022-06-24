@@ -6,7 +6,7 @@ import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import java.time.LocalDate
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.Column
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyNegativeSampledBidRequestDataSet, DailyNegativeSampledBidRequestRecord, DailyPositiveBidRequestDataset, DailyPositiveLabelRecord, DataForModelTrainingDataset, DataForModelTrainingRecord}
+import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.kongming.date
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -107,7 +107,7 @@ object GenerateTrainSet {
     val maxLookback = adGroupPolicy.agg(max("DataLookBack")).first.getInt(0)
 
     // 0. load aggregated negatives
-    val dailyNegativeSampledBids = loadParquetData[DailyNegativeSampledBidRequestRecord](DailyNegativeSampledBidRequestDataSet.S3BasePath, date, lookBack = Some(maxLookback))
+    val dailyNegativeSampledBids = loadParquetData[DailyNegativeSampledBidRequestRecord](DailyNegativeSampledBidRequestDataSet.S3BasePath, date, lookBack = Some(maxLookback-1))
     val aggregatedNegativeSet = aggregateNegatives(dailyNegativeSampledBids, adGroupPolicy)(prometheus)
       .withColumn("IsInTrainSet", when(abs(hash($"BidRequestId")%100)<=trainRatio*100, lit(true)).otherwise(false))
       .withColumn("Weight", lit(1))  // placeholder: 1. assign format with positive 2. we might weight for negative in the future, TBD.
@@ -119,29 +119,27 @@ object GenerateTrainSet {
 
     // 1. exclude positives from negative;  remain pos and neg that have both train and val
     val negativeExcludePos = aggregatedNegativeSet
-      .join(aggregatedPositiveSet, Seq( "ConfigKey", "ConfigValue", "BidRequestId"), joinType = "left_anti")
+      .join(aggregatedPositiveSet, Seq("ConfigValue","ConfigKey", "BidRequestId"), joinType = "left_anti")
       .selectAs[TrainSetRecord]
       .cache()
 
-
-    //   todo: ensure that each ConfigKey/ConfigValue pairs have both train and validation data instead of just filtering them out
     /*
      current thought is: if there are no val set that's probably because positives are too less so the hash mod is biased.
      The model probably is not going to perform anyways with too less positive.
      But it's better to at least have a model.
      */
     val  dataHaveBothTrainVal = negativeExcludePos
-      .groupBy("ConfigKey", "ConfigValue").agg(collect_set("IsInTrainSet").as("hasValOrTrain"))
+      .groupBy("ConfigValue","ConfigKey").agg(collect_set("IsInTrainSet").as("hasValOrTrain"))
       .filter(size($"hasValOrTrain")===lit(2))
       .join(
-        aggregatedPositiveSet.groupBy("ConfigKey", "ConfigValue").agg(collect_set("IsInTrainSet").as("hasValOrTrain"))
+        aggregatedPositiveSet.groupBy("ConfigValue","ConfigKey").agg(collect_set("IsInTrainSet").as("hasValOrTrain"))
           .filter(size($"hasValOrTrain")===lit(2)),
-        Seq("ConfigKey", "ConfigValue" ),
+        Seq("ConfigValue","ConfigKey"),
         "inner"
       ).cache()
 
-    val validPositives = aggregatedPositiveSet.join(dataHaveBothTrainVal, Seq("ConfigKey", "ConfigValue" ), "left_semi" )
-    val validNegatives = negativeExcludePos.join(dataHaveBothTrainVal, Seq("ConfigKey", "ConfigValue" ), "left_semi" ).selectAs[TrainSetRecord].cache()
+    val validPositives = aggregatedPositiveSet.join(dataHaveBothTrainVal, Seq("ConfigValue","ConfigKey" ), "left_semi" )
+    val validNegatives = negativeExcludePos.join(dataHaveBothTrainVal, Seq("ConfigValue","ConfigKey"), "left_semi" ).selectAs[TrainSetRecord].cache()
 
 
     // 2. get the latest weights for adgroups in policytable
@@ -149,7 +147,7 @@ object GenerateTrainSet {
 
     // 3. transform weights for positive label
     // todo: multi days positive might have different click and  view lookback window, might not alligned with latest weight
-    val positivesWithRawWeight = validPositives.join(trackingTagWithWeight, Seq("TrackingTagId", "ConfigKey", "ConfigValue"))
+    val positivesWithRawWeight = validPositives.join(trackingTagWithWeight, Seq("TrackingTagId",  "ConfigValue","ConfigKey"))
       .withColumn("NormalizedPixelWeight", $"NormalizedPixelWeight".cast(DoubleType))
       .withColumn("NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAClickWeight".cast(DoubleType))
       .withColumn("NormalizedCustomCPAViewthroughWeight", $"NormalizedCustomCPAViewthroughWeight".cast(DoubleType))
@@ -168,9 +166,11 @@ object GenerateTrainSet {
 
     val preFeatureJoinTrainSet = adjustedPos.union(adjustedNeg)
       .selectAs[PreFeatureJoinRecord].cache()
+  // took 3 mins until here.
 
   // 5. join all these dataset with bidimpression to get features , join by day
-    val trainDataWithFeature = attachTrainsetWithFeature(preFeatureJoinTrainSet, maxLookback)(prometheus).persist(StorageLevel.MEMORY_AND_DISK)
+    val adGroupDS = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, date)
+    val trainDataWithFeature = attachTrainsetWithFeature(preFeatureJoinTrainSet, maxLookback, adGroupPolicy, adGroupDS)(prometheus).persist(StorageLevel.MEMORY_AND_DISK)
 
     // 6. split train and val
     val adjustedTrain  = trainDataWithFeature.filter($"IsInTrainSet"===lit(true)).cache()
@@ -190,6 +190,7 @@ object GenerateTrainSet {
       case (df, df_split, df_format) => {
 
         val dfTransformed = df_format match {
+          // kept fields is written to parquet when use "as[record]" .
           case "parquet" => df.select((modelKeepFeatureCols(keptFields) ++ selectionTabular): _*).as[DataForModelTrainingRecord]
           case "tfrecord" => df.select(selectionTabular: _*).as[DataForModelTrainingRecord]
         }
