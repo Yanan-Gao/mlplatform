@@ -4,7 +4,7 @@ import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImp
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.datasets.{AdGroupDataset, AdGroupPolicyRecord, AdGroupRecord, CampaignConversionReportingColumnDataSet, CampaignConversionReportingColumnRecord, CampaignDataset, CampaignRecord, DailyPositiveLabelRecord, TrainSetFeaturesRecord}
-import com.thetradedesk.kongming.date
+import com.thetradedesk.kongming.{date, preFilteringWithPolicy}
 import org.apache.spark.sql.Dataset
 import com.thetradedesk.spark.sql.SQLFunctions._
 import org.apache.spark.sql._
@@ -32,8 +32,8 @@ object TrainSetTransformation {
 
   case class PreFeatureJoinRecord(
                                    //                                     AdGroupId: String,
-                                   //                                       ConfigKey: String,
-                                   //                                       ConfigValue: String,
+                                   ConfigKey: String,
+                                   ConfigValue: String,
                                    //                                       DataAggKey: String,
                                    //                                       DataAggValue: String,
                                    BidRequestId: String,
@@ -140,7 +140,9 @@ object TrainSetTransformation {
 
   def attachTrainsetWithFeature(
                           trainset: Dataset[PreFeatureJoinRecord],
-                          lookbackDays: Int
+                          lookbackDays: Int,
+                          adGroupPolicy: Dataset[AdGroupPolicyRecord],
+                          adGroupDS: Dataset[AdGroupRecord]
                           )(implicit prometheus:PrometheusClient): Dataset[TrainSetFeaturesRecord] ={
 
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
@@ -149,13 +151,16 @@ object TrainSetTransformation {
       val lookbackday = date.minusDays(lookbackDayIdx)
       val trainsetOfDay = trainset.filter(to_date($"LogEntryTime")===lit(lookbackday.toString))
       val bidsImpressionsOfDay =   loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, lookbackday, source = Some(GERONIMO_DATA_SOURCE))
-      broadcast(trainsetOfDay).join(bidsImpressionsOfDay, Seq("BidRequestId"), joinType =  "inner")
+      val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressionsOfDay, adGroupPolicy, adGroupDS)
+
+      broadcast(trainsetOfDay).join(prefilteredDS.drop("AdGroupId"), Seq("BidRequestId"), joinType =  "inner")
         .withColumn("AdFormat",concat(col("AdWidthInPixels"),lit('x'), col("AdHeightInPixels")))
         .withColumn("RenderingContext", $"RenderingContext.value")
         .withColumn("DeviceType", $"DeviceType.value")
         .withColumn("OperatingSystem", $"OperatingSystem.value")
         .withColumn("Browser", $"Browser.value")
         .withColumn("InternetConnectionType", $"InternetConnectionType.value")
+        .withColumnRenamed("ConfigValue", "AdGroupId")
     }
     )
       .reduce(_.union(_)).selectAs[TrainSetFeaturesRecord]
@@ -204,10 +209,10 @@ object TrainSetTransformation {
       Since we are randomly throwing out negatives, the ranking should not change because the distribution of pos and neg doesn't change,
       especially when there are many negatives (~500000). We don't need to worry too much.
      */
-    val negativeCountsRaw = realNegatives.groupBy("ConfigKey","ConfigValue").agg(count($"BidRequestID").as("NegBidCount"))
+    val negativeCountsRaw = realNegatives.groupBy("ConfigValue", "ConfigKey").agg(count($"BidRequestID").as("NegBidCount"))
       .withColumn("RetainRate", least(lit(maxNegativeCount)/$"NegBidCount", lit(1)))
 
-    val downSampledNegatives = realNegatives.join(negativeCountsRaw, Seq("ConfigKey","ConfigValue") )
+    val downSampledNegatives = realNegatives.join(negativeCountsRaw, Seq("ConfigValue", "ConfigKey") )
       .withColumn("Rand", rand() )
       .filter($"Rand"<=$"RetainRate")
       .selectAs[TrainSetRecord]
@@ -222,10 +227,10 @@ object TrainSetTransformation {
     }
 
     // 3. calculate groupwise bid count for pos and neg, then calculate upsampling rate
-    val positiveCounts = positivesToResample.groupBy("ConfigKey", "ConfigValue").agg(count($"BidRequestId").as("PosBidCount"))
-    val negativeCounts = negativeToResample.groupBy("ConfigKey","ConfigValue").agg(count($"BidRequestID").as("NegBidCount"))
+    val positiveCounts = positivesToResample.groupBy("ConfigValue", "ConfigKey").agg(count($"BidRequestId").as("PosBidCount"))
+    val negativeCounts = negativeToResample.groupBy("ConfigValue", "ConfigKey").agg(count($"BidRequestID").as("NegBidCount"))
 
-    val upSamplingFraction = negativeCounts.join(positiveCounts, Seq("ConfigKey", "ConfigValue"), "inner")
+    val upSamplingFraction = negativeCounts.join(positiveCounts, Seq("ConfigValue", "ConfigKey"), "inner")
       .withColumn("Criteria", $"NegBidCount"/(lit(desiredNegOverPos)*$"PosBidCount"))
       .withColumn("UpSamplingPosFraction", when($"Criteria">1, $"Criteria").otherwise(null))
       .withColumn("UpSamplingNegFraction", when($"Criteria"<1, lit(1)/$"Criteria").otherwise(null))
@@ -234,33 +239,33 @@ object TrainSetTransformation {
     // get upsampling rate for pos
     val posUpSamplingFraction = upSamplingFraction
       .filter($"UpSamplingPosFraction".isNotNull)
-      .selectAs[UpSamplingPosFractionRecord].rdd.map(x =>((x.ConfigKey,x.ConfigValue) , x.UpSamplingPosFraction)).collectAsMap()
+      .selectAs[UpSamplingPosFractionRecord].rdd.map(x =>((x.ConfigValue, x.ConfigKey) , x.UpSamplingPosFraction)).collectAsMap()
 
     // get upsampling rate for neg
     val negUpSamplingFraction = upSamplingFraction
       .filter($"UpSamplingNegFraction".isNotNull)
-      .selectAs[UpSamplingNegFractionRecord].rdd.map(x =>((x.ConfigKey,x.ConfigValue) , x.UpSamplingNegFraction)).collectAsMap()
+      .selectAs[UpSamplingNegFractionRecord].rdd.map(x =>((x.ConfigValue, x.ConfigKey) , x.UpSamplingNegFraction)).collectAsMap()
 
     // 4. upsampling pos  and neg
     val upSampledPos = positivesToResample
-      .join(upSamplingFraction.filter($"UpSamplingPosFraction".isNotNull), Seq("ConfigKey","ConfigValue"),"leftsemi").selectAs[TrainSetRecord]
-      .rdd.keyBy(x => (x.ConfigKey, x.ConfigValue)).sampleByKey(true, posUpSamplingFraction)
+      .join(upSamplingFraction.filter($"UpSamplingPosFraction".isNotNull), Seq("ConfigValue", "ConfigKey"),"leftsemi").selectAs[TrainSetRecord]
+      .rdd.keyBy(x => ( x.ConfigValue, x.ConfigKey)).sampleByKey(true, posUpSamplingFraction)
       .map(x=> x._2)
       .toDF()
       .selectAs[TrainSetRecord]
 
     val upSampledNeg = negativeToResample
-      .join(upSamplingFraction.filter($"UpSamplingNegFraction".isNotNull), Seq("ConfigKey","ConfigValue"),"leftsemi").selectAs[TrainSetRecord]
-      .rdd.keyBy(x => (x.ConfigKey, x.ConfigValue)).sampleByKey(true, negUpSamplingFraction)
+      .join(upSamplingFraction.filter($"UpSamplingNegFraction".isNotNull), Seq("ConfigValue", "ConfigKey"),"leftsemi").selectAs[TrainSetRecord]
+      .rdd.keyBy(x => ( x.ConfigValue, x.ConfigKey)).sampleByKey(true, negUpSamplingFraction)
       .map(x=> x._2)
       .toDF()
       .selectAs[TrainSetRecord]
 
     // 5. get non sampled pos and neg
-    val nonSampledPos = positivesToResample.join( upSamplingFraction.filter($"UpSamplingPosFraction".isNull), Seq("ConfigKey", "ConfigValue"), "leftsemi")
+    val nonSampledPos = positivesToResample.join( upSamplingFraction.filter($"UpSamplingPosFraction".isNull), Seq("ConfigValue", "ConfigKey"), "leftsemi")
       .selectAs[TrainSetRecord]
 
-    val nonSampledNeg = negativeToResample.join( upSamplingFraction.filter($"UpSamplingNegFraction".isNull), Seq("ConfigKey", "ConfigValue"), "leftsemi")
+    val nonSampledNeg = negativeToResample.join( upSamplingFraction.filter($"UpSamplingNegFraction".isNull), Seq( "ConfigValue", "ConfigKey"), "leftsemi")
       .selectAs[TrainSetRecord]
 
     upSamplingValSet match {
@@ -269,65 +274,16 @@ object TrainSetTransformation {
           //remove config values that are abandoned due to absence of pos or neg by joining with upSamplingFraction
           upSampledPos
             .union(nonSampledPos)
-            .union(realPositives.filter($"IsInTrainSet"===lit(false)).join( upSamplingFraction, Seq("ConfigKey", "ConfigValue"), "leftsemi").as[TrainSetRecord] ),
+            .union(realPositives.filter($"IsInTrainSet"===lit(false)).join( upSamplingFraction, Seq("ConfigValue", "ConfigKey"), "leftsemi").selectAs[TrainSetRecord] ),
           upSampledNeg
             .union(nonSampledNeg)
-            .union(downSampledNegatives.filter($"IsInTrainSet"===lit(false)).join( upSamplingFraction, Seq("ConfigKey", "ConfigValue"), "leftsemi").as[TrainSetRecord])
+            .union(downSampledNegatives.filter($"IsInTrainSet"===lit(false)).join( upSamplingFraction, Seq("ConfigValue", "ConfigKey"), "leftsemi").selectAs[TrainSetRecord])
           )
       }
       case _ =>   (upSampledPos.union(nonSampledPos), upSampledNeg.union(nonSampledNeg))
     }
 
   }
-
-
-
-  //  def createArray(length:Int) = Array.fill(length){0}
-  //  val arrayUDF = udf(createArray(_))
-  //// this method take 2x time comapre to rdd samply by key
-  //  def upSamplingByExplodingArray(
-  //                                  realPositives: Dataset[TrainSetRecord],
-  //                                  realNegatives: Dataset[TrainSetRecord],
-  //                                  desiredNegOverPos:Int = 9,
-  //                                  maxNegativeCount: Int = 500000
-  //                                ): Tuple2[Dataset[TrainSetRecord], Dataset[TrainSetRecord]] = {
-  //
-  //    val negativeCountsRaw = realNegatives.groupBy("ConfigKey","ConfigValue").agg(count($"BidRequestID").as("NegBidCount"))
-  //      .withColumn("RetainRate", least(lit(maxNegativeCount)/$"NegBidCount", lit(1)))
-  //
-  //    val downSampledNegatives = realNegatives.join(negativeCountsRaw, Seq("ConfigKey","ConfigValue") )
-  //      .withColumn("Rand", rand() )
-  //      .filter($"Rand"<=$"RetainRate")
-  //      .selectAs[TrainSetRecord]
-  //
-  //    val negativeCounts = downSampledNegatives.groupBy("ConfigKey","ConfigValue").agg(count($"BidRequestID").as("NegBidCount"))
-  //
-  //    val positiveCounts = realPositives.groupBy("ConfigKey", "ConfigValue").agg(count($"BidRequestId").as("PosBidCount"))
-  //
-  //    val upSamplingFraction = negativeCounts.join(positiveCounts, Seq("ConfigKey", "ConfigValue"), "full")
-  //      .withColumn("Criteria",$"NegBidCount"/(lit(desiredNegOverPos)*$"PosBidCount"))   // is null if either posBidCount or negBidCount is null
-  //      .withColumn("UpSamplingPosFraction", when($"Criteria">1, $"Criteria").otherwise(null))
-  //      .withColumn("UpSamplingNegFraction", when($"Criteria"<1, lit(1)/$"Criteria").otherwise(null))
-  //      .cache()
-  //
-  //    // randn generate a random number from standard normal distribution with zero mean, add the samplingfraction to it meaning how many times we want this record to be replicated on average
-  //    val upSampledPos = realPositives.join(upSamplingFraction.select($"ConfigKey", $"ConfigValue", $"UpSamplingPosFraction"), Seq("ConfigKey", "ConfigValue"),"inner")
-  //      .withColumn("repeatTimes", when($"UpSamplingPosFraction".isNotNull,  lit(randn())+$"UpSamplingPosFraction").otherwise(lit(1)))
-  //      .withColumn("repeatTimesInt", round($"repeatTimes",0))
-  //      .withColumn("arrayForExplode", arrayUDF($"repeatTimesInt"))
-  //      .withColumn("dummyExplode", explode($"arrayForExplode"))
-  //      .selectAs[TrainSetRecord]
-  //
-  //    val upSampledNeg = downSampledNegatives.join(upSamplingFraction.select($"ConfigKey", $"ConfigValue", $"UpSamplingNegFraction"), Seq("ConfigKey", "ConfigValue"),"inner")
-  //      .withColumn("repeatTimes", when($"UpSamplingNegFraction".isNotNull,  lit(randn())+$"UpSamplingNegFraction").otherwise(lit(1)))
-  //      .withColumn("repeatTimesInt", round($"repeatTimes",0))
-  //      .withColumn("arrayForExplode", arrayUDF($"repeatTimesInt"))
-  //      .withColumn("dummyExplode", explode($"arrayForExplode"))
-  //      .selectAs[TrainSetRecord]
-  //
-  //    (upSampledPos, upSampledNeg)
-  //  }
-
 
 }
 
