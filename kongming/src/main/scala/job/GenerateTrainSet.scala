@@ -44,8 +44,8 @@ object GenerateTrainSet {
 
   val modelWeights: Array[ModelFeature] = Array(ModelFeature("Weight", FLOAT_FEATURE_TYPE, None, 0))
 
+  val modelDimensions: Array[ModelFeature] = Array(ModelFeature("AdGroupId", STRING_FEATURE_TYPE, Some(500002), 0))
   val modelFeatures: Array[ModelFeature] = Array(
-    ModelFeature("AdGroupId", STRING_FEATURE_TYPE, Some(500002), 0),
 
     ModelFeature("SupplyVendor", STRING_FEATURE_TYPE, Some(102), 0),
     ModelFeature("SupplyVendorPublisherId", STRING_FEATURE_TYPE, Some(200002), 0),
@@ -177,7 +177,7 @@ object GenerateTrainSet {
     val adjustedVal = trainDataWithFeature.filter($"IsInTrainSet"===lit(false)).cache()
 
     // 7. save as tfrecord and parquet
-    val selectionTabular = intModelFeaturesCols(modelFeatures ++ modelWeights)  ++ modelTargetCols(modelTargets)
+    val selectionTabular = intModelFeaturesCols(modelDimensions ++ modelFeatures ++ modelWeights)  ++ modelTargetCols(modelTargets)
 
     val dfTuple = Seq(
       (adjustedTrain,"train", "parquet"),

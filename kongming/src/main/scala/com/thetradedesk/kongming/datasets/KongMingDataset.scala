@@ -47,6 +47,12 @@ abstract class KongMingDataset[T <: Product : Manifest](
         .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
         .save(partitionedS3Path)
 
+      case  Some("csv") => dataset
+        .repartition(numPartitions.getOrElse(defaultNumPartitions))
+        .write.mode("overwrite")
+        .option("header",true)
+        .csv(partitionedS3Path)
+
       case _ => dataset
         .repartition(numPartitions.getOrElse(defaultNumPartitions))
         .write.mode(SaveMode.Overwrite)
