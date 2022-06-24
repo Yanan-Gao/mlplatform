@@ -1,7 +1,7 @@
 package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, FLOAT_FEATURE_TYPE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE}
+import com.thetradedesk.geronimo.shared.{FLOAT_FEATURE_TYPE, GERONIMO_DATA_SOURCE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, loadParquetData}
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyOfflineScoringDataset}
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -12,7 +12,7 @@ import com.thetradedesk.geronimo.shared.intModelFeaturesCols
 import com.thetradedesk.kongming.transform.OfflineScoringSetTransform
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.Column
-import job.GenerateTrainSet.modelFeatures
+import job.GenerateTrainSet.{modelDimensions, modelFeatures}
 
 import java.time.LocalDate
 
@@ -37,7 +37,7 @@ object DailyOfflineScoringSet {
     val adGroupPolicyHardCodedDate = policyDate
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate)
 
-    val selectionTabular = intModelFeaturesCols(modelFeatures) ++ modelKeepFeatureCols(keptFields)
+    val selectionTabular = intModelFeaturesCols(modelDimensions ++ modelFeatures) ++ modelKeepFeatureCols(keptFields)
 
     val scoringFeatureDS = OfflineScoringSetTransform.dailyTransform(
       bidsImpressions,

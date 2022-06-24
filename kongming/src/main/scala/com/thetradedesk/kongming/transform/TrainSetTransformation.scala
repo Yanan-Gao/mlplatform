@@ -16,6 +16,7 @@ import org.apache.spark.sql.expressions.Window
 import java.sql.Timestamp
 import org.apache.spark.sql.functions.unix_timestamp
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import org.apache.spark.sql.types.{DoubleType, FloatType}
 
 object TrainSetTransformation {
   case class UpSamplingPosFractionRecord(
@@ -55,6 +56,14 @@ object TrainSetTransformation {
                              IsInTrainSet: Boolean
                            )
 
+  case class TrackingTagWeightsRecord(
+                                       TrackingTagId: String,
+                                       ConfigKey: String,
+                                       ConfigValue: String,
+                                       NormalizedPixelWeight: Double,
+                                       NormalizedCustomCPAClickWeight: Option[Double],
+                                       NormalizedCustomCPAViewthroughWeight: Option[Double]
+                                     )
 
   case class PositiveWithRawWeightsRecord(
                                            ConfigKey: String,
@@ -78,7 +87,7 @@ object TrainSetTransformation {
 
   def getWeightsForTrackingTags(
                                  adGroupPolicy: Dataset[AdGroupPolicyRecord]
-                               ): DataFrame= {
+                               ): Dataset[TrackingTagWeightsRecord]= {
     // 1. get the latest weights per campaign and trackingtagid
     val adGroupDS = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, date)
     val campaignDS = loadParquetData[CampaignRecord](CampaignDataset.S3Path, date)
@@ -101,7 +110,7 @@ object TrainSetTransformation {
         when($"CustomCPATypeId"===2, coalesce($"CustomCPAViewthroughWeight", lit(0)) /(coalesce($"CustomCPAClickWeight", lit(0))+coalesce($"CustomCPAViewthroughWeight", lit(0))))
           .otherwise(null)
       )
-      .select($"CampaignId",$"TrackingTagId", $"NormalizedPixelWeight",$"NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAViewthroughWeight" )
+      .select($"CampaignId",$"TrackingTagId", $"NormalizedPixelWeight".cast(DoubleType),$"NormalizedCustomCPAClickWeight".cast(DoubleType), $"NormalizedCustomCPAViewthroughWeight".cast(DoubleType) )
 
     // 2. join trackingtag weights with policy table
     adGroupPolicy
@@ -110,6 +119,7 @@ object TrainSetTransformation {
       .join(ccrcProcessed, Seq("CampaignId"), "inner")
       .select($"TrackingTagId", $"ConfigKey", $"ConfigValue", $"NormalizedPixelWeight",$"NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAViewthroughWeight" ) // one trackingtagid can have different following values
       .distinct()
+      .selectAs[TrackingTagWeightsRecord]
 
   }
 
