@@ -14,6 +14,7 @@ import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.functions.{approx_count_distinct, broadcast, coalesce, col, floor, least, lit, percent_rank, row_number, sum, to_timestamp, when, xxhash64}
 import org.apache.spark.sql.types.{FloatType, IntegerType}
+import java.time.format.DateTimeFormatter
 
 
 
@@ -84,7 +85,7 @@ object OfflineAttributionTransform {
 
     // 1. load offline scores
       val multidayOfflineScore =  loadParquetData[OfflineScoredImpressionRecord](
-        OfflineScoredImpressionDataset.S3BasePath+s"/model_date=${modelDate}"
+        OfflineScoredImpressionDataset.S3BasePath+s"/model_date=${modelDate.format(DateTimeFormatter.ofPattern("yyyyMMdd"))}"
         ,date = endDate
         ,lookBack = Some(lookBack)
         ,partitionPrefix = Some("scored_date")
