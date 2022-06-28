@@ -4,7 +4,7 @@ variables:
   AUDIENCE_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/mergerequests"
   AUDIENCE_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/snapshots"
   AUDIENCE_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/prod"
-  AUDIENCE_ASSEMBLY_OUT: "/builds/thetradedesk/mlplatform/audience/target/scala-2.12/audience.jar"
+  AUDIENCE_ASSEMBLY_OUT: "$CI_PROJECT_DIR/audience/target/scala-2.12/audience.jar"
   SCRIPTS_SOURCE: "src/main/bash/"
   SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/scripts/"
   PYTHON_BUILD_IMAGE: "python:3.8"

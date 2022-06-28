@@ -3,14 +3,14 @@ variables:
   CONTEXTUAL_FEATURES_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/contextual-features-scala/jars/mergerequests"
   CONTEXTUAL_FEATURES_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/contextual-features-scala/jars/snapshots"
   CONTEXTUAL_FEATURES_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/contextual-features-scala/jars/prod"
-  CONTEXTUAL_FEATURES_ASSEMBLY_OUT: "/builds/thetradedesk/mlplatform/contextual-features-scala/contextual/target/scala-2.12/contextual-features.jar"
+  CONTEXTUAL_FEATURES_ASSEMBLY_OUT: "$CI_PROJECT_DIR/contextual-features-scala/contextual/target/scala-2.12/contextual-features.jar"
   CONTEXTUAL_FEATURES_SCALA_DOCKER_IMAGE: "${DOCKER_DEV_REGISTRY}/contextual-features-scala"
 
   FEATURES_INTERFACES_JAR_NAME: "feature-interfaces.jar"
   FEATURES_INTERFACES_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/feature-interfaces-scala/jars/mergerequests"
   FEATURES_INTERFACES_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/feature-interfaces-scala/jars/snapshots"
   FEATURES_INTERFACES_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/feature-interfaces-scala/jars/prod"
-  FEATURES_INTERFACES_ASSEMBLY_OUT: "/builds/thetradedesk/mlplatform/contextual-features-scala/interfaces/target/scala-2.12/feature-interfaces.jar"
+  FEATURES_INTERFACES_ASSEMBLY_OUT: "$CI_PROJECT_DIR/contextual-features-scala/interfaces/target/scala-2.12/feature-interfaces.jar"
   FEATURES_INTERFACES_SCALA_DOCKER_IMAGE: "${DOCKER_DEV_REGISTRY}/feature-interfaces-scala"
 
   SCALA_BUILD_IMAGE_2_12_12: "hseeberger/scala-sbt:11.0.12_1.5.5_2.12.15"
