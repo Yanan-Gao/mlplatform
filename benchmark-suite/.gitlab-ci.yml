@@ -3,7 +3,7 @@ variables:
   BENCHMARK_SUITE_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/benchmark-suite/jars/mergerequests"
   BENCHMARK_SUITE_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/benchmark-suite/jars/snapshots"
   BENCHMARK_SUITE_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/benchmark-suite/jars/prod"
-  BENCHMARK_SUITE_ASSEMBLY_OUT: "/builds/thetradedesk/mlplatform/benchmark-suite/target/scala-2.12/benchmark-suite.jar"
+  BENCHMARK_SUITE_ASSEMBLY_OUT: "$CI_PROJECT_DIR/benchmark-suite/target/scala-2.12/benchmark-suite.jar"
   SCALA_BUILD_IMAGE_2_12_12: "hseeberger/scala-sbt:8u312_1.5.5_2.12.15"
   BENCHMARK_SUITE_SCALA_DOCKER_IMAGE: "${DOCKER_DEV_REGISTRY}/benchmark-suite"
   SBT_OPTS: "-Xmx4G -XX:+UseConcMarkSweepGC -XX:+CMSClassUnloadingEnabled -XX:MaxPermSize=4G -Xss4M"

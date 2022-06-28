@@ -5,7 +5,7 @@ variables:
   KONGMING_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/jars/mergerequests"
   KONGMING_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/jars/snapshots"
   KONGMING_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/jars/prod"
-  KONGMING_ASSEMBLY_OUT: "/builds/thetradedesk/mlplatform/kongming/target/scala-2.12/kongming.jar"
+  KONGMING_ASSEMBLY_OUT: "$CI_PROJECT_DIR/kongming/target/scala-2.12/kongming.jar"
   SCRIPTS_SOURCE: "src/main/bash/"
   SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/scripts/"
   PYTHON_BUILD_IMAGE: "python:3.8"
