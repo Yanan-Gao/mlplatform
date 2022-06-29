@@ -12,13 +12,13 @@ then
   DATE_PARTITION=$2
 fi
 
-SCORING_LOOKBACK_IN_DAYS=7
+SCORING_LOOKBACK_IN_DAYS=15
 if [ ! -z "$3" ]
 then
   SCORING_LOOKBACK_IN_DAYS=$3
 fi
 
-NUM_DAYS_TO_SCORE=2
+NUM_DAYS_TO_SCORE=10
 if [ ! -z "$4" ]
 then
   NUM_DAYS_TO_SCORE=$4
@@ -77,6 +77,7 @@ eval docker login -u $DOCKER_USER -p $CREDS $DOCKER_INTERNAL_BASE
 
 eval docker pull ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_VERSION}
 
+#model training and user scoring
 sudo docker run --gpus all \
            -v ${INPUT_DEST}:/opt/application/input/ \
            -v ${SCORING_DATA_DEST}:/opt/application/scoreset/ \
