@@ -18,7 +18,7 @@ package object kongming {
   var date = config.getDate("date" , LocalDate.now())
   var ttdEnv = config.getString("ttd.env" , "dev")
   val RoundUpTimeUnit = "minute"
-  val policyDate = config.getDate("policydate" , LocalDate.parse("2022-06-08"))
+  val policyDate = config.getDate("policydate" , LocalDate.parse("2022-03-15"))
 
 
   //TODO: may add some indicator on the list of fields to join based on policy.
