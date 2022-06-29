@@ -2,16 +2,13 @@ package com.thetradedesk.philo.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
-import com.thetradedesk.geronimo.shared.explicitDatePart
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.philo.{flattenData, schema, shiftModUdf}
-import com.thetradedesk.philo.schema.{ClickTrackerRecord, ModelInputRecord}
+import com.thetradedesk.philo.schema.{AdGroupFilterRecord, ClickTrackerRecord, ModelInputRecord}
 import com.thetradedesk.spark.sql.SQLFunctions._
-import org.apache.spark.sql.{Column, DataFrame, Dataset, SaveMode}
+import org.apache.spark.sql.{Column, DataFrame, Dataset, SparkSession}
 import org.apache.spark.sql.functions.{col, concat_ws, lit, when, xxhash64}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-
-import java.time.LocalDate
 
 object ModelInputTransform extends Logger {
 
@@ -67,6 +64,43 @@ object ModelInputTransform extends Logger {
 
   )
 
+  // return training input based on the full combined dataset
+  def transform(
+                 clicks: Dataset[ClickTrackerRecord],
+                 bidsImpsDat: Dataset[BidsImpressionsSchema]): (DataFrame, DataFrame) = {
+
+    val (clickLabels, bidsImpsPreJoin) = hashBidAndClickLabels(clicks, bidsImpsDat)
+
+    val joinedData = joinDatasets(clickLabels, bidsImpsPreJoin)
+
+    val flatten = flattenData(joinedData.toDF, flatten_set)
+      .selectAs[ModelInputRecord]
+
+    // Get the unique labels with count for each.
+    val label_counts = flatten.groupBy("label").count()
+
+    val hashedData = getHashedData(flatten)
+
+    (hashedData, label_counts)
+  }
+
+  // returns training input filtered by a set of adgroupids
+  def transformWithFilter(clicks: Dataset[ClickTrackerRecord],
+                          bidsImpsDat: Dataset[BidsImpressionsSchema],
+                          adGroupFilter: Dataset[AdGroupFilterRecord],
+                          filterResults: Boolean): DataFrame  = {
+
+    val (clickLabels, bidsImpsPreJoin) = hashBidAndClickLabels(clicks, bidsImpsDat)
+
+    val joinedData = joinDatasets(clickLabels, bidsImpsPreJoin, Some(adGroupFilter), filterResults)
+
+    val flatten = flattenData(joinedData.toDF, flatten_set)
+      .selectAs[ModelInputRecord]
+
+    // return the filtered records
+    getHashedData(flatten)
+  }
+
   def intModelFeaturesCols(inputColAndDims: Seq[ModelFeature]): Array[Column] = {
     inputColAndDims.map {
       case ModelFeature(name, STRING_FEATURE_TYPE, Some(cardinality), _) => when(col(name).isNotNullOrEmpty, shiftModUdf(xxhash64(col(name)), lit(cardinality))).otherwise(0).alias(name)
@@ -75,7 +109,9 @@ object ModelInputTransform extends Logger {
     }.toArray
   }
 
-  def transform(clicks: Dataset[ClickTrackerRecord], bidsImpsDat: Dataset[BidsImpressionsSchema]): (DataFrame, DataFrame) = {
+  def hashBidAndClickLabels(clicks: Dataset[ClickTrackerRecord],
+                            bidsImpsDat: Dataset[BidsImpressionsSchema]) : (DataFrame, DataFrame) = {
+
     val clickLabels = clicks.withColumn("label", lit(1))
       .withColumn("BidRequestIdHash" , xxhash64(col("BidRequestId")))
       .drop("BidRequestId")
@@ -85,41 +121,26 @@ object ModelInputTransform extends Logger {
       .filter(col("IsImp"))
       .withColumn("BidRequestIdHash" , xxhash64(col("BidRequestId")))
 
-    val joinedData = bidsImpsPreJoin.join(clickLabels, Seq("BidRequestIdHash"), "leftouter")
+    (clickLabels, bidsImpsPreJoin)
+  }
+
+  def joinDatasets(clickLabels: DataFrame,
+                   bidsImpsPreJoin: DataFrame,
+                   adGroupIdFilter: Option[Dataset[AdGroupFilterRecord]] = None,
+                   filterResults: Boolean = false): DataFrame = {
+    bidsImpsPreJoin.join(clickLabels, Seq("BidRequestIdHash"), "leftouter")
       .withColumn("label", when(col("label").isNull, 0).otherwise(1))
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
+      .transform(ds => if (filterResults && adGroupIdFilter.isDefined) {
+        ds.join(adGroupIdFilter.get, Seq("AdGroupId"))
+      } else ds)
+  }
 
-    val flatten = flattenData(joinedData.toDF, flatten_set)
-      .selectAs[ModelInputRecord]
-
-    // Get the unique labels with count for each.
-    val label_counts = flatten.groupBy("label").count()
-
+  def getHashedData(flatten: Dataset[ModelInputRecord]): DataFrame ={
     val selectionQuery = intModelFeaturesCols(modelFeatures) ++ Array(col("label"), col("BidRequestId"))
 
-    val hashedData = flatten.select(selectionQuery: _*)
-
-    (hashedData, label_counts)
+    flatten.select(selectionQuery: _*)
   }
 
-  // NOTE: this is TF record and you will need to add tf record package to the packages args when running spark submit for this to work
-  def writeData(df: DataFrame, outputPath: String, ttdEnv: String, outputPrefix: String, date: LocalDate, partitions: Int, isTFRecord: Boolean = true): Unit = {
-
-    // note the date part is year=yyyy/month=m/day=d/
-    var func = df
-      .repartition(partitions)
-      .write
-      .mode(SaveMode.Overwrite)
-
-    if (isTFRecord) {
-      func.format("tfrecord")
-        .option("recordType", "Example")
-        .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
-        .save(s"$outputPath/$ttdEnv/$outputPrefix/${explicitDatePart(date)}")
-    } else {
-      func.option("header", "true")
-        .csv(s"$outputPath/$ttdEnv/$outputPrefix/${explicitDatePart(date)}")
-    }
-  }
 
 }
