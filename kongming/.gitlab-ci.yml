@@ -6,8 +6,8 @@ variables:
   KONGMING_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/jars/snapshots"
   KONGMING_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/jars/prod"
   KONGMING_ASSEMBLY_OUT: "$CI_PROJECT_DIR/kongming/target/scala-2.12/kongming.jar"
-  SCRIPTS_SOURCE: "src/main/bash/"
-  SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/scripts/"
+  KONGMING_SCRIPTS_SOURCE: "src/main/bash/"
+  KONGMING_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/scripts/"
   PYTHON_BUILD_IMAGE: "python:3.8"
   KONGMING_TRAINING_IMAGE: "kongming/training-gpu"
 
@@ -95,7 +95,7 @@ kongming:push_scripts:
         - "kongming/.gitlab-ci.yml"
   script:
     - pushd ./kongming/
-    - aws s3 cp ${SCRIPTS_SOURCE} ${SCRIPTS_DEST} --recursive
+    - aws s3 cp ${KONGMING_SCRIPTS_SOURCE} ${KONGMING_SCRIPTS_DEST} --recursive
     - popd
     - echo "ran push_set_scripts"
 
