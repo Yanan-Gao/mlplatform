@@ -5,8 +5,8 @@ variables:
   AUDIENCE_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/snapshots"
   AUDIENCE_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/prod"
   AUDIENCE_ASSEMBLY_OUT: "$CI_PROJECT_DIR/audience/target/scala-2.12/audience.jar"
-  SCRIPTS_SOURCE: "src/main/bash/"
-  SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/scripts/"
+  AUDIENCE_SCRIPTS_SOURCE: "src/main/bash/"
+  AUDIENCE_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/scripts/"
   PYTHON_BUILD_IMAGE: "python:3.8"
   AUDIENCE_TRAINING_IMAGE: "audience/training-gpu"
 
@@ -96,7 +96,7 @@ audience:deploy_release:
 #        - "audience/.gitlab-ci.yml"
 #  script:
 #    - pushd ./audience/
-#    - aws s3 cp ${SCRIPTS_SOURCE} ${SCRIPTS_DEST} --recursive
+#    - aws s3 cp ${AUDIENCE_SCRIPTS_SOURCE} ${AUDIENCE_SCRIPTS_DEST} --recursive
 #    - popd
 #    - echo "ran push_set_scripts"
 

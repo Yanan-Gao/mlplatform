@@ -5,10 +5,10 @@ variables:
   PLUTUS_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/jars/snapshots"
   PLUTUS_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/jars/prod"
   PLUTUS_ASSEMBLY_OUT: "$CI_PROJECT_DIR/plutus/target/scala-2.12/plutus.jar"
-  SCRIPTS_SOURCE: "src/main/python"
-  MODEL_RUN_SCRIPT: "modelrun.sh"
-  SETUP_SCRIPT: "clustersetup.sh"
-  SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/scripts/"
+  PLUTUS_SCRIPTS_SOURCE: "src/main/python"
+  PLUTUS_MODEL_RUN_SCRIPT: "modelrun.sh"
+  PLUTUS_SETUP_SCRIPT: "clustersetup.sh"
+  PLUTUS_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/scripts/"
   SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
   PYTHON_BUILD_IMAGE: "python:3.8"
   PLUTUS_TRAINING_IMAGE: "plutus-training"
@@ -76,8 +76,8 @@ plutus:push_scripts:
         - "plutus/src/main/python/clustersetup.sh"
   script:
     - pushd ./plutus/
-    - aws s3 cp ${SCRIPTS_SOURCE}/${SETUP_SCRIPT} ${SCRIPTS_DEST}
-    - aws s3 cp ${SCRIPTS_SOURCE}/${MODEL_RUN_SCRIPT} ${SCRIPTS_DEST}
+    - aws s3 cp ${PLUTUS_SCRIPTS_SOURCE}/${PLUTUS_SETUP_SCRIPT} ${PLUTUS_SCRIPTS_DEST}
+    - aws s3 cp ${PLUTUS_SCRIPTS_SOURCE}/${PLUTUS_MODEL_RUN_SCRIPT} ${PLUTUS_SCRIPTS_DEST}
     - popd
     - echo "ran push_set_scripts"
 
