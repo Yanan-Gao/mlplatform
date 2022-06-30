@@ -52,6 +52,7 @@ audience:push_bits_merge_request:
     - popd
     - echo "ran AUDIENCE_push_bits_merge_request"
 
+
 audience:push_bits_master_snapshot:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
   stage: assembly_upload
@@ -85,19 +86,19 @@ audience:deploy_release:
     - popd
     - echo "ran AUDIENCE_deploy_release"
 
-audience:push_scripts:
-  image: "$PYTHON_BUILD_IMAGE"
-  stage: deploy
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
-      changes:
-        - "audience/src/main/bash/**/*"
-        - "audience/.gitlab-ci.yml"
-  script:
-    - pushd ./audience/
-    - aws s3 cp ${SCRIPTS_SOURCE} ${SCRIPTS_DEST} --recursive
-    - popd
-    - echo "ran push_set_scripts"
+#audience:push_scripts:
+#  image: "$PYTHON_BUILD_IMAGE"
+#  stage: deploy
+#  rules:
+#    - if: '$CI_COMMIT_BRANCH == "master"'
+#      changes:
+#        - "audience/src/main/bash/**/*"
+#        - "audience/.gitlab-ci.yml"
+#  script:
+#    - pushd ./audience/
+#    - aws s3 cp ${SCRIPTS_SOURCE} ${SCRIPTS_DEST} --recursive
+#    - popd
+#    - echo "ran push_set_scripts"
 
 #audience:build_push_test_container:
 #  image: "$PYTHON_BUILD_IMAGE"

@@ -1,15 +1,17 @@
 package com.thetradedesk.audience.datasets
 
-import com.thetradedesk.geronimo.shared.{loadParquetData, loadParquetDataHourly}
-import org.apache.spark.sql.{Dataset, SaveMode, SparkSession}
+import com.thetradedesk.geronimo.shared.{loadParquetData, loadParquetDataHourly, parquetDataPaths, parquetHourlyDataPaths}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.sql.SQLFunctions._
+import org.apache.spark.sql.{Dataset, SaveMode, SparkSession}
+
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 abstract class LightDataset(dataSetPath: String,
                             rootPath: String,
                             dateFormat: String) {
-  lazy val basePath: String = s"${rootPath}/${dataSetPath}"
+  lazy val basePath: String = LightDataset.ConcatPath(dataSetPath, rootPath)
   private lazy val dateFormatter = DateTimeFormatter.ofPattern(dateFormat)
 
   def DatePartitionedPath(
@@ -25,6 +27,23 @@ abstract class LightDataset(dataSetPath: String,
         case Some(subFolderKey) => s"$basePath/$subFolderKey=${subFolderValue.getOrElse("")}"
         case _ => s"$basePath"
       }
+    }
+  }
+}
+
+object LightDataset {
+  private def ConcatPath(dataSetPath: String,
+                         rootPath: String): String = {
+    TrimPath(rootPath) + "/" + TrimPath(dataSetPath)
+  }
+
+  // remove slash letter with head and tail
+  private def TrimPath(path: String): String = {
+    path match {
+      case x if x.startsWith("/") && x.endsWith("/") => x.substring(1, x.length - 1)
+      case x if x.endsWith("/") => x.substring(0, x.length - 1)
+      case x if x.startsWith("/") => x.substring(1, x.length)
+      case _ => path
     }
   }
 }
@@ -57,6 +76,12 @@ abstract class LightWritableDataset[T <: Product : Manifest](
         .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
         .save(partitionedPath)
 
+      case  Some("csv") => dataset
+        .repartition(numPartitions.getOrElse(defaultNumPartitions))
+        .write.mode("overwrite")
+        .option("header",true)
+        .csv(partitionedPath)
+
       case _ => dataset
         .repartition(numPartitions.getOrElse(defaultNumPartitions))
         .write.mode(SaveMode.Overwrite)
@@ -76,6 +101,12 @@ abstract class LightReadableDataset[T <: Product : Manifest](
                     lookBack: Option[Int] = None,
                     dateSeparator: Option[String] = None)(implicit spark: SparkSession): Dataset[T] = {
     format match {
+      case Some("tfrecord") => spark
+        .read
+        .format("tfrecord")
+        .option("recordType", "Example")
+        .load(parquetDataPaths(basePath, date, source, lookBack, separator = dateSeparator) : _*)
+        .selectAs[T]
       case _ => loadParquetData[T](basePath, date, source, lookBack, dateSeparator)
     }
   }
@@ -84,6 +115,12 @@ abstract class LightReadableDataset[T <: Product : Manifest](
                           hours: Seq[Int],
                           format: Option[String] = None)(implicit spark: SparkSession): Dataset[T] = {
     format match {
+      case Some("tfrecord") => spark
+        .read
+        .format("tfrecord")
+        .option("recordType", "Example")
+        .load(parquetHourlyDataPaths(basePath, date, source, hours) : _*)
+        .selectAs[T]
       case _ => loadParquetDataHourly[T](basePath, date, hours, source)
     }
   }

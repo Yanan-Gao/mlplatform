@@ -10,6 +10,7 @@ import scala.reflect.runtime.universe._
 import scala.annotation.meta.field
 
 object ModelFeatureTransform {
+  val LONG_FEATURE_TYPE = "long";
   def modelFeatureTransform[T <: Product : Manifest](origin: Dataset[_]): Dataset[T] = {
     origin.select(featureSelect[T]: _*).as[T]
   }
@@ -25,6 +26,7 @@ object ModelFeatureTransform {
                 dtype match {
                   case STRING_FEATURE_TYPE => when(col(name).isNotNullOrEmpty, shiftModUdf(xxhash64(col(name)), lit(cardinality))).otherwise(0).alias(t.name.toString.trim)
                   case INT_FEATURE_TYPE => when(col(name).isNotNull, shiftModUdf(col(name), lit(cardinality))).otherwise(0).alias(t.name.toString.trim)
+                  case LONG_FEATURE_TYPE => when(col(name).isNotNull, shiftModUdf(col(name), lit(cardinality))).otherwise(0).alias(t.name.toString.trim)
                   case FLOAT_FEATURE_TYPE => col(name).alias(t.name.toString.trim)
                   case _ => throw new Exception(s"Unsupported data type ${dtype} with feature ${name}")
                 }

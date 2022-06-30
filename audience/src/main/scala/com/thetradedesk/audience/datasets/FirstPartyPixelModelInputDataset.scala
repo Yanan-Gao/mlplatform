@@ -33,7 +33,8 @@ final case class FirstPartyPixelModelInputRecord(
                                                   OperatingSystemFamily: Option[Int],
                                                   @FeatureDesc("Browser", "int", 15)
                                                   Browser: Option[Int],
-
+                                                  @FeatureDesc("TrackingTagId", "long", 2000003)
+                                                  TrackingTagId: Int,
                                                   AdWidthInPixels: Option[Int],
                                                   AdHeightInPixels: Option[Int],
 
@@ -44,8 +45,8 @@ final case class FirstPartyPixelModelInputRecord(
                                                   Latitude: Option[Double],
                                                   Longitude: Option[Double],
 
-                                                  Target: Int,
+                                                  Target: Double,
                                                 )
 
 case class FirstPartyPixelModelInputDataset() extends
-  LightWritableDataset[FirstPartyPixelModelInputRecord](s"/${ttdEnv}/audience/firstPartyPixel/trainset/v=1", S3Roots.ML_PLATFORM_ROOT, 100)
+  LightWritableDataset[FirstPartyPixelModelInputRecord](s"/${ttdEnv}/audience/firstPartyPixel/dailyConversionSample/v=1", S3Roots.ML_PLATFORM_ROOT, 100)
