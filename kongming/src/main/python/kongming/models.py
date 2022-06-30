@@ -9,7 +9,7 @@ import tensorflow as tf
 
 #pre-model constructions
 # generate feature input model layer
-def model_input_layer(features, top_mlp_layers, dropout_p, activation, assets_path, pretrained_layer=None):
+def model_input_layer(features, top_mlp_layers, dropout_p, activation, assets_path, batchnorm, pretrained_layer=None):
 
     if pretrained_layer==None:
         input_tuple_cat = []
@@ -30,7 +30,7 @@ def model_input_layer(features, top_mlp_layers, dropout_p, activation, assets_pa
         #concat, drop for categorical
         input_cat = [x[0] for x in input_tuple_cat]
         input_cat_layer = keras.layers.Concatenate(name="cat_concat")([x[1] for x in input_tuple_cat])
-        input_cat_layer = keras.layers.Dropout(seed=42, rate=dropout_p, name=f"input_cat_dropout")(input_cat_layer)
+        #input_cat_layer = keras.layers.Dropout(seed=42, rate=dropout_p, name=f"input_cat_dropout")(input_cat_layer)
 
         # concat, bn for continuous
         input_con = [x[0] for x in input_tuple_con]
@@ -43,7 +43,7 @@ def model_input_layer(features, top_mlp_layers, dropout_p, activation, assets_pa
                                      dropout_rate=dropout_p, activation=activation)
         return inputs, output_layer
     else:
-        output_layer=add_linbndrop(input_layer=pretrained_layer.output, add_layers=top_mlp_layers, dropout_rate=dropout_p)
+        output_layer=add_linbndrop(input_layer=pretrained_layer.output, add_layers=top_mlp_layers, dropout_rate=dropout_p, batchnorm=batchnorm)
         return pretrained_layer.input, output_layer
 
 #generate the dimension branch layer
@@ -60,7 +60,7 @@ def model_dim_layer(
     else:
         raise Exception("failed to construct dim feature branch.")
 
-    layer = keras.layers.Dropout(seed=42, rate=dropout_p, name=f"dim_dropout")(layer)
+    #layer = keras.layers.Dropout(seed=42, rate=dropout_p, name=f"dim_dropout")(layer)
     return i, layer
 
 # basic model
@@ -78,7 +78,9 @@ def dot_product_model(features,
                                                           dropout_p=dropout_rate,
                                                           activation=activation,
                                                           assets_path=assets_path,
+                                                          batchnorm=batchnorm,
                                                           pretrained_layer=pretrained_layer
+
                                                           )
     dim_em_size = feature_layer.shape[1]
     dim_input, dim_layer = model_dim_layer(
@@ -115,6 +117,7 @@ def auto_encoder_model(features,
                                                           top_mlp_layers=[],
                                                           dropout_p=dropout_rate,
                                                           activation="relu",
+                                                          batchnorm = batchnorm,
                                                           assets_path=assets_path
                                                           )
     num_features = len(features)

@@ -24,7 +24,8 @@ def int_embedding(name, vocab_size=10000, emb_dim=40, dtype=tf.int32):
     i = keras.Input(shape=(1,), dtype=dtype, name=f"{name}")
     em = keras.layers.Embedding(input_dim=vocab_size, output_dim=emb_dim, name=f"{name}_embedding")
     f = keras.layers.Flatten(name=f"{name}_flatten")
-    return i, f( em((i)) )
+    d = keras.layers.Dropout(seed=42, rate=0.3, name=f"{name}_dropout")
+    return i, d(f( em((i)) ))
 
 def float_feature(name, dtype=tf.float32):
     i = keras.Input(shape=(1,), dtype=dtype, name=f"{name}")
