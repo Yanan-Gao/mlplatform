@@ -58,7 +58,7 @@ flags.DEFINE_float('dropout_rate', default=0.3, help='Batch size for evaluation'
 flags.DEFINE_boolean('batchnorm', default=True, help='Use BatchNormalization or not.')
 
 #loss function
-flags.DEFINE_string("loss_func", default='fce', help="Loss function to choose.")
+flags.DEFINE_string("loss_func", default='ce', help="Loss function to choose.")
 
 # Train params
 flags.DEFINE_integer('batch_size', default=4096*2, help='Batch size for training', lower_bound=1)
@@ -211,7 +211,7 @@ def main(argv):
 
     cat_dict = get_target_cat_map(model_targets, MAX_CARDINALITY) if FLAGS.model_choice=='ae' else None
 
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.003),
+    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
                   loss=get_loss(cat_dict),
                   metrics=get_metrics())
                   # loss_weights=None,
