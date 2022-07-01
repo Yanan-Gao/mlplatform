@@ -33,8 +33,8 @@ final case class FirstPartyPixelModelInputRecord(
                                                   OperatingSystemFamily: Option[Int],
                                                   @FeatureDesc("Browser", "int", 15)
                                                   Browser: Option[Int],
-                                                  @FeatureDesc("TrackingTagId", "long", 2000003)
-                                                  TrackingTagId: Int,
+                                                  @FeatureDesc("TargetingDataId", "long", 2000003)
+                                                  TargetingDataId: Int,
                                                   AdWidthInPixels: Option[Int],
                                                   AdHeightInPixels: Option[Int],
 
