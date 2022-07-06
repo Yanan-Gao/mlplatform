@@ -29,6 +29,11 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
 
 
   def main(args: Array[String]): Unit = {
+    val prometheus = new PrometheusClient("FirstPartyPixelModel", "DailyConversionSampleGeneration")
+    val positiveSampledCount = prometheus.createGauge("positive_sample_count", "Number of positive sampled records")
+    val softNegativeSampledCount = prometheus.createGauge("soft_negative_sample_count", "Number of soft negative sampled records")
+    val hardNegativeSampledCount = prometheus.createGauge("hard_negative_sample_count", "Number of hard negative sampled records")
+
     val conversionDS = ConversionDataset().readPartition(date, lookBack = Some(conversionLookBack))
       .select('TDID, 'TrackingTagId)
       .filter('TDID.isNotNullOrEmpty && 'TDID =!= "00000000-0000-0000-0000-000000000000")
@@ -85,7 +90,7 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
         .select('TrackingTagId, 'TDID)
         .join(broadcast(trackingTagDataset),
           Seq("TrackingTagId"),
-        "inner")
+          "inner")
         .select('TargetingDataId, 'TDID)
         .distinct()
       case _ =>
@@ -127,6 +132,7 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
       subFolderValue = Some("positive"),
       format = Some("tfrecord")
     )
+    positiveSampledCount.set(positiveSample.count())
 
     FirstPartyPixelModelInputDataset().writePartition(
       ModelFeatureTransform.modelFeatureTransform[FirstPartyPixelModelInputRecord](softNegativeSample),
@@ -135,6 +141,7 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
       subFolderValue = Some("softNegative"),
       format = Some("tfrecord")
     )
+    softNegativeSampledCount.set(softNegativeSample.count())
 
     FirstPartyPixelModelInputDataset().writePartition(
       ModelFeatureTransform.modelFeatureTransform[FirstPartyPixelModelInputRecord](hardNegativeSample),
@@ -143,6 +150,9 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
       subFolderValue = Some("hardNegative"),
       format = Some("tfrecord")
     )
+    hardNegativeSampledCount.set(hardNegativeSample.count())
+
+    prometheus.pushMetrics()
   }
 
   def generatePositiveSample(positivePool: DataFrame): DataFrame = {
