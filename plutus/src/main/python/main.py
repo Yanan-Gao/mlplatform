@@ -100,8 +100,8 @@ flags.DEFINE_list("exclude_targets", default=[], help="Targets to exclude from t
 flags.DEFINE_enum('job', 'running', ['running', 'stopped'], 'Job status.')
 
 flags.DEFINE_string('model_creation_date',
-                    default=datetime.now().strftime("%Y%m%d%H"),
-                    help='Time the model was created. Its ISO date format YYYYMMDDHH (e.g. 2021123114) defaults now'
+                    default=datetime.now().strftime("%Y%m%d%H%M"),
+                    help='Time the model was created. Its ISO date format YYYYMMDDHHMM (e.g. 202112311411) defaults now'
                          'Not related to the date on the training data, rather is used to identify when the model was '
                          'trained. Primary use is for model loader to load latest model to prod.')
 
