@@ -271,8 +271,8 @@ def main(argv):
 
     params_model_tag = save_params_model(model)
 
-    s3_sync(model_tag, f"{S3_PROD}{MODEL_OUTPUT}{FLAGS.model_creation_date}")
-    s3_sync(params_model_tag, f"{S3_PROD}{PARAM_MODEL_OUTPUT}{FLAGS.model_creation_date}")
+    s3_sync(model_tag, f"{FLAGS.s3_output_path}{MODEL_OUTPUT}{FLAGS.model_creation_date}")
+    s3_sync(params_model_tag, f"{FLAGS.s3_output_path}{PARAM_MODEL_OUTPUT}{FLAGS.model_creation_date}")
 
     epoch_gauge = Prometheus.define_gauge('epochs', 'number of epochs')
     steps_gauge = Prometheus.define_gauge('num_steps', 'number of steps per epoch')
