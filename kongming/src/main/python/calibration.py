@@ -8,7 +8,7 @@ from scipy.special import expit
 from absl import app, flags
 from datetime import datetime
 from scoring import get_model
-from kongming.data import s3_copy
+from kongming.data import s3_copy, s3_move
 from kongming.layers import VocabLookup
 from multiprocessing import Pool
 from itertools import repeat
@@ -189,12 +189,12 @@ def add_calibration_layer(model):
     maximum_score = tf.constant(1-1/FLAGS.score_grid_count, dtype=tf.float32)
 
     # a bit hacky - adgroupid to float then add score
-    addlayer = tf.keras.layers.Add(dtype=tf.float64, trainable=False)([tf.cast(dim_input, tf.float64), tf.math.minimum(maximum_score, score_input)])
+    addlayer = tf.keras.layers.Add(dtype=tf.float32, trainable=False)([tf.cast(dim_input, tf.float32), tf.math.minimum(maximum_score, score_input)])
     # round to 4 digits if score_grid_count is 10000
     score_precision = int(math.log10(FLAGS.score_grid_count))
     stringlayer = tf.strings.as_string(addlayer, precision=score_precision)
     # load the pre-generated lookup table
-    lookup_out = VocabLookup(vocab_path=FLAGS.asset_adgroup_lookup_score_path, value_dtype=tf.float64, name="Output")
+    lookup_out = VocabLookup(vocab_path=FLAGS.asset_adgroup_lookup_score_path, value_dtype=tf.float32, name="Output")
     # look up the addgroupid+score in
     output = lookup_out(stringlayer)
     # redefine output of conversion model
@@ -229,10 +229,13 @@ def main(argv):
     calibrated_model.save(calibrated_model_path)
 
     # upload calibrated model to s3
+    s3_output_path_tmp = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/calibrated_conversion_model/1"
+    s3_copy(calibrated_model_path, s3_output_path_tmp)
+    # rename trick
     s3_output_path = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/calibrated_conversion_model/{FLAGS.date}"
-    s3_copy(calibrated_model_path, s3_output_path)
+    s3_move(s3_output_path_tmp, s3_output_path)
 
 if __name__ == '__main__':
-    # took 1m15s for 140 adgroup.
+    # took 20m for 500 adgroups on 32Gb 8cores machine.
     # requires data and model in: input/offlineattribution, input/offlineattribution_cvr, output/model
     app.run(main)

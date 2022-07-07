@@ -23,6 +23,7 @@ flags.DEFINE_string('score_set_path', default=SCORE_SET_PATH,
                     help=f'Location of offline scoring set (TFRecord). Default {SCORE_SET_PATH}')
 #TODO: we will need to copy multiple days worth of data over as well.
 flags.DEFINE_list('score_dates', default=['20220502'], help='list of date strings for score path.')
+flags.DEFINE_float('score_dates_missing_tolerance', default=0.33, help='maximum missing dates percentage of score set.')
 flags.DEFINE_string('model_path', default=MODEL_PATH,
                     help=f'Location of saved model.')
 flags.DEFINE_string('pred_path', default=PRED_PATH, help='output file location for predicted offline results.')
@@ -77,24 +78,39 @@ def get_model(model_path, to_compile=True):
     model = tf.keras.models.load_model(model_folder, compile=to_compile)
     return model
 
+def remove_prefix(text, prefix):
+    if text.startswith(prefix):
+        return text[len(prefix):]
+    return text
+
 def main(argv):
     GrainNameMap = namedtuple('AdditionalGrainNameMap', ['BidRequestId', 'AdGroupId'])
     additional_str_grain_map = GrainNameMap(FLAGS.colname_bidrequest, FLAGS.colname_adgroup)
     model_features, model_dim_feature = get_features_dim_target(additional_str_grain_map)
 
-    for date in FLAGS.score_dates:
-        scoring_set = get_scoring_data(model_features, [model_dim_feature], additional_str_grain_map, date)
-        model = get_model(FLAGS.model_path)
-        pred = predict(model, scoring_set)
+    # check for which dates score sets are transmitted from S3
+    scores_set_dates = [remove_prefix(name, "date=") for name in os.listdir(f"{FLAGS.score_set_path}")]
+    available_score_dates = [date for date in FLAGS.score_dates if date in scores_set_dates]
 
-        os.makedirs(FLAGS.pred_path, exist_ok=True)
-        result_location = f"{FLAGS.pred_path}pred.parquet.gz"
-        pred.to_parquet(result_location, compression='gzip')
+    # check if missing dates are tolerable
+    if ((len(FLAGS.score_dates)-len(available_score_dates))*1.0/len(FLAGS.score_dates)<=FLAGS.score_dates_missing_tolerance):
 
-        s3_offline_path = f"s3://thetradedesk-mlplatform-us-east-1/data/{FLAGS.env}/kongming/measurement/offline/v=1"
-        #output file to S3
-        s3_output_path = f"{s3_offline_path}/model_date={FLAGS.model_creation_date}/scored_date={date}"
-        s3_copy(FLAGS.pred_path, s3_output_path)
+        for date in available_score_dates:
+            scoring_set = get_scoring_data(model_features, [model_dim_feature], additional_str_grain_map, date)
+            model = get_model(FLAGS.model_path)
+            pred = predict(model, scoring_set)
+
+            os.makedirs(FLAGS.pred_path, exist_ok=True)
+            result_location = f"{FLAGS.pred_path}pred.parquet.gz"
+            pred.to_parquet(result_location, compression='gzip')
+
+            s3_offline_path = f"s3://thetradedesk-mlplatform-us-east-1/data/{FLAGS.env}/kongming/measurement/offline/v=1"
+            #output file to S3
+            s3_output_path = f"{s3_offline_path}/model_date={FLAGS.model_creation_date}/scored_date={date}"
+            s3_copy(FLAGS.pred_path, s3_output_path)
+            
+    else:
+        raise Exception('Not enough score sets!')
 
 
 if __name__ == '__main__':
