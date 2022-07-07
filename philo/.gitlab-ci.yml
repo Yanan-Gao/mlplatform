@@ -10,6 +10,7 @@ variables:
   PHILO_MODEL_RUN_SCRIPT: "modelrun.sh"
   PHILO_SETUP_SCRIPT: "clustersetup.sh"
   PHILO_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/philo/scripts/"
+  PHILO_MERGEREQUESTS_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/philo/scripts/mergerequests/$CI_COMMIT_REF_SLUG/"
   PYTHON_BUILD_IMAGE: "python:3.8"
   PHILO_TRAINING_IMAGE: "philo-training"
 
@@ -80,6 +81,19 @@ philo:push_scripts:
     - popd
     - echo "ran push_set_scripts"
 
+philo:push_scripts_merge_request:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: assembly_upload
+  rules:
+   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+     changes:
+      - "philo/**/*"
+  script:
+    - pushd ./philo/
+    - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${PHILO_SETUP_SCRIPT} ${PHILO_MERGEREQUESTS_SCRIPTS_DEST}
+    - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${PHILO_MODEL_RUN_SCRIPT} ${PHILO_MERGEREQUESTS_SCRIPTS_DEST}
+    - popd
+    - echo "ran push_set_scripts"
 
 philo:build_push_training_container:
   image: "$PYTHON_BUILD_IMAGE"
@@ -98,9 +112,9 @@ philo:build_push_training_container:
     - export DOCKER_HOST=$DOCKER_PORT
     - pushd ./philo/src/main/python/
     - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
-    - docker build -f Dockerfile.prod -t ${PHILO_TRAINING_IMAGE}:latest .
-    - docker tag ${PHILO_TRAINING_IMAGE}:latest ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:latest
-    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:latest
+    - docker build -f Dockerfile.prod -t ${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} .
+    - docker tag ${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
+    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
     - popd
     - echo "latest training container pushed"
 
