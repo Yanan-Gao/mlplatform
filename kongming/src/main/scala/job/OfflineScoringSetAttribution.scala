@@ -33,7 +33,7 @@ object OfflineScoringSetAttribution{
     val modelDate = config.getDate("modelDate" , LocalDate.now())
 
     val offlineScoreSetLookbackFromModelDate = config.getInt(path="offlineScoresetLookbackFromModelDate", 6)
-    val offlineScoreDays = config.getInt(path="offlineScoreDays", 10)
+    val offlineScoreDays = config.getInt(path="offlineScoreDays", 5)
 
     // 1. load offline scores
     val offlineScoreEndDate =  date.minusDays(offlineScoreSetLookbackFromModelDate)

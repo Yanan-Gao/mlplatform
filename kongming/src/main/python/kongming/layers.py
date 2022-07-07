@@ -20,7 +20,7 @@ class VocabLookup(tf.keras.layers.Layer):
                                                     delimiter=",")
         if self.value_dtype==tf.string:
             self.table = tf.lookup.StaticHashTable(table_init, 'UNK')
-        elif self.value_dtype==tf.float64:
+        elif self.value_dtype==tf.float32:
             self.table = tf.lookup.StaticHashTable(table_init, 0.0)
         else:
             raise Exception("unknown lookup table value type.")

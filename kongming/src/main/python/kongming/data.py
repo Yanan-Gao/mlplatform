@@ -110,3 +110,7 @@ def s3_copy(src_path, dest_path):
     os.system(sync_command)
     return sync_command
 
+def s3_move(src_path, dest_path):
+    sync_command = f"aws s3 mv --recursive {src_path} {dest_path}"
+    os.system(sync_command)
+    return sync_command
