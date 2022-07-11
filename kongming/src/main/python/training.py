@@ -10,7 +10,6 @@ from datetime import datetime
 # setting up training configuration
 FLAGS = flags.FLAGS
 # DEFAULTS
-INPUT_PATH = "./input/"
 OUTPUT_PATH = "./output/"
 MODEL_LOGS = "./logs/"
 ASSET_PATH = "./assets_string/"
@@ -19,15 +18,9 @@ EMBEDDING_PATH = "./embedding/"
 MIN_HASH_CARDINALITY = 301
 MAX_CARDINALITY = 10001
 
-S3_MODELS = "s3://thetradedesk-mlplatform-us-east-1/models"
-ENV = "prod"
 
 # path
 flags.DEFINE_string('assets_path', default=ASSET_PATH, help='asset file location.')
-flags.DEFINE_string('env', default=ENV, help='training environment.')
-flags.DEFINE_string('s3_models', default=S3_MODELS, help='output model s3 location.')
-flags.DEFINE_string('input_path', default=INPUT_PATH,
-                    help=f'Location of input files (TFRecord). Default {INPUT_PATH}')
 flags.DEFINE_string('output_path', default=OUTPUT_PATH, help='output file location for saved models.')
 flags.DEFINE_string('log_path', default=MODEL_LOGS, help='log file location for model training.')
 flags.DEFINE_string('log_tag', default=f"{datetime.now().strftime('%Y-%m-%d-%H')}", help='log tag')
@@ -103,6 +96,9 @@ def get_features_dim_target():
 def get_data(features, dim_feature, targets, sw_col):
     #function to return
     train_files, val_files = parse_input_files(FLAGS.input_path+"train/"), parse_input_files(FLAGS.input_path+"val/")
+
+    if len(train_files) == 0 or len(val_files) == 0:
+        raise Exception("No training or validation files")
 
     train = tfrecord_dataset(train_files,
                                 FLAGS.batch_size,
