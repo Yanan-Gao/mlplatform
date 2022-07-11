@@ -189,7 +189,7 @@ def add_calibration_layer(model):
     maximum_score = tf.constant(1-1/FLAGS.score_grid_count, dtype=tf.float32)
 
     # a bit hacky - adgroupid to float then add score
-    addlayer = tf.keras.layers.Add(dtype=tf.float32, trainable=False)([tf.cast(dim_input, tf.float32), tf.math.minimum(maximum_score, score_input)])
+    addlayer = tf.keras.layers.Add(dtype=tf.float64, trainable=False)([tf.cast(dim_input, tf.float64), tf.math.minimum(maximum_score, score_input)])
     # round to 4 digits if score_grid_count is 10000
     score_precision = int(math.log10(FLAGS.score_grid_count))
     stringlayer = tf.strings.as_string(addlayer, precision=score_precision)
