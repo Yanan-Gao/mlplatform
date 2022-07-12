@@ -82,8 +82,11 @@ object MockData {
                                     DeviceType = Option(DeviceTypeLookupRecord()),
                                     DeviceMake = Some(""),
                                     DeviceModel = Some(""),
+                                    OperatingSystem = Option(OSLookupRecord()),
                                     OperatingSystemFamily = Option(OSFamilyLookupRecord()),
                                     Browser = Option(BrowserLookupRecord()),
+                                    InternetConnectionType = Option(InternetConnectionRecord()),
+
 
                                     UserHourOfWeek = Some(0),
                                     RequestLanguages = "",
@@ -115,10 +118,20 @@ object MockData {
 
                                     DoNotTrack =  Option(DoNotTrackLookupRecord()),
                                     CreativeId =  Some(""),
-                                    PrivateContractId =  ""
+                                    PrivateContractId =  "",
+                                    // advertiser columns
+                                    AdvertiserIndustryCategoryId = Some(math.BigInt.long2bigInt(1l)),
 
+                                    // contextual cols
+                                    ReferrerUrl = Some(""),
+                                    ContextualCategories = Some(Seq(1L)),
 
-                                  )
+                                    // seeninbidding columns
+                                    FirstPartyTargetingDataIdsSampled = Some(Seq(1L)),
+                                    ThirdPartyTargetingDataIdsSampled = Some(Seq(1L)),
+                                    NumFirstPartyDataElements = Some(1),
+                                    NumThirdPartyDataElements = Some(1)
+  )
 
 
 }
