@@ -8,7 +8,7 @@ version := "0.0.0"
 
 scalaVersion := "2.12.13"
 
-val sparkVersion = "3.1.1"
+val sparkVersion = "3.2.1"
 val prometheusVersion = "0.9.0"
 
 resolvers += "bintray-spark-packages" at "https://dl.bintray.com/spark-packages/maven/"
@@ -27,7 +27,7 @@ libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest-funsuite" % "3.2.10" % Test,
  // "MrPowers" % "spark-fast-tests" % "2.2.0_0.5.0" % "test"
 
-  "com.thetradedesk" %% "geronimo" % "0.1.5-SNAPSHOT"
+  "com.thetradedesk" %% "geronimo" % "0.1.8-SNAPSHOT"
 )
 
 
