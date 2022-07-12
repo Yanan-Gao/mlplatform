@@ -96,7 +96,7 @@ sudo docker run --gpus all \
       "--model_creation_date=${DATE_PARTITION}" \
       "--batch_size=8192" \
       "--eval_batch_size=197934" \
-      "--num_epochs=${NUM_TRAINING_EPOCS}" \
+      "--num_epochs=20" \
       "--model_choice=basic" \
       "--early_stopping_patience=3" \
       "--run_score=true" \

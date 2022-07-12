@@ -44,9 +44,9 @@ def get_features_dim_target(additional_str_grain_map):
     return features, model_dim
 
 
-def get_scoring_data(features, dim_feature, additional_str_grain_map, date_for_score):
+def get_scoring_data(score_set_path, features, dim_feature, additional_str_grain_map, date_for_score):
     #function to return
-    score_files = parse_input_files(f"{FLAGS.score_set_path}date={date_for_score}/")
+    score_files = parse_input_files(f"{score_set_path}date={date_for_score}/")
     score = tfrecord_dataset(score_files,
                                 FLAGS.scoring_batch_size,
                                 parse_scoring_data(features, dim_feature, additional_str_grain_map)
@@ -93,7 +93,7 @@ def main(argv):
 
     os.makedirs(FLAGS.pred_path, exist_ok=True)
     for date in available_score_dates:
-        scoring_set = get_scoring_data(model_features, [model_dim_feature], additional_str_grain_map, date)
+        scoring_set = get_scoring_data(score_set_path, model_features, [model_dim_feature], additional_str_grain_map, date)
         model = get_model(FLAGS.model_path)
         pred = predict(model, scoring_set)
 
