@@ -214,7 +214,7 @@ def add_calibration_layer(model):
     return calibrationmodel
 
 def print_debug(msg):
-    print(datetime.datetime.now(), msg)
+    print(datetime.now(), msg)
 
 def main(argv):
 
