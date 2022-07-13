@@ -41,6 +41,8 @@ MODEL_DEST="${INPUT_DEST}model"
 OFFLINE_ATTRIBUTION_DATA_DEST="${INPUT_DEST}offlineattribution"
 OFFLINE_ATTRIBUTION_CVR_DATA_DEST="${INPUT_DEST}offlineattribution_cvr"
 
+echo "restart httpd service so ganglia works"
+sudo service httpd reload
 
 echo "deleting any old data"
 rm -rf $INPUT_DEST

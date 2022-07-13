@@ -1,9 +1,6 @@
 #!/bin/bash
 set -o errexit
 
-echo "restart httpd service so ganglia works"
-sudo service httpd reload
-
 echo "installing updates...."
 sudo yum update -y
 

@@ -51,6 +51,9 @@ TRAINING_DATA_DEST="${INPUT_DEST}train"
 VALIDATION_DATA_DEST="${INPUT_DEST}val"
 SCORING_DATA_DEST="${INPUT_DEST}scoreset"
 
+echo "restart httpd service so ganglia works"
+sudo service httpd reload
+
 echo "deleting any old data"
 rm -rf $INPUT_DEST
 
