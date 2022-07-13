@@ -67,7 +67,7 @@ sudo docker run --gpus all \
            ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_VERSION} \
       "--env=${ENV}" \
       "--run_calibration=true" \
-      "--model_creation_date=${DATE_PARTITION}" \
+      "--date=${DATE_PARTITION}" \
       "--cpu_cores=16"
 
 echo "finished calibration, cleaning up data"
