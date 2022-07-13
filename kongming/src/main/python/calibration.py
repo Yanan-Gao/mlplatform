@@ -8,7 +8,7 @@ from scipy.special import expit
 from absl import app, flags
 from datetime import datetime
 from scoring import get_model
-from kongming.data import s3_copy, s3_move
+from kongming.data import parse_input_files, s3_copy, s3_move
 from kongming.layers import VocabLookup
 from multiprocessing import Pool
 from itertools import repeat
@@ -19,10 +19,9 @@ FLAGS = flags.FLAGS
 
 INPUT_PATH = "./input/"
 OUTPUT_PATH = "./output/"
-MODEL_PATH = f"{OUTPUT_PATH}model/"
+MODEL_PATH = f"{INPUT_PATH}model/"
 MODEL_LOGS = "./logs/"
-ASSET_PATH = "./conversion-python/assets_string/"
-ASSET_ADGROUP_LOOKUP_SCORE_PATH = f'{ASSET_PATH}ag_score_mod.txt'
+ASSET_ADGROUP_LOOKUP_SCORE_PATH = f'{OUTPUT_PATH}ag_score_mod.txt'
 
 CALIBRATED_MODEL_PATH = "output/model_calibrated/"
 CALIBRATION_LOG_PATH = "output/calibration_log/"
@@ -44,7 +43,7 @@ flags.DEFINE_string('conversion_model_path', default=MODEL_PATH,
                     help=f'Location of saved model.')
 flags.DEFINE_integer('score_grid_count', default=10000, help='Grid count of scores')
 flags.DEFINE_integer('cpu_cores', default=6, help='Number of cpu cores. It is used for multithread computing.')
-flags.DEFINE_string('asset_adgroup_lookup_score_path', default=ASSET_ADGROUP_LOOKUP_SCORE_PATH, help='asset path.')
+flags.DEFINE_string('asset_adgroup_lookup_score_path', default=ASSET_ADGROUP_LOOKUP_SCORE_PATH, help='asset adgroup look up score path')
 
 flags.DEFINE_string('calibrated_conversion_models', default=CALIBRATED_MODEL_PATH, help='output model local location.')
 flags.DEFINE_string('calibrated_conversion_models_log', default=CALIBRATION_LOG_PATH, help='output model log local location.')
@@ -83,14 +82,23 @@ def parallelize_dataframe(df, bias, ag_cvr, func, n_cores):
     pool.join()
     return df
 
+def load_csv(path, columns):
+    files = parse_input_files(path)
+    dfList = []
+    for file in files:
+        df = pd.read_csv(file)
+        df.columns = columns
+        dfList.append(df)
+    return pd.concat(dfList, axis=0)
+
 def load_data():
     # prepare impression level score and label for isotonic regression
-    impr_label = pd.read_csv(f"{FLAGS.offline_attribution_path}{FLAGS.date}.csv")
-    impr_label.columns = ['adgroupidstr', 'adgroupid', 'piece_cvr', 'score', 'label', 'imr_weight_for_model']
+    impr_label_columns = ['adgroupidstr', 'adgroupid', 'piece_cvr', 'score', 'label', 'imr_weight_for_model']
+    impr_label = load_csv(FLAGS.offline_attribution_path, impr_label_columns)
 
     # prepare bias tuning
-    cvr = pd.read_csv(f"{FLAGS.offline_attribution_cvr_path}{FLAGS.date}.csv", index_col=None)
-    cvr.columns = ['adgroupidstr', 'cvr', 'adgroupid']
+    cvr_columns = ['adgroupidstr', 'cvr', 'adgroupid']
+    cvr = load_csv(FLAGS.offline_attribution_cvr_path, cvr_columns)
 
     cvr[['adgroupidstr', 'adgroupid']].\
         to_csv(f"{FLAGS.calibrated_conversion_models_log}ag_int_str_mapping.csv", index=False)
@@ -205,30 +213,33 @@ def add_calibration_layer(model):
 
     return calibrationmodel
 
+def print_debug(msg):
+    print(datetime.datetime.now(), msg)
+
 def main(argv):
 
-    # load data for isotonic regression and bias tuning
+    print_debug("load data for isotonic regression and bias tuning")
     impr_label, bias, cvr_dict, model = load_data()
 
-    # 1. calculate calibration based on impression and label for each adgroup
+    print_debug("1. calculate calibration based on impression and label for each adgroup")
     ag_calibration_logs,  ag_calibrated_cvr = calculate_calibration_adjustments(impr_label, bias, cvr_dict)
 
-    # save log and asset to local
+    print_debug("save log and asset to local")
     ag_calibration_logs.to_csv(f"{FLAGS.calibrated_conversion_models_log}ag_calibration_type.csv", index=False)
     ag_calibrated_cvr.to_csv(FLAGS.asset_adgroup_lookup_score_path, index=False, header=False)
 
-    # upload log to s3
+    print_debug("upload log to s3")
     log_s3_output_path = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/calibrated_conversion_model_log/calibrate_date={FLAGS.date}"
     s3_copy(FLAGS.calibrated_conversion_models_log, log_s3_output_path)
 
-    # 2. add calibration_layer to model
+    print_debug("2. add calibration_layer to model")
     calibrated_model = add_calibration_layer(model)
 
-    # save calibrated model to local
+    print_debug("save calibrated model to local")
     calibrated_model_path = f"{FLAGS.calibrated_conversion_models}grid_count={FLAGS.score_grid_count}"
     calibrated_model.save(calibrated_model_path)
 
-    # upload calibrated model to s3
+    print_debug("upload calibrated model to s3")
     s3_output_path_tmp = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/calibrated_conversion_model/1"
     s3_copy(calibrated_model_path, s3_output_path_tmp)
     # rename trick
