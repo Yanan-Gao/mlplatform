@@ -33,10 +33,11 @@ import java.time.LocalDate
         .withColumn("AdGroupId", $"_c0")
         .select($"AdGroupId").as[AdGroupFilterRecord]
 
-      val filteredData = ModelInputTransform.transformWithFilter(clicks, bidsImpressions, adGroupIds, true)
+      val (filteredData, labelCounts) = ModelInputTransform.transform(clicks, bidsImpressions, Some(adGroupIds), true)
       writeData(filteredData, outputPath, ttdEnv, "filtered", date, filteredPartitions)
+      writeData(labelCounts, outputPath, ttdEnv, "filteredmetadata", date, 1, false)
     } else {
-      val (trainingData, labelCounts) = ModelInputTransform.transform(clicks, bidsImpressions)
+      val (trainingData, labelCounts) = ModelInputTransform.transform(clicks, bidsImpressions, None)
       writeData(trainingData, outputPath, ttdEnv, outputPrefix, date, partitions)
       writeData(labelCounts, outputPath, ttdEnv, "metadata", date, 1, false)
     }

@@ -64,14 +64,16 @@ object ModelInputTransform extends Logger {
 
   )
 
-  // return training input based on the full combined dataset
-  def transform(
-                 clicks: Dataset[ClickTrackerRecord],
-                 bidsImpsDat: Dataset[BidsImpressionsSchema]): (DataFrame, DataFrame) = {
+  // return training input based on bidimps combined dataset
+  // if filterresults = true, adgroupfilter must be provided & output will be filtered.
+  def transform(clicks: Dataset[ClickTrackerRecord],
+                bidsImpsDat: Dataset[BidsImpressionsSchema],
+                adGroupFilter: Option[Dataset[AdGroupFilterRecord]],
+                filterResults: Boolean = false): (DataFrame, DataFrame) = {
 
     val (clickLabels, bidsImpsPreJoin) = hashBidAndClickLabels(clicks, bidsImpsDat)
 
-    val joinedData = joinDatasets(clickLabels, bidsImpsPreJoin)
+    val joinedData = joinDatasets(clickLabels, bidsImpsPreJoin, adGroupFilter, filterResults)
 
     val flatten = flattenData(joinedData.toDF, flatten_set)
       .selectAs[ModelInputRecord]
@@ -82,23 +84,6 @@ object ModelInputTransform extends Logger {
     val hashedData = getHashedData(flatten)
 
     (hashedData, label_counts)
-  }
-
-  // returns training input filtered by a set of adgroupids
-  def transformWithFilter(clicks: Dataset[ClickTrackerRecord],
-                          bidsImpsDat: Dataset[BidsImpressionsSchema],
-                          adGroupFilter: Dataset[AdGroupFilterRecord],
-                          filterResults: Boolean): DataFrame  = {
-
-    val (clickLabels, bidsImpsPreJoin) = hashBidAndClickLabels(clicks, bidsImpsDat)
-
-    val joinedData = joinDatasets(clickLabels, bidsImpsPreJoin, Some(adGroupFilter), filterResults)
-
-    val flatten = flattenData(joinedData.toDF, flatten_set)
-      .selectAs[ModelInputRecord]
-
-    // return the filtered records
-    getHashedData(flatten)
   }
 
   def intModelFeaturesCols(inputColAndDims: Seq[ModelFeature]): Array[Column] = {

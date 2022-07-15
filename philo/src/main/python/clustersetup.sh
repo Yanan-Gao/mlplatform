@@ -1,14 +1,16 @@
 #!/bin/bash
 
 BASE_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1"
-PREFIX="processed"
+PREFIX="filtered"
+META_PREFIX="filteredmetadata"
 LOOKBACK=9
 ENV="prod"
 DATA_SOURCE="${BASE_S3_PATH}/${ENV}/${PREFIX}"
-META_SOURCE=""
+META_SOURCE="${BASE_S3_PATH}/${ENV}/${META_PREFIX}"
 
 MNT="../../../../../../mnt/"
 SYNC_DEST="tfrecords"
+META_DEST="metadata"
 
 echo "installing updates.... \n"
 sudo yum update -y
