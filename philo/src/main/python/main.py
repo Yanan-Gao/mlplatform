@@ -16,7 +16,7 @@ INPUT_PATH = "/var/tmp/input/"
 OUTPUT_PATH = "/var/tmp/output/"
 MODEL_LOGS = "/var/tmp/logs/"
 # META_DATA_INPUT = "var/tmp/input"
-S3_PROD = "s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/"
+S3_PROD = "s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/stage/"
 # PARAM_MODEL_OUTPUT = "models_params/"
 MODEL_OUTPUT = "models/"
 EVAL_OUTPUT = "eval_metrics/"
@@ -73,8 +73,8 @@ flags.DEFINE_list("exclude_features", default=[], help="Features to exclude from
 flags.DEFINE_enum('job', 'running', ['running', 'stopped'], 'Job status.')
 
 flags.DEFINE_string('model_creation_date',
-                    default=datetime.now().strftime("%Y%m%d%H"),
-                    help='Time the model was created. Its ISO date format YYYYMMDDHH (e.g. 2021123114) defaults now'
+                    default=datetime.now().strftime("%Y%m%d%H%M"),
+                    help='Time the model was created. Its ISO date format YYYYMMDDHHMM (e.g. 2021123114) defaults now'
                          'Not related to the date on the training data, rather is used to identify when the model was '
                          'trained. Primary use is for model loader to load latest model to prod.')
 

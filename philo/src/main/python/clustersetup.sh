@@ -62,8 +62,8 @@ for i in {1..9}; do
 
 done
 
-echo "syncing meta data form ${META_SOURCE} to ${META_DEST}"
-aws s3 sync ${META_SOURCE} ${META_DEST} --quiet
+#echo "syncing meta data form ${META_SOURCE} to ${META_DEST}"
+#aws s3 sync ${META_SOURCE} ${META_DEST} --quiet
 
 echo "set up complete"
 

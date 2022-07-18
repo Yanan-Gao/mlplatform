@@ -116,7 +116,7 @@ philo:build_push_training_container:
     - docker tag ${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
     - docker push ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
     - popd
-    - echo "latest training container pushed"
+    - echo "latest training container pushed to ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}"
 
 philo:build_push_release_container:
   image: "$PYTHON_BUILD_IMAGE"
