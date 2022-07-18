@@ -27,7 +27,7 @@ def get_callbacks(log_path, profile_batches, early_stopping_patience, checkpoint
     chkp_cb = tf.keras.callbacks.ModelCheckpoint(
         filepath=checkpoint_filepath,
         save_weights_only=True,
-        monitor='val_loss',
+        monitor='val_auc',
         mode='min',
         save_best_only=False,
         save_freq='epoch')
