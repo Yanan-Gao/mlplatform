@@ -19,7 +19,7 @@ import java.time.LocalDate
 
 
 object ConversionDataDailyProcessor extends Logger{
-  val graphThreshold = config.getDouble("graphThreshold", default = 0.8)//TODO: verify what's a good value here.
+  val graphThreshold = config.getDouble("graphThreshold", default = 0.01)//TODO: verify what's a good value here.
 
   def main(args: Array[String]): Unit = {
     val prometheus = new PrometheusClient("KoaV4Conversion", "DailyConversion")

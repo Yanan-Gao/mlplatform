@@ -31,8 +31,8 @@ object CrossDeviceGraphDataset {
     }
   }
 
-  def loadGraph(date:LocalDate, scoreThreshold:Double=0.0): Dataset[CrossDeviceGraphRecord] ={
-    val crossDeviceVendorLocation = "s3a://thetradedesk-useast-data-import/sxd-etl/universal/nextgen"
+  def loadGraph(date:LocalDate, scoreThreshold:Double=0.0, graphname:String="iav2graph") : Dataset[CrossDeviceGraphRecord] ={
+    val crossDeviceVendorLocation = "s3a://thetradedesk-useast-data-import/sxd-etl/universal/"+graphname
     val availableDates = FileSystem.get(new URI(crossDeviceVendorLocation), spark.sparkContext.hadoopConfiguration)
       .listStatus(new Path(crossDeviceVendorLocation))
       .map(_.getPath.getName)

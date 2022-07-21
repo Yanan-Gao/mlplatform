@@ -94,7 +94,7 @@ object ConversionDataDailyTransform {
       .join(xdDS, transformedConvDS("TDID")===xdDS("uiid"),"inner")
       .drop("uiid","score")
       .withColumn("rank", rank().over(window))
-      .filter($"rank"===1)
+      .filter($"rank"<=3)//TODO: may need to revisit to see if this is reasonable or need some modification.
       .drop("rank") //alleviate possible inflation on conversion due to multiple conversions belongs to the same person.
 
     // keep the latest conversion if there multiple on the same person
@@ -112,7 +112,7 @@ object ConversionDataDailyTransform {
         $"ConversionTime",
         $"uiid".as("UIID"),
         $"score" )
-      .filter($"CrossDeviceConfidenceLevel">=$"score")
+      .filter($"CrossDeviceConfidenceLevel"<=$"score")
       .drop("score")
       .selectAs[DailyConversionDataRecord]
       .distinct
