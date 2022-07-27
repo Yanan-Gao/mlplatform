@@ -1,19 +1,12 @@
 #!/bin/bash
 
 BASE_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/prod"
-MODEL_INPUT="modelinput/google"
-META_DATA="metadata/google"
-YEAR=$(date -d "$date -1 days" +"%Y")
-MONTH=$(date -d "$date -1 days" +"%m")
-DAY=$(date -d "$date -1 days" +"%d")
-DATE_PATH="year=${YEAR}/month=${MONTH}/day=${DAY}"
-LOOKBACK="7"
-DATA_SOURCE="${BASE_S3_PATH}/${MODEL_INPUT}/${DATE_PATH}/lookback=${LOOKBACK}/format=tfrecord/"
-META_SOURCE="${BASE_S3_PATH}/${META_DATA}/${DATE_PATH}/"
+SINGLE_DAY_SOURCE="singledayprocessed"
+DATA_SOURCE="${BASE_S3_PATH}/${SINGLE_DAY_SOURCE}"
+SSV_LIST=(google rubicon)
 
 MNT="../../../../../../mnt/"
-SYNC_DEST="tfrecords/"
-META_DEST="metadata/"
+SYNC_DEST="./csv_input/"
 
 echo "installing updates.... \n"
 sudo yum update -y
@@ -39,12 +32,23 @@ sudo systemctl restart docker
 
 echo "nvidia docker tool set up complete \n starting s3 sync.. \n"
 
+cd ${MNT}
 
-echo "syncing from ${DATA_SOURCE} to ${SYNC_DEST}"
-cd ${MNT} && aws s3 sync ${DATA_SOURCE} ${SYNC_DEST} --quiet
+echo "beginning data sycn..."
 
-echo "syncing meta data form ${META_SOURCE} to ${META_DEST}"
-aws s3 sync ${META_SOURCE} ${META_DEST} --quiet
+for SSV in ${SSV_LIST[*]}
+  do
+  ##not bash doesnt support variable exapnsion here, so hardcoded '7'
+  for i in {1..7}; do
+
+      YEAR=$(date -d "$date -$i days" +"%Y")
+      MONTH=$(date -d "$date -$i days" +"%m")
+      DAY=$(date -d "$date -$i days" +"%d")
+      echo "syncing from ${DATA_SOURCE}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/ ${SYNC_DEST}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/"
+      aws s3 sync "${DATA_SOURCE}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/" "${SYNC_DEST}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/" --quiet
+
+  done
+done
 
 echo "set up complete"
 
