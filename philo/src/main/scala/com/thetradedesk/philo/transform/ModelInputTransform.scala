@@ -4,11 +4,12 @@ import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.philo.{flattenData, schema, shiftModUdf}
-import com.thetradedesk.philo.schema.{AdGroupFilterRecord, ClickTrackerRecord, ModelInputRecord}
+import com.thetradedesk.philo.schema.{ClickTrackerRecord, ModelInputRecord}
 import com.thetradedesk.spark.sql.SQLFunctions._
 import org.apache.spark.sql.{Column, DataFrame, Dataset, SparkSession}
 import org.apache.spark.sql.functions.{col, concat_ws, lit, when, xxhash64}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import job.AdGroupFilterRecord
 
 object ModelInputTransform extends Logger {
 
