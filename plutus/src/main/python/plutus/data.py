@@ -154,7 +154,7 @@ def lookback_csv_dataset_generator(end_date_string,
 
         return tr_files, val_files, ts_files
 
-    holdout_date = datetime.strptime(end_date_string, "%Y-%m-%d")
+    holdout_date = datetime.strptime(end_date_string, "%Y%m%d%H")
     train_start_date = holdout_date - timedelta(days=lookback)
     train_end_date = holdout_date - timedelta(days=holdout_days - 1)
 
