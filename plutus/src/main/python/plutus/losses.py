@@ -26,6 +26,11 @@ def censored_fpa_nll(y, distr):
 
 
 @register_keras_custom_object
+def mb2w_nll(mb2w, distr):
+    loss = -distr.log_prob(K.clip(mb2w, K.epsilon(), 100000.0))
+    return loss
+
+@register_keras_custom_object
 def google_fpa_nll(y, distr):
     """
     Loss function to incorporate minimum_bid_to_win information based on details from `google docs

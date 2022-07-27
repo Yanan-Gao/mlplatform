@@ -12,13 +12,15 @@ WORKDIR /opt/application/
 
 RUN pip3 install --upgrade pip
 RUN pip3 install --quiet --no-cache-dir \
-    'tensorflow==2.7.0' \
-    'tensorflow_probability==0.15.0' \
+    'tensorflow==2.8.0' \
+    'tensorflow_probability==0.16.0' \
     'boto3' \
     'prometheus_client' \
     'awscli' \
     'pandas' \
-    'tensorflow-serving-api==2.7.0'
+    'tensorflow-serving-api==2.8.0'
+
+RUN pip3 install --upgrade protobuf==3.20.0
 
 
 

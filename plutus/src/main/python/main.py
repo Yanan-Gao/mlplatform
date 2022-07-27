@@ -7,9 +7,10 @@ import tensorflow as tf
 from absl import app, flags
 
 from plutus import ModelHeads, CpdType
-from plutus.data import s3_sync, tfrecord_files_dict, generate_random_pandas, create_datasets_dict, get_epochs
+from plutus.data import s3_sync, tfrecord_files_dict, generate_random_pandas, create_datasets_dict, get_epochs, \
+    lookback_csv_dataset_generator
 from plutus.features import default_model_features, default_model_targets, get_model_features, get_model_targets
-from plutus.losses import google_fpa_nll, google_mse_loss, google_bce_loss
+from plutus.losses import google_fpa_nll, google_mse_loss, google_bce_loss, mb2w_nll
 from plutus.metrics import evaluate_model_saving, eval_model_with_anlp
 from plutus.models import basic_model, dlrm_model, fastai_tabular_model, replace_last_layer
 from plutus.prometheus import Prometheus
@@ -17,13 +18,17 @@ from plutus.prometheus import Prometheus
 FLAGS = flags.FLAGS
 
 INPUT_PATH = "/var/tmp/input/"
+CSV_INPUT_PATH = "/var/tmp/csv_input/"
+SUPPLY_VENDORS = "google,rubicon"
+
 OUTPUT_PATH = "/var/tmp/output/"
 MODEL_LOGS = "/var/tmp/logs/"
-META_DATA_INPUT="var/tmp/input"
+META_DATA_INPUT = "var/tmp/input"
 S3_PROD = "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/prod/"
 PARAM_MODEL_OUTPUT = "models_params/"
 MODEL_OUTPUT = "models/"
 EVAL_OUTPUT = "eval_metrics/"
+S3_MODEL_LOGS = "model_logs/"
 
 TRAIN = "train"
 VAL = "validation"
@@ -60,6 +65,13 @@ flags.DEFINE_integer('num_mixture_components', default=3, help='Number of compoe
 # Paths
 flags.DEFINE_string('input_path', default=INPUT_PATH,
                     help=f'Location of input files (TFRecord). Default {INPUT_PATH}')
+
+flags.DEFINE_string('csv_input_path', default=None,
+                    help=f'Location of csv input files. Default {CSV_INPUT_PATH}')
+
+flags.DEFINE_list('sv', default=SUPPLY_VENDORS,
+                  help=f'Supply vendors to train on. Default {SUPPLY_VENDORS}')
+
 flags.DEFINE_string('meta_data_path', default=META_DATA_INPUT,
                     help=f'Location of meta data. Default {META_DATA_INPUT}')
 flags.DEFINE_string('log_path', default=MODEL_LOGS, help=f'Location of model training log files. Default {MODEL_LOGS}')
@@ -67,8 +79,9 @@ flags.DEFINE_string('output_path', default=OUTPUT_PATH, help=f'Location of model
 flags.DEFINE_string('s3_output_path', default=S3_PROD,
                     help=f'Location of S3 model output files. Default {S3_PROD}')
 
-flags.DEFINE_string('log_tag', default=f"{datetime.now().strftime('%Y-%m-%d-%H')}", help='log tag')
+flags.DEFINE_boolean('push_training_logs', default=False, help=f'option to push all logs to s3 for debugging. defaulted false')
 
+flags.DEFINE_string('log_tag', default=f"{datetime.now().strftime('%Y-%m-%d-%H')}", help='log tag')
 
 # Learning Parameters
 flags.DEFINE_float("learning_rate", default=0.0001, help="Learning Rate for optimiser")
@@ -98,6 +111,11 @@ flags.DEFINE_list("exclude_features", default=[], help="Features to exclude from
 flags.DEFINE_list("exclude_targets", default=[], help="Targets to exclude from the model")
 
 flags.DEFINE_enum('job', 'running', ['running', 'stopped'], 'Job status.')
+
+flags.DEFINE_string('model_training_date', default=datetime.now().strftime("%Y%m%d%H"),
+                    help='The last date of training data typically this is the holdout date. Training data will'
+                         'consist of the days in the lookback and we use the last day as holdout validation and test'
+                    )
 
 flags.DEFINE_string('model_creation_date',
                     default=datetime.now().strftime("%Y%m%d%H%M"),
@@ -176,7 +194,7 @@ def get_loss_for_heads():
     elif FLAGS.heads == "cpd_floor":
         loss = [google_fpa_nll, google_mse_loss]
     else:
-        loss = google_fpa_nll
+        loss = google_fpa_nll if FLAGS.csv_input_path is None else mb2w_nll
 
     return loss
 
@@ -189,10 +207,26 @@ def prepare_real_data(model_features, model_targets):
     create datasets
 
     """
-    print(FLAGS.input_path)
-    files = tfrecord_files_dict(FLAGS.input_path)
-    print(files)
-    return create_datasets_dict(files, FLAGS.batch_size, model_features, model_targets, FLAGS.eval_batch_size)
+    if FLAGS.csv_input_path is None:
+        print(FLAGS.input_path)
+        files = tfrecord_files_dict(FLAGS.input_path)
+        print(files)
+        return create_datasets_dict(files, FLAGS.batch_size, model_features, model_targets, FLAGS.eval_batch_size)
+    else:
+        selected_cols = {f.name: f.type for f in model_features}
+        selected_cols["mb2w"] = tf.float32
+
+        ds_tr, ds_val, ds_ts = lookback_csv_dataset_generator(
+            end_date_string=FLAGS.model_training_date,
+            path_prefix=[f"{FLAGS.csv_input_path}/{sv}/" for sv in FLAGS.sv],
+            batch_size=FLAGS.batch_size,
+            selected_cols=selected_cols,
+        )
+        return {
+            TRAIN: ds_tr,
+            VAL: ds_val,
+            TEST: ds_ts,
+        }
 
 
 def prepare_dummy_data(model_features, model_targets):
@@ -236,7 +270,8 @@ def main(argv):
     model_features, model_targets = get_features_targets()
 
     try:
-       epochs = get_epochs(FLAGS.meta_data_path, FLAGS.batch_size, FLAGS.steps_per_epoch)
+        epochs = get_epochs(FLAGS.meta_data_path, FLAGS.batch_size,
+                            FLAGS.steps_per_epoch) if FLAGS.csv_input_path is None else FLAGS.num_epochs
     except Exception as inst:
         print(inst.args)
         epochs = FLAGS.num_epochs
@@ -259,7 +294,7 @@ def main(argv):
 
     history = model.fit(datasets[TRAIN],
                         epochs=epochs,
-                        steps_per_epoch=FLAGS.steps_per_epoch,
+                        steps_per_epoch=FLAGS.steps_per_epoch if FLAGS.csv_input_path is None else None,
                         verbose=FLAGS.training_verbosity,
                         callbacks=get_callbacks(),
                         validation_data=datasets[VAL],
@@ -270,6 +305,9 @@ def main(argv):
     model.save(model_tag)
 
     params_model_tag = save_params_model(model)
+
+    if (FLAGS.push_training_logs):
+        s3_sync(FLAGS.log_path, f"{FLAGS.s3_output_path}{S3_MODEL_LOGS}")
 
     s3_sync(model_tag, f"{FLAGS.s3_output_path}{MODEL_OUTPUT}{FLAGS.model_creation_date}")
     s3_sync(params_model_tag, f"{FLAGS.s3_output_path}{PARAM_MODEL_OUTPUT}{FLAGS.model_creation_date}")
