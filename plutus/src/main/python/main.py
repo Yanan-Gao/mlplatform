@@ -1,7 +1,7 @@
 import os
 import sys
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import tensorflow as tf
 from absl import app, flags
@@ -112,7 +112,7 @@ flags.DEFINE_list("exclude_targets", default=[], help="Targets to exclude from t
 
 flags.DEFINE_enum('job', 'running', ['running', 'stopped'], 'Job status.')
 
-flags.DEFINE_string('model_training_date', default=datetime.now().strftime("%Y%m%d%H"),
+flags.DEFINE_string('model_training_date', default=(datetime.now() - timedelta(1)).strftime("%Y%m%d%H") ,
                     help='The last date of training data typically this is the holdout date. Training data will'
                          'consist of the days in the lookback and we use the last day as holdout validation and test'
                     )
