@@ -61,7 +61,8 @@ abstract class LightWritableDataset[T <: Product : Manifest](
                      numPartitions: Option[Int] = None,
                      subFolderKey: Option[String] = None,
                      subFolderValue: Option[String] = None,
-                     format: Option[String] = None
+                     format: Option[String] = None,
+                     saveMode: SaveMode = SaveMode.ErrorIfExists
                     ): Unit = {
 
     val partitionedPath: String = DatePartitionedPath(Some(date), subFolderKey, subFolderValue)
@@ -70,7 +71,7 @@ abstract class LightWritableDataset[T <: Product : Manifest](
 
       case Some("tfrecord") => dataset
         .repartition(numPartitions.getOrElse(defaultNumPartitions))
-        .write.mode(SaveMode.Overwrite)
+        .write.mode(saveMode)
         .format("tfrecord")
         .option("recordType", "Example")
         .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
@@ -78,13 +79,13 @@ abstract class LightWritableDataset[T <: Product : Manifest](
 
       case  Some("csv") => dataset
         .repartition(numPartitions.getOrElse(defaultNumPartitions))
-        .write.mode("overwrite")
-        .option("header",true)
+        .write.mode(saveMode)
+        .option("header", value = true)
         .csv(partitionedPath)
 
       case _ => dataset
         .repartition(numPartitions.getOrElse(defaultNumPartitions))
-        .write.mode(SaveMode.Overwrite)
+        .write.mode(saveMode)
         .parquet(partitionedPath)
     }
   }

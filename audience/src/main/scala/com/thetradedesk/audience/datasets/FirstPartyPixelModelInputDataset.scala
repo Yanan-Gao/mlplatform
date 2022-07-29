@@ -4,6 +4,8 @@ import com.thetradedesk.geronimo.shared.{FLOAT_FEATURE_TYPE, INT_FEATURE_TYPE, S
 import com.thetradedesk.audience.transform.FeatureDesc
 import com.thetradedesk.audience.ttdEnv
 
+import java.sql.Timestamp
+
 final case class FirstPartyPixelModelInputRecord(
                                                   @FeatureDesc("SupplyVendor", "string", 102)
                                                   SupplyVendor: Option[Int],
@@ -35,8 +37,8 @@ final case class FirstPartyPixelModelInputRecord(
                                                   Browser: Option[Int],
                                                   @FeatureDesc("TargetingDataId", "long", 2000003)
                                                   TargetingDataId: Int,
-                                                  AdWidthInPixels: Option[Int],
-                                                  AdHeightInPixels: Option[Int],
+                                                  AdWidthInPixels: Option[Double],
+                                                  AdHeightInPixels: Option[Double],
 
                                                   sin_hour_week: Double,
                                                   cos_hour_week: Double,
@@ -44,8 +46,13 @@ final case class FirstPartyPixelModelInputRecord(
                                                   cos_hour_day: Double,
                                                   Latitude: Option[Double],
                                                   Longitude: Option[Double],
-
                                                   Target: Double,
+
+                                                  TDID: String,
+                                                  BidRequestId: String,
+                                                  AdvertiserId: String,
+                                                  CampaignId: String,
+                                                  AdGroupId: String,
                                                 )
 
 case class FirstPartyPixelModelInputDataset() extends

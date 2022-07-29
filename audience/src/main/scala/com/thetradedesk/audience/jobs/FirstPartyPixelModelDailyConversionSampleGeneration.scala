@@ -79,6 +79,10 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
       .withColumn("RenderingContext", 'RenderingContext("value"))
       .withColumn("DeviceType", 'DeviceType("value"))
       .withColumn("Date", to_date('LogEntryTime, "yyyy-MM-dd")) // used for saving the data into different folds or train and val
+      .withColumn("AdWidthInPixels", ('AdWidthInPixels - lit(1.0))/lit(9999.0)) // 1 - 10000
+      .withColumn("AdHeightInPixels", ('AdHeightInPixels - lit(1.0))/lit(9999.0)) // 1 - 10000
+      .withColumn("Latitude", ('Latitude + lit(90.0))/lit(180.0))  // -90 - 90
+      .withColumn("Longitude", ('Longitude + lit(180.0))/lit(360.0)) //-180 - 180
 
     val trackingTagDataset = TrackingTagDataset().readPartition(date)
 
@@ -273,7 +277,7 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
     // hard negative sample combines seem and unseem positive impressions; currently set as 1:4
     val sampledPositivePool = positivePool
       .filter('row <= 5 * numTDID)
-      .drop("TargetingDataId")
+      .drop("TargetingDataId", "CampaignId")
 
     val hardNegSample = sampledPositivePool
       .join(sampledHardNegPool,
