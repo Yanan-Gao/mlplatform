@@ -35,7 +35,6 @@ def get_callbacks(log_path, profile_batches, early_stopping_patience, checkpoint
     return [tb_callback, es_cb, chkp_cb]
 
 
-
 def generate_results(model, predict_data):
     """generate testing results
 
@@ -49,10 +48,7 @@ def generate_results(model, predict_data):
     pred_all = []
     label_all = []
     br_all = []
-    #count = 1
     for data, label, br_id in predict_data:
-        # count+=1
-        # print(count)
         prediction = model.predict(data)
         pred_all.append(prediction)
         label_all.append(label.numpy())
