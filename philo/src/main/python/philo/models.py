@@ -1,5 +1,3 @@
-import tensorflow as tf
-# ctr
 from philo.features import build_input_features, get_linear_logit, input_from_feature_columns, SparseFeat, DenseFeat
 from philo.layers import add_func, concat_func, combined_dnn_input, DNN, FM, PredictionLayer
 
@@ -14,13 +12,14 @@ from itertools import chain
 DEFAULT_GROUP_NAME = "default_group"
 SEED = 1024
 
+
 def model_builder(model_arch, model_features, **kwargs):
     """build model
 
     Args:
         model_arch: model architecture, currently only implemented deep fm
         model_features (list): model feature description
-        kwargs (dict): necessary parameter settings to setup model
+        kwargs (dict): necessary parameter settings to set up model
 
     Returns:
         model
@@ -44,7 +43,8 @@ def deep_fm(linear_feature_columns, dnn_feature_columns, fm_group=[DEFAULT_GROUP
     :param linear_feature_columns: An iterable containing all the features used by linear part of the model.
     :param dnn_feature_columns: An iterable containing all the features used by deep part of the model.
     :param fm_group: list, group_name of features that will be used to do feature interactions.
-    :param dnn_hidden_units: list,list of positive integer or empty list, the layer number and units in each layer of DNN
+    :param dnn_hidden_units: list,list of positive integer or empty list, the layer number
+                             and units in each layer of DNN
     :param l2_reg_linear: float. L2 regularizer strength applied to linear part
     :param l2_reg_embedding: float. L2 regularizer strength applied to embedding vector
     :param l2_reg_dnn: float. L2 regularizer strength applied to DNN

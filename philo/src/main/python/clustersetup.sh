@@ -9,8 +9,8 @@ DATA_SOURCE="${BASE_S3_PATH}/${ENV}/${PREFIX}"
 META_SOURCE="${BASE_S3_PATH}/${ENV}/${META_PREFIX}"
 
 MNT="../../../../../../mnt/"
-SYNC_DEST="tfrecords"
-META_DEST="metadata"
+SYNC_DEST="tfrecords/"
+META_DEST="metadata/"
 
 echo "installing updates.... \n"
 sudo yum update -y
@@ -45,25 +45,25 @@ for i in {1..9}; do
     MONTH=$(date -d "$date -$i days" +"%m")
     DAY=$(date -d "$date -$i days" +"%d")
     S3_SOURCE="${DATA_SOURCE}/year=${YEAR}/month=${MONTH}/day=${DAY}/"
+    S3_META_SOURCE="${META_SOURCE}/year=${YEAR}/month=${MONTH}/day=${DAY}/"
     if ((i <= 7))
       then echo "syncing from ${S3_SOURCE} to "${SYNC_DEST}/train""
       aws s3 sync ${S3_SOURCE} "${SYNC_DEST}/train/" --exclude "*" --include "part-*0000?*.gz" --quiet
+      echo "syncing meta data form ${S3_META_SOURCE} to ${META_DEST}"
+      aws s3 sync ${S3_META_SOURCE} "${META_DEST}/" --exclude "*" --include "*.csv" --quiet
      fi
 
     if ((i == 8))
-      then echo "syncing from ${S3_SOURCE}  to "${SYNC_DEST}/train""
+      then echo "syncing from ${S3_SOURCE}  to "${SYNC_DEST}/validation""
       aws s3 sync ${S3_SOURCE} "${SYNC_DEST}/test/" --exclude "*" --include "part-*0000?*.gz" --quiet
     fi
 
     if ((i == 9))
-      then echo "syncing from ${S3_SOURCE}  to "${SYNC_DEST}/train""
+      then echo "syncing from ${S3_SOURCE}  to "${SYNC_DEST}/test""
       aws s3 sync ${S3_SOURCE} "${SYNC_DEST}/validation/" --exclude "*" --include "part-*0000?*.gz" --quiet
     fi
 
 done
-
-#echo "syncing meta data form ${META_SOURCE} to ${META_DEST}"
-#aws s3 sync ${META_SOURCE} ${META_DEST} --quiet
 
 echo "set up complete"
 

@@ -1,5 +1,6 @@
 import os
 from typing import List
+from datetime import timedelta
 
 import tensorflow as tf
 from pathlib import Path
@@ -16,36 +17,99 @@ TEST = "test"
 
 
 def s3_sync(src_path, dst_path):
+    """
+    Sync data from source path to destination path, need awscli
+    Args:
+        src_path: source path
+        dst_path: destination path
+
+    Returns: command for syncing
+
+    """
     sync_command = f"aws s3 sync {src_path} {dst_path}"
     os.system(sync_command)
     return sync_command
 
 
-# def read_metadata(path):
-#     p = Path(f"{path}")
-#     files = [str(f.resolve()) for f in list(p.glob("*.csv"))]
-#     return pd.read_csv(files[0], delimiter="\t")
+def read_metadata(file_names):
+    """
+    Read metadata from metadata path
+    Args:
+        file_names: list of file names for metadata
 
-# def get_epochs(path, batch_size, steps_per_epoch):
-#     df = read_metadata(path)
-#     batch_per_dataset = df['train'].iloc[0] // batch_size
-#     epochs = batch_per_dataset // steps_per_epoch
-#     return epochs
+    Returns: dataframe with the count for each class
+
+    """
+    all_data = pd.concat([pd.read_csv(f) for f in file_names])
+    return all_data.groupby("label").sum()
 
 
-def list_tfrecord_files(path, format=None):
+def get_meta_files_emr(path):
+    """
+    Read metadata from metadata path in emr
+    Args:
+        path: path to the metadata
+
+    Returns: list of meta file names
+
+    """
+    p = Path(path)
+    files = [str(f.resolve()) for f in list(p.glob("*.csv"))]
+    return files
+
+
+def get_steps_epochs(metadata, batch_size, trunks, multiplier=5):
+    """
+    Calculate steps_per_epochs and number of epochs
+    Args:
+        metadata: metadata df, has count for each class
+        batch_size: batch size
+        trunks: number of trunks that the whole dataset shall be divided into
+        multiplier: how many loops of total data should the algorithm go through
+
+    Returns: steps_per_epoch and number of epochs
+
+    """
+    total_n = metadata.sum()["count"]
+    samples_per_epoch = total_n // trunks
+    steps_per_epoch = samples_per_epoch // batch_size
+    return steps_per_epoch, trunks * multiplier
+
+
+def get_steps_epochs_emr(path, batch_size, trunks, multiplier=5):
+    """
+    get steps epoch info for automatic run on emr
+    Args:
+        path: path to the metadata files
+        batch_size: batch size for each step
+        trunks: number of trunks the data is divided into
+        multiplier: trunk * multiplier is the total number of epochs
+
+    Returns: steps_per_epoch, epochs
+
+    """
+    if trunks == 1:
+        return None, multiplier
+    files = get_meta_files_emr(path)
+    metadata = read_metadata(files)
+    steps_per_epoch, epochs = get_steps_epochs(metadata=metadata, batch_size=batch_size,
+                                               trunks=trunks, multiplier=multiplier)
+    return steps_per_epoch, epochs
+
+
+def list_tfrecord_files(path, data_format="GZIP"):
     """create a dictionary with each key represents a list of corresponding
        tfrecord files
 
     Args:
         path (string): path to the tfrecord files
-        format (str): gzip or tf
+        data_format (str): gzip or not zipped
 
     Returns:
         dict: dictionary for train validate test
     """
     p = Path(f"{path}")
-    if format == "gzip":
+    if data_format == "GZIP":
         glob_str = "*.gz"
     else:
         glob_str = "part*"
@@ -59,7 +123,7 @@ def list_tfrecord_files(path, format=None):
     return files_dir
 
 
-def tfrecord_dataset(files, batch_size, map_fn, compression_type=None, prefetch_num=10):
+def tfrecord_dataset(files, batch_size, map_fn, compression_type="GZIP", prefetch_num=10, repeat=False):
     """
     create tf data pipeline
     Args:
@@ -70,18 +134,21 @@ def tfrecord_dataset(files, batch_size, map_fn, compression_type=None, prefetch_
                           None (if data is produced without compression)
                           or GZIP (if data is produced through pipeline)
         prefetch_num: prefetch batches
+        repeat: whether repeat dataset or not, useful if run through data set in multiple epochs, need to set the
+                steps_per_epochs if repeat is true
 
     Returns: tf data pipeline
 
     """
-    return tf.data.TFRecordDataset(
-        files,
-        compression_type=compression_type,
-    ).batch(
+    data = tf.data.TFRecordDataset(files, compression_type=compression_type)
+    if repeat:
+        data = data.repeat()
+
+    return data.batch(
         batch_size=batch_size,
         drop_remainder=True
     ).map(
-        map_fn,
+        map_func=map_fn,
         num_parallel_calls=tf.data.AUTOTUNE,
         deterministic=False
     ).prefetch(
@@ -89,26 +156,16 @@ def tfrecord_dataset(files, batch_size, map_fn, compression_type=None, prefetch_
     )
 
 
-#
-#
-# def downsample(files_dict, down_sample_rate=None):
-#     if down_sample_rate is not None:
-#         files_dict_sample = {}
-#         for k, v in files_dict.items():
-#             files_dict_sample[k] = files_dict[k][: math.ceil(len(v) * down_sample_rate)]
-#         return files_dict_sample
-#
-#     return files_dict
-#
-#
 def create_datasets(files_dict, batch_size, model_features,
                     model_target, map_function=get_map_function,
                     map_function_test=get_map_function_test,
-                    compression_type=None, eval_batch_size=None,
-                    test_batch_size=2 ** 17, offline_test=False):
+                    compression_type="GZIP", eval_batch_size=None,
+                    prefetch_num=10, test_batch_size=2 ** 17,
+                    offline_test=False, repeat=False):
     """
     create tf data
     Args:
+        prefetch_num: prefetch for tf.data to load data to cpu
         files_dict: dictionary of train validate and test
         batch_size: batch size for train
         model_features: list of features
@@ -118,74 +175,43 @@ def create_datasets(files_dict, batch_size, model_features,
         compression_type: type of tfrecords compression format
         eval_batch_size: batch size for evaluation
         test_batch_size: batch size for testing
-        offline_test: do offline test or not, this decides whether test data will generate bidrequestid
-
+        offline_test: do offline test or not, this decides whether test data will generate bidRequestId
+        repeat: whether repeat dataset or not, useful if run through data set in multiple epochs, need to set the
+                steps_per_epochs if repeat is true
     Returns:
 
     """
     ds = {}
     for split, files in files_dict.items():
         if split == TRAIN:
-            ds[split] = tfrecord_dataset(files,
-                                         batch_size,
-                                         map_function(model_features, model_target), compression_type
+            ds[split] = tfrecord_dataset(files=files,
+                                         batch_size=batch_size,
+                                         map_fn=map_function(model_features, model_target),
+                                         compression_type=compression_type,
+                                         prefetch_num=prefetch_num, repeat=repeat
                                          )
         elif split == TEST:
             if offline_test:
-                ds[split] = tfrecord_dataset(files,
-                                             test_batch_size if test_batch_size is not None else batch_size,
-                                             map_function_test(model_features, model_target, "BidRequestId"),
-                                             compression_type
+                ds[split] = tfrecord_dataset(files=files,
+                                             batch_size=test_batch_size if test_batch_size is not None else batch_size,
+                                             map_fn=map_function_test(model_features, model_target, "BidRequestId"),
+                                             compression_type=compression_type
                                              )
             else:
-                ds[split] = tfrecord_dataset(files,
-                                             eval_batch_size if eval_batch_size is not None else batch_size,
-                                             map_function(model_features, model_target), compression_type
+                ds[split] = tfrecord_dataset(files=files,
+                                             batch_size=eval_batch_size if eval_batch_size is not None else batch_size,
+                                             map_fn=map_function(model_features, model_target),
+                                             compression_type=compression_type
                                              )
         else:
-            ds[split] = tfrecord_dataset(files,
-                                         eval_batch_size if eval_batch_size is not None else batch_size,
-                                         map_function(model_features, model_target), compression_type
+            ds[split] = tfrecord_dataset(files=files,
+                                         batch_size=eval_batch_size if eval_batch_size is not None else batch_size,
+                                         map_fn=map_function(model_features, model_target),
+                                         compression_type=compression_type
                                          )
     return ds
 
 
-#
-#
-# # def calc_epocs_per_data():
-# #     batch_per_epoch = (num_train_examples // batch_size) // epoch_per_dataset
-# #
-# #     print(f"{num_train_examples=:>20,}")
-# #     print(f"{num_val_examples=:>20,}")
-# #     print(f"{num_test_examples=:>20,}")
-# #
-# #     print(f"{batch_size=:>20,}")
-# #     print(f"{epoch_per_dataset=:>20,}")
-# #     print(f"{batch_per_epoch=:>20,}")
-#
-#
-# def _float_feature(value):
-#     return tf.train.Feature(float_list=tf.train.FloatList(value=value))
-#
-#
-# def _int64_feature(value):
-#     return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
-#
-#
-# def generate_random_tf_example(model_features, model_targets):
-#     features = {}
-#     for f in model_features:
-#         if f.type == tf.int32:
-#             features[f.name] = _int64_feature(np.random.randint(0, f.cardinality, size=1))
-#
-#         elif f.type == tf.float32:
-#             features[f.name] = _float_feature(np.random.random_sample(size=1))
-#     for t in model_targets:
-#         features[t.name] = _float_feature(np.random.random_sample(size=1))
-#
-#     return tf.train.Example(features=tf.train.Features(feature=features))
-#
-#
 def generate_random_pandas(model_features, model_target, num_examples=1000):
     """
     generate artificial pandas data
@@ -229,32 +255,37 @@ def prepare_dummy_data(model_features, model_target, batch_size):
     }
 
 
-def prepare_real_data(model_features, model_target, input_path, batch_size, eval_batch_size, offline_test=False):
+def prepare_real_data(model_features, model_target, input_path,
+                      batch_size, eval_batch_size, prefetch_num=10,
+                      offline_test=False, repeat=False):
     """
     create real dataset
     Args:
+        prefetch_num: prefetch data to cpu memory
         model_features: list of model feature settings
         model_target: model target setting
         input_path: input path for data
         batch_size: batch size for training
         eval_batch_size: batch size for evaluating
-        offline_test: if true, generate bidrequest id besides features and target
+        offline_test: if true, generate bidRequestId besides features and target
+        repeat: if data is split into trunks, need to set it to True
 
     Returns:
 
     """
-    print(input_path)
+    # print(input_path)
     files = list_tfrecord_files(input_path)
-    print(files)
+    # print(files)
     return create_datasets(files_dict=files, batch_size=batch_size, model_features=model_features,
                            model_target=model_target, compression_type="GZIP", eval_batch_size=eval_batch_size,
-                           offline_test=offline_test)
+                           prefetch_num=prefetch_num, offline_test=offline_test, repeat=repeat)
+
 
 def generate_random_grpc_query(model_features, model_name, version=None):
     """
 
     Args:
-        model_features: list of Feature nametuple
+        model_features: list of Feature name tuple
         model_name: name of the model
         version: version of the model
 
@@ -278,3 +309,68 @@ def generate_random_grpc_query(model_features, model_name, version=None):
     return grpc_request
 
 
+def get_file_list_between_date(sdate, edate, input_path, suffix="gz"):
+    """Find tf files between the date that is used
+       only used in adhoc operation, this is used
+       in databricks environment, the automatic
+       training process shall sync the data to train
+       test validate folders
+    """
+    # root_dir needs a trailing slash (i.e. /root/dir/)
+    dts = pd.date_range(sdate, edate, freq='d')
+
+    files = []
+    for i in dts:
+        path_str = i.strftime("year=%Y/month=%m/day=%d/")
+        print(f"{input_path}{path_str}")
+        p = Path(f"{input_path}{path_str}")
+        files += [f.as_posix() for f in p.rglob(f"*.{suffix}")]
+    return files
+
+
+def get_steps_epochs_db(meta_path, sdate, edate, batch_size, trunks, multiplier=5):
+    """
+    get steps epoch info for automatic run on emr
+    Args:
+        meta_path: path to the metadata files
+        sdate: start date
+        edate: end date
+        batch_size: batch size for each step
+        trunks: number of trunks the data is divided into
+        multiplier: trunk * multiplier is the total number of epochs
+
+    Returns: steps_per_epoch, epochs
+
+    """
+    if trunks == 1:
+        return None, multiplier
+    files = get_file_list_between_date(sdate=sdate, edate=edate, input_path=meta_path, suffix="csv")
+    metadata = read_metadata(files)
+    steps_per_epoch, epochs = get_steps_epochs(metadata=metadata, batch_size=batch_size, trunks=trunks,
+                                               multiplier=multiplier)
+    return steps_per_epoch, epochs
+
+
+def list_tfrecord_files_db(path, train_start_date, train_days=7):
+    """create a dictionary with each key represents a list of corresponding
+       tfrecord files
+
+    Args:
+        path (string): path to the tfrecord files
+        train_start_date: start date of training period
+        train_days: number of days used for training period
+
+    Returns:
+        dict: dictionary for train validate test
+    """
+    train_end_date = train_start_date + timedelta(days=train_days - 1)  # end date
+    validate_date = train_end_date + timedelta(days=1)
+    test_date = validate_date + timedelta(days=1)
+    files_dir = dict()
+    files_dir[TRAIN] = get_file_list_between_date(sdate=train_start_date, edate=train_end_date, input_path=path,
+                                                  suffix="gz")
+    files_dir[VAL] = get_file_list_between_date(sdate=validate_date, edate=validate_date, input_path=path,
+                                                suffix="gz")
+    files_dir[TEST] = get_file_list_between_date(sdate=test_date, edate=test_date, input_path=path,
+                                                 suffix="gz")
+    return files_dir

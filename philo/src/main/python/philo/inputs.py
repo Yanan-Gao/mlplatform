@@ -8,13 +8,13 @@ from philo.layers import Hash, WeightedSequenceLayer, SequencePoolingLayer
 
 def create_embedding_matrix(feature_columns, l2_reg, seed, prefix="", seq_mask_zero=True):
     """
-    separate sparse and varribale length features and create embedding matrix for it
+    separate sparse and variable length features and create embedding matrix for it
     Args:
         feature_columns: all the features
         l2_reg: l2 regularization weights
         seed: random seed
         prefix: prefix for the name of node
-        seq_mask_zero: whether use mask for sequence data
+        seq_mask_zero: whether you use mask for sequence data
 
     Returns: dictionary of embedding layers
 

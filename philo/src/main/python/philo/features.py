@@ -360,7 +360,7 @@ def input_from_feature_columns(features, feature_columns, l2_reg, seed, prefix='
     Create inputs from the model features by separating dense features and embedded features
     Args:
         features: list of input feature tensors
-        feature_columns: list of SparseFeat, VarlenFeat and DesneFeat
+        feature_columns: list of SparseFeat, VarlenFeat and DenseFeat
         l2_reg: l2 regularization weights
         seed: random seed
         prefix: prefix for the name of the tensor

@@ -11,6 +11,7 @@ from tensorflow.python.ops.lookup_ops import TextFileInitializer
 DEFAULT_MLP_LAYER_UNITS = (128, 128)  # [512, 256, 64]
 SEED = 1024
 
+
 # utils layers
 class NoMask(Layer):
     def __init__(self, **kwargs):
@@ -140,10 +141,12 @@ def concat_func(inputs, axis=-1, mask=False):
 # activation layers
 
 class Dice(Layer):
-    """The Data Adaptive Activation Function in DIN,which can be viewed as a generalization of PReLu and can adaptively adjust the rectified point according to distribution of input data.
+    """The Data Adaptive Activation Function in DIN,which can be viewed as a generalization of PReLu and can adaptively
+    adjust the rectified point according to distribution of input data.
 
       Input shape
-        - Arbitrary. Use the keyword argument `input_shape` (tuple of integers, does not include the samples axis) when using this layer as the first layer in a model.
+        - Arbitrary. Use the keyword argument `input_shape` (tuple of integers, does not include the samples' axis)
+        when using this layer as the first layer in a model.
 
       Output shape
         - Same shape as the input.
@@ -154,7 +157,9 @@ class Dice(Layer):
         - **epsilon** : Small float added to variance to avoid dividing by zero.
 
       References
-        - [Zhou G, Zhu X, Song C, et al. Deep interest network for click-through rate prediction[C]//Proceedings of the 24th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining. ACM, 2018: 1059-1068.](https://arxiv.org/pdf/1706.06978.pdf)
+        - [Zhou G, Zhu X, Song C, et al. Deep interest network for click-through rate prediction[C]//
+        Proceedings of the 24th ACM SIGKDD International Conference on Knowledge Discovery & Data Mining.
+        ACM, 2018: 1059-1068.](https://arxiv.org/pdf/1706.06978.pdf)
     """
 
     def __init__(self, axis=-1, epsilon=1e-9, **kwargs):
