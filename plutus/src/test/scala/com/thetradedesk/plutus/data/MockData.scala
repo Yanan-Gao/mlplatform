@@ -127,10 +127,8 @@ object MockData {
                                     ContextualCategories = Some(Seq(1L)),
 
                                     // seeninbidding columns
-                                    FirstPartyTargetingDataIdsSampled = Some(Seq(1L)),
-                                    ThirdPartyTargetingDataIdsSampled = Some(Seq(1L)),
-                                    NumFirstPartyDataElements = Some(1),
-                                    NumThirdPartyDataElements = Some(1)
+                                    ThirdPartyTargetingDataIds = Option(Array(1L))
+
   )
 
 
