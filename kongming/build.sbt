@@ -6,9 +6,9 @@ name := "kongming"
 
 version := "0.1"
 
-scalaVersion := "2.12.13"
+scalaVersion := "2.12.15"
 
-val sparkVersion = "3.1.1"
+val sparkVersion = "3.2.1"
 val prometheusVersion = "0.9.0"
 
 credentials += Credentials(
@@ -34,7 +34,7 @@ libraryDependencies ++= Seq(
  // "MrPowers" % "spark-fast-tests" % "2.2.0_0.5.0" % "test"
   "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
 
-  "com.thetradedesk" %% "geronimo" % "0.1.7-SNAPSHOT"
+  "com.thetradedesk" %% "geronimo" % "0.1.8-SNAPSHOT",
 )
 
 
