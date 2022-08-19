@@ -7,7 +7,7 @@ class Prometheus:
     registry = CollectorRegistry()
     jobName = 'plutusModelTraining'
     pushgate = 'prom-push-gateway.adsrvr.org:80'
-    enabled = False
+    enabled = True
     ## g = Gauge('some_sort_of_counter', 'count of stuff', registry=registry)
     ## g.set(count)
 

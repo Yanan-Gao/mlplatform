@@ -101,6 +101,7 @@ flags.DEFINE_integer('training_verbosity', default=1, help='Verbose levels for t
 # Eval params
 flags.DEFINE_integer('eval_batch_size', default=None, help='Batch size for evaluation')
 flags.DEFINE_string('eval_model_path', default=None, help=f'Location of Model to evaluate')
+flags.DEFINE_boolean('run_eval', default=False, help='determine whether or not we run eval step')
 
 # callbacks
 flags.DEFINE_integer('early_stopping_patience', default=5, help='patience for early stopping', lower_bound=2)
@@ -322,13 +323,19 @@ def main(argv):
     loss_gaug.set(history.history['loss'][-1])
     val_loss_gaug.set(history.history['val_loss'][-1])
 
-    # Evaluation with just ANLP now
-    evals = eval_model_with_anlp(
-        model=model,
-        ds_test=datasets[TEST]
-    )
-    eval_anlp_gaug = Prometheus.define_gauge('eval_anlp', 'evaluation anlp')
-    eval_anlp_gaug.set(evals[1])
+    # not currently using for anything and resulting in errors. disabling until we have time to debug
+    if FLAGS.run_eval:
+        print("\n evaluating model......... \n")
+        # Evaluation with just ANLP now
+        evals = eval_model_with_anlp(
+            model=model,
+            ds_test=datasets[TEST]
+        )
+        eval_anlp_gaug = Prometheus.define_gauge('eval_anlp', 'evaluation anlp')
+        eval_anlp_gaug.set(evals[1])
+
+    Prometheus.push()
+    print("\n pushing metrics to prom \n")
 
 
 def save_params_model(model):
