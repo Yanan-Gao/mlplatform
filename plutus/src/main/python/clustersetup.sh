@@ -38,14 +38,14 @@ echo "beginning data sycn..."
 
 for SSV in ${SSV_LIST[*]}
   do
-  ##not bash doesnt support variable exapnsion here, so hardcoded '7'
-  for i in {1..7}; do
+  ##not bash doesnt support variable expansion here, so hardcoded '7'
+  for i in {2..8}; do
 
       YEAR=$(date -d "$date -$i days" +"%Y")
       MONTH=$(date -d "$date -$i days" +"%m")
       DAY=$(date -d "$date -$i days" +"%d")
-      echo "syncing from ${DATA_SOURCE}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/ ${SYNC_DEST}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/"
-      aws s3 sync "${DATA_SOURCE}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/" "${SYNC_DEST}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/" --quiet
+      # echo "syncing from ${DATA_SOURCE}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/ ${SYNC_DEST}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/"
+      aws s3 sync "${DATA_SOURCE}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/" "${SYNC_DEST}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/" # --quiet
 
   done
 done

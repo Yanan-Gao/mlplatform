@@ -21,11 +21,12 @@ VAL = "validation"
 TEST = "test"
 
 
-def s3_sync(src_path, dst_path):
+def s3_sync(src_path, dst_path, quiet=True):
     sync_command = f"aws s3 sync {src_path} {dst_path}"
+    if (quiet):
+        sync_command = sync_command + " --quiet"
     os.system(sync_command)
     return sync_command
-
 
 def read_metadata(path):
     p = Path(f"{path}")
