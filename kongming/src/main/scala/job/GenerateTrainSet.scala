@@ -1,15 +1,12 @@
 package job
 
-import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 
-import java.time.LocalDate
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.Column
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.kongming.date
-import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.geronimo.shared.{intModelFeaturesCols, loadParquetData}
 import com.thetradedesk.kongming.policyDate
@@ -20,6 +17,7 @@ import com.thetradedesk.kongming.transform.TrainSetTransformation._
 import org.apache.spark.sql.types.DoubleType
 import org.apache.spark.storage.StorageLevel
 import job.DailyOfflineScoringSet.{keptFields, modelKeepFeatureCols}
+
 /*
   Generate train set for conversion model training job
   Input:
@@ -169,7 +167,7 @@ object GenerateTrainSet {
   // took 3 mins until here.
 
   // 5. join all these dataset with bidimpression to get features , join by day
-    val adGroupDS = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, date)
+    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(date, true)
     val trainDataWithFeature = attachTrainsetWithFeature(preFeatureJoinTrainSet, maxLookback, adGroupPolicy, adGroupDS)(prometheus).persist(StorageLevel.MEMORY_AND_DISK)
 
     // 6. split train and val

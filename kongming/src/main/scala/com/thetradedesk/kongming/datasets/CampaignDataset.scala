@@ -1,5 +1,7 @@
 package com.thetradedesk.kongming.datasets
 
+import com.thetradedesk.spark.datasets.core.ProvisioningS3DataSet
+
 final case class CampaignRecord(CampaignId: String,
                                 AdvertiserId: String,
                                 CustomCPATypeId: Int,
@@ -7,6 +9,4 @@ final case class CampaignRecord(CampaignId: String,
                                 CustomCPAViewthroughWeight: Option[BigDecimal]
                                )
 
-object CampaignDataset {
-  val S3Path = "s3a://thetradedesk-useast-qubole/warehouse.external/thetradedesk.db/provisioning/campaign/v=1/"
-}
+case class CampaignDataSet() extends ProvisioningS3DataSet[CampaignRecord]("campaign/v=1", mergeSchema = true){}

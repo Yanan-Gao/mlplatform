@@ -1,11 +1,10 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.geronimo.shared.loadParquetData
 import com.thetradedesk._
-import org.apache.spark.sql.{Dataset, SparkSession}
 import com.thetradedesk.spark.sql.SQLFunctions._
+import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import org.apache.spark.sql.DataFrame
+import org.apache.spark.sql.{DataFrame, Dataset}
 
 import java.time.LocalDate
 
@@ -51,18 +50,18 @@ object AdGroupPolicyDataset {
 
   }
 
-  def readHardCodedDataset(date: LocalDate)(implicit spark: SparkSession): Dataset[AdGroupPolicyRecord] = {
+  def readHardCodedDataset(date: LocalDate): Dataset[AdGroupPolicyRecord] = {
 
     val hardCodedPolicy = spark.read
       .options(Map("inferSchema"->"true","delimiter"->",","header"->"true"))
       .csv(s"${S3Path}/date=${date.toString}")
 
     //load advertiser dataset for attribution window and campaign data for aux
-    val advertiserDS = loadParquetData[AdvertiserRecord](AdvertiserDataset.S3Path, kongming.date)
-    // read campaign table to get setting
-    val campaignDS = loadParquetData[CampaignRecord](CampaignDataset.S3Path, kongming.date)
+    val advertiserDS = AdvertiserDataSet().readLatestPartitionUpTo(kongming.date, true)
+    // read campaign table to get setting, need to remove duplicated rows vs advertiser settings
+    val campaignDS = CampaignDataSet().readLatestPartitionUpTo(kongming.date, true).selectAs[CampaignRecord]
     // read adgroup table to get adgroup campaign mapping
-    val adGroupDS = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, kongming.date)
+    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(kongming.date, true)
 
     val adGroupPolicy = getSettings(hardCodedPolicy, adGroupDS, campaignDS, advertiserDS)
 

@@ -1,22 +1,15 @@
 package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
-import com.thetradedesk.geronimo.shared.loadParquetData
 import com.thetradedesk.kongming
-import com.thetradedesk.kongming.RoundUpTimeUnit
-import com.thetradedesk.kongming.datasets.AdGroupDataset
-import com.thetradedesk.kongming.datasets.AdGroupRecord
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, BidRequestPolicyRecord, DailyBidRequestRecord}
-import com.thetradedesk.kongming.multiLevelJoinWithPolicy
-import com.thetradedesk.kongming.preFilteringWithPolicy
+import com.thetradedesk.kongming.{multiLevelJoinWithPolicy, preFilteringWithPolicy, RoundUpTimeUnit}
+import com.thetradedesk.kongming.datasets.{AdGroupDataSet, AdGroupPolicyRecord, BidRequestPolicyRecord, DailyBidRequestRecord}
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.TTDSparkContext.spark
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions.date_trunc
-import org.apache.spark.sql.functions.dense_rank
+import org.apache.spark.sql.functions.{date_trunc, dense_rank}
 
 object BidRequestTransform {
   val DEFAULT_NUM_PARTITION = 200
@@ -27,7 +20,7 @@ object BidRequestTransform {
                     (implicit prometheus: PrometheusClient): Dataset[DailyBidRequestRecord] = {
     val window = Window.partitionBy($"DataAggValue", $"UIID").orderBy($"TruncatedLogEntryTime".desc)
 
-    val adGroupDS = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, kongming.date)
+    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(kongming.date, true)
     val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
     val bidsImpressionFilterByPolicy = multiLevelJoinWithPolicy[BidRequestPolicyRecord](prefilteredDS, adGroupPolicy)
 

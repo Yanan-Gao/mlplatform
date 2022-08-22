@@ -2,13 +2,9 @@ package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
-import com.thetradedesk.kongming
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.AdGroupDataset
-import com.thetradedesk.kongming.datasets.AdGroupRecord
 import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyBidRequestDataset}
 import com.thetradedesk.kongming.transform.BidRequestTransform
-import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 

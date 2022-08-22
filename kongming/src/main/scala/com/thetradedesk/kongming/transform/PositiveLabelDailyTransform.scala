@@ -2,24 +2,14 @@ package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.kongming.RoundUpTimeUnit
-import com.thetradedesk.kongming.datasets.AdGroupRecord
-import com.thetradedesk.kongming.datasets.DailyConversionDataRecord
-import com.thetradedesk.kongming.datasets.DailyPositiveLabelRecord
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, DailyBidRequestRecord}
-import com.thetradedesk.kongming.multiLevelJoinWithPolicy
-import com.thetradedesk.kongming.preFilteringWithPolicy
+import com.thetradedesk.kongming.datasets._
+import com.thetradedesk.kongming.{multiLevelJoinWithPolicy, preFilteringWithPolicy}
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.{Dataset, SaveMode}
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions.broadcast
-import org.apache.spark.sql.functions.date_trunc
-import org.apache.spark.sql.functions.dense_rank
-import org.apache.spark.sql.functions.greatest
-import org.apache.spark.sql.functions.least
-import org.apache.spark.sql.functions.unix_timestamp
-import org.apache.spark.sql.functions.when
+import org.apache.spark.sql.functions._
 
 object PositiveLabelDailyTransform {
 case class IntraDayBidRequestWithPolicyRecord(

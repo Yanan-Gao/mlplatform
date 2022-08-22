@@ -1,5 +1,7 @@
 package com.thetradedesk.kongming.datasets
 
+import com.thetradedesk.spark.datasets.core.ProvisioningS3DataSet
+
 final case class CampaignConversionReportingColumnRecord(AdvertiserId: String,
                                                          CampaignId: String,
                                                          ReportingColumnId: Int,
@@ -8,6 +10,5 @@ final case class CampaignConversionReportingColumnRecord(AdvertiserId: String,
                                                          IncludeInCustomCPA: Boolean,
                                                          Weight: Option[BigDecimal])
 
-object CampaignConversionReportingColumnDataSet {
-  val S3Path = f"s3a://thetradedesk-useast-qubole/warehouse.external/thetradedesk.db/provisioning/campaignconversionreportingcolumn/v=1/"
-}
+case class CampaignConversionReportingColumnDataSet() extends ProvisioningS3DataSet[CampaignConversionReportingColumnRecord](
+  "campaignconversionreportingcolumn/v=1"){}

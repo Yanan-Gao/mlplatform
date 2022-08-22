@@ -1,21 +1,13 @@
 package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
-import com.thetradedesk.geronimo.shared.loadParquetData
 import com.thetradedesk.kongming
-import com.thetradedesk.kongming.datasets.AdGroupDataset
-import com.thetradedesk.kongming.datasets.DailyOfflineScoringRecord
-import com.thetradedesk.kongming.datasets.AdGroupPolicyRecord
-import com.thetradedesk.kongming.datasets.AdGroupRecord
-import com.thetradedesk.kongming.multiLevelJoinWithPolicy
-import com.thetradedesk.kongming.preFilteringWithPolicy
+import com.thetradedesk.kongming.datasets.{AdGroupDataSet, AdGroupPolicyRecord, DailyOfflineScoringRecord}
+import com.thetradedesk.kongming.{multiLevelJoinWithPolicy, preFilteringWithPolicy}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.{Column, Dataset}
-import org.apache.spark.sql.functions.col
-import org.apache.spark.sql.functions.concat
-import org.apache.spark.sql.functions.lit
+import org.apache.spark.sql.functions.{col, concat, lit}
 
 object OfflineScoringSetTransform {
   val DEFAULT_NUM_PARTITION = 200
@@ -34,7 +26,7 @@ object OfflineScoringSetTransform {
                     )
                     (implicit prometheus: PrometheusClient): Dataset[DailyOfflineScoringRecord] = {
 
-    val adGroupDS = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, kongming.date)
+    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(kongming.date, true)
     val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
 
     val filterCondition = $"IsImp" === true
