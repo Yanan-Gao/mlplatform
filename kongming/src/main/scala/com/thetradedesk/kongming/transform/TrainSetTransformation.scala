@@ -3,13 +3,10 @@ package com.thetradedesk.kongming.transform
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.sql.SQLFunctions._
-import com.thetradedesk.kongming.datasets.{AdGroupDataset, AdGroupPolicyRecord, AdGroupRecord, CampaignConversionReportingColumnDataSet, CampaignConversionReportingColumnRecord, CampaignDataset, CampaignRecord, DailyPositiveLabelRecord, TrainSetFeaturesRecord}
+import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.{date, preFilteringWithPolicy}
 import org.apache.spark.sql.Dataset
-import com.thetradedesk.spark.sql.SQLFunctions._
-import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
-import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.expressions.Window
 
@@ -89,9 +86,9 @@ object TrainSetTransformation {
                                  adGroupPolicy: Dataset[AdGroupPolicyRecord]
                                ): Dataset[TrackingTagWeightsRecord]= {
     // 1. get the latest weights per campaign and trackingtagid
-    val adGroupDS = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, date)
-    val campaignDS = loadParquetData[CampaignRecord](CampaignDataset.S3Path, date)
-    val ccrc = loadParquetData[CampaignConversionReportingColumnRecord](CampaignConversionReportingColumnDataSet.S3Path, date)
+    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(date, true)
+    val campaignDS = CampaignDataSet().readLatestPartitionUpTo(date, true)
+    val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartitionUpTo(date, true)
     val ccrcWindow = Window.partitionBy($"CampaignId")
 
     val ccrcProcessed = ccrc

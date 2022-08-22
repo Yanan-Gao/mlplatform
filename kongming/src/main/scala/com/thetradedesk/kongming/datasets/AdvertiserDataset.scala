@@ -1,10 +1,10 @@
 package com.thetradedesk.kongming.datasets
 
+import com.thetradedesk.spark.datasets.core.ProvisioningS3DataSet
+
 final case class AdvertiserRecord(AdvertiserId: String,
                                   AttributionClickLookbackWindowInSeconds: Int,
                                   AttributionImpressionLookbackWindowInSeconds: Int
                                )
 
-object AdvertiserDataset {
-  val S3Path = "s3a://thetradedesk-useast-qubole/warehouse.external/thetradedesk.db/provisioning/advertiser/v=1/"
-}
+case class AdvertiserDataSet() extends ProvisioningS3DataSet[AdvertiserRecord]("advertiser/v=1"){}

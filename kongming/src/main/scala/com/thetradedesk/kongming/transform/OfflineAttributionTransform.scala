@@ -4,15 +4,15 @@ import com.thetradedesk.geronimo.shared.{loadParquetData, shiftModUdf}
 import com.thetradedesk.geronimo.shared.schemas.{BidFeedbackDataset, BidFeedbackRecord}
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.transform.TrainSetTransformation.TrackingTagWeightsRecord
-import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import com.thetradedesk.spark.util.TTDConfig.defaultCloudProvider
 import job.GenerateTrainSet.modelDimensions
 import job.OfflineScoringSetAttribution.{IsotonicRegNegSampleRate, IsotonicRegPositiveLabelCountThreshold}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.{DataFrame, Dataset}
-import org.apache.spark.sql.functions.{approx_count_distinct, broadcast, coalesce, col, floor, least, lit, percent_rank, row_number, sum, to_timestamp, when, xxhash64}
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{FloatType, IntegerType}
 import java.time.format.DateTimeFormatter
 
@@ -57,21 +57,23 @@ object OfflineAttributionTransform {
                                  lookBack: Int
                               )(implicit prometheus:PrometheusClient): Tuple2[Dataset[AttributedEventRecord], Dataset[AttributedEventResultRecord]] ={
     // 2022-04-27 ~ 2022-05-04
-    val attributedEvent = loadParquetData[AttributedEventRecord](
-      AttributedEventDataset.S3Path,
-      date = endDate,
-      lookBack = Some(lookBack),
-      dateSeparator = Some("-")
-    )
+//    val attributedEvent = loadParquetData[AttributedEventRecord](
+//      AttributedEventDataset.S3Path,
+//      date = endDate,
+//      lookBack = Some(lookBack),
+//      dateSeparator = Some("-")
+//    )
+    val attributedEvent = AttributedEventDataSet().readRange(endDate.minusDays(lookBack), endDate, isInclusive = true)
 
     // 2022-04-27 ~ 2022-05-04
-    val attributedEventResult = loadParquetData[AttributedEventResultRecord](
-      AttributedEventResultDataset.S3Path,
-      date = endDate,
-      lookBack = Some(lookBack),
-      dateSeparator = Some("-")
+//    val attributedEventResult = loadParquetData[AttributedEventResultRecord](
+//      AttributedEventResultDataset.S3Path,
+//      date = endDate,
+//      lookBack = Some(lookBack),
+//      dateSeparator = Some("-")
+//    )
+    val attributedEventResult = AttributedEventResultDataSet().readRange(endDate.minusDays(lookBack), endDate, isInclusive = true)
 
-    )
 
     (attributedEvent, attributedEventResult)
 
@@ -101,11 +103,8 @@ object OfflineAttributionTransform {
     )
 
     //3. load clicks
-    val clicks = loadParquetData[ClickTrackerRecord](
-      ClickTrackerDataset.S3Path,
-      date = endDate,
-      lookBack = Some(lookBack)
-    )
+    val clicks = ClickTrackerDataSetV5(defaultCloudProvider)
+      .readRange(endDate.minusDays(lookBack).atStartOfDay(), endDate.plusDays(1).atStartOfDay())
   //can one impression click multiple times?
 
     val scoreQuantileWindow = Window.partitionBy($"AdGroupId").orderBy($"Score")

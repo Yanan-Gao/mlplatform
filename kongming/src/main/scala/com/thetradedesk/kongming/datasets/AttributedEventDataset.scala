@@ -1,4 +1,6 @@
 package com.thetradedesk.kongming.datasets
+import com.thetradedesk.spark.datasets.core.IdentitySourcesS3DataSet
+
 import java.sql.Timestamp
 
 final case class AttributedEventRecord(
@@ -17,7 +19,5 @@ final case class AttributedEventRecord(
                                         CampaignId: String,
                                         AdGroupId: String
                                       )
-object AttributedEventDataset {
-  val S3Path = "s3a://ttd-identity/datapipeline/sources/firstpartydata_v2/attributedevent/"
-  // date = xxxx-xx-xx
-}
+
+case class AttributedEventDataSet() extends IdentitySourcesS3DataSet[AttributedEventRecord]("firstpartydata_v2/attributedevent")

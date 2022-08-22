@@ -1,14 +1,10 @@
 package job
 
 import com.thetradedesk.geronimo.shared.loadParquetData
-import com.thetradedesk.kongming.datasets.CampaignDataset
-import com.thetradedesk.kongming.datasets.CampaignRecord
-import com.thetradedesk.kongming.datasets.DailyConversionDataRecord
-import com.thetradedesk.kongming.datasets.DailyConversionDataset
+import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.config
-import com.thetradedesk.kongming.datasets.{AdGroupDataset, AdGroupPolicyDataset, AdGroupRecord, CampaignConversionReportingColumnDataSet, CampaignConversionReportingColumnRecord, ConversionDataset, ConversionRecord, CrossDeviceGraphDataset}
+import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
 import com.thetradedesk.kongming.transform.ConversionDataDailyTransform
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -24,19 +20,19 @@ object ConversionDataDailyProcessor extends Logger{
   def main(args: Array[String]): Unit = {
     val prometheus = new PrometheusClient("KoaV4Conversion", "DailyConversion")
     // read conversion data daily
-    val conversionDS = loadParquetData[ConversionRecord](ConversionDataset.S3Path, date)
+    val conversionDS = ConversionTrackerVerticaLoadDataSetV4(defaultCloudProvider).readDate(date)
 
     // read campaign conversion reporting column setting
-    val ccrc = loadParquetData[CampaignConversionReportingColumnRecord](CampaignConversionReportingColumnDataSet.S3Path, date)
+    val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartitionUpTo(date, true)
 
     // read master policy
     val adGroupPolicyHardCodedDate = policyDate
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate)
 
     // read adgroup table to get adgroup campaign mapping
-    val adGroupDS = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, date)
+    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(date, true)
     // read campaign table to get setting
-    val campaignDS = loadParquetData[CampaignRecord](CampaignDataset.S3Path, date)
+    val campaignDS = CampaignDataSet().readLatestPartitionUpTo(date, true)
 
     //filter down conversion data and add weights from conversion reporting column table
     //transformedConvDS is returned as cached datasets.

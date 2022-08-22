@@ -4,6 +4,7 @@ import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import com.thetradedesk.streaming.records.rtb.conversiontracker.ConversionTrackerVerticaLoadRecord
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
@@ -34,7 +35,7 @@ object ConversionDataDailyTransform {
    * @return convResult conversion data expanded by DataAggValue and filtered by policy;
    *         distinctId unique ids in conversion dataset for cross device considerations
    */
-  def dailyTransform(conversionDS: Dataset[ConversionRecord],
+  def dailyTransform(conversionDS: Dataset[ConversionTrackerVerticaLoadRecord],
                      ccrc: Dataset[CampaignConversionReportingColumnRecord],
                      adGroupPolicy: Dataset[AdGroupPolicyRecord],
                      adGroupDS: Dataset[AdGroupRecord],

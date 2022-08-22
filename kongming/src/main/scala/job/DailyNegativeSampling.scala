@@ -5,17 +5,12 @@ import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImp
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.kongming
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.AdGroupDataset
-import com.thetradedesk.kongming.datasets.AdGroupRecord
-import com.thetradedesk.kongming.datasets.BidRequestPolicyRecord
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyNegativeSampledBidRequestDataSet, DailyNegativeSampledBidRequestRecord}
-import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.kongming.transform.NegativeTransform
 import com.thetradedesk.kongming.transform.NegativeTransform.NegativeSamplingBidRequestGrainsRecord
 import com.thetradedesk.spark.sql.SQLFunctions._
-import org.apache.spark.sql.functions.broadcast
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
 object DailyNegativeSampling {
@@ -39,7 +34,7 @@ object DailyNegativeSampling {
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate)
 
 
-    val adGroupDS = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, kongming.date)
+    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(kongming.date, true)
     val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
     val bidsImpressionFilterByPolicy = multiLevelJoinWithPolicy[BidsImpressionsSchema](prefilteredDS, adGroupPolicy)
 

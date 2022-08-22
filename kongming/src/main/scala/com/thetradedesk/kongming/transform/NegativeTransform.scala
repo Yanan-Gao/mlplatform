@@ -1,20 +1,14 @@
 package com.thetradedesk.kongming.transform
 
-import com.thetradedesk.geronimo.shared.loadParquetData
 import com.thetradedesk.kongming
-
-
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.AdGroupDataset
-import com.thetradedesk.kongming.datasets.AdGroupRecord
+import com.thetradedesk.kongming.datasets.{AdGroupDataSet, AdGroupPolicyRecord, DailyNegativeSampledBidRequestRecord}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, DailyNegativeSampledBidRequestRecord}
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions.{count, date_add, hash, lit, pow, rand, when}
 import org.apache.spark.sql.Dataset
-import com.thetradedesk.spark.TTDSparkContext.spark
 
 object NegativeTransform {
 
@@ -109,7 +103,7 @@ object NegativeTransform {
      */
     // todo: pre-check possible aggregation levels.
 
-    val adGroupDS = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, kongming.date)
+    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(kongming.date, true)
     val prefilteredDS = preFilteringWithPolicy[DailyNegativeSampledBidRequestRecord](dailyNegativeSampledBids, adGroupPolicy, adGroupDS)
 
     val filterCondition = date_add($"LogEntryTime", $"DataLookBack")>=date

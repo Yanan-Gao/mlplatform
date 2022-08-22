@@ -1,7 +1,7 @@
 package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{FLOAT_FEATURE_TYPE, GERONIMO_DATA_SOURCE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, loadParquetData}
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, STRING_FEATURE_TYPE, loadParquetData}
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyOfflineScoringDataset}
 import com.thetradedesk.spark.TTDSparkContext.spark

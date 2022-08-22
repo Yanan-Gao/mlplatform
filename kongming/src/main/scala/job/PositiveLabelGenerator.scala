@@ -6,19 +6,11 @@ import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.geronimo.shared.GERONIMO_DATA_SOURCE
 import com.thetradedesk.geronimo.shared.loadParquetData
 import com.thetradedesk.kongming
-import com.thetradedesk.kongming.datasets.AdGroupDataset
-import com.thetradedesk.kongming.datasets.DailyBidRequestDataset
-import com.thetradedesk.kongming.datasets.DailyBidRequestRecord
-import com.thetradedesk.kongming.datasets.DailyConversionDataRecord
-import com.thetradedesk.kongming.datasets.DailyConversionDataset
-import com.thetradedesk.kongming.datasets.DailyPositiveBidRequestDataset
+import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
-import com.thetradedesk.kongming.datasets.AdGroupPolicyDataset
-import com.thetradedesk.kongming.datasets.AdGroupRecord
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.kongming.date
 import com.thetradedesk.kongming.policyDate
 import com.thetradedesk.kongming.transform.PositiveLabelDailyTransform
@@ -49,7 +41,7 @@ object PositiveLabelGenerator extends Logger{
     // read master policy
     val adGroupPolicyHardCodedDate = policyDate
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate).cache
-    val adGroupDS = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, kongming.date)
+    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(kongming.date, true)
 
     // resolve for maxLookback
     val maxPolicyLookbackInDays = adGroupPolicy.agg(max($"DataLookBack")).head.getAs[Int](0)
