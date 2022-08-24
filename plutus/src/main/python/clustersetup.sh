@@ -1,12 +1,6 @@
 #!/bin/bash
 
-BASE_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/prod"
-SINGLE_DAY_SOURCE="singledayprocessed"
-DATA_SOURCE="${BASE_S3_PATH}/${SINGLE_DAY_SOURCE}"
-SSV_LIST=(google rubicon)
 
-MNT="../../../../../../mnt/"
-SYNC_DEST="./csv_input/"
 
 echo "installing updates.... \n"
 sudo yum update -y
@@ -31,24 +25,6 @@ echo "restarting docker! \n"
 sudo systemctl restart docker
 
 echo "nvidia docker tool set up complete \n starting s3 sync.. \n"
-
-cd ${MNT}
-
-echo "beginning data sycn..."
-
-for SSV in ${SSV_LIST[*]}
-  do
-  ##not bash doesnt support variable expansion here, so hardcoded '7'
-  for i in {2..8}; do
-
-      YEAR=$(date -d "$date -$i days" +"%Y")
-      MONTH=$(date -d "$date -$i days" +"%m")
-      DAY=$(date -d "$date -$i days" +"%d")
-      # echo "syncing from ${DATA_SOURCE}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/ ${SYNC_DEST}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/"
-      aws s3 sync "${DATA_SOURCE}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/" "${SYNC_DEST}/${SSV}/year=${YEAR}/month=${MONTH}/day=${DAY}/" # --quiet
-
-  done
-done
 
 echo "set up complete"
 
