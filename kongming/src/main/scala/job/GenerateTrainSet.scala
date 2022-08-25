@@ -164,11 +164,13 @@ object GenerateTrainSet {
 
     val preFeatureJoinTrainSet = adjustedPos.union(adjustedNeg)
       .selectAs[PreFeatureJoinRecord].cache()
-  // took 3 mins until here.
 
-  // 5. join all these dataset with bidimpression to get features , join by day
+    //adjust weight in trainset
+    val adjustedWeightDataset= adjustWeightForTrainset(preFeatureJoinTrainSet,desiredNegOverPos)
+
+    // 5. join all these dataset with bidimpression to get features , join by day
     val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(date, true)
-    val trainDataWithFeature = attachTrainsetWithFeature(preFeatureJoinTrainSet, maxLookback, adGroupPolicy, adGroupDS)(prometheus).persist(StorageLevel.MEMORY_AND_DISK)
+    val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, maxLookback, adGroupPolicy, adGroupDS)(prometheus).persist(StorageLevel.MEMORY_AND_DISK)
 
     // 6. split train and val
     val adjustedTrain  = trainDataWithFeature.filter($"IsInTrainSet"===lit(true)).cache()

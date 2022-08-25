@@ -292,6 +292,24 @@ object TrainSetTransformation {
 
   }
 
+  def adjustWeightForTrainset(trainset: Dataset[PreFeatureJoinRecord],desiredNegOverPos: Int ):
+  Dataset[PreFeatureJoinRecord] = {
+    val train = trainset.filter($"IsInTrainSet" === lit(true)).cache()
+    val validation = trainset.filter($"IsInTrainSet" === lit(false))
+    val sumWeight = train.filter(col("Target")===0).groupBy("ConfigValue").agg(sum("Weight").as("NegSumWeight"))
+      .join(train.filter(col("Target")===1).groupBy("ConfigValue").agg(sum("Weight").as("PosSumWeight")),Seq("ConfigValue"),"inner")
+    // We observed that there are some adgroups where its pos-weight is 0, which is caused by user settings.May solve it in the future.
+    val adjustedTrainset = sumWeight.withColumn("Coefficient",when($"PosSumWeight">0,$"NegSumweight"/$"PosSumWeight").otherwise($"NegSumWeight"))
+      .join(train,Seq("ConfigValue"),"inner")
+      .withColumn("Weight",when(col("Target")===1,col("Weight")*col("Coefficient")/lit(desiredNegOverPos)).otherwise(col("Weight")))
+      .selectAs[PreFeatureJoinRecord].toDF()
+    val orgValidationset = validation.toDF()
+    val adjustedDataset = adjustedTrainset.union(orgValidationset).selectAs[PreFeatureJoinRecord].cache()
+    adjustedDataset
+  }
+
+
+
 }
 
 
