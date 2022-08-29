@@ -45,4 +45,5 @@ case class ModelInputRecord(
 object ModelInputDataset {
   val PHILOS3 = (env: String) => f"s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/${env}/processed/"
   val FILTERED = (env: String) => f"s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/${env}/filtered/"
+  val APAC = (env: String) =>  f"s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/${env}/apac/"
 }

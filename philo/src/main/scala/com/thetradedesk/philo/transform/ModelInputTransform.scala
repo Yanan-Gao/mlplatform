@@ -9,7 +9,7 @@ import com.thetradedesk.spark.sql.SQLFunctions._
 import org.apache.spark.sql.{Column, DataFrame, Dataset, SparkSession}
 import org.apache.spark.sql.functions.{col, concat_ws, lit, when, xxhash64}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import job.AdGroupFilterRecord
+import job.{AdGroupFilterRecord, CountryFilterRecord}
 
 object ModelInputTransform extends Logger {
 
@@ -70,11 +70,12 @@ object ModelInputTransform extends Logger {
   def transform(clicks: Dataset[ClickTrackerRecord],
                 bidsImpsDat: Dataset[BidsImpressionsSchema],
                 adGroupFilter: Option[Dataset[AdGroupFilterRecord]],
+                countryFilter: Option[Dataset[CountryFilterRecord]],
                 filterResults: Boolean = false): (DataFrame, DataFrame) = {
 
     val (clickLabels, bidsImpsPreJoin) = hashBidAndClickLabels(clicks, bidsImpsDat)
 
-    val joinedData = joinDatasets(clickLabels, bidsImpsPreJoin, adGroupFilter, filterResults)
+    val joinedData = joinDatasets(clickLabels, bidsImpsPreJoin, adGroupFilter, countryFilter, filterResults)
 
     val flatten = flattenData(joinedData.toDF, flatten_set)
       .selectAs[ModelInputRecord]
@@ -113,13 +114,16 @@ object ModelInputTransform extends Logger {
   def joinDatasets(clickLabels: DataFrame,
                    bidsImpsPreJoin: DataFrame,
                    adGroupIdFilter: Option[Dataset[AdGroupFilterRecord]] = None,
+                   countryFilter: Option[Dataset[CountryFilterRecord]] = None,
                    filterResults: Boolean = false): DataFrame = {
     bidsImpsPreJoin.join(clickLabels, Seq("BidRequestIdHash"), "leftouter")
       .withColumn("label", when(col("label").isNull, 0).otherwise(1))
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
       .transform(ds => if (filterResults && adGroupIdFilter.isDefined) {
-        ds.join(adGroupIdFilter.get, Seq("AdGroupId"))
-      } else ds)
+          ds.join(adGroupIdFilter.get, Seq("AdGroupId"))
+        } else if (filterResults && countryFilter.isDefined) {
+          ds.join(countryFilter.get, Seq("Country"))
+        } else ds)
   }
 
   def getHashedData(flatten: Dataset[ModelInputRecord]): DataFrame ={
