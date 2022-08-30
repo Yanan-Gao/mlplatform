@@ -141,7 +141,7 @@ object GenerateTrainSet {
 
 
     // 2. get the latest weights for adgroups in policytable
-    val trackingTagWithWeight = getWeightsForTrackingTags(adGroupPolicy)
+    val trackingTagWithWeight = getWeightsForTrackingTags(adGroupPolicy, normalized = true)
 
     // 3. transform weights for positive label
     // todo: multi days positive might have different click and  view lookback window, might not alligned with latest weight

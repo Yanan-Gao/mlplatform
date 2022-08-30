@@ -63,7 +63,7 @@ object OfflineAttributionTransform {
 //      lookBack = Some(lookBack),
 //      dateSeparator = Some("-")
 //    )
-    val attributedEvent = AttributedEventDataSet().readRange(endDate.minusDays(lookBack), endDate, isInclusive = true)
+    val attributedEvent = AttributedEventDataSet().readRange(endDate.minusDays(lookBack), endDate, isInclusive = true).selectAs[AttributedEventRecord]
 
     // 2022-04-27 ~ 2022-05-04
 //    val attributedEventResult = loadParquetData[AttributedEventResultRecord](
@@ -72,7 +72,7 @@ object OfflineAttributionTransform {
 //      lookBack = Some(lookBack),
 //      dateSeparator = Some("-")
 //    )
-    val attributedEventResult = AttributedEventResultDataSet().readRange(endDate.minusDays(lookBack), endDate, isInclusive = true)
+    val attributedEventResult = AttributedEventResultDataSet().readRange(endDate.minusDays(lookBack), endDate, isInclusive = true).selectAs[AttributedEventResultRecord]
 
 
     (attributedEvent, attributedEventResult)
