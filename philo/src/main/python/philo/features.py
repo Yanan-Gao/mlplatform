@@ -1,6 +1,7 @@
 from collections import namedtuple, OrderedDict
 from itertools import chain
 from copy import copy
+import json
 
 import tensorflow as tf
 from tensorflow.keras.initializers import RandomNormal, Zeros
@@ -13,141 +14,76 @@ from philo.inputs import create_embedding_matrix, embedding_lookup, get_dense_in
 from collections import defaultdict
 
 SEED = 1024
-
 Feature = namedtuple("Feature",
                      "name, sparse, type, cardinality, default_value, enabled, embedding_dim")
-
 DEFAULT_EMB_DIM = 16
-DEFAULT_CARDINALITIES = {"AdFormat": 102,
-                         "AdGroupId": 1002,
-                         "AdvertiserId": 5002,
-                         "AdsTxtSellerType": 7,
-                         "PublisherType": 7,
-
-                         "Country": 252,
-                         "Region": 4002,
-                         "Metro": 302,
-                         "City": 75002,
-                         "Zip": 90002,
-
-                         "Browser": 20,
-                         "DeviceMake": 1002,
-                         "DeviceModel": 10002,
-                         "DeviceType": 9,
-
-                         "CreativeId": 5002,
-                         "DoNotTrack": 4,
-                         "ImpressionPlacementId": 102,
-                         "OperatingSystemFamily": 10,
-                         "RenderingContext": 6,
-                         "RequestLanguages": 502,
-                         "Site": 350002,
-                         "SupplyVendor": 102,
-                         "SupplyVendorPublisherId": 15002,
-                         "UserHourOfWeek": 170,
-                         "PrivateContractId": 10002,
-
-                         "SupplyVendorSiteId": 960002,
-                         "MatchedFoldPosition": 3}
-
-DEFAULT_MODEL_FEATURES = [
-                             Feature("SupplyVendor", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["SupplyVendor"], 0, True, DEFAULT_EMB_DIM),
-                             # Feature("DealId", True, tf.int32,
-                             #         DEFAULT_CARDINALITIES["DealId"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("SupplyVendorPublisherId", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["SupplyVendorPublisherId"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("SupplyVendorSiteId", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["SupplyVendorSiteId"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("Site", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["Site"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("AdFormat", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["AdFormat"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("ImpressionPlacementId", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["ImpressionPlacementId"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("Country", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["Country"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("Region", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["Region"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("Metro", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["Metro"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("City", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["City"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("Zip", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["Zip"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("DeviceMake", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["DeviceMake"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("DeviceModel", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["DeviceModel"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("RequestLanguages", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["RequestLanguages"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("RenderingContext", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["RenderingContext"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("UserHourOfWeek", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["UserHourOfWeek"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("AdsTxtSellerType", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["AdsTxtSellerType"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("PublisherType", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["PublisherType"], 0, True,
-                                     DEFAULT_EMB_DIM),
-                             Feature("DeviceType", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["DeviceType"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("OperatingSystemFamily", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["OperatingSystemFamily"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("Browser", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["Browser"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("AdvertiserId", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["AdvertiserId"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("CreativeId", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["CreativeId"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("AdGroupId", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["AdGroupId"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("PrivateContractId", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["PrivateContractId"], 0, True, DEFAULT_EMB_DIM),
-                             Feature("MatchedFoldPosition", True, tf.int64,
-                                     DEFAULT_CARDINALITIES["MatchedFoldPosition"], 0, True, DEFAULT_EMB_DIM)
-
-                         ] + [
-                             Feature("sin_hour_day", False, tf.float32, 1, 0.0, True, None),
-                             Feature("cos_hour_day", False, tf.float32, 1, 0.0, True, None),
-                             Feature("sin_minute_hour", False, tf.float32, 1, 0.0, True, None),
-                             Feature("cos_minute_hour", False, tf.float32, 1, 0.0, True, None),
-                             Feature("sin_hour_week", False, tf.float32, 1, 0.0, True, None),
-                             Feature("cos_hour_week", False, tf.float32, 1, 0.0, True, None),
-                             Feature("latitude", False, tf.float32, 1, 0.0, True, None),
-                             Feature("longitude", False, tf.float32, 1, 0.0, True, None)
-                         ]
-
 Target = namedtuple("Feature", "name, type, default_value, enabled, binary")
 DEFAULT_MODEL_TARGET = Target(name='label', type=tf.int64, default_value=0, enabled=True, binary=True)
 
 DEFAULT_GROUP_NAME = "default_group"
 
 
-def get_features_target(exclude_features=[]):
+def get_feature_definitions(json_path):
+    """
+    get the feature definitions from a json file
+    Args:
+        json_path: path to the json file of feature definitions
+
+    Returns: list of dictionaries and version
+
+    """
+    with open(json_path) as f:
+        data = json.load(f)
+    return data['ModelFeatureDefinitions'][0]['FeatureDefinitions']
+
+
+def get_features_settings(feature_def):
+    """
+    get sparse feature settings
+    Args:
+        feature_def: list of feature settings
+
+    Returns: list of Feature objects
+
+    """
+    feature_list = []
+    for f in feature_def:
+        if f["Cardinality"] > 0:
+            feature_list.append(Feature(f['Name'], True, tf.int64, f['Cardinality'], 0, True, DEFAULT_EMB_DIM))
+        else:
+            feature_list.append(Feature(f['Name'], False, tf.float32, 1, 0.0, True, None))
+    return feature_list
+
+
+def get_features_target(cardinality_path, exclude_features=[]):
     """
     get model features and targets
     Args:
+        cardinality_path: path to the cardinality file
         exclude_features: list of features that are not used
 
     Returns: list of features and target
 
     """
-    return get_model_features(exclude_features), DEFAULT_MODEL_TARGET
+    return get_model_features(cardinality_path, exclude_features=exclude_features), DEFAULT_MODEL_TARGET
 
 
-def get_model_features(exclude_features=[]):
+def get_model_features(cardinality_path,
+                       exclude_features=[]):
     """
     remove the features that are in the exclude_features
     Args:
+        cardinality_path: path to the cardinality file
         exclude_features: list of features hat are not used
 
     Returns: list of features
 
     """
+    feature_def = get_feature_definitions(cardinality_path)
+    default_model_features = get_features_settings(feature_def)
     if not exclude_features:
-        return DEFAULT_MODEL_FEATURES
-    return [feat for feat in DEFAULT_MODEL_FEATURES if feat.name not in exclude_features]
+        return default_model_features
+    return [feat for feat in default_model_features if feat.name not in exclude_features]
 
 
 class VarLenSparseFeat(namedtuple('VarLenSparseFeat',
