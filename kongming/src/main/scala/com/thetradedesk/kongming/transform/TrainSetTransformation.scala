@@ -83,7 +83,8 @@ object TrainSetTransformation {
                                          )
 
   def getWeightsForTrackingTags(
-                                 adGroupPolicy: Dataset[AdGroupPolicyRecord]
+                                 adGroupPolicy: Dataset[AdGroupPolicyRecord],
+                                 normalized: Boolean=false
                                ): Dataset[TrackingTagWeightsRecord]= {
     // 1. get the latest weights per campaign and trackingtagid
     val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(date, true)
@@ -97,15 +98,27 @@ object TrainSetTransformation {
       .withColumn("TotalWeight", sum(coalesce($"Weight", lit(0))).over(ccrcWindow))
       .withColumn("NumberOfConversionTrackers", count($"TrackingTagId").over(ccrcWindow))
       .withColumn("NormalizedPixelWeight",
-        when($"TotalWeight">0,$"Weight"/$"TotalWeight" )
-          .otherwise(lit(1)/$"NumberOfConversionTrackers"))
+        when(lit(normalized)===lit(true),
+          when($"TotalWeight">0,$"Weight"/$"TotalWeight" )
+          .otherwise(lit(1)/$"NumberOfConversionTrackers")
+        )
+          .otherwise($"Weight")
+      )
       .withColumn("NormalizedCustomCPAClickWeight",
-        when($"CustomCPATypeId"===2, coalesce($"CustomCPAClickWeight", lit(0)) /(coalesce($"CustomCPAClickWeight", lit(0))+coalesce($"CustomCPAViewthroughWeight", lit(0))))
-          .otherwise(null)
+        when(lit(normalized)===lit(true),
+          when($"CustomCPATypeId"===2, coalesce($"CustomCPAClickWeight", lit(0)) /(coalesce($"CustomCPAClickWeight", lit(0))+coalesce($"CustomCPAViewthroughWeight", lit(0))))
+            .otherwise(null)).otherwise(
+          when($"CustomCPATypeId"===2, coalesce($"CustomCPAClickWeight", lit(0)))
+            .otherwise(null)
+        )
       )
       .withColumn("NormalizedCustomCPAViewthroughWeight",
-        when($"CustomCPATypeId"===2, coalesce($"CustomCPAViewthroughWeight", lit(0)) /(coalesce($"CustomCPAClickWeight", lit(0))+coalesce($"CustomCPAViewthroughWeight", lit(0))))
-          .otherwise(null)
+        when(lit(normalized)===lit(true),
+          when($"CustomCPATypeId"===2, coalesce($"CustomCPAViewthroughWeight", lit(0)) /(coalesce($"CustomCPAClickWeight", lit(0))+coalesce($"CustomCPAViewthroughWeight", lit(0))))
+            .otherwise(null)).otherwise(
+          when($"CustomCPATypeId"===2, coalesce($"CustomCPAViewthroughWeight", lit(0)))
+            .otherwise(null)
+        )
       )
       .select($"CampaignId",$"TrackingTagId", $"NormalizedPixelWeight".cast(DoubleType),$"NormalizedCustomCPAClickWeight".cast(DoubleType), $"NormalizedCustomCPAViewthroughWeight".cast(DoubleType) )
 

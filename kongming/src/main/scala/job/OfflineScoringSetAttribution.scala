@@ -52,7 +52,7 @@ object OfflineScoringSetAttribution{
       .withColumn("AttributedEventLogEntryTime", to_timestamp(col("AttributedEventLogEntryTime")).as("AttributedEventLogEntryTime"))
 
     val attributedEventResult = attributes._2
-      .filter($"AttributionMethodId"===lit("2"))
+      .filter($"AttributionMethodId".isin(List("0", "1"): _*))
       .toDF()
 
     // load pixel weight
