@@ -16,6 +16,7 @@ INPUT_PATH = "/var/tmp/input/"
 OUTPUT_PATH = "/var/tmp/output/"
 MODEL_LOGS = "/var/tmp/logs/"
 META_DATA_INPUT = "var/tmp/input"
+FEATURE_INPUT = "var/tmp/features/feature_cardinality.json"
 S3_PROD = "s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/"
 # PARAM_MODEL_OUTPUT = "models_params/"
 MODEL_OUTPUT = "models/"
@@ -87,7 +88,8 @@ app.parse_flags_with_usage(sys.argv)
 
 
 def main(argv):
-    model_features, model_target = get_features_target(exclude_features=FLAGS.exclude_features)
+    model_features, model_target = get_features_target(cardinality_path=FEATURE_INPUT,
+                                                       exclude_features=FLAGS.exclude_features)
     # if the training process need to go through the whole dataset in more than 1 epoch
     # we need to repeat the data and get the steps_per_epochs so that tf knows how the
     # data could be digested

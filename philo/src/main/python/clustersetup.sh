@@ -12,6 +12,9 @@ MNT="../../../../../../mnt/"
 SYNC_DEST="tfrecords/"
 META_DEST="metadata/"
 
+FEATURE_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/libs/philo/features/feature_cardinality.json"
+FEATURE_SYNC_DEST="features/"
+
 echo "installing updates.... \n"
 sudo yum update -y
 
@@ -64,6 +67,9 @@ for i in {1..9}; do
     fi
 
 done
+
+# sync features json file
+aws s3 sync ${FEATURE_S3_PATH} ${FEATURE_SYNC_DEST}
 
 echo "set up complete"
 

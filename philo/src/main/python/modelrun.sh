@@ -28,6 +28,7 @@ sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v /mnt/tfrecords:$
       "--batch_size=2048" \
       "--eval_batch_size=131072" \
       "--data_trunks=3" \
+      "--exclude_features=DoNotTrack"\
       "--num_epochs=5" \
       "--input_path=/var/tmp/input/tfrecords/" \
       "--meta_data_path=/var/tmp/input/metadata/" \
