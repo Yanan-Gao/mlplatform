@@ -29,26 +29,23 @@ object ModelInput {
 
   def main(args: Array[String]): Unit = {
 
-    def loadFilterData(inputPath: String): DataFrame = {
-      if (fileExists(inputPath)) {
-        spark.read.format("csv")
-          .load(inputPath)
-          // single column is unnamed
-          .withColumn(filterBy, $"_c0")
-          .select(filterBy)
-      } else {
-        throw new Exception(f"Filter file does not exit at ${inputPath}")
-      }
-    }
-
-
     val brBfLoc = BidsImpressions.BIDSIMPRESSIONSS3 + f"${ttdEnv}/bidsimpressions/"
 
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](brBfLoc, date, source = Some("geronimo"))
     val clicks = loadParquetData[ClickTrackerRecord](ClickTrackerDataset.CLICKSS3, date)
 
     if (filterResults) {
-      val filterByData = loadFilterData(filterFilePath)
+      var filterByData : DataFrame = null;
+
+      if (fileExists(filterFilePath)) {
+        filterByData = spark.read.format("csv")
+          .load(filterFilePath)
+          // single column is unnamed
+          .withColumn(filterBy, $"_c0")
+          .select(filterBy)
+      } else {
+        throw new Exception(f"Filter file does not exist at ${filterFilePath}")
+      }
 
       val (filteredData, labelCounts) = filterBy match {
         case "AdGroupId" => ModelInputTransform.transform(clicks, bidsImpressions, Some(filterByData.as[AdGroupFilterRecord]), None, true)
