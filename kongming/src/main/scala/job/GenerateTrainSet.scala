@@ -109,12 +109,15 @@ object GenerateTrainSet {
     // 0. load aggregated negatives
     val dailyNegativeSampledBids = loadParquetData[DailyNegativeSampledBidRequestRecord](DailyNegativeSampledBidRequestDataSet.S3BasePath, date, lookBack = Some(maxLookback-1))
     val aggregatedNegativeSet = aggregateNegatives(dailyNegativeSampledBids, adGroupPolicy)(prometheus)
-      .withColumn("IsInTrainSet", when(abs(hash($"BidRequestId")%100)<=trainRatio*100, lit(true)).otherwise(false))
+      .withColumn("IsInTrainSet", when($"UIID".isNotNull && $"UIID"=!=lit("00000000-0000-0000-0000-000000000000"),
+        when(abs(hash($"UIID")%100)<=trainRatio*100, lit(true)).otherwise(false)).otherwise(
+        when(abs(hash($"BidRequestId")%100)<=trainRatio*100, lit(true)).otherwise(false)
+      ))
       .withColumn("Weight", lit(1))  // placeholder: 1. assign format with positive 2. we might weight for negative in the future, TBD.
 
     //    load aggregated positives
     val aggregatedPositiveSet =  loadParquetData[DailyPositiveLabelRecord](DailyPositiveBidRequestDataset.S3BasePath, date, lookBack = Some(conversionLookback-1) )
-      .withColumn("IsInTrainSet", when(abs(hash($"BidRequestId")%100)<=trainRatio*100, lit(true)).otherwise(false))
+      .withColumn("IsInTrainSet", when(abs(hash($"UIID")%100)<=trainRatio*100, lit(true)).otherwise(false))
 
 
     // 1. exclude positives from negative;  remain pos and neg that have both train and val
