@@ -1,9 +1,10 @@
-from philo.features import build_input_features, get_linear_logit, input_from_feature_columns, SparseFeat, DenseFeat
-from philo.layers import add_func, concat_func, combined_dnn_input, DNN, FM, PredictionLayer
+from philo.features import build_input_features, get_linear_logit, input_from_feature_columns, SparseFeat, DenseFeat, \
+    get_dcn_input
+from philo.layers import add_func, concat_func, combined_dnn_input, DNN, FM, PredictionLayer, CrossNet, CrossNetMix, CIN
 
 from tensorflow.keras.models import Model
 from tensorflow.keras.initializers import glorot_normal
-from tensorflow.keras.layers import Dense
+from tensorflow.keras.layers import Dense, Concatenate
 from itertools import chain
 
 ############################################################################################
@@ -30,6 +31,12 @@ def model_builder(model_arch, model_features, **kwargs):
     linear_feature_columns = fixlen_feature_columns
     if model_arch == 'deepfm':
         model = deep_fm(linear_feature_columns, dnn_feature_columns, task='binary', **kwargs)
+    elif model_arch == 'xdeepfm':
+        model = xdeepfm(linear_feature_columns, dnn_feature_columns, task='binary', **kwargs)
+    elif model_arch == 'dcn':
+        model = dcn(linear_feature_columns, dnn_feature_columns, task='binary', **kwargs)
+    elif model_arch == 'dcnv2':
+        model = dcn_mix(linear_feature_columns, dnn_feature_columns, task='binary', **kwargs)
     else:
         raise Exception(f"{model_arch} is not implemented yet")
     return model
@@ -81,3 +88,156 @@ def deep_fm(linear_feature_columns, dnn_feature_columns, fm_group=[DEFAULT_GROUP
     output = PredictionLayer(task)(final_logit)
     model = Model(inputs=inputs_list, outputs=output)
     return model
+
+
+def xdeepfm(linear_feature_columns, dnn_feature_columns, dnn_hidden_units=(256, 128, 64),
+             cin_layer_size=(128, 128,), cin_split_half=True, cin_activation='relu', l2_reg_linear=0.00001,
+             l2_reg_embedding=0.00001, l2_reg_dnn=0, l2_reg_cin=0, seed=1024, dnn_dropout=0,
+             dnn_activation='relu', dnn_use_bn=False, task='binary'):
+    """Instantiates the xDeepFM architecture.
+    :param linear_feature_columns: An iterable containing all the features used by linear part of the model.
+    :param dnn_feature_columns: An iterable containing all the features used by deep part of the model.
+    :param dnn_hidden_units: list,list of positive integer or empty list, the layer number and units in each layer
+           of deep net
+    :param cin_layer_size: list,list of positive integer or empty list, the feature maps  in each hidden layer of
+           Compressed Interaction Network
+    :param cin_split_half: bool.if set to True, half of the feature maps in each hidden will connect to output unit
+    :param cin_activation: activation function used on feature maps
+    :param l2_reg_linear: float. L2 regularizer strength applied to linear part
+    :param l2_reg_embedding: L2 regularizer strength applied to embedding vector
+    :param l2_reg_dnn: L2 regularizer strength applied to deep net
+    :param l2_reg_cin: L2 regularizer strength applied to CIN.
+    :param seed: integer ,to use as random seed.
+    :param dnn_dropout: float in [0,1), the probability we will drop out a given DNN coordinate.
+    :param dnn_activation: Activation function to use in DNN
+    :param dnn_use_bn: bool. Whether use BatchNormalization before activation or not in DNN
+    :param task: str, ``"binary"`` for  binary logloss or  ``"regression"`` for regression loss
+    :return: A Keras model instance.
+    """
+
+    features = build_input_features(
+        linear_feature_columns + dnn_feature_columns)
+
+    inputs_list = list(features.values())
+
+    linear_logit = get_linear_logit(features, linear_feature_columns, seed=seed, prefix='linear',
+                                    l2_reg=l2_reg_linear)
+
+    sparse_embedding_list, dense_value_list = input_from_feature_columns(features, dnn_feature_columns,
+                                                                         l2_reg_embedding, seed)
+
+    fm_input = concat_func(sparse_embedding_list, axis=1)
+
+    dnn_input = combined_dnn_input(sparse_embedding_list, dense_value_list)
+    dnn_output = DNN(dnn_hidden_units, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed)(dnn_input)
+    dnn_logit = Dense(1, use_bias=False)(dnn_output)
+
+    final_logit = add_func([linear_logit, dnn_logit])
+
+    if len(cin_layer_size) > 0:
+        exFM_out = CIN(cin_layer_size, cin_activation,
+                       cin_split_half, l2_reg_cin, seed)(fm_input)
+        exFM_logit = Dense(1, use_bias=False)(exFM_out)
+        final_logit = add_func([final_logit, exFM_logit])
+
+    output = PredictionLayer(task)(final_logit)
+
+    model = Model(inputs=inputs_list, outputs=output)
+    return model
+
+
+def dcn_mix(linear_feature_columns, dnn_feature_columns, cross_num=2,
+            dnn_hidden_units=(256, 128, 64), l2_reg_linear=1e-5, l2_reg_embedding=1e-5, low_rank=32, num_experts=4,
+            l2_reg_cross=1e-5, l2_reg_dnn=0, seed=1024, dnn_dropout=0, dnn_use_bn=False,
+            dnn_activation='relu', task='binary'):
+    """Instantiates the Deep&Cross Network with mixture of experts architecture.
+    :param linear_feature_columns: An iterable containing all the features used by linear part of the model.
+    :param dnn_feature_columns: An iterable containing all the features used by deep part of the model.
+    :param cross_num: positive integet,cross layer number
+    :param dnn_hidden_units: list,list of positive integer or empty list, the layer number and units in each layer of
+                             DNN
+    :param l2_reg_linear: float. L2 regularizer strength applied to linear part
+    :param l2_reg_embedding: float. L2 regularizer strength applied to embedding vector
+    :param l2_reg_cross: float. L2 regularizer strength applied to cross net
+    :param l2_reg_dnn: float. L2 regularizer strength applied to DNN
+    :param seed: integer ,to use as random seed.
+    :param dnn_dropout: float in [0,1), the probability we will drop out a given DNN coordinate.
+    :param dnn_use_bn: bool. Whether use BatchNormalization before activation or not DNN
+    :param dnn_activation: Activation function to use in DNN
+    :param low_rank: Positive integer, dimensionality of low-rank space.
+    :param num_experts: Positive integer, number of experts.
+    :param task: str, ``"binary"`` for  binary logloss or  ``"regression"`` for regression loss
+    :return: A Keras model instance.
+    """
+    dnn_input, inputs_list, linear_logit = get_dcn_input(cross_num, dnn_feature_columns, dnn_hidden_units,
+                                                         l2_reg_embedding, l2_reg_linear, linear_feature_columns, seed)
+
+    if len(dnn_hidden_units) > 0 and cross_num > 0:  # Deep & Cross
+        deep_out = DNN(dnn_hidden_units, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed)(dnn_input)
+        cross_out = CrossNetMix(low_rank=low_rank, num_experts=num_experts, layer_num=cross_num,
+                                l2_reg=l2_reg_cross)(dnn_input)
+        stack_out = Concatenate()([cross_out, deep_out])
+        final_logit = Dense(1, use_bias=False)(stack_out)
+    elif len(dnn_hidden_units) > 0:  # Only Deep
+        deep_out = DNN(dnn_hidden_units, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed)(dnn_input)
+        final_logit = Dense(1, use_bias=False, )(deep_out)
+    elif cross_num > 0:  # Only Cross
+        cross_out = CrossNetMix(low_rank=low_rank, num_experts=num_experts, layer_num=cross_num,
+                                l2_reg=l2_reg_cross)(dnn_input)
+        final_logit = Dense(1, use_bias=False, )(cross_out)
+    else:  # Error
+        raise NotImplementedError
+
+    final_logit = add_func([final_logit, linear_logit])
+    output = PredictionLayer(task)(final_logit)
+
+    model = Model(inputs=inputs_list, outputs=output)
+
+    return model
+
+
+def dcn(linear_feature_columns, dnn_feature_columns, cross_num=2, cross_parameterization='vector',
+        dnn_hidden_units=(256, 128, 64), l2_reg_linear=1e-5, l2_reg_embedding=1e-5,
+        l2_reg_cross=1e-5, l2_reg_dnn=0, seed=1024, dnn_dropout=0, dnn_use_bn=False,
+        dnn_activation='relu', task='binary'):
+    """Instantiates the Deep&Cross Network architecture.
+    :param linear_feature_columns: An iterable containing all the features used by linear part of the model.
+    :param dnn_feature_columns: An iterable containing all the features used by deep part of the model.
+    :param cross_num: positive integet,cross layer number
+    :param cross_parameterization: str, ``"vector"`` or ``"matrix"``, how to parameterize the cross network.
+    :param dnn_hidden_units: list,list of positive integer or empty list, the layer number and units in each layer of DNN
+    :param l2_reg_linear: float. L2 regularizer strength applied to linear part
+    :param l2_reg_embedding: float. L2 regularizer strength applied to embedding vector
+    :param l2_reg_cross: float. L2 regularizer strength applied to cross net
+    :param l2_reg_dnn: float. L2 regularizer strength applied to DNN
+    :param seed: integer ,to use as random seed.
+    :param dnn_dropout: float in [0,1), the probability we will drop out a given DNN coordinate.
+    :param dnn_use_bn: bool. Whether use BatchNormalization before activation or not DNN
+    :param dnn_activation: Activation function to use in DNN
+    :param task: str, ``"binary"`` for  binary logloss or  ``"regression"`` for regression loss
+    :return: A Keras model instance.
+    """
+    dnn_input, inputs_list, linear_logit = get_dcn_input(cross_num, dnn_feature_columns, dnn_hidden_units,
+                                                         l2_reg_embedding, l2_reg_linear, linear_feature_columns, seed)
+
+    if len(dnn_hidden_units) > 0 and cross_num > 0:  # Deep & Cross
+        deep_out = DNN(dnn_hidden_units, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed)(dnn_input)
+        cross_out = CrossNet(cross_num, parameterization=cross_parameterization, l2_reg=l2_reg_cross)(dnn_input)
+        stack_out = Concatenate()([cross_out, deep_out])
+        final_logit = Dense(1, use_bias=False)(stack_out)
+    elif len(dnn_hidden_units) > 0:  # Only Deep
+        deep_out = DNN(dnn_hidden_units, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed)(dnn_input)
+        final_logit = Dense(1, use_bias=False)(deep_out)
+    elif cross_num > 0:  # Only Cross
+        cross_out = CrossNet(cross_num, parameterization=cross_parameterization, l2_reg=l2_reg_cross)(dnn_input)
+        final_logit = Dense(1, use_bias=False)(cross_out)
+    else:  # Error
+        raise NotImplementedError
+
+    final_logit = add_func([final_logit, linear_logit])
+    output = PredictionLayer(task)(final_logit)
+
+    model = Model(inputs=inputs_list, outputs=output)
+
+    return model
+

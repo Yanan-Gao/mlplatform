@@ -1,8 +1,8 @@
 from typing import List, Optional
 import tensorflow as tf
 from tensorflow.keras import backend as K
-from tensorflow.keras.layers import Layer, Flatten, add, Concatenate, BatchNormalization, Activation, Dropout
-from tensorflow.keras.initializers import glorot_normal, Zeros
+from tensorflow.keras.layers import Layer, Flatten, add, Concatenate, BatchNormalization, Activation, Dropout, Dense
+from tensorflow.keras.initializers import glorot_normal, Zeros, glorot_uniform
 from tensorflow.keras.regularizers import l2
 
 from tensorflow.python.ops.lookup_ops import StaticHashTable
@@ -734,6 +734,338 @@ class Hash(Layer):
         return dict(list(base_config.items()) + list(config.items()))
 
 
+class CrossNet(Layer):
+    """The Cross Network part of Deep&Cross Network model,
+    which leans both low and high degree cross feature.
+      Input shape
+        - 2D tensor with shape: ``(batch_size, units)``.
+      Output shape
+        - 2D tensor with shape: ``(batch_size, units)``.
+      Arguments
+        - **layer_num**: Positive integer, the cross layer number
+        - **l2_reg**: float between 0 and 1. L2 regularizer strength applied to the kernel weights matrix
+        - **parameterization**: string, ``"vector"``  or ``"matrix"`` ,  way to parameterize the cross network.
+        - **seed**: A Python integer to use as random seed.
+      References
+        - [Wang R, Fu B, Fu G, et al. Deep & cross network for ad click predictions[C]//Proceedings of the ADKDD'17. ACM, 2017: 12.](https://arxiv.org/abs/1708.05123)
+    """
+
+    def __init__(self, layer_num=2, parameterization='vector', l2_reg=0, seed=1024, **kwargs):
+        self.layer_num = layer_num
+        self.parameterization = parameterization
+        self.l2_reg = l2_reg
+        self.seed = seed
+        print('CrossNet parameterization:', self.parameterization)
+        super(CrossNet, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+
+        if len(input_shape) != 2:
+            raise ValueError(
+                "Unexpected inputs dimensions %d, expect to be 2 dimensions" % (len(input_shape),))
+
+        dim = int(input_shape[-1])
+        if self.parameterization == 'vector':
+            self.kernels = [self.add_weight(name='kernel' + str(i),
+                                            shape=(dim, 1),
+                                            initializer=glorot_normal(
+                                                seed=self.seed),
+                                            regularizer=l2(self.l2_reg),
+                                            trainable=True) for i in range(self.layer_num)]
+        elif self.parameterization == 'matrix':
+            self.kernels = [self.add_weight(name='kernel' + str(i),
+                                            shape=(dim, dim),
+                                            initializer=glorot_normal(
+                                                seed=self.seed),
+                                            regularizer=l2(self.l2_reg),
+                                            trainable=True) for i in range(self.layer_num)]
+        else:  # error
+            raise ValueError("parameterization should be 'vector' or 'matrix'")
+        self.bias = [self.add_weight(name='bias' + str(i),
+                                     shape=(dim, 1),
+                                     initializer=Zeros(),
+                                     trainable=True) for i in range(self.layer_num)]
+        # Be sure to call this somewhere!
+        super(CrossNet, self).build(input_shape)
+
+    def call(self, inputs, **kwargs):
+        if K.ndim(inputs) != 2:
+            raise ValueError(
+                "Unexpected inputs dimensions %d, expect to be 2 dimensions" % (K.ndim(inputs)))
+
+        x_0 = tf.expand_dims(inputs, axis=2)
+        x_l = x_0
+        for i in range(self.layer_num):
+            if self.parameterization == 'vector':
+                xl_w = tf.tensordot(x_l, self.kernels[i], axes=(1, 0))
+                dot_ = tf.matmul(x_0, xl_w)
+                x_l = dot_ + self.bias[i] + x_l
+            elif self.parameterization == 'matrix':
+                xl_w = tf.einsum('ij,bjk->bik', self.kernels[i], x_l)  # W * xi  (bs, dim, 1)
+                dot_ = xl_w + self.bias[i]  # W * xi + b
+                x_l = x_0 * dot_ + x_l  # x0 · (W * xi + b) +xl  Hadamard-product
+            else:  # error
+                raise ValueError("parameterization should be 'vector' or 'matrix'")
+        x_l = tf.squeeze(x_l, axis=2)
+        return x_l
+
+    def get_config(self, ):
+
+        config = {'layer_num': self.layer_num, 'parameterization': self.parameterization,
+                  'l2_reg': self.l2_reg, 'seed': self.seed}
+        base_config = super(CrossNet, self).get_config()
+        base_config.update(config)
+        return base_config
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+
+class CrossNetMix(Layer):
+    """The Cross Network part of DCN-Mix model, which improves DCN-M by:
+      1 add MOE to learn feature interactions in different subspaces
+      2 add nonlinear transformations in low-dimensional space
+      Input shape
+        - 2D tensor with shape: ``(batch_size, units)``.
+      Output shape
+        - 2D tensor with shape: ``(batch_size, units)``.
+      Arguments
+        - **low_rank** : Positive integer, dimensionality of low-rank sapce.
+        - **num_experts** : Positive integer, number of experts.
+        - **layer_num**: Positive integer, the cross layer number
+        - **l2_reg**: float between 0 and 1. L2 regularizer strength applied to the kernel weights matrix
+        - **seed**: A Python integer to use as random seed.
+      References
+        - [Wang R, Shivanna R, Cheng D Z, et al. DCN-M: Improved Deep & Cross Network for Feature Cross Learning in Web-scale Learning to Rank Systems[J]. 2020.](https://arxiv.org/abs/2008.13535)
+    """
+
+    def __init__(self, low_rank=32, num_experts=4, layer_num=2, l2_reg=0, seed=1024, **kwargs):
+        self.low_rank = low_rank
+        self.num_experts = num_experts
+        self.layer_num = layer_num
+        self.l2_reg = l2_reg
+        self.seed = seed
+        super(CrossNetMix, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+
+        if len(input_shape) != 2:
+            raise ValueError(
+                "Unexpected inputs dimensions %d, expect to be 2 dimensions" % (len(input_shape),))
+
+        dim = int(input_shape[-1])
+
+        # U: (dim, low_rank)
+        self.U_list = [self.add_weight(name='U_list' + str(i),
+                                       shape=(self.num_experts, dim, self.low_rank),
+                                       initializer=glorot_normal(
+                                           seed=self.seed),
+                                       regularizer=l2(self.l2_reg),
+                                       trainable=True) for i in range(self.layer_num)]
+        # V: (dim, low_rank)
+        self.V_list = [self.add_weight(name='V_list' + str(i),
+                                       shape=(self.num_experts, dim, self.low_rank),
+                                       initializer=glorot_normal(
+                                           seed=self.seed),
+                                       regularizer=l2(self.l2_reg),
+                                       trainable=True) for i in range(self.layer_num)]
+        # C: (low_rank, low_rank)
+        self.C_list = [self.add_weight(name='C_list' + str(i),
+                                       shape=(self.num_experts, self.low_rank, self.low_rank),
+                                       initializer=glorot_normal(
+                                           seed=self.seed),
+                                       regularizer=l2(self.l2_reg),
+                                       trainable=True) for i in range(self.layer_num)]
+
+        self.gating = [Dense(1, use_bias=False) for i in range(self.num_experts)]
+
+        self.bias = [self.add_weight(name='bias' + str(i),
+                                     shape=(dim, 1),
+                                     initializer=Zeros(),
+                                     trainable=True) for i in range(self.layer_num)]
+        # Be sure to call this somewhere!
+        super(CrossNetMix, self).build(input_shape)
+
+    def call(self, inputs, **kwargs):
+        if K.ndim(inputs) != 2:
+            raise ValueError(
+                "Unexpected inputs dimensions %d, expect to be 2 dimensions" % (K.ndim(inputs)))
+
+        x_0 = tf.expand_dims(inputs, axis=2)
+        x_l = x_0
+        for i in range(self.layer_num):
+            output_of_experts = []
+            gating_score_of_experts = []
+            for expert_id in range(self.num_experts):
+                # (1) G(x_l)
+                # compute the gating score by x_l
+                gating_score_of_experts.append(self.gating[expert_id](tf.squeeze(x_l, axis=2)))
+
+                # (2) E(x_l)
+                # project the input x_l to $\mathbb{R}^{r}$
+                v_x = tf.einsum('ij,bjk->bik', tf.transpose(self.V_list[i][expert_id]), x_l)  # (bs, low_rank, 1)
+
+                # nonlinear activation in low rank space
+                v_x = tf.nn.tanh(v_x)
+                v_x = tf.einsum('ij,bjk->bik', self.C_list[i][expert_id], v_x)  # (bs, low_rank, 1)
+                v_x = tf.nn.tanh(v_x)
+
+                # project back to $\mathbb{R}^{d}$
+                uv_x = tf.einsum('ij,bjk->bik', self.U_list[i][expert_id], v_x)  # (bs, dim, 1)
+
+                dot_ = uv_x + self.bias[i]
+                dot_ = x_0 * dot_  # Hadamard-product
+
+                output_of_experts.append(tf.squeeze(dot_, axis=2))
+
+            # (3) mixture of low-rank experts
+            output_of_experts = tf.stack(output_of_experts, 2)  # (bs, dim, num_experts)
+            gating_score_of_experts = tf.stack(gating_score_of_experts, 1)  # (bs, num_experts, 1)
+            moe_out = tf.matmul(output_of_experts, tf.nn.softmax(gating_score_of_experts, 1))
+            x_l = moe_out + x_l  # (bs, dim, 1)
+        x_l = tf.squeeze(x_l, axis=2)
+        return x_l
+
+    def get_config(self, ):
+
+        config = {'low_rank': self.low_rank, 'num_experts': self.num_experts, 'layer_num': self.layer_num,
+                  'l2_reg': self.l2_reg, 'seed': self.seed}
+        base_config = super(CrossNetMix, self).get_config()
+        base_config.update(config)
+        return base_config
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+
+class CIN(Layer):
+    """Compressed Interaction Network used in xDeepFM.This implemention is
+    adapted from code that the author of the paper published on https://github.com/Leavingseason/xDeepFM.
+      Input shape
+        - 3D tensor with shape: ``(batch_size,field_size,embedding_size)``.
+      Output shape
+        - 2D tensor with shape: ``(batch_size, featuremap_num)`` ``featuremap_num =  sum(self.layer_size[:-1]) // 2 + self.layer_size[-1]`` if ``split_half=True``,else  ``sum(layer_size)`` .
+      Arguments
+        - **layer_size** : list of int.Feature maps in each layer.
+        - **activation** : activation function used on feature maps.
+        - **split_half** : bool.if set to False, half of the feature maps in each hidden will connect to output unit.
+        - **seed** : A Python integer to use as random seed.
+      References
+        - [Lian J, Zhou X, Zhang F, et al. xDeepFM: Combining Explicit and Implicit Feature Interactions for Recommender Systems[J]. arXiv preprint arXiv:1803.05170, 2018.] (https://arxiv.org/pdf/1803.05170.pdf)
+    """
+
+    def __init__(self, layer_size=(128, 128), activation='relu', split_half=True, l2_reg=1e-5, seed=1024, **kwargs):
+        if len(layer_size) == 0:
+            raise ValueError(
+                "layer_size must be a list(tuple) of length greater than 1")
+        self.layer_size = layer_size
+        self.split_half = split_half
+        self.activation = activation
+        self.l2_reg = l2_reg
+        self.seed = seed
+        super(CIN, self).__init__(**kwargs)
+
+    def build(self, input_shape):
+        if len(input_shape) != 3:
+            raise ValueError(
+                "Unexpected inputs dimensions %d, expect to be 3 dimensions" % (len(input_shape)))
+
+        self.field_nums = [int(input_shape[1])]
+        self.filters = []
+        self.bias = []
+        for i, size in enumerate(self.layer_size):
+
+            self.filters.append(self.add_weight(name='filter' + str(i),
+                                                shape=[1, self.field_nums[-1]
+                                                       * self.field_nums[0], size],
+                                                dtype=tf.float32, initializer=glorot_uniform(
+                    seed=self.seed + i),
+                                                regularizer=l2(self.l2_reg)))
+
+            self.bias.append(self.add_weight(name='bias' + str(i), shape=[size], dtype=tf.float32,
+                                             initializer=Zeros()))
+
+            if self.split_half:
+                if i != len(self.layer_size) - 1 and size % 2 > 0:
+                    raise ValueError(
+                        "layer_size must be even number except for the last layer when split_half=True")
+
+                self.field_nums.append(size // 2)
+            else:
+                self.field_nums.append(size)
+
+        self.activation_layers = [activation_layer(
+            self.activation) for _ in self.layer_size]
+
+        super(CIN, self).build(input_shape)  # Be sure to call this somewhere!
+
+    def call(self, inputs, **kwargs):
+
+        if K.ndim(inputs) != 3:
+            raise ValueError(
+                "Unexpected inputs dimensions %d, expect to be 3 dimensions" % (K.ndim(inputs)))
+
+        dim = int(inputs.get_shape()[-1])
+        hidden_nn_layers = [inputs]
+        final_result = []
+
+        split_tensor0 = tf.split(hidden_nn_layers[0], dim * [1], 2)
+        for idx, layer_size in enumerate(self.layer_size):
+            split_tensor = tf.split(hidden_nn_layers[-1], dim * [1], 2)
+
+            dot_result_m = tf.matmul(
+                split_tensor0, split_tensor, transpose_b=True)
+
+            dot_result_o = tf.reshape(
+                dot_result_m, shape=[dim, -1, self.field_nums[0] * self.field_nums[idx]])
+
+            dot_result = tf.transpose(dot_result_o, perm=[1, 0, 2])
+
+            curr_out = tf.nn.conv1d(
+                dot_result, filters=self.filters[idx], stride=1, padding='VALID')
+
+            curr_out = tf.nn.bias_add(curr_out, self.bias[idx])
+
+            curr_out = self.activation_layers[idx](curr_out)
+
+            curr_out = tf.transpose(curr_out, perm=[0, 2, 1])
+
+            if self.split_half:
+                if idx != len(self.layer_size) - 1:
+                    next_hidden, direct_connect = tf.split(
+                        curr_out, 2 * [layer_size // 2], 1)
+                else:
+                    direct_connect = curr_out
+                    next_hidden = 0
+            else:
+                direct_connect = curr_out
+                next_hidden = curr_out
+
+            final_result.append(direct_connect)
+            hidden_nn_layers.append(next_hidden)
+
+        result = tf.concat(final_result, axis=1)
+        result = tf.reduce_sum(result, -1, keepdims=False)
+
+        return result
+
+    def compute_output_shape(self, input_shape):
+        if self.split_half:
+            featuremap_num = sum(
+                self.layer_size[:-1]) // 2 + self.layer_size[-1]
+        else:
+            featuremap_num = sum(self.layer_size)
+        return (None, featuremap_num)
+
+    def get_config(self, ):
+
+        config = {'layer_size': self.layer_size, 'split_half': self.split_half, 'activation': self.activation,
+                  'seed': self.seed}
+        base_config = super(CIN, self).get_config()
+        base_config.update(config)
+        return base_config
+
+
 custom_objects = {'tf': tf,
                   # 'InnerProductLayer': InnerProductLayer,
                   'DNN': DNN,
@@ -745,5 +1077,8 @@ custom_objects = {'tf': tf,
                   'Hash': Hash,
                   'Linear': Linear,
                   'WeightedSequenceLayer': WeightedSequenceLayer,
-                  'CustomAdd': CustomAdd
+                  'CustomAdd': CustomAdd,
+                  "DCN": CrossNet,
+                  "DCNMix": CrossNetMix,
+                  "CIN": CIN
                   }

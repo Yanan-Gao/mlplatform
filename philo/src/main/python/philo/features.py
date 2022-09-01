@@ -8,7 +8,7 @@ from tensorflow.keras.initializers import RandomNormal, Zeros
 from tensorflow.keras.layers import Input, Lambda
 
 # ctr imports
-from philo.layers import concat_func, Linear
+from philo.layers import concat_func, Linear, combined_dnn_input
 from philo.inputs import create_embedding_matrix, embedding_lookup, get_dense_input, varlen_embedding_lookup, \
     get_varlen_pooling_list, mergeDict
 from collections import defaultdict
@@ -374,3 +374,17 @@ def get_map_function_test(model_features, model_target, keep_id):
         return features, labels, ids
 
     return _parse_examples
+
+
+def get_dcn_input(cross_num, dnn_feature_columns, dnn_hidden_units, l2_reg_embedding, l2_reg_linear,
+                  linear_feature_columns, seed):
+    if len(dnn_hidden_units) == 0 and cross_num == 0:
+        raise ValueError("Either hidden_layer or cross layer must > 0")
+    features = build_input_features(dnn_feature_columns)
+    inputs_list = list(features.values())
+    linear_logit = get_linear_logit(features, linear_feature_columns, seed=seed, prefix='linear',
+                                    l2_reg=l2_reg_linear)
+    sparse_embedding_list, dense_value_list = input_from_feature_columns(features, dnn_feature_columns,
+                                                                         l2_reg_embedding, seed)
+    dnn_input = combined_dnn_input(sparse_embedding_list, dense_value_list)
+    return dnn_input, inputs_list, linear_logit
