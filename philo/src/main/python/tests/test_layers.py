@@ -5,7 +5,7 @@ from tensorflow.keras.layers import PReLU
 
 from tensorflow.keras.utils import CustomObjectScope
 from philo.layers import Dice, DNN, PredictionLayer, FM, Hash, \
-    NoMask, Linear
+    NoMask, Linear, CrossNet, CIN
 from tests.utils import layer_test
 
 tf.keras.backend.set_learning_phase(True)
@@ -107,4 +107,28 @@ def test_prediction_layer_invalid():
 def test_fm():
     with CustomObjectScope({'FM': FM}):
         layer_test(FM, kwargs={}, input_shape=(
+            BATCH_SIZE, FIELD_SIZE, EMBEDDING_SIZE))
+
+
+@pytest.mark.parametrize(
+
+    'layer_num',
+
+    [0, 1]
+
+)
+def test_CrossNet(layer_num, ):
+    with CustomObjectScope({'CrossNet': CrossNet}):
+        layer_test(CrossNet, kwargs={
+            'layer_num': layer_num, }, input_shape=(2, 3))
+
+
+@pytest.mark.parametrize(
+    'layer_size,split_half',
+    [((10,), False), ((10, 8), True)
+     ]
+)
+def test_CIN(layer_size, split_half):
+    with CustomObjectScope({'CIN': CIN}):
+        layer_test(CIN, kwargs={"layer_size": layer_size, "split_half": split_half}, input_shape=(
             BATCH_SIZE, FIELD_SIZE, EMBEDDING_SIZE))
