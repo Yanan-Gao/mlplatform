@@ -240,11 +240,11 @@ def main(argv):
     calibrated_model.save(calibrated_model_path)
 
     print_debug("upload calibrated model to s3")
-    s3_output_path_tmp = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/calibrated_conversion_model/1"
+    s3_output_path_tmp = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/temp_calibrated_conversion_model/1"
     s3_copy(calibrated_model_path, s3_output_path_tmp)
-    # rename trick
-    s3_output_path = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/calibrated_conversion_model/{FLAGS.date}"
-    s3_move(s3_output_path_tmp, s3_output_path)
+    # rename trick - don't copy it over for now because there's a manual step
+    # s3_output_path = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/calibrated_conversion_model/{FLAGS.date}"
+    # s3_move(s3_output_path_tmp, s3_output_path)
 
 if __name__ == '__main__':
     # took 20m for 500 adgroups on 32Gb 8cores machine.
