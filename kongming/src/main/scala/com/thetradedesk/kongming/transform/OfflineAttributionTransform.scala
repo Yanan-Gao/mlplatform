@@ -105,6 +105,7 @@ object OfflineAttributionTransform {
     //3. load clicks
     val clicks = ClickTrackerDataSetV5(defaultCloudProvider)
       .readRange(endDate.minusDays(lookBack).atStartOfDay(), endDate.plusDays(1).atStartOfDay())
+      .select($"BidRequestId", $"ClickRedirectId")
   //can one impression click multiple times?
 
     val scoreQuantileWindow = Window.partitionBy($"AdGroupId").orderBy($"Score")
