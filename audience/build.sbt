@@ -6,9 +6,9 @@ name := "audience"
 
 version := "0.0.0"
 
-scalaVersion := "2.12.13"
+scalaVersion := "2.12.15"
 
-val sparkVersion = "3.1.1"
+val sparkVersion = "3.2.1"
 val prometheusVersion = "0.9.0"
 
 resolvers += "bintray-spark-packages" at "https://dl.bintray.com/spark-packages/maven/"
@@ -23,7 +23,7 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-mllib" % sparkVersion % "provided",
 
   "com.typesafe" % "config" % "1.3.0",
-  "com.thetradedesk" %% "geronimo" % "0.1.5-SNAPSHOT",
+  "com.thetradedesk" %% "geronimo" % "0.2.0-SNAPSHOT",
   "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
 
   "io.prometheus" % "simpleclient" % prometheusVersion,
