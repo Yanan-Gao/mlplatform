@@ -1,13 +1,15 @@
 package com.thetradedesk.audience.datasets
 
-final case class ConversionRecord(TrackingTagId: String,
-                                  LogEntryTime: java.sql.Timestamp,
-                                  AdvertiserId: String,
-                                  TDID: String,
-                                  BidRequestId: Option[String],
-                                  OfflineConversionTime: Option[java.sql.Timestamp]//,
-                                  //UnifiedId2: String //apparently dataset does not have this. will need to reconsider.
-                                 )
-
-case class ConversionDataset() extends
-  LightReadableDataset[ConversionRecord]("/parquet/rtb_conversiontracker_verticaload/v=4", "s3a://ttd-datapipe-data")
+import com.thetradedesk.spark.datasets.core.{CoalesceOnWrite, DataPipeS3DataSet}
+import com.thetradedesk.spark.util.CloudProvider
+import com.thetradedesk.streaming.records.rtb.conversiontracker.ConversionTrackerVerticaLoadRecord
+case class ConversionDataset(cloudProvider: CloudProvider)
+  extends DataPipeS3DataSet[ConversionTrackerVerticaLoadRecord](
+    "rtb_conversiontracker_verticaload/v=4",
+    timestampFieldName = "LogEntryTime",
+    cloudProvider = cloudProvider,
+    mergeSchema = false,
+    partitioningType = CoalesceOnWrite
+) {
+  override protected val forceSchemaForParquet: Boolean = true
+}

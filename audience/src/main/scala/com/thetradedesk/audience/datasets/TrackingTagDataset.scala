@@ -1,5 +1,7 @@
 package com.thetradedesk.audience.datasets
 
+import com.thetradedesk.spark.datasets.core.ProvisioningS3DataSet
+
 final case class TrackingTagRecord(AdvertiserId: String,
                                    TrackingTagId: String,
                                    TrackingTagName: String,
@@ -21,4 +23,4 @@ final case class TrackingTagRecord(AdvertiserId: String,
                                  )
 
 case class TrackingTagDataset() extends
-  LightReadableDataset[TrackingTagRecord]("/warehouse.external/thetradedesk.db/provisioning/trackingtag/v=1", "s3a://thetradedesk-useast-qubole")
+  ProvisioningS3DataSet[TrackingTagRecord]("trackingtag/v=1", true)

@@ -1,11 +1,13 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.datasets.{BidsImpressionDataSet, ConversionDataset, ConversionRecord, FirstPartyPixelModelInputDataset, FirstPartyPixelModelInputRecord, TrackingTagDataset}
+import com.thetradedesk.audience.datasets.{ConversionDataset, FirstPartyPixelModelInputDataset, FirstPartyPixelModelInputRecord, TrackingTagDataset}
 import com.thetradedesk.audience.date
-import com.thetradedesk.spark.TTDSparkContext.spark
-import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.audience.sample.DownSample.hashSampleV2
 import com.thetradedesk.audience.transform.ModelFeatureTransform
+import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
+import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -34,10 +36,11 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
     val softNegativeSampledCount = prometheus.createGauge("soft_negative_sample_count", "Number of soft negative sampled records")
     val hardNegativeSampledCount = prometheus.createGauge("hard_negative_sample_count", "Number of hard negative sampled records")
 
-    val conversionDS = ConversionDataset().readPartition(date, lookBack = Some(conversionLookBack))
+    val conversionDS = ConversionDataset(defaultCloudProvider).readRange(date.minusDays(conversionLookBack).atStartOfDay(), date.atStartOfDay())
       .select('TDID, 'TrackingTagId)
       .filter('TDID.isNotNullOrEmpty && 'TDID =!= "00000000-0000-0000-0000-000000000000")
-    val bidsImpressions = BidsImpressionDataSet().readPartition(date, lookBack = Some(bidsImpressionLookBack))
+    val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
+    val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE), lookBack=Some(bidsImpressionLookBack))
       .withColumnRenamed("UIID", "TDID")
       .filter('TDID.isNotNullOrEmpty && 'TDID =!= "00000000-0000-0000-0000-000000000000")  // in the future, we may not have the id, good to think about how to solve
       .select('BidRequestId, // use to connect with bidrequest, to get more features
