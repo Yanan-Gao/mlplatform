@@ -86,6 +86,22 @@ audience:deploy_release:
     - popd
     - echo "ran AUDIENCE_deploy_release"
 
+audience:dummy:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: k8s_deploy
+  services:
+    - docker:dind
+  before_script:
+    - apt update
+    - apt-get install docker.io -y
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
+      changes:
+        - "audience/src/main/python/**/*"
+      when: manual
+  script:
+    - echo "Only add one python tool. no need to build. will remove me in the future"
+
 #audience:push_scripts:
 #  image: "$PYTHON_BUILD_IMAGE"
 #  stage: deploy
