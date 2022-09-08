@@ -119,6 +119,10 @@ object ModelInputTransform extends Logger {
     bidsImpsPreJoin.join(clickLabels, Seq("BidRequestIdHash"), "leftouter")
       .withColumn("label", when(col("label").isNull, 0).otherwise(1))
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
+      // add unhashed columns to output dataset
+      .withColumn("OriginalAdGroupId", $"AdGroupId")
+      .withColumn("OriginalCountry", $"Country")
+      // filter results if we have a filter
       .transform(ds => if (filterResults && adGroupIdFilter.isDefined) {
           ds.join(adGroupIdFilter.get, Seq("AdGroupId"))
         } else if (filterResults && countryFilter.isDefined) {
