@@ -1,7 +1,6 @@
 from collections import namedtuple, OrderedDict
 from itertools import chain
 from copy import copy
-import json
 
 import tensorflow as tf
 from tensorflow.keras.initializers import RandomNormal, Zeros
@@ -11,79 +10,12 @@ from tensorflow.keras.layers import Input, Lambda
 from philo.layers import concat_func, Linear, combined_dnn_input
 from philo.inputs import create_embedding_matrix, embedding_lookup, get_dense_input, varlen_embedding_lookup, \
     get_varlen_pooling_list, mergeDict
-from collections import defaultdict
+from philo.feature_utils import Target
 
 SEED = 1024
-Feature = namedtuple("Feature",
-                     "name, sparse, type, cardinality, default_value, enabled, embedding_dim")
-DEFAULT_EMB_DIM = 16
-Target = namedtuple("Feature", "name, type, default_value, enabled, binary")
 DEFAULT_MODEL_TARGET = Target(name='label', type=tf.int64, default_value=0, enabled=True, binary=True)
 
 DEFAULT_GROUP_NAME = "default_group"
-
-
-def get_feature_definitions(json_path):
-    """
-    get the feature definitions from a json file
-    Args:
-        json_path: path to the json file of feature definitions
-
-    Returns: list of dictionaries and version
-
-    """
-    with open(json_path) as f:
-        data = json.load(f)
-    return data['ModelFeatureDefinitions'][0]['FeatureDefinitions']
-
-
-def get_features_settings(feature_def):
-    """
-    get sparse feature settings
-    Args:
-        feature_def: list of feature settings
-
-    Returns: list of Feature objects
-
-    """
-    feature_list = []
-    for f in feature_def:
-        if f["Cardinality"] > 0:
-            feature_list.append(Feature(f['Name'], True, tf.int64, f['Cardinality'], 0, True, DEFAULT_EMB_DIM))
-        else:
-            feature_list.append(Feature(f['Name'], False, tf.float32, 1, 0.0, True, None))
-    return feature_list
-
-
-def get_features_target(cardinality_path, exclude_features=[]):
-    """
-    get model features and targets
-    Args:
-        cardinality_path: path to the cardinality file
-        exclude_features: list of features that are not used
-
-    Returns: list of features and target
-
-    """
-    return get_model_features(cardinality_path, exclude_features=exclude_features), DEFAULT_MODEL_TARGET
-
-
-def get_model_features(cardinality_path,
-                       exclude_features=[]):
-    """
-    remove the features that are in the exclude_features
-    Args:
-        cardinality_path: path to the cardinality file
-        exclude_features: list of features hat are not used
-
-    Returns: list of features
-
-    """
-    feature_def = get_feature_definitions(cardinality_path)
-    default_model_features = get_features_settings(feature_def)
-    if not exclude_features:
-        return default_model_features
-    return [feat for feat in default_model_features if feat.name not in exclude_features]
 
 
 class VarLenSparseFeat(namedtuple('VarLenSparseFeat',

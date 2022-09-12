@@ -11,22 +11,13 @@ RUN apt-get -y install python3-pip
 WORKDIR /opt/application/
 
 RUN pip3 install --upgrade pip
-RUN pip3 install --quiet --no-cache-dir \
-    'tensorflow==2.8.0' \
-    'tensorflow_probability==0.16.0' \
-    'boto3' \
-    'prometheus_client' \
-    'awscli' \
-    'pandas' \
-    'tensorflow-serving-api==2.8.0'
-
-RUN pip3 install --upgrade protobuf==3.20.0
-
-
 
 COPY plutus ./plutus
 COPY setup.cfg ./
 COPY main.py ./
+COPY features.json ./
+COPY requirements.txt ./
 
+RUN pip3 install --quiet --no-cache-dir -r requirements.txt
 
 ENTRYPOINT ["python3", "./main.py"]

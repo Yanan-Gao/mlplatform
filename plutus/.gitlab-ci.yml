@@ -1,6 +1,7 @@
 
 variables:
   PLUTUS_JAR_NAME: "plutus.jar"
+  FEATURES_JSON: "features.json"
   PLUTUS_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/jars/mergerequests"
   PLUTUS_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/jars/snapshots"
   PLUTUS_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/jars/prod"
@@ -9,6 +10,8 @@ variables:
   PLUTUS_MODEL_RUN_SCRIPT: "modelrun.sh"
   PLUTUS_SETUP_SCRIPT: "clustersetup.sh"
   PLUTUS_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/scripts/"
+  PLUTUS_FEATURES_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/features/"
+  PLUTUS_MERGEREQUESTS_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/scripts/mergerequests/$CI_COMMIT_REF_SLUG/"
   SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
   PYTHON_BUILD_IMAGE: "python:3.8"
   PLUTUS_TRAINING_IMAGE: "plutus-training"
@@ -74,13 +77,29 @@ plutus:push_scripts:
       changes:
         - "plutus/src/main/python/modelrun.sh"
         - "plutus/src/main/python/clustersetup.sh"
+        - "plutus/src/main/python/features.json"
   script:
     - pushd ./plutus/
     - aws s3 cp ${PLUTUS_SCRIPTS_SOURCE}/${PLUTUS_SETUP_SCRIPT} ${PLUTUS_SCRIPTS_DEST}
     - aws s3 cp ${PLUTUS_SCRIPTS_SOURCE}/${PLUTUS_MODEL_RUN_SCRIPT} ${PLUTUS_SCRIPTS_DEST}
+    - aws s3 cp ${PLUTUS_SCRIPTS_SOURCE}/${FEATURES_JSON} ${PLUTUS_FEATURES_DEST}
     - popd
     - echo "ran push_set_scripts"
 
+plutus:push_scripts_merge_request:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: assembly_upload
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "plutus/**/*"
+  script:
+    - pushd ./plutus/
+    - aws s3 cp ${PLUTUS_SCRIPTS_SOURCE}/${PLUTUS_SETUP_SCRIPT} ${PLUTUS_MERGEREQUESTS_SCRIPTS_DEST}
+    - aws s3 cp ${PLUTUS_SCRIPTS_SOURCE}/${PLUTUS_MODEL_RUN_SCRIPT} ${PLUTUS_MERGEREQUESTS_SCRIPTS_DEST}
+    - aws s3 cp ${PLUTUS_SCRIPTS_SOURCE}/${FEATURES_JSON} ${PLUTUS_FEATURES_DEST}
+    - popd
+    - echo "ran push_set_scripts"
 
 plutus:build_push_training_container:
   image: "$PYTHON_BUILD_IMAGE"
@@ -100,11 +119,11 @@ plutus:build_push_training_container:
     - export DOCKER_HOST=$DOCKER_PORT
     - pushd ./plutus/src/main/python/
     - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
-    - docker build -f Dockerfile.prod -t ${PLUTUS_TRAINING_IMAGE}:latest .
-    - docker tag ${PLUTUS_TRAINING_IMAGE}:latest ${DOCKER_INTERNAL_REGISTRY}/${PLUTUS_TRAINING_IMAGE}:latest
-    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PLUTUS_TRAINING_IMAGE}:latest
+    - docker build -f Dockerfile.prod -t ${PLUTUS_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} .
+    - docker tag ${PLUTUS_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} ${DOCKER_INTERNAL_REGISTRY}/${PLUTUS_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
+    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PLUTUS_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
     - popd
-    - echo "latest training container pushed"
+    - echo "latest training container pushed to ${DOCKER_INTERNAL_REGISTRY}/${PLUTUS_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}"
 
 plutus:build_push_release_container:
   image: "$PYTHON_BUILD_IMAGE"
