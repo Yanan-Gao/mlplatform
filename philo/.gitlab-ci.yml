@@ -2,6 +2,7 @@
 variables:
   SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
   PHILO_JAR_NAME: "philo.jar"
+  FEATURES_JSON: "features.json"
   PHILO_LIBS_S3_LOCATION: "s3://thetradedesk-mlplatform-us-east-1/libs/philo"
   PHILO_MERGEREQUESTS_JAR_FOLDER: "$PHILO_LIBS_S3_LOCATION/jars/mergerequests"
   PHILO_SNAPSHOTS_JAR_FOLDER: "$PHILO_LIBS_S3_LOCATION/jars/snapshots"
@@ -11,8 +12,6 @@ variables:
   PHILO_MODEL_RUN_SCRIPT: "modelrun.sh"
   PHILO_SETUP_SCRIPT: "clustersetup.sh"
   PHILO_SCRIPTS_DEST: "$PHILO_LIBS_S3_LOCATION/scripts/"
-  PHILO_FEATURES_SOURCE: "src/features"
-  PHILO_FEATURES_JSON: "feature_cardinality.json"
   PHILO_FEATURES_DEST: "$PHILO_LIBS_S3_LOCATION/features/"
   PHILO_MERGEREQUESTS_FEATURES_DEST: "$PHILO_LIBS_S3_LOCATION/features/mergerequests/$CI_COMMIT_REF_SLUG/"
   PHILO_MERGEREQUESTS_SCRIPTS_DEST: "$PHILO_LIBS_S3_LOCATION/scripts/mergerequests/$CI_COMMIT_REF_SLUG/"
@@ -79,12 +78,12 @@ philo:push_scripts:
       changes:
         - "philo/src/main/python/modelrun.sh"
         - "philo/src/main/python/clustersetup.sh"
-        - "philo/features/feature_cardinality.json"
+        - "philo/src/main/python/features.json"
   script:
     - pushd ./philo/
     - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${PHILO_SETUP_SCRIPT} ${PHILO_SCRIPTS_DEST}
     - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${PHILO_MODEL_RUN_SCRIPT} ${PHILO_SCRIPTS_DEST}
-    - aws s3 cp ${PHILO_FEATURES_SOURCE}/${PHILO_FEATURES_JSON} ${PHILO_FEATURES_DEST}
+    - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${FEATURES_JSON} ${PHILO_FEATURES_DEST}
     - popd
     - echo "ran push_set_scripts"
 
@@ -99,7 +98,7 @@ philo:push_scripts_merge_request:
     - pushd ./philo/
     - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${PHILO_SETUP_SCRIPT} ${PHILO_MERGEREQUESTS_SCRIPTS_DEST}
     - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${PHILO_MODEL_RUN_SCRIPT} ${PHILO_MERGEREQUESTS_SCRIPTS_DEST}
-    - aws s3 cp ${PHILO_FEATURES_SOURCE}/${PHILO_FEATURES_JSON} ${PHILO_MERGEREQUESTS_FEATURES_DEST}
+    - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${FEATURES_JSON} ${PHILO_MERGEREQUESTS_FEATURES_DEST}
     - popd
     - echo "ran push_set_scripts"
 

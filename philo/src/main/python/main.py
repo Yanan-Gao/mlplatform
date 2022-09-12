@@ -5,10 +5,11 @@ import tensorflow as tf
 from absl import app, flags
 
 from philo.data import prepare_dummy_data, prepare_real_data, s3_sync, get_steps_epochs_emr, TRAIN, VAL, TEST
-from philo.features import get_features_target
+from philo.features import DEFAULT_MODEL_TARGET
 from philo.models import model_builder
 from philo.utils import get_callbacks
 from philo.prometheus import Prometheus
+from philo.feature_utils import get_features_from_json
 
 FLAGS = flags.FLAGS
 
@@ -16,7 +17,7 @@ INPUT_PATH = "/var/tmp/input/"
 OUTPUT_PATH = "/var/tmp/output/"
 MODEL_LOGS = "/var/tmp/logs/"
 META_DATA_INPUT = "var/tmp/input"
-FEATURE_INPUT = "var/tmp/features/feature_cardinality.json"
+FEATURES_PATH = "features.json"
 S3_PROD = "s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/"
 # PARAM_MODEL_OUTPUT = "models_params/"
 MODEL_OUTPUT = "models/"
@@ -88,8 +89,9 @@ app.parse_flags_with_usage(sys.argv)
 
 
 def main(argv):
-    model_features, model_target = get_features_target(cardinality_path=FEATURE_INPUT,
-                                                       exclude_features=FLAGS.exclude_features)
+    model_features = get_features_from_json(FEATURES_PATH, FLAGS.exclude_features)
+    model_target = DEFAULT_MODEL_TARGET
+
     # if the training process need to go through the whole dataset in more than 1 epoch
     # we need to repeat the data and get the steps_per_epochs so that tf knows how the
     # data could be digested

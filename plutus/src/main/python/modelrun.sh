@@ -27,11 +27,6 @@ while getopts ":t:" opt; do
   esac
 done
 
-if [ "$IMAGE_TAG" != "release" ] && [ "$IMAGE_TAG" != "latest" ];then
-    echo "invalid image tag provided falling back to release" >&1
-    IMAGE_TAG="release"
-fi
-
 echo "beginning data sync..."
 
 cd "${HOME_HADOOP}" || exit

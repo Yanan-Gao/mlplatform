@@ -1,6 +1,4 @@
-import os
 import sys
-import time
 from datetime import datetime, timedelta
 
 import tensorflow as tf
@@ -9,14 +7,16 @@ from absl import app, flags
 from plutus import ModelHeads, CpdType
 from plutus.data import s3_sync, tfrecord_files_dict, generate_random_pandas, create_datasets_dict, get_epochs, \
     lookback_csv_dataset_generator
-from plutus.features import default_model_features, default_model_targets, get_model_features, get_model_targets
+from plutus.feature_utils import get_features_from_json
+from plutus.features import default_model_targets, get_model_targets
 from plutus.losses import google_fpa_nll, google_mse_loss, google_bce_loss, mb2w_nll
-from plutus.metrics import evaluate_model_saving, eval_model_with_anlp
+from plutus.metrics import eval_model_with_anlp
 from plutus.models import basic_model, dlrm_model, fastai_tabular_model, replace_last_layer
 from plutus.prometheus import Prometheus
 
 FLAGS = flags.FLAGS
 
+FEATURES_PATH = "features.json"
 INPUT_PATH = "/var/tmp/input/"
 CSV_INPUT_PATH = "/var/tmp/csv_input/"
 SUPPLY_VENDORS = "google,rubicon"
@@ -171,8 +171,8 @@ def model_builder(model_features):
 
 
 def get_features_targets():
-    model_features = get_model_features(FLAGS.exclude_features) if len(
-        FLAGS.exclude_features) > 0 else default_model_features
+    model_features = get_features_from_json(FEATURES_PATH, FLAGS.exclude_features)
+
     model_targets = get_model_targets(FLAGS.exclude_targets) if len(
         FLAGS.exclude_targets) > 0 else default_model_targets
     return model_features, model_targets

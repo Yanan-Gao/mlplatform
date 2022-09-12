@@ -1,0 +1,9 @@
+tensorflow == 2.8.0
+tensorflow_probability == 0.16.0
+boto3
+prometheus_client
+awscli
+pandas
+tensorflow-serving-api == 2.8.0
+tensorflow_addons
+protobuf == 3.20.0

@@ -17,12 +17,12 @@ class MyTestCase(unittest.TestCase):
     def tearDownClass(cls) -> None:
         cls.test_dir.cleanup()
 
-    def test_get_model_features(self):
-        features = get_model_features()
-        self.assertListEqual(features, default_model_features)
-
-        features = get_model_features(["DealId"])
-        self.assertNotEqual(features, default_model_features)
+    # def test_get_model_features(self):
+    #     features = get_model_features()
+    #     self.assertListEqual(features, default_model_features)
+    #
+    #     features = get_model_features(["DealId"])
+    #     self.assertNotEqual(features, default_model_features)
 
     def test_create_tfrecord_data(self):
         def _bytes_feature(value):
