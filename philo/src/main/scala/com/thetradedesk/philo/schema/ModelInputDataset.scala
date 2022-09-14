@@ -39,7 +39,9 @@ case class ModelInputRecord(
     PrivateContractId: String,
     latitude: Double,
     longitude: Double,
-    label: Int
+    label: Int,
+    OriginalAdGroupId: String,
+    OriginalCountry: String
                            )
 
 object ModelInputDataset {
