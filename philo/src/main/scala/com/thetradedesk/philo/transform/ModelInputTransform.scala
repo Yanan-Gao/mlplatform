@@ -13,7 +13,7 @@ import job.{AdGroupFilterRecord, CountryFilterRecord}
 
 object ModelInputTransform extends Logger {
 
-  val flatten_set = Seq("AdsTxtSellerType","PublisherType", "DeviceType", "OperatingSystemFamily", "Browser", "RenderingContext", "DoNotTrack")
+  val flatten_set = Set("AdsTxtSellerType","PublisherType", "DeviceType", "OperatingSystemFamily", "Browser", "RenderingContext", "DoNotTrack")
 
   val STRING_FEATURE_TYPE = "string"
   val INT_FEATURE_TYPE = "int"
@@ -131,7 +131,8 @@ object ModelInputTransform extends Logger {
   }
 
   def getHashedData(flatten: Dataset[ModelInputRecord]): DataFrame ={
-    val selectionQuery = intModelFeaturesCols(modelFeatures) ++ Array(col("label"), col("BidRequestId"))
+    // todo: we need a better way to track these fields
+    val selectionQuery = intModelFeaturesCols(modelFeatures) ++ Seq("label", "BidRequestId", "OriginalAdGroupId", "OriginalCountry").map(col)
 
     flatten.select(selectionQuery: _*)
   }

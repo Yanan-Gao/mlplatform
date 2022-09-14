@@ -67,7 +67,7 @@ package object philo {
       .load(paths: _*)
   }
 
-  def flattenData(data: DataFrame, flatten_set: Seq[String]): DataFrame = {
+  def flattenData(data: DataFrame, flatten_set: Set[String]): DataFrame = {
     data.select(
       data.columns.map(
         c => if (flatten_set.contains(c))
