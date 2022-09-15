@@ -15,17 +15,20 @@ MIN_LOOKBACK_DAYS=2
 
 echo "evaluating flags........."
 
-while getopts ":t:" opt; do
+while getopts "t:" opt; do
   case "$opt" in
     t)
       IMAGE_TAG="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
       echo "Setting image tag to $OPTARG" >&1
       ;;
-    *)
-      echo "No image flag set. falling back to release" >&1
-      IMAGE_TAG="release"
   esac
 done
+
+if [ -z "$IMAGE_TAG" ]
+then
+   echo "No image flag set. falling back to release" >&1
+   IMAGE_TAG="release"
+fi
 
 echo "beginning data sync..."
 
