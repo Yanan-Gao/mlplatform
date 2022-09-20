@@ -12,15 +12,18 @@ DATA_SOURCE="${BASE_S3_PATH}/${SINGLE_DAY_SOURCE}"
 SSV_LIST=(google rubicon)
 SYNC_DEST="./csv_input/"
 MIN_LOOKBACK_DAYS=2
+VERSION=`date +%Y%m%d%H%M`
 
 echo "evaluating flags........."
 
-while getopts "t:" opt; do
+while getopts "t:v:" opt; do
   case "$opt" in
     t)
       IMAGE_TAG="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
       echo "Setting image tag to $OPTARG" >&1
       ;;
+    
+    v) VERSION=${OPTARG};;
   esac
 done
 
@@ -71,6 +74,7 @@ sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v /mnt/csv_input:$
       "--nodummy" \
       "--batch_size=65536" \
       "--eval_batch_size=197934" \
+      "--model_creation_date=${VERSION}" \
       "--num_epochs=10" \
       "--steps_per_epoch=3000" \
       "--exclude_features=ImpressionPlacementId,AdFormat,DealId" \
