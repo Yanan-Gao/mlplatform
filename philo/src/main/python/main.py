@@ -16,7 +16,8 @@ FLAGS = flags.FLAGS
 INPUT_PATH = "/var/tmp/input/"
 OUTPUT_PATH = "/var/tmp/output/"
 MODEL_LOGS = "/var/tmp/logs/"
-META_DATA_INPUT = "var/tmp/input"
+META_DATA_INPUT = "/var/tmp/input"
+LATEST_MODEL = "/var/tmp/input"
 FEATURES_PATH = "features.json"
 S3_PROD = "s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/"
 # PARAM_MODEL_OUTPUT = "models_params/"
@@ -44,6 +45,8 @@ flags.DEFINE_string('input_path', default=INPUT_PATH,
                     help=f'Location of input files (TFRecord). Default {INPUT_PATH}')
 flags.DEFINE_string('meta_data_path', default=META_DATA_INPUT,
                     help=f'Location of meta data. Default {META_DATA_INPUT}')
+flags.DEFINE_string('latest_model_path', default=LATEST_MODEL,
+                    help=f'Location of latest (previous) trained model. Default {LATEST_MODEL}')
 flags.DEFINE_string('log_path', default=MODEL_LOGS, help=f'Location of model training log files. Default {MODEL_LOGS}')
 flags.DEFINE_string('output_path', default=OUTPUT_PATH, help=f'Location of model output files. Default {OUTPUT_PATH}')
 flags.DEFINE_string('s3_output_path', default=S3_PROD,
