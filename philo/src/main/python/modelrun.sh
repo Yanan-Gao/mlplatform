@@ -19,8 +19,8 @@ done
 
 if [ -z "$IMAGE_TAG" ]
 then
-   echo "No image flag set. falling back to release" >&1
    IMAGE_TAG="release"
+   echo "No image flag set. Falling back to $IMAGE_TAG" >&1
 fi
 
 SECRETJSON=$(aws secretsmanager get-secret-value --secret-id svc.emr-docker-ro --query SecretString --output text)
@@ -36,6 +36,7 @@ eval docker pull ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${IMAGE_TAG}
 
 sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v /mnt/tfrecords:${MODEL_INPUT}/tfrecords \
   -v /mnt/metadata:${MODEL_INPUT}/metadata/ \
+  -v /mnt/latest_model:${MODEL_INPUT}/latest_model \
   ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${IMAGE_TAG}  \
       "--nodummy" \
       "--batch_size=2048" \
@@ -45,6 +46,7 @@ sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v /mnt/tfrecords:$
       "--num_epochs=5" \
       "--input_path=/var/tmp/input/tfrecords/" \
       "--meta_data_path=/var/tmp/input/metadata/" \
+      "--latest_model_path=/var/tmp/input/latest_model/" \
       "--training_verbosity=2" \
       "--model_arch=deepfm" \
       "--early_stopping_patience=5"

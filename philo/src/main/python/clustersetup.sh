@@ -11,9 +11,7 @@ META_SOURCE="${BASE_S3_PATH}/${ENV}/${META_PREFIX}"
 MNT="../../../../../../mnt/"
 SYNC_DEST="tfrecords/"
 META_DEST="metadata/"
-
-FEATURE_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/libs/philo/features/feature_cardinality.json"
-FEATURE_SYNC_DEST="features/"
+MODEL_DEST="latest_model/"
 
 echo "installing updates.... \n"
 sudo yum update -y
@@ -68,8 +66,15 @@ for i in {1..9}; do
 
 done
 
-# sync features json file
-aws s3 sync ${FEATURE_S3_PATH} ${FEATURE_SYNC_DEST}
+# sync latest model
+LATEST_S3_MODEL=`aws s3 ls ${BASE_S3_PATH}/${ENV}/models/ | awk '{print $2}' | awk -F '/' '/\// {print $1}' | sort -r | head -n 1`
+
+if [ -n "$LATEST_S3_MODEL" ]; then
+  echo "Syncing latest model $LATEST_S3_MODEL"
+  aws s3 sync ${BASE_S3_PATH}/${ENV}/models/${LATEST_S3_MODEL} ${MODEL_DEST} --quiet
+else
+  echo "Cannot find any models - nothing was synced"
+fi
 
 echo "set up complete"
 
