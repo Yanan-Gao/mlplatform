@@ -2,6 +2,7 @@ import numpy as np
 import tensorflow.keras.backend as K
 from tensorflow.keras.callbacks import Callback
 
+
 class BatchLearningRateScheduler(Callback):
     """Learning rate scheduler for each batch
     # Arguments
@@ -36,12 +37,15 @@ class BatchLearningRateScheduler(Callback):
         logs = logs or {}
         logs['lr'] = K.get_value(self.model.optimizer.lr)
 
+
 """
-Warm-up: A phase in the beginning of your neural network training where you start with a learning rate 
-much smaller than your "initial" learning rate and then increase it over a few iterations or epochs 
+Warm-up: A phase in the beginning of your neural network training where you start with a learning rate
+much smaller than your "initial" learning rate and then increase it over a few iterations or epochs
 until it reaches that "initial" learning rate.
 """
-def warmup(model, epoch_steps=10000, lr_init=0.001, lr_min=0.0001, warm_factor= 1.2):
+
+
+def warmup(model, epoch_steps=10000, lr_init=0.001, lr_min=0.0001, warm_factor=1.2):
     def warmup_schedule(batch):
         max_batch = epoch_steps * warm_factor
         step_lr_change = (lr_init - lr_min) / max_batch
@@ -51,4 +55,3 @@ def warmup(model, epoch_steps=10000, lr_init=0.001, lr_min=0.0001, warm_factor= 
             lr = model.optimizer.lr
         return lr
     return warmup_schedule
-

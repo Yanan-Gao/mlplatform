@@ -21,33 +21,34 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
   private val sampleMod = config.getInt("sampleMod", 10)
   private val sampleHit = config.getString("sampleHit", "0")
   private val sampleSeed = config.getString("sampleSeed", "FirstPartyPixel")
-  private val subFolder = config.getString("subFolder", "training")
+  private val subFolder = config.getString("subFolder", "split")
   private val numTDID = config.getInt("numTDID", 100)
   // control maximum positive records for a pxiel on given day; without it, the data size will be huge
-  private val maxPos = config.getInt("numTDID", default = 6000)
+  private val maxPos = config.getInt("maxPos", default = 6000)
   // used for the hard negative samples generation
-  private val negFactor = config.getInt("negFactor", default = 10)
+  private val softNegFactor = config.getInt("softNegFactor", default = 10)
+  private val hardNegFactor = config.getInt("hardNegFactor", default = 5)
+  private val trainSetDownSampleFactor = config.getInt("trainSetDownSampleFactor", default = 2)
   private val selectedPixelsConfigPath = config.getString("selectedPixelsConfigPath", "s3a://thetradedesk-useast-hadoop/Data_Science/Yang/audience_extension/selected_1pp/firstPixel200/")
-
+  private val partitionCount = config.getInt("partitionCount", default = 120)
 
   def main(args: Array[String]): Unit = {
     val prometheus = new PrometheusClient("FirstPartyPixelModel", "DailyConversionSampleGeneration")
-    val positiveSampledCount = prometheus.createGauge("positive_sample_count", "Number of positive sampled records")
-    val softNegativeSampledCount = prometheus.createGauge("soft_negative_sample_count", "Number of soft negative sampled records")
-    val hardNegativeSampledCount = prometheus.createGauge("hard_negative_sample_count", "Number of hard negative sampled records")
+    val trainingSampledCount = prometheus.createGauge("training_sample_count", "Number of records in the training set")
+    val validationSampledCount = prometheus.createGauge("validation_sample_count", "Number of records in the validation set")
 
     val conversionDS = ConversionDataset(defaultCloudProvider).readRange(date.minusDays(conversionLookBack).atStartOfDay(), date.atStartOfDay())
       .select('TDID, 'TrackingTagId)
       .filter('TDID.isNotNullOrEmpty && 'TDID =!= "00000000-0000-0000-0000-000000000000")
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
-    val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE), lookBack=Some(bidsImpressionLookBack))
+    val bidsImpressionsLong = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE), lookBack=Some(bidsImpressionLookBack))
       .withColumnRenamed("UIID", "TDID")
       .filter('TDID.isNotNullOrEmpty && 'TDID =!= "00000000-0000-0000-0000-000000000000")  // in the future, we may not have the id, good to think about how to solve
       .select('BidRequestId, // use to connect with bidrequest, to get more features
-        'LogEntryTime,
+//        'LogEntryTime,
         'AdvertiserId,
-        'TDID,
-        'CampaignId,
+//        'TDID,
+//        'CampaignId,
         'AdGroupId,
         'SupplyVendor,
         'DealId,
@@ -83,14 +84,31 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
       .withColumn("DeviceType", 'DeviceType("value"))
       .withColumn("Date", to_date('LogEntryTime, "yyyy-MM-dd")) // used for saving the data into different folds or train and val
       .withColumn("AdWidthInPixels", ('AdWidthInPixels - lit(1.0))/lit(9999.0)) // 1 - 10000
+      .withColumn("AdWidthInPixels", when('AdWidthInPixels.isNotNull, 'AdWidthInPixels).otherwise(0))
       .withColumn("AdHeightInPixels", ('AdHeightInPixels - lit(1.0))/lit(9999.0)) // 1 - 10000
+      .withColumn("AdHeightInPixels", when('AdHeightInPixels.isNotNull, 'AdHeightInPixels).otherwise(0))
       .withColumn("Latitude", ('Latitude + lit(90.0))/lit(180.0))  // -90 - 90
+      .withColumn("Latitude", when('Latitude.isNotNull, 'Latitude).otherwise(0))
       .withColumn("Longitude", ('Longitude + lit(180.0))/lit(360.0)) //-180 - 180
+      .withColumn("Longitude", when('Longitude.isNotNull, 'Longitude).otherwise(0))
 
     val trackingTagDataset = TrackingTagDataset().readPartition(date)
 
-    val sampledConversionDS = hashSampleV2(conversionDS, "TDID", sampleMod, sampleSeed, sampleHit).cache()
-    val sampledBidsImpressions = hashSampleV2(bidsImpressions, "TDID", sampleMod, sampleSeed, sampleHit).cache()
+    val sampledConversionDS = conversionDS.withColumn("TDIDHash", abs(hash('TDID)))
+      .filter('TDIDHash % (sampleMod / trainSetDownSampleFactor).toInt === lit(sampleHit))
+      .repartition('TDIDHash % (sampleMod * partitionCount))
+      .drop("TDIDHash")
+      .cache
+    val sampledBidsImpressionsKeys = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE), lookBack=Some(bidsImpressionLookBack))
+      .withColumnRenamed("UIID", "TDID")
+      .select('BidRequestId, 'Date, 'TDID, 'CampaignId)
+      .filter('TDID.isNotNullOrEmpty && 'TDID =!= "00000000-0000-0000-0000-000000000000")  // in the future, we may not have the id, good to think about how to solve
+      .withColumn("TDIDHash", abs(hash('TDID)))
+      .filter('TDIDHash % (sampleMod / trainSetDownSampleFactor).toInt === lit(sampleHit))
+      .repartition('TDIDHash % (sampleMod * partitionCount))
+      .drop("TDIDHash")
+      .withColumn("Date", to_date('LogEntryTime, "yyyy-MM-dd"))
+      .cache
 
     val selectedConv = selectedPixelsConfigPath match {
       case x if x.isEmpty => sampledConversionDS
@@ -109,57 +127,64 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
         // conversion dataset with selected pixels
         sampledConversionDS
           .select('TrackingTagId, 'TDID)
-          .join(broadcast(firstPixel200),
-            Seq("TrackingTagId"),
-            "inner")
+          .join(broadcast(firstPixel200), Seq("TrackingTagId"), "inner")
           .select('TargetingDataId, 'TDID)
           .distinct()
     }
 
-    val candidatePool = sampledBidsImpressions
-      .join(broadcast(selectedConv), Seq("TDID"), "left")
-      .cache()
+    val validationSet = generateDataSet(
+      sampledBidsImpressionsKeys.filter('Date >= date),
+      bidsImpressionsLong,
+      selectedConv,
+      "tfrecord").cache
 
-    // generate positive samples
+    FirstPartyPixelModelInputDataset().writePartition(
+      ModelFeatureTransform.modelFeatureTransform[FirstPartyPixelModelInputRecord](validationSet),
+      date,
+      subFolderKey = Some(subFolder),
+      subFolderValue = Some("val_tfrecord"),
+      format = Some("tfrecord")
+    )
+
+    val trainingSet = generateDataSet(
+      sampledBidsImpressionsKeys.filter('Date < date && 'TDIDHash % sampleMod === lit(sampleHit)),
+      bidsImpressionsLong,
+      selectedConv,
+      "tfrecord").cache
+
+    FirstPartyPixelModelInputDataset().writePartition(
+      ModelFeatureTransform.modelFeatureTransform[FirstPartyPixelModelInputRecord](trainingSet),
+      date,
+      subFolderKey = Some(subFolder),
+      subFolderValue = Some("train_tfrecord"),
+      format = Some("tfrecord")
+    )
+
+    validationSampledCount.set(validationSet.count())
+    trainingSampledCount.set(trainingSet.count())
+    prometheus.pushMetrics()
+  }
+
+  def generateDataSet(filteredBidsImpressions: DataFrame, bidsImpressionsLong: DataFrame, selectedConversions: DataFrame, format: String) = {
+    val candidatePool = filteredBidsImpressions.join(selectedConversions, Seq("TDID"), "left")
+      .cache
+
     val window = Window.partitionBy('TargetingDataId, 'TDID, 'Date).orderBy('rand.asc)
 
     val positivePool = candidatePool
       .filter('TargetingDataId.isNotNull)
       .withColumn("rand", rand())
-      .withColumn("row", row_number().over(window)).cache()
+      .withColumn("row", rank().over(window))
+      .cache()
 
     val positiveSample = generatePositiveSample(positivePool)
-    val softNegativeSample = generateSoftNegativeSample(positiveSample, candidatePool)
-    val hardNegativeSample = generateHardNegativeSample(positivePool, positiveSample, candidatePool)
+    val negativeSample = generateSoftNegativeSample(positiveSample, candidatePool)
+    val hardNegativeSample = generateHardNegativeSample(positivePool, positiveSample, filteredBidsImpressions)
 
-    FirstPartyPixelModelInputDataset().writePartition(
-      ModelFeatureTransform.modelFeatureTransform[FirstPartyPixelModelInputRecord](positiveSample),
-      date,
-      subFolderKey = Some(subFolder),
-      subFolderValue = Some("positive"),
-      format = Some("tfrecord")
-    )
-    positiveSampledCount.set(positiveSample.count())
-
-    FirstPartyPixelModelInputDataset().writePartition(
-      ModelFeatureTransform.modelFeatureTransform[FirstPartyPixelModelInputRecord](softNegativeSample),
-      date,
-      subFolderKey = Some(subFolder),
-      subFolderValue = Some("softNegative"),
-      format = Some("tfrecord")
-    )
-    softNegativeSampledCount.set(softNegativeSample.count())
-
-    FirstPartyPixelModelInputDataset().writePartition(
-      ModelFeatureTransform.modelFeatureTransform[FirstPartyPixelModelInputRecord](hardNegativeSample),
-      date,
-      subFolderKey = Some(subFolder),
-      subFolderValue = Some("hardNegative"),
-      format = Some("tfrecord")
-    )
-    hardNegativeSampledCount.set(hardNegativeSample.count())
-
-    prometheus.pushMetrics()
+    positiveSample
+      .unionByName(negativeSample)
+      .unionByName(hardNegativeSample)
+      .join(bidsImpressionsLong, Seq("BidRequestId"), "inner")
   }
 
   def generatePositiveSample(positivePool: DataFrame): DataFrame = {
@@ -172,7 +197,6 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
       .filter('pos_row <= maxPos)
       .drop("row", "rand", "pos_row")
       .withColumn("Target", lit(1.0))
-      .cache()
 
     positiveSample
   }
@@ -196,101 +220,69 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
 
     // save the information for TargetingDataId + campaignid; how many bidimp should be sampled
     val negativeStats1 = negativeStats
-      .join(positiveStats,
-        Seq("CampaignId", "Date"),
-        "inner")
+      .join(positiveStats, Seq("CampaignId", "Date"), "inner")
       // rate for random sample
-      .withColumn("Rate", lit(negFactor) * 'NumPos / 'NumNeg)
+      .withColumn("Rate", lit(softNegFactor) * 'NumPos / 'NumNeg)
       // in case we do not have enough neg samples
-      .withColumn("SampleRate", when('Rate >= 1, lit(1)).otherwise('Rate))
-      // add more diversity into the sampling accross different campaigns
-      .withColumn("LB", (lit(1) - 'SampleRate) * rand())
-      .withColumn("UB", 'LB + 'SampleRate)
-      .drop("Rate", "SampleRate", "NumNeg", "NumPos")
-      .cache()
+      .withColumn("Rate", when('Rate >= 1, lit(1)).otherwise('Rate))
+      .drop("NumNeg", "NumPos")
 
     val negativeSample = negativePool
-      .join(broadcast(negativeStats1),
-        Seq("CampaignId",
-          "Date"),
-        "inner")
-      .filter(
-        $"rand" >= $"LB" &&
-          $"rand" <= $"UB")
-      .drop("rand", "UB", "LB")
+      .join(broadcast(negativeStats1), Seq("CampaignId", "Date"), "inner")
+      .filter($"rand" <= $"Rate")
+      .drop("rand", "Rate")
       .withColumn("Target", lit(0.0))
-      .cache()
 
     negativeSample
   }
 
-  def generateHardNegativeSample(positivePool : DataFrame, positiveSample: DataFrame, candidatePool: DataFrame): DataFrame = {
-    val trackingTagLevelPool = candidatePool
-      .select("TargetingDataId",
-        "CampaignId",
-        "TDID")
-      .withColumn("T", lit(1))
+  def generateHardNegativeSample(positivePool : DataFrame, positiveSample: DataFrame, sampledBidsImpressions: DataFrame): DataFrame = {
+    val trackingTagLevelPool = positivePool
+      .select("TargetingDataId", "CampaignId", "TDID")
       .distinct()
 
-    val campaignLevelPool = candidatePool
-      .select("CampaignId",
-        "TDID")
+    val campaignLevelPool = positivePool
+      .select("CampaignId", "TDID")
       .distinct()
 
-    val campaignTrackingTags = candidatePool
-      .select("TargetingDataId",
-        "CampaignId")
+    val campaignTrackingTags = positivePool
+      .select("TargetingDataId", "CampaignId")
       .distinct()
 
     val fullPool = campaignLevelPool
       .join(campaignTrackingTags, "CampaignId")
 
     val hardNegPool = fullPool
-      .join(trackingTagLevelPool,
-        Seq("TargetingDataId", "CampaignId", "TDID"),
-        "left")
-      .filter('T.isNull)
-      .drop("T")
+      .join(trackingTagLevelPool, Seq("TargetingDataId", "CampaignId", "TDID"), "left_anti")
 
+    // get the distinct positive impression of the tdid
+    val distinctPosPool = sampledBidsImpressions
+      .join(campaignLevelPool, Seq("TDID", "CampaignId"), "inner")
+
+    // generate the impression pool of the hard negative
+    val hardNegImp = hardNegPool
+      .join(distinctPosPool, Seq("CampaignId", "TDID"))
+      .withColumn("rand", rand()) // for the same tdid in the same of different campaign they will have their own random number
+
+    // calculate how many positive samples and determine how many negative samples we should have
     val positiveStats = positiveSample
       .groupBy("TargetingDataId", "CampaignId")
       .agg(count("TDID") as "NumPos")
 
-    val hardNegStats = hardNegPool
+    val hardNegStats = hardNegImp
       .groupBy("TargetingDataId", "CampaignId")
       .agg(count("TDID").as("NumNeg"))
-      .join(positiveStats,
-        Seq("TargetingDataId", "CampaignId"),
-        "inner")
-      // narrow down to 4*numTDID records per tdid
-      .withColumn("Rate", lit(negFactor) * 'NumPos / 'NumNeg / lit(5 * numTDID))
+      .join(positiveStats, Seq("TargetingDataId", "CampaignId"), "inner")
+      .withColumn("Rate", lit(hardNegFactor) * 'NumPos / 'NumNeg)
       .withColumn("SampleRate", when('Rate >= 1, lit(1)).otherwise('Rate))
-      .select("TargetingDataId",
-        "CampaignId",
-        "SampleRate")
+      .select("TargetingDataId", "CampaignId", "SampleRate")
 
-    val sampledHardNegPool = hardNegPool
-      .join(hardNegStats,
-        Seq("TargetingDataId", "CampaignId"),
-        "inner")
-      .withColumn("LB", (lit(1)-'SampleRate)*rand())
-      .withColumn("UB", 'LB + 'SampleRate)
-      .drop("SampleRate")
-
-    // hard negative sample combines seem and unseem positive impressions; currently set as 1:4
-    val sampledPositivePool = positivePool
-      .filter('row <= 5 * numTDID)
-      .drop("TargetingDataId", "CampaignId")
-
-    val hardNegSample = sampledPositivePool
-      .join(sampledHardNegPool,
-        Seq("TDID"),
-        "inner")
-      .filter($"rand" >= $"LB" &&
-        $"rand" <= $"UB")
-      .drop("rand", "UB", "LB", "row")
+    val hardNegSample = hardNegImp
+      .join(hardNegStats, Seq("TargetingDataId", "CampaignId"), "inner")
+      .filter($"rand" <= $"SampleRate")
+      .drop("rand", "SampleRate")
       .withColumn("Target", lit(0.0))
-      .cache()
+      .drop("TDIDHash")
 
     hardNegSample
   }

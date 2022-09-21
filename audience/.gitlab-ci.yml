@@ -7,6 +7,8 @@ variables:
   AUDIENCE_ASSEMBLY_OUT: "$CI_PROJECT_DIR/audience/target/scala-2.12/audience.jar"
   AUDIENCE_SCRIPTS_SOURCE: "src/main/bash/"
   AUDIENCE_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/scripts/"
+  AUDIENCE_RESOURCES_SOURCE: "resources/"
+  AUDIENCE_RESOURCES_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/resources/"
   PYTHON_BUILD_IMAGE: "python:3.8"
   AUDIENCE_TRAINING_IMAGE: "audience/training-gpu"
 
@@ -33,6 +35,16 @@ audience:test:
     - popd
     - echo "ran AUDIENCE_test"
 
+audience:lint:
+  image: python:3.8
+  stage: test
+  before_script:
+    - pip3 install flake8
+  script:
+    - pushd ./audience/src/main/python/
+    - flake8
+    - popd
+    - echo "ran lint for audience"
 
 audience:push_bits_merge_request:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
@@ -86,7 +98,24 @@ audience:deploy_release:
     - popd
     - echo "ran AUDIENCE_deploy_release"
 
-audience:dummy:
+
+audience:push_scripts:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "audience/src/main/bash/**/*"
+        - "audience/resources/**/*"
+        - "audience/.gitlab-ci.yml"
+  script:
+    - pushd ./audience/
+    - aws s3 cp ${AUDIENCE_SCRIPTS_SOURCE} ${AUDIENCE_SCRIPTS_DEST} --recursive
+    - aws s3 cp ${AUDIENCE_RESOURCES_SOURCE} ${AUDIENCE_RESOURCES_DEST} --recursive
+    - popd
+    - echo "ran push_set_scripts"
+
+audience:build_push_test_container:
   image: "$PYTHON_BUILD_IMAGE"
   stage: k8s_deploy
   services:
@@ -94,73 +123,56 @@ audience:dummy:
   before_script:
     - apt update
     - apt-get install docker.io -y
+    - apt-get install python3 -y
+    - apt-get install python3-pip -y
+    - export PATH=~/.local/bin:$PATH
+    - pip3 install awscli setuptools twine
   rules:
     - if: $CI_PIPELINE_SOURCE == "merge_request_event"
       changes:
         - "audience/src/main/python/**/*"
+        - "audience/.gitlab-ci.yml"
       when: manual
   script:
-    - echo "Only add one python tool. no need to build. will remove me in the future"
+    - export DOCKER_HOST=$DOCKER_PORT
+    - pushd ./audience/src/main/python/
+    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
+    - docker build -f Dockerfile.prod -t ${AUDIENCE_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA} .
+    - popd
+    - pushd ./audience/src/test/
+    - bash ./run_smoke_test.sh ${CI_COMMIT_SHORT_SHA}
+    - popd
+    - echo "smoke test succeeded for test container"
+    - docker tag ${AUDIENCE_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA} ${DOCKER_INTERNAL_REGISTRY}/${AUDIENCE_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA}
+    - docker push ${DOCKER_INTERNAL_REGISTRY}/${AUDIENCE_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA}
+    - echo "test container for commit pushed"
 
-#audience:push_scripts:
-#  image: "$PYTHON_BUILD_IMAGE"
-#  stage: deploy
-#  rules:
-#    - if: '$CI_COMMIT_BRANCH == "master"'
-#      changes:
-#        - "audience/src/main/bash/**/*"
-#        - "audience/.gitlab-ci.yml"
-#  script:
-#    - pushd ./audience/
-#    - aws s3 cp ${AUDIENCE_SCRIPTS_SOURCE} ${AUDIENCE_SCRIPTS_DEST} --recursive
-#    - popd
-#    - echo "ran push_set_scripts"
-
-#audience:build_push_test_container:
-#  image: "$PYTHON_BUILD_IMAGE"
-#  stage: k8s_deploy
-#  services:
-#    - docker:dind
-#  before_script:
-#    - apt update
-#    - apt-get install docker.io -y
-#  rules:
-#    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-#      changes:
-#        - "audience/src/main/python/**/*"
-#        - "audience/.gitlab-ci.yml"
-#      when: manual
-#  script:
-#    - export DOCKER_HOST=$DOCKER_PORT
-#    - pushd ./audience/src/main/python/
-#    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
-#    - docker build -f Dockerfile.prod -t ${AUDIENCE_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA} .
-#    - docker tag ${AUDIENCE_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA} ${DOCKER_INTERNAL_REGISTRY}/${AUDIENCE_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA}
-#    - docker push ${DOCKER_INTERNAL_REGISTRY}/${AUDIENCE_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA}
-#    - popd
-#    - echo "test container for commit pushed"
-#
-#audience:build_push_release_container:
-#  image: "$PYTHON_BUILD_IMAGE"
-#  stage: k8s_deploy
-#  services:
-#    - docker:dind
-#  before_script:
-#    - apt update
-#    - apt-get install docker.io -y
-#  rules:
-#    - if: $CI_COMMIT_BRANCH == "master"
-#      changes:
-#        - "audience/src/main/python/**/*"
-#        - "audience/.gitlab-ci.yml"
-#      when: manual
-#  script:
-#    - export DOCKER_HOST=$DOCKER_PORT
-#    - pushd ./audience/src/main/python/
-#    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
-#    - docker build -f Dockerfile.prod -t ${AUDIENCE_TRAINING_IMAGE}:release .
-#    - docker tag ${AUDIENCE_TRAINING_IMAGE}:release ${DOCKER_INTERNAL_REGISTRY}/${AUDIENCE_TRAINING_IMAGE}:release
-#    - docker push ${DOCKER_INTERNAL_REGISTRY}/${AUDIENCE_TRAINING_IMAGE}:release
-#    - popd
-#    - echo "release training container pushed"
-
+audience:build_push_release_container:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: k8s_deploy
+  services:
+    - docker:dind
+  before_script:
+    - apt update
+    - apt-get install docker.io -y
+    - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
+  rules:
+    - if: $CI_COMMIT_BRANCH == "master"
+      changes:
+        - "audience/src/main/python/**/*"
+        - "audience/.gitlab-ci.yml"
+      when: manual
+  script:
+    - export DOCKER_HOST=$DOCKER_PORT
+    - pushd ./audience/src/main/python/
+    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
+    - docker build -f Dockerfile.prod -t ${AUDIENCE_TRAINING_IMAGE}:release .
+    - popd
+    - pushd ./audience/src/test/
+    - bash ./run_smoke_test.sh release
+    - popd
+    - echo "smoke test succeeded for release container"
+    - docker tag ${AUDIENCE_TRAINING_IMAGE}:release ${DOCKER_INTERNAL_REGISTRY}/${AUDIENCE_TRAINING_IMAGE}:release
+    - docker push ${DOCKER_INTERNAL_REGISTRY}/${AUDIENCE_TRAINING_IMAGE}:release
+    - popd
+    - echo "training container pushed"

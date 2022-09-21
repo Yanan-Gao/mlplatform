@@ -1,0 +1,19 @@
+FROM nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04
+CMD nvidia-smi
+
+# sometimes nvidia breaks their repo and we have to do this. Gonna leave this around for next time
+#RUN rm /etc/apt/sources.list.d/cuda.list
+
+RUN apt-get update && apt-get install --no-install-recommends --no-install-suggests -y curl
+RUN apt-get -y install unzip python3.8 python3-pip
+
+WORKDIR /opt/application/
+
+RUN pip3 install --upgrade pip
+
+COPY id_to_model_trainer ./id_to_model_trainer
+COPY ["setup.cfg", "setup.py", "./"]
+
+RUN pip3 install --no-cache-dir -e .
+
+ENTRYPOINT ["python3", "-m", "id_to_model_trainer.main"]
