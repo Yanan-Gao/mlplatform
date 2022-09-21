@@ -37,15 +37,15 @@ final case class FirstPartyPixelModelInputRecord(
                                                   Browser: Option[Int],
                                                   @FeatureDesc("TargetingDataId", "long", 2000003)
                                                   TargetingDataId: Int,
-                                                  AdWidthInPixels: Option[Double],
-                                                  AdHeightInPixels: Option[Double],
+                                                  AdWidthInPixels: Double,
+                                                  AdHeightInPixels: Double,
 
                                                   sin_hour_week: Double,
                                                   cos_hour_week: Double,
                                                   sin_hour_day: Double,
                                                   cos_hour_day: Double,
-                                                  Latitude: Option[Double],
-                                                  Longitude: Option[Double],
+                                                  Latitude: Double,
+                                                  Longitude: Double,
                                                   Target: Double,
 
                                                   TDID: String,

@@ -146,3 +146,7 @@ artifacts/
 # Visual Studio 2015/2017 cache/options directory
 .vs/
 
+# python package files
+*.egg-info
+__pycache__
+output
