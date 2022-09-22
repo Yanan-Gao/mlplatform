@@ -1,22 +1,22 @@
 package job
 
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
-
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.Column
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.kongming.date
+import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.geronimo.shared.{intModelFeaturesCols, loadParquetData}
+import com.thetradedesk.geronimo.shared.intModelFeaturesCols
 import com.thetradedesk.kongming.policyDate
 import com.thetradedesk.kongming.transform.NegativeTransform.aggregateNegatives
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.transform.TrainSetTransformation._
 import org.apache.spark.sql.types.DoubleType
+import job.DailyOfflineScoringSet.{keptFields, modelKeepFeatureColNames, modelKeepFeatureCols}
 import org.apache.spark.storage.StorageLevel
-import job.DailyOfflineScoringSet.{keptFields, modelKeepFeatureCols}
 
 /*
   Generate train set for conversion model training job
@@ -39,7 +39,9 @@ object GenerateTrainSet {
   val STRING_FEATURE_TYPE = "string"
   val INT_FEATURE_TYPE = "int"
   val FLOAT_FEATURE_TYPE = "float"
+  val BOOLEAN_FEATURE_TYPE = "bool"
 
+  val split: Array[ModelFeature] = Array(ModelFeature("IsInTrainSet", BOOLEAN_FEATURE_TYPE, Some(2), 0))
   val modelWeights: Array[ModelFeature] = Array(ModelFeature("Weight", FLOAT_FEATURE_TYPE, None, 0))
 
   val modelDimensions: Array[ModelFeature] = Array(ModelFeature("AdGroupId", STRING_FEATURE_TYPE, Some(500002), 0))
@@ -91,11 +93,17 @@ object GenerateTrainSet {
 
   def main(args: Array[String]): Unit = {
     val prometheus = new PrometheusClient("KoaV4Conversion", "GenerateTrainSet")
+    val jobDurationGauge = prometheus.createGauge("run_time_seconds", "Job execution time in seconds")
+    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
+    val outputRowsWrittenGauge = prometheus.createGauge("output_rows_written", "Number of rows written", "DataSet")
+
     val trainRatio = config.getDouble("trainRatio", 0.8)
     val desiredNegOverPos = config.getInt(path="desiredPosOverNeg", 9)
     val maxNegativeCount = config.getInt(path="maxNegativeCount", 500000)
     val upSamplingValSet = config.getBoolean(path = "upSamplingValSet", false)
     val conversionLookback = config.getInt("conversionLookback", 7)
+
+    val experimentName = config.getString("trainSetExperimentName" , "")
 
     // test only adgroups in the policy table. since aggKey are all adgroupId, we filter by adgroup id
     val adGroupPolicyHardCodedDate = policyDate
@@ -105,7 +113,7 @@ object GenerateTrainSet {
     val maxLookback = adGroupPolicy.agg(max("DataLookBack")).first.getInt(0)
 
     // 0. load aggregated negatives
-    val dailyNegativeSampledBids = loadParquetData[DailyNegativeSampledBidRequestRecord](DailyNegativeSampledBidRequestDataSet.S3BasePath, date, lookBack = Some(maxLookback-1))
+    val dailyNegativeSampledBids = DailyNegativeSampledBidRequestDataSet().readRange(date.minusDays(maxLookback-1), date, true)
     val aggregatedNegativeSet = aggregateNegatives(dailyNegativeSampledBids, adGroupPolicy)(prometheus)
       .withColumn("IsInTrainSet", when($"UIID".isNotNull && $"UIID"=!=lit("00000000-0000-0000-0000-000000000000"),
         when(abs(hash($"UIID")%100)<=trainRatio*100, lit(true)).otherwise(false)).otherwise(
@@ -114,7 +122,7 @@ object GenerateTrainSet {
       .withColumn("Weight", lit(1))  // placeholder: 1. assign format with positive 2. we might weight for negative in the future, TBD.
 
     //    load aggregated positives
-    val aggregatedPositiveSet =  loadParquetData[DailyPositiveLabelRecord](DailyPositiveBidRequestDataset.S3BasePath, date, lookBack = Some(conversionLookback-1) )
+      val aggregatedPositiveSet =  DailyPositiveBidRequestDataset().readRange(date.minusDays(conversionLookback-1), date, true)
       .withColumn("IsInTrainSet", when(abs(hash($"UIID")%100)<=trainRatio*100, lit(true)).otherwise(false))
 
 
@@ -172,45 +180,40 @@ object GenerateTrainSet {
     val adjustedWeightDataset= adjustWeightForTrainset(preFeatureJoinTrainSet,desiredNegOverPos)
 
     // 5. join all these dataset with bidimpression to get features , join by day
+    val tensorflowSelectionTabular = intModelFeaturesCols(modelDimensions ++ modelFeatures ++ modelWeights) ++ modelTargetCols(modelTargets)
+    val parquetSelectionTabular = modelKeepFeatureCols(keptFields) ++ tensorflowSelectionTabular
+
     val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(date, true)
-    val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, maxLookback, adGroupPolicy, adGroupDS)(prometheus).persist(StorageLevel.MEMORY_AND_DISK)
+    val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, maxLookback, adGroupPolicy, adGroupDS)(prometheus)
+      .select(parquetSelectionTabular: _*)
+      .as[ValidationDataForModelTrainingRecord]
+      .persist(StorageLevel.MEMORY_AND_DISK)
 
     // 6. split train and val
-    val adjustedTrain  = trainDataWithFeature.filter($"IsInTrainSet"===lit(true)).cache()
-    val adjustedVal = trainDataWithFeature.filter($"IsInTrainSet"===lit(false)).cache()
+    val adjustedTrainParquet  = trainDataWithFeature.filter($"IsInTrainSet"===lit(true))
+    val adjustedValParquet = trainDataWithFeature.filter($"IsInTrainSet"===lit(false))
 
-    // 7. save as tfrecord and parquet
-    val selectionTabular = intModelFeaturesCols(modelDimensions ++ modelFeatures ++ modelWeights)  ++ modelTargetCols(modelTargets)
+    // 7. save as parquet and tfrecord
+    val parquetTrainRows = ValidationDataForModelTrainingDataset(experimentName).writePartition(adjustedTrainParquet, date, "train", Some(100))
+    val parquetValRows = ValidationDataForModelTrainingDataset(experimentName).writePartition(adjustedValParquet, date, "val", Some(100))
 
-    val dfTuple = Seq(
-      (adjustedTrain,"train", "parquet"),
-      (adjustedVal, "val", "parquet"),
-      (adjustedTrain,"train", "tfrecord"),
-      (adjustedVal, "val", "tfrecord")
-    )
+    val tfDropColumnNames = modelKeepFeatureColNames(keptFields)
+    val tfTrainRows = DataForModelTrainingDataset(experimentName).writePartition(
+      adjustedTrainParquet.drop(tfDropColumnNames: _*).as[DataForModelTrainingRecord],
+      date, "train", Some(100))
+    val tfValRows = DataForModelTrainingDataset(experimentName).writePartition(
+      adjustedValParquet.drop(tfDropColumnNames: _*).as[DataForModelTrainingRecord],
+      date, "val", Some(100))
 
-    dfTuple.foreach{
-      case (df, df_split, df_format) => {
 
-        val dfTransformed = df_format match {
-          // kept fields is written to parquet when use "as[record]" .
-          case "parquet" => df.select((modelKeepFeatureCols(keptFields) ++ selectionTabular): _*).as[DataForModelTrainingRecord]
-          case "tfrecord" => df.select(selectionTabular: _*).as[DataForModelTrainingRecord]
-        }
+    outputRowsWrittenGauge.labels("ParquetTrain").set(parquetTrainRows)
+    outputRowsWrittenGauge.labels("ParquetVal").set(parquetValRows)
+    outputRowsWrittenGauge.labels("TFTrain").set(tfTrainRows)
+    outputRowsWrittenGauge.labels("TFVal").set(tfValRows)
+    jobDurationGaugeTimer.setDuration()
+    prometheus.pushMetrics()
 
-        DataForModelTrainingDataset.writePartition(
-          dfTransformed,
-          date,
-          subFolderKey = Some("split"),
-          subFolderValue = Some(df_split.concat("_").concat(df_format)),
-          format = Some(df_format)
-        )
-
-      }
-    }
-
+    spark.stop()
 
   }
-
-
 }

@@ -23,7 +23,7 @@ object DailyBidsImpressions {
 
     val dailyBidsImpressions = preFilteringWithPolicy(bidsImpressions, adGroupPolicy, adGroupDS)
 
-    DailyBidsImpressionsDataset.writePartition(dailyBidsImpressions, date)
+    DailyBidsImpressionsDataset().writePartition(dailyBidsImpressions, date, Some(400))
 
     spark.stop()
   }

@@ -11,8 +11,7 @@ import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import com.thetradedesk.kongming.date
-import com.thetradedesk.kongming.policyDate
+import com.thetradedesk.kongming.{BidsImpressionsS3Path, date, policyDate}
 import com.thetradedesk.kongming.transform.PositiveLabelDailyTransform
 import org.apache.spark.sql.functions._
 
@@ -48,16 +47,12 @@ object PositiveLabelGenerator extends Logger{
     val lookback = math.min(maxPolicyLookbackInDays, bidLookback) - 1 //the -1 is to account for the given date is partial
 
     //previous multiday data
-    val rawMultiDayBidRequestDS = loadParquetData[DailyBidRequestRecord](
-      DailyBidRequestDataset.S3BasePath,
-      date.minusDays(1),//substract one day here as well
-      lookBack = Some(lookback))
 
+    val rawMultiDayBidRequestDS = DailyBidRequestDataset().readRange(date.minusDays(lookback+1), date)
     //single day data
-    val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
-    val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
+    val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
-    val dailyConversionDS = loadParquetData[DailyConversionDataRecord](DailyConversionDataset.S3BasePath, date).cache
+    val dailyConversionDS = DailyConversionDataset().readDate(date).cache
     val sameDayPositiveBidRequestDS = PositiveLabelDailyTransform.intraDayConverterNTouchesTransform(
       bidsImpressions
       , adGroupPolicy
@@ -78,6 +73,6 @@ object PositiveLabelGenerator extends Logger{
 
     val positiveLabelDS = PositiveLabelDailyTransform.positiveLabelAggTransform(unionedPositiveBidRequestDS, adGroupPolicy)
 
-    DailyPositiveBidRequestDataset.writePartition(positiveLabelDS, date)
+    DailyPositiveBidRequestDataset().writePartition(positiveLabelDS, date, Some(100))
   }
 }

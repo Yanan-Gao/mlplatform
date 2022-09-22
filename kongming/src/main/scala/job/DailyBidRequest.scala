@@ -15,8 +15,7 @@ object DailyBidRequest {
 
     val prometheus = new PrometheusClient("KoaV4Conversion", "DailyBidRequest")
 
-    val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
-    val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
+    val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
     val adGroupPolicyHardCodedDate = policyDate
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate)
@@ -26,7 +25,7 @@ object DailyBidRequest {
       adGroupPolicy
     )(prometheus)
 
-    DailyBidRequestDataset.writePartition(filteredBidRequestDS, date)
+    DailyBidRequestDataset().writePartition(filteredBidRequestDS, date, Some(100))
 
   }
 }

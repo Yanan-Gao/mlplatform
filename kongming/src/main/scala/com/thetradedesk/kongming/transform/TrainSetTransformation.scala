@@ -4,7 +4,7 @@ import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImp
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.datasets._
-import com.thetradedesk.kongming.{date, preFilteringWithPolicy}
+import com.thetradedesk.kongming.{BidsImpressionsS3Path, date, preFilteringWithPolicy}
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -165,12 +165,10 @@ object TrainSetTransformation {
                           adGroupDS: Dataset[AdGroupRecord]
                           )(implicit prometheus:PrometheusClient): Dataset[TrainSetFeaturesRecord] ={
 
-    val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
-
     (0 to lookbackDays).map(lookbackDayIdx => {
       val lookbackday = date.minusDays(lookbackDayIdx)
       val trainsetOfDay = trainset.filter(to_date($"LogEntryTime")===lit(lookbackday.toString))
-      val bidsImpressionsOfDay =   loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, lookbackday, source = Some(GERONIMO_DATA_SOURCE))
+      val bidsImpressionsOfDay = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, lookbackday, source = Some(GERONIMO_DATA_SOURCE))
       val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressionsOfDay, adGroupPolicy, adGroupDS)
 
       broadcast(trainsetOfDay).join(prefilteredDS.drop("AdGroupId"), Seq("BidRequestId"), joinType =  "inner")
@@ -181,8 +179,7 @@ object TrainSetTransformation {
         .withColumn("Browser", $"Browser.value")
         .withColumn("InternetConnectionType", $"InternetConnectionType.value")
         .withColumnRenamed("ConfigValue", "AdGroupId")
-    }
-    )
+    })
       .reduce(_.union(_)).selectAs[TrainSetFeaturesRecord]
   }
 

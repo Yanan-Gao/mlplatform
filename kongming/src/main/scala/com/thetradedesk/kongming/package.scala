@@ -1,8 +1,7 @@
 package com.thetradedesk
 
-
-import com.thetradedesk.kongming.datasets.AdGroupPolicyRecord
-import com.thetradedesk.kongming.datasets.AdGroupRecord
+import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, AdGroupRecord}
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.Dataset
@@ -15,11 +14,23 @@ import java.time.LocalDate
 
 
 package object kongming {
+  val MLPlatformS3Root: String = "s3://thetradedesk-mlplatform-us-east-1/data"
+  val BidsImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
+
   var date = config.getDate("date" , LocalDate.now())
-  var ttdEnv = config.getString("ttd.env" , "dev")
   val RoundUpTimeUnit = "minute"
   val policyDate = config.getDate("policydate" , LocalDate.parse("2022-03-15"))
 
+  def getExperimentPath(experimentName: String): String = {
+    var result:String = ""
+
+    if (experimentName.trim.nonEmpty)
+    {
+      result = result.concat(s"experiment=$experimentName/")
+    }
+
+    result
+  }
 
   //TODO: may add some indicator on the list of fields to join based on policy.
   def multiLevelJoinWithPolicy[T: Encoder](

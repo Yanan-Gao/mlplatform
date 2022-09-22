@@ -38,12 +38,12 @@ then
 fi
 
 BASE_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/data/${READENV}/kongming"
-TRAINING_DATA="trainset/v=1"
+TRAINING_DATA="trainset/tfrecord/v=1"
 SCORING_DATA="dailyofflinescore/v=1"
 DATE_PATH="date=${DATE_PARTITION}"
 
-TRAINING_DATA_SOURCE="${BASE_S3_PATH}/${TRAINING_DATA}/${DATE_PATH}/split=train_tfrecord/"
-VALIDATION_DATA_SOURCE="${BASE_S3_PATH}/${TRAINING_DATA}/${DATE_PATH}/split=val_tfrecord/"
+TRAINING_DATA_SOURCE="${BASE_S3_PATH}/${TRAINING_DATA}/${DATE_PATH}/split=train/"
+VALIDATION_DATA_SOURCE="${BASE_S3_PATH}/${TRAINING_DATA}/${DATE_PATH}/split=val/"
 SCORING_DATA_MODEL_S3_LOCATION="${BASE_S3_PATH}/${SCORING_DATA}/"
 
 INPUT_DEST="/mnt/input/"

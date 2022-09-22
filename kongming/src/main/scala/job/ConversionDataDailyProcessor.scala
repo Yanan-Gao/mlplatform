@@ -1,13 +1,11 @@
 package job
 
-import com.thetradedesk.geronimo.shared.loadParquetData
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
 import com.thetradedesk.kongming.transform.ConversionDataDailyTransform
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.kongming.date
 import com.thetradedesk.kongming.policyDate
 
@@ -71,6 +69,6 @@ object ConversionDataDailyProcessor extends Logger{
 
     val resultDS = conversionNonXD.union(conversionXD)
 
-    DailyConversionDataset.writePartition(resultDS, date)
+    DailyConversionDataset().writePartition(resultDS, date, Some(100))
   }
 }

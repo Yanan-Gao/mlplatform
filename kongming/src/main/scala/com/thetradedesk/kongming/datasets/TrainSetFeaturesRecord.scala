@@ -38,4 +38,3 @@ final case class TrainSetFeaturesRecord (
                                           Latitude: Option[Double],
                                           Longitude: Option[Double]
                                         )
-

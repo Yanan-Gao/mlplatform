@@ -26,8 +26,7 @@ object DailyNegativeSampling {
   def main(args: Array[String]): Unit = {
     val prometheus = new PrometheusClient("KoaV4Conversion", "DailyNegativeSampling")
 
-    val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
-    val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
+    val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
     // test only adgroups in the policy table. since aggKey are all adgroupId, we filter by adgroup id
     val adGroupPolicyHardCodedDate = policyDate
@@ -83,6 +82,6 @@ object DailyNegativeSampling {
       .toDF()
       .selectAs[DailyNegativeSampledBidRequestRecord]
 
-    DailyNegativeSampledBidRequestDataSet.writePartition(downSampledBidRequestByGrain, date)
+    DailyNegativeSampledBidRequestDataSet().writePartition(downSampledBidRequestByGrain, date, Some(100))
   }
 }
