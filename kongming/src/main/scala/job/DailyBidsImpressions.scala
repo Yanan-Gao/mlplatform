@@ -3,7 +3,7 @@ package job
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupDataSet, AdGroupPolicyDataset, DailyBidsImpressionsDataset}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyBidsImpressionsDataset, UnifiedAdGroupDataSet}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -19,7 +19,7 @@ object DailyBidsImpressions {
     val adGroupPolicyHardCodedDate = policyDate
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate)
 
-    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(date, true)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
 
     val dailyBidsImpressions = preFilteringWithPolicy(bidsImpressions, adGroupPolicy, adGroupDS)
 

@@ -152,7 +152,8 @@ object GenerateTrainSet {
 
 
     // 2. get the latest weights for adgroups in policytable
-    val trackingTagWithWeight = getWeightsForTrackingTags(adGroupPolicy, normalized = true)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
+    val trackingTagWithWeight = getWeightsForTrackingTags(adGroupPolicy, adGroupDS, normalized = true)
 
     // 3. transform weights for positive label
     // todo: multi days positive might have different click and  view lookback window, might not alligned with latest weight
@@ -183,7 +184,6 @@ object GenerateTrainSet {
     val tensorflowSelectionTabular = intModelFeaturesCols(modelDimensions ++ modelFeatures ++ modelWeights) ++ modelTargetCols(modelTargets)
     val parquetSelectionTabular = modelKeepFeatureCols(keptFields) ++ tensorflowSelectionTabular
 
-    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(date, true)
     val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, maxLookback, adGroupPolicy, adGroupDS)(prometheus)
       .select(parquetSelectionTabular: _*)
       .as[ValidationDataForModelTrainingRecord]

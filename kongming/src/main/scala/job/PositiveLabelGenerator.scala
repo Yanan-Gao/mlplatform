@@ -40,7 +40,7 @@ object PositiveLabelGenerator extends Logger{
     // read master policy
     val adGroupPolicyHardCodedDate = policyDate
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate).cache
-    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(kongming.date, true)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
 
     // resolve for maxLookback
     val maxPolicyLookbackInDays = adGroupPolicy.agg(max($"DataLookBack")).head.getAs[Int](0)

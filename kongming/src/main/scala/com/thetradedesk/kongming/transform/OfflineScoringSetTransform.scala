@@ -2,7 +2,7 @@ package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.kongming
-import com.thetradedesk.kongming.datasets.{AdGroupDataSet, AdGroupPolicyRecord, DailyOfflineScoringRecord}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, DailyOfflineScoringRecord, UnifiedAdGroupDataSet}
 import com.thetradedesk.kongming.{multiLevelJoinWithPolicy, preFilteringWithPolicy}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -26,7 +26,7 @@ object OfflineScoringSetTransform {
                     )
                     (implicit prometheus: PrometheusClient): Dataset[DailyOfflineScoringRecord] = {
 
-    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(kongming.date, true)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
     val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
 
     val filterCondition = $"IsImp" === true
