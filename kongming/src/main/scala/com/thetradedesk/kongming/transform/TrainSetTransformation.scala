@@ -84,12 +84,12 @@ object TrainSetTransformation {
 
   def getWeightsForTrackingTags(
                                  adGroupPolicy: Dataset[AdGroupPolicyRecord],
+                                 adGroupDS: Dataset[AdGroupRecord],
                                  normalized: Boolean=false
                                ): Dataset[TrackingTagWeightsRecord]= {
     // 1. get the latest weights per campaign and trackingtagid
-    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(date, true)
-    val campaignDS = CampaignDataSet().readLatestPartitionUpTo(date, true)
-    val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartitionUpTo(date, true)
+    val campaignDS = CampaignDataSet().readLatestPartition()
+    val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartition()
     val ccrcWindow = Window.partitionBy($"CampaignId")
 
     val ccrcProcessed = ccrc

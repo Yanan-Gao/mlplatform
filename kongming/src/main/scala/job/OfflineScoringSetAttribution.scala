@@ -1,6 +1,6 @@
 package job
 
-import com.thetradedesk.kongming.datasets.{AdGroupCvrForBiasTuningDataset, AdGroupPolicyDataset, ImpressionForIsotonicRegDataset}
+import com.thetradedesk.kongming.datasets.{AdGroupCvrForBiasTuningDataset, AdGroupPolicyDataset, ImpressionForIsotonicRegDataset, UnifiedAdGroupDataSet}
 import com.thetradedesk.kongming.{date, policyDate}
 import com.thetradedesk.kongming.transform.TrainSetTransformation.getWeightsForTrackingTags
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -56,7 +56,8 @@ object OfflineScoringSetAttribution{
       .toDF()
 
     // load pixel weight
-    val pixelWeight = getWeightsForTrackingTags(adGroupPolicy)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
+    val pixelWeight = getWeightsForTrackingTags(adGroupPolicy, adGroupDS)
 
     // 3. attributed impressions that are in scored impressions, find the latest per conversion event
     val offlineScoreLabel = getOfflineScoreLabelWeight(offlineScore, attributedEvent, attributedEventResult, pixelWeight)(prometheus)

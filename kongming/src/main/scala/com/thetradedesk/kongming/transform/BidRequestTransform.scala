@@ -2,7 +2,7 @@ package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.kongming
-import com.thetradedesk.kongming.datasets.{AdGroupDataSet, AdGroupPolicyRecord, BidRequestPolicyRecord, DailyBidRequestRecord}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, BidRequestPolicyRecord, DailyBidRequestRecord, UnifiedAdGroupDataSet}
 import com.thetradedesk.kongming.{multiLevelJoinWithPolicy, preFilteringWithPolicy, RoundUpTimeUnit}
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -20,7 +20,7 @@ object BidRequestTransform {
                     (implicit prometheus: PrometheusClient): Dataset[DailyBidRequestRecord] = {
     val window = Window.partitionBy($"DataAggValue", $"UIID").orderBy($"TruncatedLogEntryTime".desc)
 
-    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(kongming.date, true)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
     val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
     val bidsImpressionFilterByPolicy = multiLevelJoinWithPolicy[BidRequestPolicyRecord](prefilteredDS, adGroupPolicy)
 

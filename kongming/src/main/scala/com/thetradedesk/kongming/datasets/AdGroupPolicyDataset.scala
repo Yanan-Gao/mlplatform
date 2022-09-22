@@ -57,11 +57,11 @@ object AdGroupPolicyDataset {
       .csv(s"${S3Path}/date=${date.toString}")
 
     //load advertiser dataset for attribution window and campaign data for aux
-    val advertiserDS = AdvertiserDataSet().readLatestPartitionUpTo(kongming.date, true)
+    val advertiserDS = AdvertiserDataSet().readLatestPartition()
     // read campaign table to get setting, need to remove duplicated rows vs advertiser settings
-    val campaignDS = CampaignDataSet().readLatestPartitionUpTo(kongming.date, true).selectAs[CampaignRecord]
+    val campaignDS = CampaignDataSet().readLatestPartition().selectAs[CampaignRecord]
     // read adgroup table to get adgroup campaign mapping
-    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(kongming.date, true)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
 
     val adGroupPolicy = getSettings(hardCodedPolicy, adGroupDS, campaignDS, advertiserDS)
 

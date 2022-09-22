@@ -33,7 +33,7 @@ object DailyNegativeSampling {
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate)
 
 
-    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(kongming.date, true)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
     val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
     val bidsImpressionFilterByPolicy = multiLevelJoinWithPolicy[BidsImpressionsSchema](prefilteredDS, adGroupPolicy)
 

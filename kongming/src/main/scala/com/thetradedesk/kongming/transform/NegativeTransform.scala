@@ -2,7 +2,7 @@ package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.kongming
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupDataSet, AdGroupPolicyRecord, DailyNegativeSampledBidRequestRecord}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, DailyNegativeSampledBidRequestRecord, UnifiedAdGroupDataSet}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -103,7 +103,7 @@ object NegativeTransform {
      */
     // todo: pre-check possible aggregation levels.
 
-    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(kongming.date, true)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
     val prefilteredDS = preFilteringWithPolicy[DailyNegativeSampledBidRequestRecord](dailyNegativeSampledBids, adGroupPolicy, adGroupDS)
 
     val filterCondition = date_add($"LogEntryTime", $"DataLookBack")>=date

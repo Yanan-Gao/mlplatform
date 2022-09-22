@@ -21,16 +21,16 @@ object ConversionDataDailyProcessor extends Logger{
     val conversionDS = ConversionTrackerVerticaLoadDataSetV4(defaultCloudProvider).readDate(date)
 
     // read campaign conversion reporting column setting
-    val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartitionUpTo(date, true)
+    val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartition()
 
     // read master policy
     val adGroupPolicyHardCodedDate = policyDate
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate)
 
     // read adgroup table to get adgroup campaign mapping
-    val adGroupDS = AdGroupDataSet().readLatestPartitionUpTo(date, true)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
     // read campaign table to get setting
-    val campaignDS = CampaignDataSet().readLatestPartitionUpTo(date, true)
+    val campaignDS = CampaignDataSet().readLatestPartition()
 
     //filter down conversion data and add weights from conversion reporting column table
     //transformedConvDS is returned as cached datasets.
