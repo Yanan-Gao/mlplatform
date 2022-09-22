@@ -164,23 +164,17 @@ object TrainSetTransformation {
                           adGroupPolicy: Dataset[AdGroupPolicyRecord],
                           adGroupDS: Dataset[AdGroupRecord]
                           )(implicit prometheus:PrometheusClient): Dataset[TrainSetFeaturesRecord] ={
-
-    (0 to lookbackDays).map(lookbackDayIdx => {
-      val lookbackday = date.minusDays(lookbackDayIdx)
-      val trainsetOfDay = trainset.filter(to_date($"LogEntryTime")===lit(lookbackday.toString))
-      val bidsImpressionsOfDay = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, lookbackday, source = Some(GERONIMO_DATA_SOURCE))
-      val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressionsOfDay, adGroupPolicy, adGroupDS)
-
-      broadcast(trainsetOfDay).join(prefilteredDS.drop("AdGroupId"), Seq("BidRequestId"), joinType =  "inner")
-        .withColumn("AdFormat",concat(col("AdWidthInPixels"),lit('x'), col("AdHeightInPixels")))
-        .withColumn("RenderingContext", $"RenderingContext.value")
-        .withColumn("DeviceType", $"DeviceType.value")
-        .withColumn("OperatingSystem", $"OperatingSystem.value")
-        .withColumn("Browser", $"Browser.value")
-        .withColumn("InternetConnectionType", $"InternetConnectionType.value")
-        .withColumnRenamed("ConfigValue", "AdGroupId")
-    })
-      .reduce(_.union(_)).selectAs[TrainSetFeaturesRecord]
+    val bidsImpressions = DailyBidsImpressionsDataset().readRange(date.minusDays(lookbackDays), date, isInclusive = true)
+    val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
+    trainset.join(prefilteredDS.drop("AdGroupId"), Seq("BidRequestId"), joinType =  "inner")
+      .withColumn("AdFormat",concat(col("AdWidthInPixels"),lit('x'), col("AdHeightInPixels")))
+      .withColumn("RenderingContext", $"RenderingContext.value")
+      .withColumn("DeviceType", $"DeviceType.value")
+      .withColumn("OperatingSystem", $"OperatingSystem.value")
+      .withColumn("Browser", $"Browser.value")
+      .withColumn("InternetConnectionType", $"InternetConnectionType.value")
+      .withColumnRenamed("ConfigValue", "AdGroupId")
+      .selectAs[TrainSetFeaturesRecord]
   }
 
   def balancePosNeg(
@@ -314,8 +308,7 @@ object TrainSetTransformation {
       .withColumn("Weight",when(col("Target")===1,col("Weight")*col("Coefficient")/lit(desiredNegOverPos)).otherwise(col("Weight")))
       .selectAs[PreFeatureJoinRecord].toDF()
     val orgValidationset = validation.toDF()
-    val adjustedDataset = adjustedTrainset.union(orgValidationset).selectAs[PreFeatureJoinRecord].cache()
-    adjustedDataset
+    adjustedTrainset.union(orgValidationset).selectAs[PreFeatureJoinRecord]
   }
 
 

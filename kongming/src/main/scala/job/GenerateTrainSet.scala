@@ -102,6 +102,7 @@ object GenerateTrainSet {
     val maxNegativeCount = config.getInt(path="maxNegativeCount", 500000)
     val upSamplingValSet = config.getBoolean(path = "upSamplingValSet", false)
     val conversionLookback = config.getInt("conversionLookback", 7)
+    val saveParquetData = config.getBoolean("saveParquetData", false)
 
     val experimentName = config.getString("trainSetExperimentName" , "")
 
@@ -180,22 +181,26 @@ object GenerateTrainSet {
     //adjust weight in trainset
     val adjustedWeightDataset= adjustWeightForTrainset(preFeatureJoinTrainSet,desiredNegOverPos)
 
-    // 5. join all these dataset with bidimpression to get features , join by day
+    // 5. join all these dataset with bidimpression to get features
     val tensorflowSelectionTabular = intModelFeaturesCols(modelDimensions ++ modelFeatures ++ modelWeights) ++ modelTargetCols(modelTargets)
     val parquetSelectionTabular = modelKeepFeatureCols(keptFields) ++ tensorflowSelectionTabular
 
     val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, maxLookback, adGroupPolicy, adGroupDS)(prometheus)
       .select(parquetSelectionTabular: _*)
       .as[ValidationDataForModelTrainingRecord]
-      .persist(StorageLevel.MEMORY_AND_DISK)
+      .persist(StorageLevel.DISK_ONLY)
 
     // 6. split train and val
     val adjustedTrainParquet  = trainDataWithFeature.filter($"IsInTrainSet"===lit(true))
     val adjustedValParquet = trainDataWithFeature.filter($"IsInTrainSet"===lit(false))
 
     // 7. save as parquet and tfrecord
-    val parquetTrainRows = ValidationDataForModelTrainingDataset(experimentName).writePartition(adjustedTrainParquet, date, "train", Some(100))
-    val parquetValRows = ValidationDataForModelTrainingDataset(experimentName).writePartition(adjustedValParquet, date, "val", Some(100))
+    if (saveParquetData) {
+      val parquetTrainRows = ValidationDataForModelTrainingDataset(experimentName).writePartition(adjustedTrainParquet, date, "train", Some(100))
+      val parquetValRows = ValidationDataForModelTrainingDataset(experimentName).writePartition(adjustedValParquet, date, "val", Some(100))
+      outputRowsWrittenGauge.labels("ParquetTrain").set(parquetTrainRows)
+      outputRowsWrittenGauge.labels("ParquetVal").set(parquetValRows)
+    }
 
     val tfDropColumnNames = modelKeepFeatureColNames(keptFields)
     val tfTrainRows = DataForModelTrainingDataset(experimentName).writePartition(
@@ -206,8 +211,6 @@ object GenerateTrainSet {
       date, "val", Some(100))
 
 
-    outputRowsWrittenGauge.labels("ParquetTrain").set(parquetTrainRows)
-    outputRowsWrittenGauge.labels("ParquetVal").set(parquetValRows)
     outputRowsWrittenGauge.labels("TFTrain").set(tfTrainRows)
     outputRowsWrittenGauge.labels("TFVal").set(tfValRows)
     jobDurationGaugeTimer.setDuration()
