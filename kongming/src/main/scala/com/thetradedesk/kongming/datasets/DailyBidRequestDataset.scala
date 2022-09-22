@@ -19,7 +19,6 @@ final case class DailyBidRequestRecord(UIID: String,
                                        IsImp: Boolean,
                                        RecencyRank: Int)
 
-object DailyBidRequestDataset extends KongMingDataset[DailyBidRequestRecord](
-  s3DatasetPath = "dailybidrequest/v=1",
-  defaultNumPartitions = 100
+case class DailyBidRequestDataset() extends KongMingDataset[DailyBidRequestRecord](
+  s3DatasetPath = "dailybidrequest/v=1"
 )

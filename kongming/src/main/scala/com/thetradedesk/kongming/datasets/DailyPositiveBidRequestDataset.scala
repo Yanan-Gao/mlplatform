@@ -1,10 +1,5 @@
 package com.thetradedesk.kongming.datasets
 
-import org.apache.spark.sql.Dataset
-import org.apache.spark.sql.SaveMode
-
-import java.time.LocalDate
-
 final case class DailyPositiveLabelRecord(
                                            ConfigKey: String,
                                            ConfigValue: String,
@@ -21,7 +16,6 @@ final case class DailyPositiveLabelRecord(
                                            IsInViewAttributionWindow: Boolean
                                          )
 
-object DailyPositiveBidRequestDataset extends KongMingDataset[DailyPositiveLabelRecord](
-  s3DatasetPath = "dailypositive/v=1",
-  defaultNumPartitions = 100
+case class DailyPositiveBidRequestDataset() extends KongMingDataset[DailyPositiveLabelRecord](
+  s3DatasetPath = "dailypositive/v=1"
 )

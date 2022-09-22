@@ -67,8 +67,8 @@ object OfflineScoringSetAttribution{
     // 5. get inputs for isotonic regression and bias tuning
     val inputForCalibration = getInputForCalibrationAndBiasTuning(impressionLevelPerformance, totalImpressionsCount, adGroupPolicy)(prometheus)
 
-    ImpressionForIsotonicRegDataset.writePartition(inputForCalibration._1, date, format = Some("csv"))
-    AdGroupCvrForBiasTuningDataset.writePartition(inputForCalibration._2, date, format = Some("csv"))
+    ImpressionForIsotonicRegDataset().writePartition(inputForCalibration._1, date, Some(1))
+    AdGroupCvrForBiasTuningDataset().writePartition(inputForCalibration._2, date, Some(1))
   }
 
 

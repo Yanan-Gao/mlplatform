@@ -7,7 +7,7 @@ final case class OfflineScoredImpressionRecord(
                                               )
 
 
-object OfflineScoredImpressionDataset extends KongMingDataset[OfflineScoredImpressionRecord](
+case class OfflineScoredImpressionDataset() extends KongMingDataset[OfflineScoredImpressionRecord](
   s3DatasetPath = "measurement/offline/v=1",
-  defaultNumPartitions = 100
+  partitionField = "model_date"
 )

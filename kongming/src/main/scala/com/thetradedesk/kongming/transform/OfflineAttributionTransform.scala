@@ -14,6 +14,7 @@ import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{FloatType, IntegerType}
+
 import java.time.format.DateTimeFormatter
 
 
@@ -86,12 +87,8 @@ object OfflineAttributionTransform {
                      )(implicit prometheus:PrometheusClient):Dataset[OfflineScoreRecord] ={
 
     // 1. load offline scores
-      val multidayOfflineScore =  loadParquetData[OfflineScoredImpressionRecord](
-        OfflineScoredImpressionDataset.S3BasePath+s"/model_date=${modelDate.format(DateTimeFormatter.ofPattern("yyyyMMdd"))}"
-        ,date = endDate
-        ,lookBack = Some(lookBack)
-        ,partitionPrefix = Some("scored_date")
-      ).select($"BidRequestId", $"AdGroupId", $"Score")
+    val multidayOfflineScore = OfflineScoredImpressionDataset().readDate(modelDate)
+      .select($"BidRequestId", $"AdGroupId", $"Score")
 
     // todo: maybe we should add bidfeedbackid to bidimpression schema
     //  , and add bidbeedbackid to scoring dataset. So there's no need to join feedback again here.
