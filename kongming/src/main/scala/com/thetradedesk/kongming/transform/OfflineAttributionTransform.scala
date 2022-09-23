@@ -87,7 +87,8 @@ object OfflineAttributionTransform {
                      )(implicit prometheus:PrometheusClient):Dataset[OfflineScoreRecord] ={
 
     // 1. load offline scores
-    val multidayOfflineScore = OfflineScoredImpressionDataset().readDate(modelDate)
+    val multidayOfflineScore = OfflineScoredImpressionDataset(modelDate)
+      .readRange(endDate.minusDays(lookBack), endDate, true)
       .select($"BidRequestId", $"AdGroupId", $"Score")
 
     // todo: maybe we should add bidfeedbackid to bidimpression schema
