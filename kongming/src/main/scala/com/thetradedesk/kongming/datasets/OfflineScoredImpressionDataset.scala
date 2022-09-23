@@ -1,5 +1,8 @@
 package com.thetradedesk.kongming.datasets
 
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+
 final case class OfflineScoredImpressionRecord(
                                               BidRequestId: String,
                                               AdGroupId: String,
@@ -7,7 +10,7 @@ final case class OfflineScoredImpressionRecord(
                                               )
 
 
-case class OfflineScoredImpressionDataset() extends KongMingDataset[OfflineScoredImpressionRecord](
-  s3DatasetPath = "measurement/offline/v=1",
-  partitionField = "model_date"
+case class OfflineScoredImpressionDataset(modelDate: LocalDate) extends KongMingDataset[OfflineScoredImpressionRecord](
+  s3DatasetPath = s"measurement/offline/v=1/model_date=${modelDate.format(DateTimeFormatter.ofPattern("yyyyMMdd"))}",
+  partitionField = "scored_date"
 )
