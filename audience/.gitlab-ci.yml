@@ -178,5 +178,4 @@ audience:build_push_release_container:
     - echo "smoke test succeeded for release container"
     - docker tag ${AUDIENCE_TRAINING_IMAGE}:release ${DOCKER_INTERNAL_REGISTRY}/${AUDIENCE_TRAINING_IMAGE}:release
     - docker push ${DOCKER_INTERNAL_REGISTRY}/${AUDIENCE_TRAINING_IMAGE}:release
-    - popd
     - echo "training container pushed"
