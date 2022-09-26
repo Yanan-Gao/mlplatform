@@ -156,6 +156,10 @@ audience:build_push_release_container:
     - apt update
     - apt-get install docker.io -y
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
+    - apt-get install python3 -y
+    - apt-get install python3-pip -y
+    - export PATH=~/.local/bin:$PATH
+    - pip3 install awscli setuptools twine
   rules:
     - if: $CI_COMMIT_BRANCH == "master"
       changes:
