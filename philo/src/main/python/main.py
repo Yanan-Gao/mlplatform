@@ -6,6 +6,7 @@ from absl import app, flags
 
 from philo.data import prepare_dummy_data, prepare_real_data, s3_sync, get_steps_epochs_emr, TRAIN, VAL, TEST
 from philo.features import DEFAULT_MODEL_TARGET
+from philo.layers import custom_objects
 from philo.models import model_builder
 from philo.utils import get_callbacks
 from philo.prometheus import Prometheus
@@ -108,11 +109,16 @@ def main(argv):
         batch_size=FLAGS.batch_size, eval_batch_size=FLAGS.eval_batch_size, prefetch_num=tf.data.AUTOTUNE,
         repeat=repeat)
 
-    kwargs = {"dnn_hidden_units": tuple(FLAGS.dnn_hidden_units), "l2_reg_linear": FLAGS.l2_reg_linear,
-              "l2_reg_embedding": FLAGS.l2_reg_embedding, "l2_reg_dnn": FLAGS.l2_reg_dnn,
-              "dnn_dropout": FLAGS.dnn_dropout, "dnn_activation": FLAGS.dnn_activation, "dnn_use_bn": FLAGS.dnn_use_bn}
+    try:
+        model = tf.keras.models.load_model(FLAGS.latest_model_path, custom_objects=custom_objects)
+    except OSError as error:
+        print(error)
+        kwargs = {"dnn_hidden_units": tuple(FLAGS.dnn_hidden_units), "l2_reg_linear": FLAGS.l2_reg_linear,
+                  "l2_reg_embedding": FLAGS.l2_reg_embedding, "l2_reg_dnn": FLAGS.l2_reg_dnn,
+                  "dnn_dropout": FLAGS.dnn_dropout, "dnn_activation": FLAGS.dnn_activation,
+                  "dnn_use_bn": FLAGS.dnn_use_bn}
 
-    model = model_builder(FLAGS.model_arch, model_features, **kwargs)
+        model = model_builder(FLAGS.model_arch, model_features, **kwargs)
 
     model.summary()
 
