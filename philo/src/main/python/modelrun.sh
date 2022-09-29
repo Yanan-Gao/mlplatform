@@ -8,11 +8,19 @@ HOME_HADOOP="../../../../../../mnt"
 # output_path move to main to make it consistent
 # S3_OUTPUT_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/"
 
-while getopts "t:" opt; do
+while getopts "t:o:r:" opt; do
   case "$opt" in
     t)
       IMAGE_TAG="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
       echo "Setting image tag to $OPTARG" >&1
+      ;;
+    o)
+      OUTPUT_PATH="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
+      echo "Setting output path to $OPTARG" >&1
+      ;;
+    r)
+      REGION="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
+      echo "Setting region to $OPTARG" >&1
       ;;
   esac
 done
@@ -21,6 +29,18 @@ if [ -z "$IMAGE_TAG" ]
 then
    IMAGE_TAG="release"
    echo "No image flag set. Falling back to $IMAGE_TAG" >&1
+fi
+
+if [ -z "$OUTPUT_PATH" ]
+then
+   OUTPUT_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/"
+   echo "No output path set. Falling back to $OUTPUT_PATH" >&1
+fi
+
+if [ -z "$REGION" ]
+then
+   REGION="apac"
+   echo "No output path set. Falling back to $REGION" >&1
 fi
 
 SECRETJSON=$(aws secretsmanager get-secret-value --secret-id svc.emr-docker-ro --query SecretString --output text)
@@ -47,6 +67,8 @@ sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v /mnt/tfrecords:$
       "--input_path=/var/tmp/input/tfrecords/" \
       "--meta_data_path=/var/tmp/input/metadata/" \
       "--latest_model_path=/var/tmp/input/latest_model/" \
+      "--s3_output_path=${OUTPUT_PATH}" \
+      "--region=${REGION}" \
       "--training_verbosity=2" \
       "--model_arch=deepfm" \
       "--early_stopping_patience=5"
