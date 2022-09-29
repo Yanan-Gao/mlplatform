@@ -1,0 +1,132 @@
+#!/bin/bash
+
+# sync model input files for the given date range to the local machine from s3
+
+BASE_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1"
+
+LOOKBACK=9
+
+# parse -e flag for environment
+# parse -d flag for input data start date
+while getopts "e:d:p:m:" opt; do
+  case "$opt" in
+    e)
+      ENV="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
+      echo "Setting environment to $OPTARG" >&1
+      ;;
+
+    d)
+      START_DATE="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
+      echo "Setting start date to $OPTARG" >&1
+      ;;
+
+    p)
+      PREFIX="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
+      echo "Setting data prefix to $OPTARG" >&1
+      ;;
+
+    m)
+      META_PREFIX="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
+      echo "Setting metadata prefix to $OPTARG" >&1
+      ;;
+
+    r)
+      REGION="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
+      echo "Setting region to $OPTARG" >&1
+      ;;
+
+    *)
+      echo "Invalid arg $OPTARG" >&1
+  esac
+done
+
+if [ -z "$ENV" ]
+then
+   ENV="prod"
+   echo "No enviroment flag set. Falling back to $ENV" >&1
+fi
+
+if [ -z "$START_DATE" ]
+then
+   START_DATE="$date"
+   echo "No start date set. Falling back to $START_DATE" >&1
+fi
+
+if [ -z "$PREFIX" ]
+then
+   PREFIX="filtered"
+   echo "No data prefix set. Falling back to $PREFIX" >&1
+fi
+
+if [ -z "$META_PREFIX" ]
+then
+   META_PREFIX="filteredmetadata"
+   echo "No metadata prefix set. Falling back to $META_PREFIX" >&1
+fi
+
+if [ -z "$REGION" ]
+then
+   REGION="apac"
+   echo "No metadata prefix set. Falling back to $REGION" >&1
+fi
+
+
+
+MNT="../../../../../../mnt/"
+
+# filtered data locations
+DATA_SOURCE="${BASE_S3_PATH}/${ENV}/${PREFIX}"
+SYNC_DEST="tfrecords/"
+
+# meta locations
+META_SOURCE="${BASE_S3_PATH}/${ENV}/${META_PREFIX}"
+META_DEST="metadata/"
+
+# latest trained model
+MODEL_DEST="latest_model/"
+
+cd ${MNT}
+
+echo "starting s3 sync for params: prefix=${PREFIX}, meta_prefix=${META_PREFIX}, env=${ENV}, date=${START_DATE} \n"
+
+
+##not bash doesnt support variable exapnsion here, so hardcoded '9'
+for i in {1..9}; do
+
+    YEAR=$(date -d "$START_DATE -$i days" +"%Y")
+    MONTH=$(date -d "$START_DATE -$i days" +"%m")
+    DAY=$(date -d "$START_DATE -$i days" +"%d")
+    S3_SOURCE="${DATA_SOURCE}/year=${YEAR}/month=${MONTH}/day=${DAY}/"
+    S3_META_SOURCE="${META_SOURCE}/year=${YEAR}/month=${MONTH}/day=${DAY}/"
+    if ((i <= 7))
+      then echo "syncing from ${S3_SOURCE} to "${SYNC_DEST}/train""
+      aws s3 sync ${S3_SOURCE} "${SYNC_DEST}/train/" --exclude "*" --include "part-*0000?*.gz" --quiet
+      echo "syncing meta data form ${S3_META_SOURCE} to ${META_DEST}"
+      aws s3 sync ${S3_META_SOURCE} "${META_DEST}/" --exclude "*" --include "*.csv" --quiet
+     fi
+
+    if ((i == 8))
+      then echo "syncing from ${S3_SOURCE}  to "${SYNC_DEST}/validation""
+      aws s3 sync ${S3_SOURCE} "${SYNC_DEST}/test/" --exclude "*" --include "part-*0000?*.gz" --quiet
+    fi
+
+    if ((i == 9))
+      then echo "syncing from ${S3_SOURCE}  to "${SYNC_DEST}/test""
+      aws s3 sync ${S3_SOURCE} "${SYNC_DEST}/validation/" --exclude "*" --include "part-*0000?*.gz" --quiet
+    fi
+
+done
+
+LATEST_MODEL_PATH=${BASE_S3_PATH}/${ENV}/models/${REGION}/
+
+# sync latest trained model
+LATEST_S3_MODEL=`aws s3 ls ${LATEST_MODEL_PATH} | awk '{print $2}' | awk -F '/' '/\// {print $1}' | sort -r | head -n 1`
+
+if [ -n "$LATEST_S3_MODEL" ]; then
+  echo "Syncing latest model $LATEST_S3_MODEL"
+  aws s3 sync ${LATEST_MODEL_PATH}${LATEST_S3_MODEL} ${MODEL_DEST} --quiet
+else
+  echo "Cannot find any models - nothing was synced"
+fi
+
+echo "data sync complete"
