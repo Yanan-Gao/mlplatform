@@ -44,11 +44,10 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
     val bidsImpressionsLong = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE), lookBack=Some(bidsImpressionLookBack))
       .withColumnRenamed("UIID", "TDID")
       .filter('TDID.isNotNullOrEmpty && 'TDID =!= "00000000-0000-0000-0000-000000000000")  // in the future, we may not have the id, good to think about how to solve
+      .withColumn("TDIDHash", abs(hash('TDID)))
+      .filter('TDIDHash % (sampleMod / trainSetDownSampleFactor).toInt === lit(sampleHit))
       .select('BidRequestId, // use to connect with bidrequest, to get more features
-//        'LogEntryTime,
         'AdvertiserId,
-//        'TDID,
-//        'CampaignId,
         'AdGroupId,
         'SupplyVendor,
         'DealId,
@@ -82,7 +81,6 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
       .withColumn("Browser", 'Browser("value"))
       .withColumn("RenderingContext", 'RenderingContext("value"))
       .withColumn("DeviceType", 'DeviceType("value"))
-      .withColumn("Date", to_date('LogEntryTime, "yyyy-MM-dd")) // used for saving the data into different folds or train and val
       .withColumn("AdWidthInPixels", ('AdWidthInPixels - lit(1.0))/lit(9999.0)) // 1 - 10000
       .withColumn("AdWidthInPixels", when('AdWidthInPixels.isNotNull, 'AdWidthInPixels).otherwise(0))
       .withColumn("AdHeightInPixels", ('AdHeightInPixels - lit(1.0))/lit(9999.0)) // 1 - 10000
@@ -101,13 +99,13 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
       .cache
     val sampledBidsImpressionsKeys = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE), lookBack=Some(bidsImpressionLookBack))
       .withColumnRenamed("UIID", "TDID")
+      .withColumn("Date", to_date('LogEntryTime, "yyyy-MM-dd"))
       .select('BidRequestId, 'Date, 'TDID, 'CampaignId)
       .filter('TDID.isNotNullOrEmpty && 'TDID =!= "00000000-0000-0000-0000-000000000000")  // in the future, we may not have the id, good to think about how to solve
       .withColumn("TDIDHash", abs(hash('TDID)))
       .filter('TDIDHash % (sampleMod / trainSetDownSampleFactor).toInt === lit(sampleHit))
       .repartition('TDIDHash % (sampleMod * partitionCount))
       .drop("TDIDHash")
-      .withColumn("Date", to_date('LogEntryTime, "yyyy-MM-dd"))
       .cache
 
     val selectedConv = selectedPixelsConfigPath match {
@@ -177,7 +175,7 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
       .withColumn("row", rank().over(window))
       .cache()
 
-    val positiveSample = generatePositiveSample(positivePool)
+    val positiveSample = generatePositiveSample(positivePool).cache
     val negativeSample = generateSoftNegativeSample(positiveSample, candidatePool)
     val hardNegativeSample = generateHardNegativeSample(positivePool, positiveSample, filteredBidsImpressions)
 
@@ -263,6 +261,7 @@ object FirstPartyPixelModelDailyConversionSampleGeneration {
     val hardNegImp = hardNegPool
       .join(distinctPosPool, Seq("CampaignId", "TDID"))
       .withColumn("rand", rand()) // for the same tdid in the same of different campaign they will have their own random number
+      .cache
 
     // calculate how many positive samples and determine how many negative samples we should have
     val positiveStats = positiveSample

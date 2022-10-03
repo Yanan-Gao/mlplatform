@@ -38,6 +38,10 @@ audience:test:
 audience:lint:
   image: python:3.8
   stage: test
+  rules:
+    - changes:
+        - "audience/src/main/python/**/*"
+        - "audience/build.sbt"
   before_script:
     - pip3 install flake8
   script:
