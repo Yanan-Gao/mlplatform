@@ -22,7 +22,7 @@ while getopts "t:v:" opt; do
       IMAGE_TAG="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
       echo "Setting image tag to $OPTARG" >&1
       ;;
-    
+
     v) VERSION=${OPTARG};;
   esac
 done
@@ -72,7 +72,7 @@ echo "beginning training for training date: ${MODEL_TRAIN_DATE}"
 sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v /mnt/csv_input:${MODEL_INPUT} \
   ${FULL_CONTAINER}  \
       "--nodummy" \
-      "--batch_size=65536" \
+      "--batch_size=262144" \
       "--eval_batch_size=197934" \
       "--model_creation_date=${VERSION}" \
       "--num_epochs=10" \
@@ -82,4 +82,6 @@ sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v /mnt/csv_input:$
       "--model_arch=dlrm" \
       "--early_stopping_patience=3" \
       "--csv_input_path=/var/tmp/csv_input/" \
-      "--model_training_date=${MODEL_TRAIN_DATE}"
+      "--model_training_date=${MODEL_TRAIN_DATE}" \
+      "--push_training_logs=true" \
+      "--learning_rate=0.00001"

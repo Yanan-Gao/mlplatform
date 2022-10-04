@@ -279,19 +279,23 @@ def main(argv):
 
     datasets = prepare_dummy_data(model_features, model_targets) if FLAGS.dummy else prepare_real_data(model_features,
                                                                                                        model_targets)
-    model = model_builder(model_features)
+
+    mirrored_strategy = tf.distribute.MultiWorkerMirroredStrategy()
+
+    with mirrored_strategy.scope():
+        print('Number of devices: %d' % mirrored_strategy.num_replicas_in_sync)
+        model = model_builder(model_features)
+        model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=FLAGS.learning_rate),
+                      loss=get_loss_for_heads(),
+                      metrics=[],
+                      loss_weights=None,
+                      run_eagerly=None,
+                      steps_per_execution=None)  # this could be useful
 
     model.summary()
 
     # BatchNorm containts non-trainable weights
     # print(model.non_trainable_weights)
-
-    model.compile(optimizer=tf.keras.optimizers.Adam(),
-                  loss=get_loss_for_heads(),
-                  metrics=[],
-                  loss_weights=None,
-                  run_eagerly=None,
-                  steps_per_execution=None)  # this could be useful
 
     history = model.fit(datasets[TRAIN],
                         epochs=epochs,

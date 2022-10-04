@@ -99,6 +99,7 @@ def lookback_csv_dataset_generator(end_date_string,
                 label = csv_chunk.pop(label_name)
                 yield (dict(csv_chunk), label.values)
 
+
     def _generator_dataset(file, batch_size, selected_cols):
         return tf.data.Dataset.from_generator(
             _generator,
@@ -110,7 +111,12 @@ def lookback_csv_dataset_generator(end_date_string,
         )
 
     def _interleaved_generator_dataset(files):
-        return tf.data.Dataset.from_tensor_slices(files).interleave(
+        options = tf.data.Options()
+        options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.OFF
+
+        return tf.data.Dataset.from_tensor_slices(files) \
+            .with_options(options) \
+            .interleave(
             lambda x: _generator_dataset(x, batch_size, selected_cols),
             num_parallel_calls=tf.data.AUTOTUNE,
             deterministic=False
