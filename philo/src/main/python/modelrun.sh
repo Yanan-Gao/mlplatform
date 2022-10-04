@@ -39,8 +39,8 @@ fi
 
 if [ -z "$REGION" ]
 then
-   REGION="apac"
-   echo "No output path set. Falling back to $REGION" >&1
+   REGION=""
+   echo "No region set. Falling back to empty region $REGION" >&1
 fi
 
 SECRETJSON=$(aws secretsmanager get-secret-value --secret-id svc.emr-docker-ro --query SecretString --output text)

@@ -1,7 +1,7 @@
 package com.thetradedesk
 
-import com.thetradedesk.geronimo.FSUtils
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, explicitDatePart, paddedDatePart}
+import com.thetradedesk.spark.util.io.FSUtils
 import org.apache.spark.sql._
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions._
