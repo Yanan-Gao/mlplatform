@@ -1,6 +1,7 @@
 package com.thetradedesk.philo.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
+import com.thetradedesk.geronimo.shared.{FLOAT_FEATURE_TYPE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, loadModelFeatures}
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.philo.{flattenData, schema, shiftModUdf}
@@ -15,55 +16,7 @@ object ModelInputTransform extends Logger {
 
   val flatten_set = Set("AdsTxtSellerType","PublisherType", "DeviceType", "OperatingSystemFamily", "Browser", "RenderingContext", "DoNotTrack")
 
-  val STRING_FEATURE_TYPE = "string"
-  val INT_FEATURE_TYPE = "int"
-  val FLOAT_FEATURE_TYPE = "float"
 
-  val modelFeatures: Array[ModelFeature] = Array(
-    // and this one
-    ModelFeature("AdFormat", STRING_FEATURE_TYPE, Some(102), 0),
-    ModelFeature("AdgroupId", STRING_FEATURE_TYPE, Some(1002), 0),
-    ModelFeature("AdvertiserId", STRING_FEATURE_TYPE, Some(5002), 0),
-    ModelFeature("AdsTxtSellerType", INT_FEATURE_TYPE, Some(7), 0),
-    ModelFeature("PublisherType", INT_FEATURE_TYPE, Some(7), 0),
-
-    ModelFeature("Country", STRING_FEATURE_TYPE, Some(252), 0),
-    ModelFeature("Region", STRING_FEATURE_TYPE, Some(4002), 0),
-    ModelFeature("Metro", STRING_FEATURE_TYPE, Some(302), 0),
-    ModelFeature("City", STRING_FEATURE_TYPE, Some(75002), 0),
-    ModelFeature("Zip", STRING_FEATURE_TYPE, Some(90002), 0),
-
-    ModelFeature("Browser", INT_FEATURE_TYPE, Some(20), 0),
-    ModelFeature("DeviceMake", STRING_FEATURE_TYPE, Some(1002), 0),
-    ModelFeature("DeviceModel", STRING_FEATURE_TYPE, Some(10002), 0),
-    ModelFeature("DeviceType", INT_FEATURE_TYPE, Some(9), 0),
-
-    ModelFeature("CreativeId", STRING_FEATURE_TYPE, Some(5002), 0),
-    ModelFeature("DoNotTrack", INT_FEATURE_TYPE, Some(2), 0), // need jiaxing input on that
-    ModelFeature("ImpressionPlacementId", STRING_FEATURE_TYPE, Some(102), 0),
-    ModelFeature("OperatingSystemFamily", INT_FEATURE_TYPE, Some(10), 0),
-    ModelFeature("RenderingContext", INT_FEATURE_TYPE, Some(6), 0),
-    ModelFeature("RequestLanguages", STRING_FEATURE_TYPE, Some(502), 0),
-    ModelFeature("Site", STRING_FEATURE_TYPE, Some(350002), 0),
-    ModelFeature("SupplyVendor", STRING_FEATURE_TYPE, Some(102), 0),
-    ModelFeature("SupplyVendorPublisherId", STRING_FEATURE_TYPE, Some(15002), 0),
-    ModelFeature("SupplyVendorSiteId", STRING_FEATURE_TYPE, Some(960002), 0),
-    ModelFeature("MatchedFoldPosition", INT_FEATURE_TYPE, Some(3), 0),
-    ModelFeature("UserHourOfWeek", INT_FEATURE_TYPE, Some(24 * 7 + 2), 0),
-
-    ModelFeature("sin_hour_day", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("cos_hour_day", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("sin_minute_hour", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("cos_minute_hour", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("sin_hour_week", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("cos_hour_week", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("latitude", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("longitude", FLOAT_FEATURE_TYPE, None, 0),
-
-    // should this have a cardinality?
-    ModelFeature("PrivateContractId", STRING_FEATURE_TYPE, Some(10002), 0)
-
-  )
 
   // return training input based on bidimps combined dataset
   // if filterresults = true, adgroupfilter must be provided & output will be filtered.
@@ -71,7 +24,8 @@ object ModelInputTransform extends Logger {
                 bidsImpsDat: Dataset[BidsImpressionsSchema],
                 adGroupFilter: Option[Dataset[AdGroupFilterRecord]],
                 countryFilter: Option[Dataset[CountryFilterRecord]],
-                filterResults: Boolean = false): (DataFrame, DataFrame) = {
+                filterResults: Boolean = false,
+                modelFeatures: Seq[ModelFeature]): (DataFrame, DataFrame) = {
 
     val (clickLabels, bidsImpsPreJoin) = hashBidAndClickLabels(clicks, bidsImpsDat)
 
@@ -83,7 +37,7 @@ object ModelInputTransform extends Logger {
     // Get the unique labels with count for each.
     val label_counts = flatten.groupBy("label").count()
 
-    val hashedData = getHashedData(flatten)
+    val hashedData = getHashedData(flatten, modelFeatures)
 
     (hashedData, label_counts)
   }
@@ -130,7 +84,7 @@ object ModelInputTransform extends Logger {
         } else ds)
   }
 
-  def getHashedData(flatten: Dataset[ModelInputRecord]): DataFrame ={
+  def getHashedData(flatten: Dataset[ModelInputRecord], modelFeatures: Seq[ModelFeature]): DataFrame ={
     // todo: we need a better way to track these fields
     val selectionQuery = intModelFeaturesCols(modelFeatures) ++ Seq("label", "BidRequestId", "OriginalAdGroupId", "OriginalCountry").map(col)
 

@@ -1,14 +1,16 @@
 package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.loadParquetData
-import com.thetradedesk.geronimo.FSUtils.fileExists
+import com.thetradedesk.geronimo.shared.{loadModelFeatures, loadParquetData}
 import com.thetradedesk.philo.schema.{ClickTrackerDataset, ClickTrackerRecord}
 import com.thetradedesk.philo.transform.ModelInputTransform
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.philo.writeData
+import com.thetradedesk.spark.TTDSparkContext
+import com.thetradedesk.spark.util.io.FSUtils
+import com.thetradedesk.spark.util.io.FSUtils.fileExists
 import org.apache.spark.sql.DataFrame
 
 import java.time.LocalDate
@@ -26,18 +28,23 @@ object ModelInput {
   val filteredPartitions = config.getInt("filteredPartitions", 200)
   val filterFilePath = config.getString("filterFilePath", "")
   val filterBy = config.getString("filterBy", "AdGroupId")
+  val featuresJson = config.getString("featuresJson", default="s3://thetradedesk-mlplatform-us-east-1/libs/philo/features/features.json")
 
   def main(args: Array[String]): Unit = {
+    val readEnv = if (ttdEnv == "prodTest") "prod" else ttdEnv
+    val writeEnv = if (ttdEnv == "prodTest") "dev" else ttdEnv
 
-    val brBfLoc = BidsImpressions.BIDSIMPRESSIONSS3 + f"${ttdEnv}/bidsimpressions/"
+    val brBfLoc = BidsImpressions.BIDSIMPRESSIONSS3 + f"${readEnv}/bidsimpressions/"
 
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](brBfLoc, date, source = Some("geronimo"))
     val clicks = loadParquetData[ClickTrackerRecord](ClickTrackerDataset.CLICKSS3, date)
 
+    val modelFeatures = loadModelFeatures(featuresJson)
+
     if (filterResults) {
       var filterByData : DataFrame = null;
 
-      if (fileExists(filterFilePath)) {
+      if (fileExists(filterFilePath)(spark)) {
         filterByData = spark.read.format("csv")
           .load(filterFilePath)
           // single column is unnamed
@@ -48,19 +55,19 @@ object ModelInput {
       }
 
       val (filteredData, labelCounts) = filterBy match {
-        case "AdGroupId" => ModelInputTransform.transform(clicks, bidsImpressions, Some(filterByData.as[AdGroupFilterRecord]), None, true)
-        case "Country" => ModelInputTransform.transform(clicks, bidsImpressions, None, Some(filterByData.as[CountryFilterRecord]), true)
+        case "AdGroupId" => ModelInputTransform.transform(clicks, bidsImpressions, Some(filterByData.as[AdGroupFilterRecord]), None, true, modelFeatures)
+        case "Country" => ModelInputTransform.transform(clicks, bidsImpressions, None, Some(filterByData.as[CountryFilterRecord]), true, modelFeatures)
         case _ => throw new Exception(f"Cannot filter by property ${filterBy}")
       }
 
-      writeData(filteredData, outputPath, ttdEnv, outputPrefix, date, filteredPartitions)
-      writeData(labelCounts, outputPath, ttdEnv, outputPrefix + "metadata", date, 1, false)
+      writeData(filteredData, outputPath, writeEnv, outputPrefix, date, filteredPartitions)
+      writeData(labelCounts, outputPath, writeEnv, outputPrefix + "metadata", date, 1, false)
     }
 
     if (!filterResults) {
-      val (trainingData, labelCounts) = ModelInputTransform.transform(clicks, bidsImpressions, None, None)
-      writeData(trainingData, outputPath, ttdEnv, outputPrefix, date, partitions)
-      writeData(labelCounts, outputPath, ttdEnv, "metadata", date, 1, false)
+      val (trainingData, labelCounts) = ModelInputTransform.transform(clicks, bidsImpressions, None, None, false, modelFeatures)
+      writeData(trainingData, outputPath, writeEnv, outputPrefix, date, partitions)
+      writeData(labelCounts, outputPath, writeEnv, "metadata", date, 1, false)
     }
   }
 }

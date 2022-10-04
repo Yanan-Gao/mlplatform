@@ -8,7 +8,7 @@ LOOKBACK=9
 
 # parse -e flag for environment
 # parse -d flag for input data start date
-while getopts "e:d:p:m:" opt; do
+while getopts "e:d:p:m:r:l:" opt; do
   case "$opt" in
     e)
       ENV="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
@@ -33,6 +33,11 @@ while getopts "e:d:p:m:" opt; do
     r)
       REGION="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
       echo "Setting region to $OPTARG" >&1
+      ;;
+
+    l)
+      LATEST_MODEL_PATH="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
+      echo "Setting latest model path to $OPTARG" >&1
       ;;
 
     *)
@@ -66,11 +71,15 @@ fi
 
 if [ -z "$REGION" ]
 then
-   REGION="apac"
-   echo "No metadata prefix set. Falling back to $REGION" >&1
+   REGION=""
+   echo "No region set. Falling back to empty region $REGION" >&1
 fi
 
-
+if [ -z "$LATEST_MODEL_PATH" ]
+then
+   LATEST_MODEL_PATH=${BASE_S3_PATH}/${ENV}/models/${REGION}/
+   echo "No latest model path set. Falling back to $LATEST_MODEL_PATH" >&1
+fi
 
 MNT="../../../../../../mnt/"
 
@@ -88,7 +97,6 @@ MODEL_DEST="latest_model/"
 cd ${MNT}
 
 echo "starting s3 sync for params: prefix=${PREFIX}, meta_prefix=${META_PREFIX}, env=${ENV}, date=${START_DATE} \n"
-
 
 ##not bash doesnt support variable exapnsion here, so hardcoded '9'
 for i in {1..9}; do
@@ -117,9 +125,7 @@ for i in {1..9}; do
 
 done
 
-LATEST_MODEL_PATH=${BASE_S3_PATH}/${ENV}/models/${REGION}/
-
-# sync latest trained model
+# sync latest trained model for incremental training
 LATEST_S3_MODEL=`aws s3 ls ${LATEST_MODEL_PATH} | awk '{print $2}' | awk -F '/' '/\// {print $1}' | sort -r | head -n 1`
 
 if [ -n "$LATEST_S3_MODEL" ]; then

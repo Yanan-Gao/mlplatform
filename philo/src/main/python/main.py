@@ -23,7 +23,7 @@ FEATURES_PATH = "features.json"
 S3_PROD = "s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/"
 # PARAM_MODEL_OUTPUT = "models_params/"
 MODEL_OUTPUT = "models/"
-MODEL_REGION = "apac"
+MODEL_REGION = ""
 EVAL_OUTPUT = "eval_metrics/"
 
 # TRAIN = "train"
@@ -53,7 +53,8 @@ flags.DEFINE_string('log_path', default=MODEL_LOGS, help=f'Location of model tra
 flags.DEFINE_string('output_path', default=OUTPUT_PATH, help=f'Location of model output files. Default {OUTPUT_PATH}')
 flags.DEFINE_string('s3_output_path', default=S3_PROD,
                     help=f'Location of S3 model output files. Default {S3_PROD}')
-flags.DEFINE_string('region', default='apac', help=f'Region for the model data. Default {MODEL_REGION}')
+# blank region supports existing regionless training
+flags.DEFINE_string('region', default='', help=f'Region for the model data. Default blank {MODEL_REGION}')
 
 flags.DEFINE_string('log_tag', default=f"{DATE_TIME.strftime('%Y-%m-%d-%H-%M')}", help='log tag')
 
@@ -144,7 +145,7 @@ def main(argv):
     model_tag = f"{FLAGS.output_path}model/{FLAGS.model_arch}_{FLAGS.num_epochs}_{FLAGS.dnn_dropout}_{FLAGS.dnn_use_bn}"
     model.save(model_tag)
 
-    s3_sync(model_tag, f"{FLAGS.s3_output_path}{MODEL_OUTPUT}{FLAGS.region}/{FLAGS.model_creation_date}")
+    s3_sync(model_tag, f"{FLAGS.s3_output_path}{MODEL_OUTPUT}{FLAGS.region}{FLAGS.model_creation_date}")
 
     epoch_gauge = Prometheus.define_gauge('epochs', 'number of epochs')
     loss_gauge = Prometheus.define_gauge('loss', 'loss value')
