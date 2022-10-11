@@ -40,7 +40,7 @@ package object kongming {
     // TODO: will need to enrich this logic but for now assuming hierarchical structure of keys
     // Caution: there might be cases where adgroupid, campaignId, advertiserId collide. Will need to resolve that at some point.
     // for now only use adgroup and campaign to start with.
-    val fieldsToJoin = List(("AdGroupId","DataAggValue"), ("CampaignId","DataAggValue"))//, ("AdvertiserId","DataAggValue"))
+    val fieldsToJoin = List(("AdGroupId","DataAggValue"), ("CampaignId","DataAggValue"), ("AdvertiserId","DataAggValue"))
     val joinCondition = fieldsToJoin.map(x => col(x._1) === col(x._2)).reduce(_ || _)
 
     inputDataSet
@@ -57,7 +57,7 @@ package object kongming {
     // TODO: will need to enrich this logic but for now assuming hierarchical structure of keys
     // Caution: there might be cases where adgroupid, campaignId, advertiserId collide. Will need to resolve that at some point.
     // for now only use adgroup and campaign to start with.
-    val fieldsToJoin = List(("AdGroupId","DataAggValue"), ("CampaignId","DataAggValue"))//, ("AdvertiserId","DataAggValue"))
+    val fieldsToJoin = List(("AdGroupId","DataAggValue"), ("CampaignId","DataAggValue"), ("AdvertiserId","DataAggValue"))
     val joinCondition = fieldsToJoin.map(x => col(x._1) === col(x._2)).reduce(_ || _)
 
     inputDataSet
@@ -73,10 +73,10 @@ package object kongming {
                                         ): Dataset[T] ={
     //setup prefiltering of data, based on campaignId for now.
     //TODO: this might subject to change if we wish to have higher level filtering.
-    val filterDF = adGroupPolicy.join(adGroupDS, adGroupPolicy("ConfigValue")===adGroupDS("AdGroupId"),"left").select("CampaignId").distinct
+    val filterDF = adGroupPolicy.join(adGroupDS, adGroupPolicy("ConfigValue")===adGroupDS("AdGroupId"),"left").select("AdvertiserId").distinct
 
     val prefilteredDS = inputDataSet
-      .join(broadcast(filterDF), Seq("CampaignId"), "inner")
+      .join(broadcast(filterDF), Seq("AdvertiserId"), "inner")
       .selectAs[T]
 
     prefilteredDS
