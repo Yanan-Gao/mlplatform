@@ -11,7 +11,10 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 object DailyBidsImpressions {
   def main(args: Array[String]): Unit = {
 
-    val prometheus = new PrometheusClient("KoaV4Conversion", "DailyBidsImpressions")
+    val prometheus = new PrometheusClient(KongmingApplicationName, "DailyBidsImpressions")
+    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
+    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
+    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
 
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
@@ -23,8 +26,10 @@ object DailyBidsImpressions {
 
     val dailyBidsImpressions = preFilteringWithPolicy(bidsImpressions, adGroupPolicy, adGroupDS)
 
-    DailyBidsImpressionsDataset().writePartition(dailyBidsImpressions, date, Some(400))
+    val dailyBidsImpressionsRows = DailyBidsImpressionsDataset().writePartition(dailyBidsImpressions, date, Some(400))
 
+    outputRowsWrittenGauge.labels("DailyBidsImpressionsDataset").set(dailyBidsImpressionsRows)
+    jobDurationGaugeTimer.setDuration()
     spark.stop()
   }
 }

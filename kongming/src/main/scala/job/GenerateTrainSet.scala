@@ -3,13 +3,12 @@ package job
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.Column
+import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import com.thetradedesk.kongming.date
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.geronimo.shared.intModelFeaturesCols
-import com.thetradedesk.kongming.policyDate
 import com.thetradedesk.kongming.transform.NegativeTransform.aggregateNegatives
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.sql.SQLFunctions._
@@ -92,10 +91,10 @@ object GenerateTrainSet {
 
 
   def main(args: Array[String]): Unit = {
-    val prometheus = new PrometheusClient("KoaV4Conversion", "GenerateTrainSet")
-    val jobDurationGauge = prometheus.createGauge("run_time_seconds", "Job execution time in seconds")
+    val prometheus = new PrometheusClient(KongmingApplicationName, "GenerateTrainSet")
+    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
-    val outputRowsWrittenGauge = prometheus.createGauge("output_rows_written", "Number of rows written", "DataSet")
+    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
 
     val trainRatio = config.getDouble("trainRatio", 0.8)
     val desiredNegOverPos = config.getInt(path="desiredPosOverNeg", 9)
@@ -198,8 +197,8 @@ object GenerateTrainSet {
     if (saveParquetData) {
       val parquetTrainRows = ValidationDataForModelTrainingDataset(experimentName).writePartition(adjustedTrainParquet, date, "train", Some(100))
       val parquetValRows = ValidationDataForModelTrainingDataset(experimentName).writePartition(adjustedValParquet, date, "val", Some(100))
-      outputRowsWrittenGauge.labels("ParquetTrain").set(parquetTrainRows)
-      outputRowsWrittenGauge.labels("ParquetVal").set(parquetValRows)
+      outputRowsWrittenGauge.labels("ValidationDataForModelTrainingDataset/ParquetTrain").set(parquetTrainRows)
+      outputRowsWrittenGauge.labels("ValidationDataForModelTrainingDataset/ParquetVal").set(parquetValRows)
     }
 
     val tfDropColumnNames = modelKeepFeatureColNames(keptFields)
@@ -211,8 +210,8 @@ object GenerateTrainSet {
       date, "val", Some(100))
 
 
-    outputRowsWrittenGauge.labels("TFTrain").set(tfTrainRows)
-    outputRowsWrittenGauge.labels("TFVal").set(tfValRows)
+    outputRowsWrittenGauge.labels("DataForModelTrainingDataset/TFTrain").set(tfTrainRows)
+    outputRowsWrittenGauge.labels("DataForModelTrainingDataset/TFVal").set(tfValRows)
     jobDurationGaugeTimer.setDuration()
     prometheus.pushMetrics()
 

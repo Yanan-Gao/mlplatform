@@ -102,6 +102,8 @@ sudo docker run --gpus all \
       "--num_epochs=20" \
       "--model_choice=basic" \
       "--early_stopping_patience=3" \
+      "--push_training_logs=true" \
+      "--push_metrics=true" \
       "--run_score=true" \
       "--score_dates=${ALL_SCORING_PARTITIONS}"
 

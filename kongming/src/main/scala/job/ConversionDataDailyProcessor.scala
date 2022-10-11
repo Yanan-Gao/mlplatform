@@ -4,10 +4,10 @@ import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
+import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.transform.ConversionDataDailyTransform
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import com.thetradedesk.kongming.date
-import com.thetradedesk.kongming.policyDate
+import com.thetradedesk.spark.TTDSparkContext.spark
 
 import java.time.LocalDate
 
@@ -16,7 +16,11 @@ object ConversionDataDailyProcessor extends Logger{
   val graphThreshold = config.getDouble("graphThreshold", default = 0.01)//TODO: verify what's a good value here.
 
   def main(args: Array[String]): Unit = {
-    val prometheus = new PrometheusClient("KoaV4Conversion", "DailyConversion")
+    val prometheus = new PrometheusClient(KongmingApplicationName, "DailyConversion")
+    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
+    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
+    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
+
     // read conversion data daily
     val conversionDS = ConversionTrackerVerticaLoadDataSetV4(defaultCloudProvider).readDate(date)
 
@@ -69,6 +73,12 @@ object ConversionDataDailyProcessor extends Logger{
 
     val resultDS = conversionNonXD.union(conversionXD)
 
-    DailyConversionDataset().writePartition(resultDS, date, Some(100))
+    val dailyConversionRows = DailyConversionDataset().writePartition(resultDS, date, Some(100))
+
+    outputRowsWrittenGauge.labels("DailyConversionDataset").set(dailyConversionRows)
+    jobDurationGaugeTimer.setDuration()
+    prometheus.pushMetrics()
+
+    spark.stop()
   }
 }

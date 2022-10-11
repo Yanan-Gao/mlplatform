@@ -17,6 +17,10 @@ package object kongming {
   val MLPlatformS3Root: String = "s3://thetradedesk-mlplatform-us-east-1/data"
   val BidsImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
+  val KongmingApplicationName = "KoaV4Conversion"
+  val RunTimeGaugeName = "run_time_seconds"
+  val OutputRowCountGaugeName = "output_rows_written"
+
   var date = config.getDate("date" , LocalDate.now())
   val RoundUpTimeUnit = "minute"
   val policyDate = config.getDate("policydate" , LocalDate.parse("2022-03-15"))

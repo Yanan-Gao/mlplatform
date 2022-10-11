@@ -1,7 +1,7 @@
 package job
 
 import com.thetradedesk.kongming.datasets.{AdGroupCvrForBiasTuningDataset, AdGroupPolicyDataset, ImpressionForIsotonicRegDataset, UnifiedAdGroupDataSet}
-import com.thetradedesk.kongming.{date, policyDate}
+import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.transform.TrainSetTransformation.getWeightsForTrackingTags
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -21,7 +21,10 @@ object OfflineScoringSetAttribution{
 
   def main(args: Array[String]): Unit = {
 
-    val prometheus = new PrometheusClient("KoaV4Conversion", "OfflineScoringSetAttribution")
+    val prometheus = new PrometheusClient(KongmingApplicationName, "OfflineScoringSetAttribution")
+    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
+    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
+    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
 
     val adGroupPolicyHardCodedDate = policyDate
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate).cache()
@@ -68,8 +71,15 @@ object OfflineScoringSetAttribution{
     // 5. get inputs for isotonic regression and bias tuning
     val inputForCalibration = getInputForCalibrationAndBiasTuning(impressionLevelPerformance, totalImpressionsCount, adGroupPolicy)(prometheus)
 
-    ImpressionForIsotonicRegDataset().writePartition(inputForCalibration._1, date, Some(1))
-    AdGroupCvrForBiasTuningDataset().writePartition(inputForCalibration._2, date, Some(1))
+    val isotonicRegRows = ImpressionForIsotonicRegDataset().writePartition(inputForCalibration._1, date, Some(1))
+    val biasTuningRows = AdGroupCvrForBiasTuningDataset().writePartition(inputForCalibration._2, date, Some(1))
+
+    outputRowsWrittenGauge.labels("ImpressionForIsotonicRegDataset").set(isotonicRegRows)
+    outputRowsWrittenGauge.labels("AdGroupCvrForBiasTuningDataset").set(biasTuningRows)
+    jobDurationGaugeTimer.setDuration()
+    prometheus.pushMetrics()
+
+    spark.stop()
   }
 
 
