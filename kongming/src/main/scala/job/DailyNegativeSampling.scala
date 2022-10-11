@@ -1,15 +1,14 @@
 package job
 
-import java.time.LocalDate
-import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
+import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
-import com.thetradedesk.kongming
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.kongming.transform.NegativeTransform
 import com.thetradedesk.kongming.transform.NegativeTransform.NegativeSamplingBidRequestGrainsRecord
+import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
@@ -24,7 +23,10 @@ object DailyNegativeSampling {
 
    */
   def main(args: Array[String]): Unit = {
-    val prometheus = new PrometheusClient("KoaV4Conversion", "DailyNegativeSampling")
+    val prometheus = new PrometheusClient(KongmingApplicationName, "DailyNegativeSampling")
+    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
+    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
+    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
 
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
@@ -82,6 +84,12 @@ object DailyNegativeSampling {
       .toDF()
       .selectAs[DailyNegativeSampledBidRequestRecord]
 
-    DailyNegativeSampledBidRequestDataSet().writePartition(downSampledBidRequestByGrain, date, Some(100))
+    val dailyNegRows = DailyNegativeSampledBidRequestDataSet().writePartition(downSampledBidRequestByGrain, date, Some(100))
+
+    outputRowsWrittenGauge.labels("DailyNegativeSampledBidRequest").set(dailyNegRows)
+    jobDurationGaugeTimer.setDuration()
+    prometheus.pushMetrics()
+
+    spark.stop()
   }
 }

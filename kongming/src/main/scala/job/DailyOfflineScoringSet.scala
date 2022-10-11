@@ -2,12 +2,12 @@ package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, STRING_FEATURE_TYPE, loadParquetData}
-import com.thetradedesk.kongming._
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import com.thetradedesk.geronimo.shared.intModelFeaturesCols
+import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyOfflineScoringDataset}
 import com.thetradedesk.kongming.transform.OfflineScoringSetTransform
 import org.apache.spark.sql.functions.col
@@ -33,7 +33,10 @@ object DailyOfflineScoringSet {
 
   def main(args: Array[String]): Unit = {
 
-    val prometheus = new PrometheusClient("KoaV4Conversion", "DailyOfflineScoringSet")
+    val prometheus = new PrometheusClient(KongmingApplicationName, "DailyOfflineScoringSet")
+    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
+    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
+    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
 
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
@@ -49,7 +52,12 @@ object DailyOfflineScoringSet {
     )(prometheus)
 
     //assuming Yuehan has implemented the tfrecord write this way. has dependency on the changes she is doing.
-    DailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(100))
+    val dailyOfflineScoringRows = DailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(100))
 
+    outputRowsWrittenGauge.labels("DailyOfflineScoringDataset").set(dailyOfflineScoringRows)
+    jobDurationGaugeTimer.setDuration()
+    prometheus.pushMetrics()
+
+    spark.stop()
   }
 }

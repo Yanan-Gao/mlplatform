@@ -1,18 +1,17 @@
 package job
 
 
-import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.geronimo.shared.GERONIMO_DATA_SOURCE
 import com.thetradedesk.geronimo.shared.loadParquetData
-import com.thetradedesk.kongming
+import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import com.thetradedesk.kongming.{BidsImpressionsS3Path, date, policyDate}
 import com.thetradedesk.kongming.transform.PositiveLabelDailyTransform
+import com.thetradedesk.spark.TTDSparkContext.spark
 import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
@@ -35,7 +34,10 @@ object PositiveLabelGenerator extends Logger{
     //indicating long vs short window and use weight to differenciate them.
 
     //load config datasets
-    val prometheus = new PrometheusClient("KoaV4Conversion", "PositiveLabeling")
+    val prometheus = new PrometheusClient(KongmingApplicationName, "PositiveLabeling")
+    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
+    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
+    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
 
     // read master policy
     val adGroupPolicyHardCodedDate = policyDate
@@ -73,6 +75,12 @@ object PositiveLabelGenerator extends Logger{
 
     val positiveLabelDS = PositiveLabelDailyTransform.positiveLabelAggTransform(unionedPositiveBidRequestDS, adGroupPolicy)
 
-    DailyPositiveBidRequestDataset().writePartition(positiveLabelDS, date, Some(100))
+    val dailyPositiveBrRows = DailyPositiveBidRequestDataset().writePartition(positiveLabelDS, date, Some(100))
+
+    outputRowsWrittenGauge.labels("DailyPositiveBidRequestDataset").set(dailyPositiveBrRows)
+    jobDurationGaugeTimer.setDuration()
+    prometheus.pushMetrics()
+
+    spark.stop()
   }
 }

@@ -105,12 +105,16 @@ def tfrecord_parser(model_features, dim_feature, model_targets, model_type, card
     else:
         return parse_input_single_target(model_features, dim_feature, model_targets, sw_col)
 
-def s3_copy(src_path, dest_path):
+def s3_copy(src_path, dest_path, quiet=True):
     sync_command = f"aws s3 cp {src_path} {dest_path} --recursive"
+    if (quiet):
+        sync_command = sync_command + " --quiet"
     os.system(sync_command)
     return sync_command
 
-def s3_move(src_path, dest_path):
+def s3_move(src_path, dest_path, quiet=True):
     sync_command = f"aws s3 mv --recursive {src_path} {dest_path}"
+    if (quiet):
+        sync_command = sync_command + " --quiet"
     os.system(sync_command)
     return sync_command

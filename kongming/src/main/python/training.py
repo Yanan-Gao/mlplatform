@@ -3,6 +3,7 @@ from kongming.features import default_model_features, default_model_dim_group, d
 from kongming.data import parse_input_files, tfrecord_dataset, tfrecord_parser, s3_copy
 from kongming.models import dot_product_model, load_pretrained_embedding, auto_encoder_model
 from kongming.losses import AELoss
+from kongming.prometheus import Prometheus
 from tensorflow_addons.losses import SigmoidFocalCrossEntropy
 import tensorflow as tf
 from datetime import datetime
@@ -57,11 +58,14 @@ flags.DEFINE_string("loss_func", default='ce', help="Loss function to choose.")
 flags.DEFINE_integer('batch_size', default=4096*2, help='Batch size for training', lower_bound=1)
 flags.DEFINE_integer('num_epochs', default=1, help='Number of epochs for training', lower_bound=1)
 
+# Logging and Metrics
+flags.DEFINE_boolean('push_training_logs', default=False, help=f'option to push all logs to s3 for debugging, defaults to false')
+flags.DEFINE_boolean('push_metrics', default=False, help='To push prometheus metrics or not')
 
 # Eval params
 flags.DEFINE_integer('eval_batch_size', default=10, help='Batch size for evaluation')
 
-#Call back
+# Call back
 
 flags.DEFINE_integer('early_stopping_patience', default=5, help='patience for early stopping', lower_bound=2)
 flags.DEFINE_list("profile_batches", default=[100, 120], help="batches to profile")
@@ -193,6 +197,25 @@ def get_ae_target_size(dataset):
     else:
         return None
 
+def push_metrics(history):
+    prometheus = Prometheus("KongmingTraining")
+
+    #todo: find out to get these with early stopping
+    # epoch_gauge = prometheus.define_gauge('epochs', 'number of epochs')
+    # steps_gauge = prometheus.define_gauge('num_steps', 'number of steps per epoch')
+
+    loss_gauge = prometheus.define_gauge('loss', 'loss value')
+    auc_gauge = prometheus.define_gauge('auc', 'auc value')
+    val_loss_gauge = prometheus.define_gauge('val_loss', 'validation loss')
+    val_auc_gauge = prometheus.define_gauge('val_auc', 'validation auc')
+
+    loss_gauge.set(history.history['loss'][0])
+    auc_gauge.set(history.history['auc'][0])
+    val_loss_gauge.set(history.history['val_loss'][0])
+    val_auc_gauge.set(history.history['val_auc'][0])
+
+    prometheus.push()
+
 def main(argv):
 
     model_features, model_dim_feature, model_targets = get_features_dim_target()
@@ -227,6 +250,14 @@ def main(argv):
 
     s3_output_path = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/conversion_model/date={FLAGS.model_creation_date}"
     s3_copy(model_path, s3_output_path)
+
+    if (FLAGS.push_training_logs):
+        s3_log_path = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/conversion_model_logs/date={FLAGS.model_creation_date}"
+        s3_copy(FLAGS.log_path, s3_log_path)
+
+    if (FLAGS.push_metrics):
+        push_metrics(history)
+
 
 if __name__ == '__main__':
     app.run(main)
