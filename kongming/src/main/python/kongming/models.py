@@ -57,6 +57,8 @@ def model_dim_layer(
         i, layer = int_embedding(f.name, f.cardinality, em_size, f.type)
     elif f.ppmethod=='string_mapping' and assets_path != None:
         i, layer = string_map_embedding(f.name, em_size, assets_path)
+    elif f.ppmethod=='int_mapping' and assets_path != None:
+        i, layer = int_map_embedding(f.name, assets_path, f.cardinality, em_size)
     else:
         raise Exception("failed to construct dim feature branch.")
 

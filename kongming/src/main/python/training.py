@@ -76,9 +76,15 @@ def get_features_dim_target():
 
     features = [f._replace(ppmethod='string_vocab')._replace(type=tf.string)._replace(default_value='UNK')
                 if f.name in FLAGS.string_features else f for f in default_model_features]
-    model_dim = default_model_dim_group._replace(ppmethod='string_mapping')._replace(type=tf.string)._replace(
-        default_value='UNK') \
-        if default_model_dim_group.name in FLAGS.string_features else default_model_dim_group
+
+    if default_model_dim_group.name in FLAGS.string_features:
+        model_dim = default_model_dim_group._replace(ppmethod='string_mapping')._replace(type=tf.string)._replace(
+            default_value='UNK')
+    elif default_model_dim_group.name in FLAGS.int_features:
+        model_dim = default_model_dim_group._replace(ppmethod='int_mapping')._replace(type=tf.int64)._replace(
+            default_value=0)
+    else:
+        model_dim = default_model_dim_group
 
     if FLAGS.model_choice != 'ae':
         targets = default_model_targets
