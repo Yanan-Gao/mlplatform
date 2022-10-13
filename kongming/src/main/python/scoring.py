@@ -23,11 +23,10 @@ flags.DEFINE_string('model_path', default=MODEL_PATH,
 flags.DEFINE_string('pred_path', default=PRED_PATH, help='output file location for predicted offline results.')
 flags.DEFINE_string('colname_bidrequest', default='BidRequestIdStr', help='name of the bidrequestId column.')
 flags.DEFINE_string('colname_adgroup', default='AdGroupIdStr', help='name of the adgroupId string column.')
-#flags.DEFINE_list("string_features", default=[], help="String features for vocab lookup")
+# flags.DEFINE_list("string_features", default=[], help="String features for vocab lookup")
 
 #config
 flags.DEFINE_integer("scoring_batch_size", default=2**21, help="batch size for scoring")
-
 
 
 def get_features_dim_target(additional_str_grain_map):
@@ -38,7 +37,7 @@ def get_features_dim_target(additional_str_grain_map):
     features.append(Feature(additional_str_grain_map.BidRequestId, tf.string, None, '', None , 'simple'))
     features.append(Feature(additional_str_grain_map.AdGroupId, tf.string, None, '', None , 'simple'))
 
-    model_dim = default_model_dim_group._replace(ppmethod='string_mapping')._replace(type=tf.string)._replace(
+    model_dim = default_model_dim_group._replace(type=tf.string)._replace(
         default_value='UNK') \
         if default_model_dim_group.name in FLAGS.string_features else default_model_dim_group
     return features, model_dim
