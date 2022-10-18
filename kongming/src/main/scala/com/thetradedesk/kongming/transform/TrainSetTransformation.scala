@@ -160,13 +160,11 @@ object TrainSetTransformation {
 
   def attachTrainsetWithFeature(
                           trainset: Dataset[PreFeatureJoinRecord],
-                          lookbackDays: Int,
-                          adGroupPolicy: Dataset[AdGroupPolicyRecord],
-                          adGroupDS: Dataset[AdGroupRecord]
+                          lookbackDays: Int
                           )(implicit prometheus:PrometheusClient): Dataset[TrainSetFeaturesRecord] ={
     val bidsImpressions = DailyBidsImpressionsDataset().readRange(date.minusDays(lookbackDays), date, isInclusive = true)
-    val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
-    trainset.join(prefilteredDS.drop("AdGroupId"), Seq("BidRequestId"), joinType =  "inner")
+
+    trainset.join(bidsImpressions.drop("AdGroupId"), Seq("BidRequestId"), joinType =  "inner")
       .withColumn("AdFormat",concat(col("AdWidthInPixels"),lit('x'), col("AdHeightInPixels")))
       .withColumn("RenderingContext", $"RenderingContext.value")
       .withColumn("DeviceType", $"DeviceType.value")
