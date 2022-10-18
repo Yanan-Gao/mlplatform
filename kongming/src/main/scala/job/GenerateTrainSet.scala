@@ -184,7 +184,7 @@ object GenerateTrainSet {
     val tensorflowSelectionTabular = intModelFeaturesCols(modelDimensions ++ modelFeatures ++ modelWeights) ++ modelTargetCols(modelTargets)
     val parquetSelectionTabular = modelKeepFeatureCols(keptFields) ++ tensorflowSelectionTabular
 
-    val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, maxLookback, adGroupPolicy, adGroupDS)(prometheus)
+    val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, maxLookback)(prometheus)
       .select(parquetSelectionTabular: _*)
       .as[ValidationDataForModelTrainingRecord]
       .persist(StorageLevel.DISK_ONLY)

@@ -24,7 +24,7 @@ object DailyBidsImpressions {
 
     val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
 
-    val dailyBidsImpressions = preFilteringWithPolicy(bidsImpressions, adGroupPolicy, adGroupDS)
+    val dailyBidsImpressions = multiLevelJoinWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy)
 
     val dailyBidsImpressionsRows = DailyBidsImpressionsDataset().writePartition(dailyBidsImpressions, date, Some(400))
 
