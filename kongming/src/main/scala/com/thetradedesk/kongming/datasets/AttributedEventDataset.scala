@@ -5,6 +5,7 @@ import java.sql.Timestamp
 
 final case class AttributedEventRecord(
                                         AttributedEventId: String,
+                                        AttributedEventTypeId: String,
                                         ConversionTrackerLogFileId: String,
                                         ConversionTrackerIntId1: String,
                                         ConversionTrackerIntId2: String,

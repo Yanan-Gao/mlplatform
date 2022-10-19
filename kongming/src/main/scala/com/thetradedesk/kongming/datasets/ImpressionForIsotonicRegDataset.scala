@@ -5,7 +5,6 @@ import com.thetradedesk.spark.datasets.core.Csv
 final case class ImpressionForIsotonicRegRecord(
                                                 AdGroupIdStr: String,
                                                 AdGroupId: Int,
-                                                PieceWeightedConversionRate: Double,
                                                 Score: Double,
                                                 Label: Int,
                                                 ImpressionWeightForCalibrationModel: Double

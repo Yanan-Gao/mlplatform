@@ -2,9 +2,11 @@ from collections import namedtuple
 
 from absl import app, flags
 from kongming.features import default_model_features, default_model_dim_group, Feature
-from kongming.data import parse_input_files, tfrecord_dataset, parse_scoring_data, s3_copy
+from kongming.data import tfrecord_dataset, parse_scoring_data
+from kongming.utils import parse_input_files, s3_copy, load_csv, modify_model_embeddings
 import tensorflow as tf
 import pandas as pd
+import numpy as np
 import os
 
 # setting up training configuration
@@ -90,14 +92,18 @@ def main(argv):
     if 1 - (len(available_score_dates) / len(FLAGS.score_dates)) > FLAGS.score_dates_missing_tolerance:
         raise Exception('Not enough score sets!')
 
+    # load raw adgroup and mapping, then modify it. todo: this step is subject to change cuz mengxi's working on implementing the mapping in model
+    mapping = load_csv(FLAGS.input_path+"adgroupmapping/", columns=['AdGroupId', 'AdGroupIdInt', 'BaseAdGroupId', 'BaseAdGroupIdInt'])
+    model = get_model(FLAGS.model_path)
+    model = modify_model_embeddings(model, mapping)
+
     os.makedirs(FLAGS.pred_path, exist_ok=True)
     for date in available_score_dates:
         scoring_set = get_scoring_data(score_set_path, model_features, [model_dim_feature], additional_str_grain_map, date)
-        model = get_model(FLAGS.model_path)
         pred = predict(model, scoring_set)
 
         result_location = f"{FLAGS.pred_path}pred.gz.parquet"
-        pred.to_parquet(result_location, compression='gzip')
+        pred.merge(mapping, on=['AdGroupId'], how="inner")[['BidRequestId','AdGroupId','BaseAdGroupId','Score']].to_parquet(result_location, compression='gzip')
 
         s3_offline_path = f"s3://thetradedesk-mlplatform-us-east-1/data/{FLAGS.env}/kongming/measurement/offline/v=1"
         #output file to S3

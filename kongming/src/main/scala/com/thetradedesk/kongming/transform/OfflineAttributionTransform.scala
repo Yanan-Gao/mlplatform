@@ -3,13 +3,13 @@ package com.thetradedesk.kongming.transform
 import com.thetradedesk.geronimo.shared.{loadParquetData, shiftModUdf}
 import com.thetradedesk.geronimo.shared.schemas.{BidFeedbackDataset, BidFeedbackRecord}
 import com.thetradedesk.kongming.datasets._
+import com.thetradedesk.kongming.multiLevelJoinWithPolicy
 import com.thetradedesk.kongming.transform.TrainSetTransformation.TrackingTagWeightsRecord
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.util.TTDConfig.defaultCloudProvider
 import job.GenerateTrainSet.modelDimensions
-import job.OfflineScoringSetAttribution.{IsotonicRegNegSampleRate, IsotonicRegPositiveLabelCountThreshold}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.functions._
@@ -23,18 +23,18 @@ object OfflineAttributionTransform {
 
   final case class OfflineScoreRecord(
                                      AdGroupId: String,
+                                     BaseAdGroupId: String,
                                      BidRequestId: String,
                                      BidFeedbackId: String,
                                      Score: Double,
-                                     Piece: Int,
                                      ClickRedirectId: Option[String]
   )
 
   final case class OfflineScoreAttributionsRecord(
                                                    AdGroupId: String,
+                                                   BaseAdGroupId: String,
                                                    BidFeedbackId: String,
                                                    Score: Double,
-                                                   Piece:Int,
                                                    Label:Int,
                                                    AttributedEventTypeId: Option[String],
                                                    TrackingTagId: Option[String],
@@ -45,51 +45,48 @@ object OfflineAttributionTransform {
 
   final case class OfflineScoreAttributionResultRecord(
                                                   AdGroupId: String,
+                                                  BaseAdGroupId: String,
                                                   BidFeedbackId: String,
                                                   Score: Double,
-                                                  Piece:Int,
                                                   Label:Int,
-                                                  PieceWeightedConversionRate:Double,
                                                   ImpressionWeightForCalibrationModel: Double
   )
 
   def getAttributedEventAndResult(
+                                 adGroupPolicy: Dataset[AdGroupPolicyRecord],
                                  endDate: java.time.LocalDate,
                                  lookBack: Int
                               )(implicit prometheus:PrometheusClient): Tuple2[Dataset[AttributedEventRecord], Dataset[AttributedEventResultRecord]] ={
-    // 2022-04-27 ~ 2022-05-04
-//    val attributedEvent = loadParquetData[AttributedEventRecord](
-//      AttributedEventDataset.S3Path,
-//      date = endDate,
-//      lookBack = Some(lookBack),
-//      dateSeparator = Some("-")
-//    )
-    val attributedEvent = AttributedEventDataSet().readRange(endDate.minusDays(lookBack), endDate, isInclusive = true).selectAs[AttributedEventRecord]
-
-    // 2022-04-27 ~ 2022-05-04
-//    val attributedEventResult = loadParquetData[AttributedEventResultRecord](
-//      AttributedEventResultDataset.S3Path,
-//      date = endDate,
-//      lookBack = Some(lookBack),
-//      dateSeparator = Some("-")
-//    )
-    val attributedEventResult = AttributedEventResultDataSet().readRange(endDate.minusDays(lookBack), endDate, isInclusive = true).selectAs[AttributedEventResultRecord]
+    // AttributedEventTypeId: 1->Click, 2-> Impression；
+    // AttributionMethodId: 0 -> 'LastClick' , 1 -> 'ViewThrough' , 2 -> 'Touch'
+    val attributedEvent =  AttributedEventDataSet().readRange(endDate.minusDays(lookBack), endDate, isInclusive = true).selectAs[AttributedEventRecord]
+    val filteredAttributedEvent = multiLevelJoinWithPolicy[AttributedEventRecord](attributedEvent, adGroupPolicy)
+      .filter($"AttributedEventTypeId".isin(List("1", "2"): _*))
+      .withColumn("AttributedEventLogEntryTime", to_timestamp(col("AttributedEventLogEntryTime")).as("AttributedEventLogEntryTime"))
+      .selectAs[AttributedEventRecord]
 
 
-    (attributedEvent, attributedEventResult)
+    val attributedEventResult = AttributedEventResultDataSet().readRange(endDate.minusDays(lookBack), endDate, isInclusive = true)
+      .filter($"AttributionMethodId".isin(List("0", "1"): _*))
+      .selectAs[AttributedEventResultRecord]
+
+    (filteredAttributedEvent, attributedEventResult)
 
   }
 
   def getOfflineScore(
                        modelDate: java.time.LocalDate,
                        endDate: java.time.LocalDate,
-                       lookBack: Int
+                       lookBack: Int,
+                       adgroupBaseAssociateMapping: Dataset[BaseAssociateAdGroupMappingIntRecord]
                      )(implicit prometheus:PrometheusClient):Dataset[OfflineScoreRecord] ={
+
+    val adgroupIdScored = adgroupBaseAssociateMapping.select("AdGroupId").distinct().cache()
 
     // 1. load offline scores
     val multidayOfflineScore = OfflineScoredImpressionDataset(modelDate)
       .readRange(endDate.minusDays(lookBack), endDate, true)
-      .select($"BidRequestId", $"AdGroupId", $"Score")
+      .select($"BidRequestId", $"BaseAdGroupId", $"AdGroupId", $"Score")
 
     // todo: maybe we should add bidfeedbackid to bidimpression schema
     //  , and add bidbeedbackid to scoring dataset. So there's no need to join feedback again here.
@@ -98,41 +95,39 @@ object OfflineAttributionTransform {
       BidFeedbackDataset.BFS3,
       date = endDate,
       lookBack = Some(lookBack)
-    )
+    ).join(broadcast(adgroupIdScored), Seq("AdGroupId"), "left_semi")
+      .selectAs[BidFeedbackRecord]
 
     //3. load clicks
     val clicks = ClickTrackerDataSetV5(defaultCloudProvider)
       .readRange(endDate.minusDays(lookBack).atStartOfDay(), endDate.plusDays(1).atStartOfDay())
+      .join(broadcast(adgroupIdScored), Seq("AdGroupId"), "left_semi")
       .select($"BidRequestId", $"ClickRedirectId")
   //can one impression click multiple times?
 
-    val scoreQuantileWindow = Window.partitionBy($"AdGroupId").orderBy($"Score")
-
     multidayOfflineScore
-      .join(bidfeedback, Seq("BidRequestId"))
-      .withColumn("Piece", least(floor((percent_rank() over(scoreQuantileWindow))/lit(0.05)), lit(19) ).cast(IntegerType))
+      .join(bidfeedback, Seq("BidRequestId","AdGroupId"))
       .join(clicks, Seq("BidRequestId"),"left")
       .selectAs[OfflineScoreRecord]
   }
 
   def getOfflineScoreLabelWeight(
                           offlineScore: Dataset[OfflineScoreRecord],
-                          attributedEvent: DataFrame,
-                          attributedEventResult: DataFrame,
+                          attributedEvent: Dataset[AttributedEventRecord],
+                          attributedEventResult: Dataset[AttributedEventResultRecord],
                           pixelWeight: Dataset[TrackingTagWeightsRecord]
                           )(implicit prometheus:PrometheusClient): Dataset[OfflineScoreAttributionsRecord] = {
 
-    val conversionWindow =  Window.partitionBy($"ConversionTrackerId").orderBy($"AttributedEventLogEntryTime".desc)
     val attributedEventResultOfInterest = attributedEvent.join(attributedEventResult,
       Seq("ConversionTrackerLogFileId","ConversionTrackerIntId1","ConversionTrackerIntId2","AttributedEventLogFileId","AttributedEventIntId1","AttributedEventIntId2"),
       "inner")
-      .join(pixelWeight.withColumnRenamed("ConfigValue", "AdGroupId"), Seq("AdGroupId", "TrackingTagId"), "inner")
+      .join(pixelWeight.withColumnRenamed("ConfigValue", "AdGroupId").withColumnRenamed("ReportingColumnId", "CampaignReportingColumnId"),
+        Seq("AdGroupId", "TrackingTagId","CampaignReportingColumnId"), "inner")
 
     val offlineScoreAttributed =
       attributedEventResultOfInterest.filter($"AttributedEventTypeId"===lit("1")).join(offlineScore, col("AttributedEventId")===col("ClickRedirectId"), "inner")
       .union(attributedEventResultOfInterest.filter($"AttributedEventTypeId"===lit("2")).join(offlineScore, col("AttributedEventId")===col("BidFeedbackId"), "inner"))
-      .withColumn("DedupRank",  row_number() over(conversionWindow))
-      .filter($"DedupRank"===lit(1)).drop("DedupRank","AdGroupId","BidFeedbackId","Score","Piece","ClickRedirectId")
+      .drop("AdGroupId","BaseAdGroupId","BidFeedbackId","Score","ClickRedirectId")
 
     // offline score labels: one impression could have more than one row if it contributes to multiple conversions. If it contributes to no conversion, then it has one row.
     offlineScore.join(
@@ -147,7 +142,6 @@ object OfflineAttributionTransform {
                                                     offlineScoreLabel: Dataset[OfflineScoreAttributionsRecord]
                                                   )(implicit prometheus:PrometheusClient): Dataset[OfflineScoreAttributionResultRecord] = {
 
-    val adgroupScorePieceWindow = Window.partitionBy($"AdGroupId", $"Piece")
     val impressionWindow = Window.partitionBy($"BidFeedbackId")
 
     offlineScoreLabel
@@ -155,11 +149,9 @@ object OfflineAttributionTransform {
         when($"NormalizedCustomCPAViewthroughWeight".isNotNull&&$"AttributedEventTypeId"===lit("2"), $"NormalizedCustomCPAViewthroughWeight")
           .when($"NormalizedCustomCPAClickWeight".isNotNull&&$"AttributedEventTypeId"===lit("1"), $"NormalizedCustomCPAClickWeight")
           .when($"AttributedEventTypeId".isNotNull, $"NormalizedPixelWeight").otherwise(lit(null))
-      ).withColumn("PieceWeightedTotalConversion", sum(coalesce($"ConversionWeight", lit(0))).over(adgroupScorePieceWindow))
-      .withColumn("PieceTotalImpression", approx_count_distinct($"BidFeedbackId").over(adgroupScorePieceWindow))
-      .withColumn("PieceWeightedConversionRate", $"PieceWeightedTotalConversion"/$"PieceTotalImpression")
+      )
       .withColumn("ImpressionWeightForCalibrationModel", sum(coalesce($"ConversionWeight", lit(1))).over(impressionWindow))
-      .select($"AdGroupId", $"BidFeedbackId", $"Piece", $"Label", $"Score", $"PieceWeightedConversionRate", $"ImpressionWeightForCalibrationModel")
+      .select($"AdGroupId", $"BaseAdGroupId", $"BidFeedbackId", $"Label", $"Score", $"ImpressionWeightForCalibrationModel")
       .distinct()
       .selectAs[OfflineScoreAttributionResultRecord]
 
@@ -167,11 +159,15 @@ object OfflineAttributionTransform {
 
   def getInputForCalibrationAndBiasTuning(
                                            impressionLevelPerformance: Dataset[OfflineScoreAttributionResultRecord] ,
-                                           totalImpressionsCount: Int,
-                                           adGroupPolicy: Dataset[AdGroupPolicyRecord]
+                                           defaultCvr: Double,
+                                           adGroupPolicy: Dataset[AdGroupPolicyRecord],
+                                           IsotonicRegPositiveLabelCountThreshold: Int,
+                                           IsotonicRegNegSampleRate: Double
                                          )(implicit prometheus:PrometheusClient): Tuple2[Dataset[ImpressionForIsotonicRegRecord], Dataset[AdGroupCvrForBiasTuningRecord]] = {
 
-    val convertedImpressions = impressionLevelPerformance.filter($"Label"===lit(1)).cache()
+  val impressionLevelPerformanceAggBaseAdgroup =   impressionLevelPerformance.drop("AdGroupId").withColumnRenamed("BaseAdGroupId","AdGroupId").cache()
+
+  val convertedImpressions = impressionLevelPerformanceAggBaseAdgroup.filter($"Label"===lit(1)).cache()
 
     // 1. prepare adgroup data for isotonic regression
     // filter out adgroups impressions that has conversions more than threshold.
@@ -180,7 +176,7 @@ object OfflineAttributionTransform {
       .filter($"count">IsotonicRegPositiveLabelCountThreshold)
       .select($"AdGroupId").distinct()
 
-    val feedToIsotonicRegressionImpressions = impressionLevelPerformance
+    val feedToIsotonicRegressionImpressions = impressionLevelPerformanceAggBaseAdgroup
       .join(
         adGroupsHaveEnoughConversion,
         Seq("AdGroupId"), "left_semi"
@@ -197,16 +193,14 @@ object OfflineAttributionTransform {
         feedToIsotonicRegressionImpressions.filter($"Label"===lit(1))
       )
       .withColumn("AdGroupIdInt", shiftModUdf(xxhash64(col("AdGroupId")), lit(adgroupIdCardinality)))
-      .select($"AdGroupId".as("AdGroupIdStr"),$"AdgroupIdInt".as("AdgroupId"),$"PieceWeightedConversionRate",$"Score",$"Label",$"ImpressionWeightForCalibrationModel")
+      .select($"AdGroupId".as("AdGroupIdStr"),$"AdgroupIdInt".as("AdgroupId"),$"Score",$"Label",$"ImpressionWeightForCalibrationModel")
       .as[ImpressionForIsotonicRegRecord]
 
-    // 2. prepare adgroup data for bias runing, every adgroup will have a conversion rate to be calcuated. In the calibration job if isotonic regression's quality isn't good, falls back to bias tuning.
-    // default conversion rate for bias tuning
-    val defaultCvr = convertedImpressions.agg(sum($"ImpressionWeightForCalibrationModel")).first().getDouble(0)/totalImpressionsCount
+    // 2. prepare adgroup data for bias runing, every adgroup will have a conversion rate to be calculated. In the calibration job if isotonic regression's quality isn't good, falls back to bias tuning.
 
     // CVR: when $"TotalConversions"/$"TotalImpressions">0, meaning the ratio is neither null nor 0. It could be zero when impression label is 1, but  weight is set to zero by client
     // when $"TotalConversions"/$"TotalImpressions">1, usually there are too less impressions and some impression converted many times. It's better to fall back to default.
-    val adgroupCVR = impressionLevelPerformance.groupBy("AdGroupId").count().withColumnRenamed("count","TotalImpressions")
+    val adgroupCVR = impressionLevelPerformanceAggBaseAdgroup.groupBy("AdGroupId").count().withColumnRenamed("count","TotalImpressions")
       .join(
         convertedImpressions.groupBy("AdGroupId").agg(sum($"ImpressionWeightForCalibrationModel").as("TotalConversions")),
         Seq("AdGroupId"),

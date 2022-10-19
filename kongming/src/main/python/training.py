@@ -1,6 +1,7 @@
 from absl import app, flags
 from kongming.features import default_model_features, default_model_dim_group, default_model_targets, get_target_cat_map
-from kongming.data import parse_input_files, tfrecord_dataset, tfrecord_parser, s3_copy
+from kongming.data import tfrecord_dataset, tfrecord_parser
+from kongming.utils import parse_input_files, s3_copy
 from kongming.models import dot_product_model, load_pretrained_embedding, auto_encoder_model
 from kongming.losses import AELoss
 from kongming.prometheus import Prometheus
