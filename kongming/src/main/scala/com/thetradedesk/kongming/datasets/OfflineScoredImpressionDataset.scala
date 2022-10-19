@@ -5,6 +5,7 @@ import java.time.format.DateTimeFormatter
 
 final case class OfflineScoredImpressionRecord(
                                               BidRequestId: String,
+                                              BaseAdGroupId: String,
                                               AdGroupId: String,
                                               Score: Double
                                               )

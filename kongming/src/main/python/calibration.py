@@ -1,6 +1,4 @@
 import pandas as pd
-from sklearn.linear_model import LinearRegression
-from sklearn.isotonic import IsotonicRegression
 import numpy as np
 import tensorflow as tf
 import math
@@ -8,10 +6,14 @@ from scipy.special import expit
 from absl import app, flags
 from datetime import datetime
 from scoring import get_model
-from kongming.data import parse_input_files, s3_copy, s3_move
+from sklearn.linear_model import LinearRegression
+from kongming.treebin import optimal_binning_boundary
+from kongming.isotonic_regressor import isotonic_regressor
+from kongming.utils import load_csv, s3_copy, modify_model_embeddings
 from kongming.layers import VocabLookup
 from multiprocessing import Pool
 from itertools import repeat
+
 import os
 import kongming.models
 
@@ -28,12 +30,15 @@ CALIBRATION_LOG_PATH = "output/calibration_log/"
 
 OFFLINE_ATTRIBUTION_PATH = INPUT_PATH + "offlineattribution/"
 OFFLINE_ATTRIBUTION_CVR_PATH = INPUT_PATH + "offlineattribution_cvr/"
+CLIENT_TEST_ADGROUPS_PATH = INPUT_PATH + "client_test_adgroups/"
 
 
 flags.DEFINE_string('offline_attribution_path', default=OFFLINE_ATTRIBUTION_PATH,
                     help=f'Folder of offline attribution impression score')
 flags.DEFINE_string('offline_attribution_cvr_path', default=OFFLINE_ATTRIBUTION_CVR_PATH,
                     help=f'Folder of offline attribution adgroup cvr')
+flags.DEFINE_string('client_test_adgroups_path', default=CLIENT_TEST_ADGROUPS_PATH,
+                    help=f'Folder of client test adgroups')
 
 flags.DEFINE_string('date',
                     default=datetime.now().strftime("%Y%m%d"),
@@ -41,14 +46,18 @@ flags.DEFINE_string('date',
 
 flags.DEFINE_string('conversion_model_path', default=MODEL_PATH,
                     help=f'Location of saved model.')
-flags.DEFINE_integer('score_grid_count', default=10000, help='Grid count of scores')
+flags.DEFINE_integer('score_grid_count', default=100000, help='Grid count of scores')
+
+flags.DEFINE_integer('max_leaf_nodes', default=100, help='CVR binning max leaf nodes')
+flags.DEFINE_float('min_samples_leaf', default=0.01, help='CVR binning min samples per leaf')
+flags.DEFINE_float('r2_threshold', default=0.2, help='Isotonic regression r2 threshold.')
+
 flags.DEFINE_integer('cpu_cores', default=6, help='Number of cpu cores. It is used for multithread computing.')
 flags.DEFINE_string('asset_adgroup_lookup_score_path', default=ASSET_ADGROUP_LOOKUP_SCORE_PATH, help='asset adgroup look up score path')
 
 flags.DEFINE_string('calibrated_conversion_models', default=CALIBRATED_MODEL_PATH, help='output model local location.')
 flags.DEFINE_string('calibrated_conversion_models_log', default=CALIBRATION_LOG_PATH, help='output model log local location.')
 
-flags.DEFINE_float('r2_threshold', default=0.25, help='isotonic regression r2 threshold.')
 
 def logit(s):
     """
@@ -82,18 +91,9 @@ def parallelize_dataframe(df, bias, ag_cvr, func, n_cores):
     pool.join()
     return df
 
-def load_csv(path, columns):
-    files = parse_input_files(path)
-    dfList = []
-    for file in files:
-        df = pd.read_csv(file)
-        df.columns = columns
-        dfList.append(df)
-    return pd.concat(dfList, axis=0)
-
 def load_data():
     # prepare impression level score and label for isotonic regression
-    impr_label_columns = ['adgroupidstr', 'adgroupid', 'piece_cvr', 'score', 'label', 'imr_weight_for_model']
+    impr_label_columns = ['adgroupidstr', 'adgroupid', 'score', 'label', 'imr_weight_for_model']
     impr_label = load_csv(FLAGS.offline_attribution_path, impr_label_columns)
 
     # prepare bias tuning
@@ -105,8 +105,11 @@ def load_data():
 
     cvr_dict = cvr[['adgroupid', 'cvr']].set_index("adgroupid").to_dict()
 
+    # load test adgroups
+    test_adgroup_columns = ['Advertiser', 'BaseAdGroupId', 'BaseAdGroupIdInt', 'AdGroupId', 'AdGroupIdInt']
+    test_adgroups = load_csv(FLAGS.client_test_adgroups_path, test_adgroup_columns)
+
     # default_cvr is now useless, it has been used to generated cvr dataframe
-    default_cvr = cvr_dict['cvr'].pop(-1)
     del cvr
 
     # load trained model
@@ -114,71 +117,111 @@ def load_data():
     model = get_model(FLAGS.conversion_model_path, to_compile=False)
     bias = model.layers[-1].get_weights()[1][0]
 
-    return impr_label, bias, cvr_dict, model
+    return impr_label, bias, cvr_dict, test_adgroups, model
+
+def getMetrics(true_label, binned_cvr, smoothed_binned_cvr):
+    # r2 is between 0 and 1. Larger r2 is better,
+    lin_reg = LinearRegression().fit(
+        X=binned_cvr
+        , y=smoothed_binned_cvr
+    )
+    r2 = lin_reg.score(binned_cvr, smoothed_binned_cvr)
+    slope = lin_reg.coef_[0]
+    # oe, when it is higher than 1, means underestimate cvr. When is lower than 1, means overestimate cvr.
+    oe = sum(true_label).sum() / sum(smoothed_binned_cvr).sum()
+    return r2, slope, oe
 
 
-def add_value_to_log(ag_log, adgroupid, calibration_type, calibration_metric_key, calibration_metric_value):
-    # could make this to a class instead of a function
-    ag_log['adgroupid'].append(adgroupid)
-    ag_log['calibration_type'].append(calibration_type)
-    ag_log['calibration_metric_key'].append(calibration_metric_key)
-    ag_log['calibration_metric_value'].append(calibration_metric_value)
-    return ag_log
+def recoverCVR(groupDF):
+    conversions = groupDF.query('label==1')['imr_weight_for_model'].sum()
+    impressions = groupDF['imr_weight_for_model'].sum()
+    return conversions / impressions
 
-def calculate_calibration_adjustments(impr_label, bias, cvr_dict):
-    # initialize outputs
-    ag_log = {'adgroupid': [], 'calibration_type': [], 'calibration_metric_key': [], 'calibration_metric_value':[]}
+def calculate_calibration_adjustments(impr_label, bias, cvr_dict, test_adgroups):
+    # initialize metrics log
+    log_dict = {}
+
+    # define hyper parameters
+    alphas = np.linspace(0.1, 1, 10)
+
     score_range = np.array(range(1, FLAGS.score_grid_count))/FLAGS.score_grid_count
     df_calibrated_ag_cvr = pd.DataFrame(columns=['adgroupid', 'score', 'calibrated_cvr'])
 
-    for ag in impr_label['adgroupid'].unique():
+    for ag in test_adgroups['BaseAdGroupIdInt'].unique():
         traintest = impr_label.query(f'adgroupid == {ag}')
+        if (len(traintest)) > 0: #have samples and enough conversions, eligible for isotonic regression try
 
-        # todo: sample_weight: if row is positive, then it is the sum of the normalized conversion of that impression.
-        #  (also suffer from being low value if pixel weight is low.) If row is negative, weight is 1.
-        iso_reg = IsotonicRegression(increasing=True, out_of_bounds='clip').fit(
-            X=traintest['score'].values
-            , y=traintest['label']
-            , sample_weight=traintest['imr_weight_for_model']
-        )
+            # CVR binning
+            boundary = optimal_binning_boundary(x=traintest['score'],
+                                                y=traintest['label'], criterion='entropy', max_leaf_nodes=FLAGS.max_leaf_nodes,
+                                                min_samples_leaf=FLAGS.min_samples_leaf)
 
-        piece_cvr = traintest['piece_cvr'].values.reshape(-1, 1)
-        iso_cvr = iso_reg.predict(traintest['score'].values)
+            bins = np.digitize(traintest['score'], boundary)
+            traintest_binned = traintest
+            traintest_binned['bin'] = bins
 
-        lin_reg = LinearRegression().fit(
-            X=piece_cvr
-            , y=iso_cvr
-            , sample_weight=traintest['imr_weight_for_model']
-        )
-        lin_reg_r2 = lin_reg.score(piece_cvr, iso_cvr)
+            traintest_binned = traintest_binned.merge(
+                traintest_binned.groupby('bin').apply(recoverCVR).reset_index().rename(columns={0: 'cvr'}), on='bin',
+                how="inner")
 
-        if ((lin_reg.coef_[0]) > 0) and (lin_reg_r2 > FLAGS.r2_threshold):
-            ag_log = add_value_to_log(ag_log, ag, "isotonic_reg", 'r-square', lin_reg_r2)
-            ag_df = pd.DataFrame([ag]*len(score_range), columns=['adgroupid'])
-            ag_df['score'] = score_range
-            ag_df['calibrated_cvr'] = iso_reg.predict(score_range)
-            df_calibrated_ag_cvr = df_calibrated_ag_cvr.append(ag_df)
-        else:
+            # Smoothed isotonic
+            myf_cvr_smooth = isotonic_regressor(n_gridpoints=100, isotonic=1, convexity=0)
+            BICs = myf_cvr_smooth.fit_alphas(traintest_binned['score'].values, traintest_binned['cvr'], alphas, min_x=0,
+                                             max_x=1)
+            traintest_binned['iso_cvr_smooth3'] = myf_cvr_smooth.predict(traintest_binned['score'].values)
+            traintest_binned['iso_cvr_smooth3'] = traintest_binned['iso_cvr_smooth3'].apply(lambda x: x if x > 0 else 0)
+
+            # calculate metrics based on sampled impressions
+            r2, slope, oe = getMetrics(traintest_binned['label'].values.reshape((-1, 1)),
+                                traintest_binned['cvr'].values.reshape((-1, 1)),
+                                traintest_binned['iso_cvr_smooth3'].values.reshape((-1, 1)))
+            print(f"r-square is {r2}, observation over estimation is {oe}")
+
+            if ((slope) > 0) and (r2 > FLAGS.r2_threshold):
+                for testAg in test_adgroups.query(f"BaseAdGroupIdInt=={ag}")['AdGroupIdInt'].unique():
+                    # log metrics
+                    testAgIdStr = test_adgroups.query(f"AdGroupIdInt=={testAg}")['AdGroupId'].values[0]
+                    log_dict[testAgIdStr] = {'method': 'SmoothedIsotonic','r2':r2, 'oe':oe}
+                    # create score to cvr df
+                    ag_df = pd.DataFrame([testAg] * len(score_range), columns=['adgroupid'])
+                    ag_df['score'] = score_range
+                    ag_df['calibrated_cvr'] = myf_cvr_smooth.predict(score_range)
+                    df_calibrated_ag_cvr = df_calibrated_ag_cvr.append(ag_df)
+            else:
+                # todo: initial experiment shows cvr of ag optimize oe towards 1, while r2 is not necessarily optimized
+                ag_cvr = cvr_dict['cvr'][ag]
+                for testAg in test_adgroups.query(f"BaseAdGroupIdInt=={ag}")['AdGroupIdInt'].unique():
+                    # calculate metrics based on sampled impressions
+                    traintest_binned['score'] = traintest_binned['score'].apply(lambda x: x-(1e-10) if x == 1 else x)
+                    traintest_binned_bias_tuning = parallelize_dataframe(traintest_binned, bias, ag_cvr, new_score_fun, n_cores=FLAGS.cpu_cores)
+                    r2, slope, oe = getMetrics(traintest_binned_bias_tuning['label'].values.reshape((-1, 1)),
+                                               traintest_binned_bias_tuning['cvr'].values.reshape((-1, 1)),
+                                               traintest_binned_bias_tuning['calibrated_cvr'].values.reshape((-1, 1)))
+                    # log metrics
+                    testAgIdStr = test_adgroups.query(f"AdGroupIdInt=={testAg}")['AdGroupId'].values[0]
+                    log_dict[testAgIdStr] = {'method': 'BiasTuning','r2':r2, 'oe':oe}
+                    # create score to cvr df
+                    ag_df = pd.DataFrame([testAg]*len(score_range), columns=['adgroupid'])
+                    ag_df['score'] = score_range
+                    ag_df = parallelize_dataframe(ag_df, bias, ag_cvr, new_score_fun, n_cores=FLAGS.cpu_cores)
+                    df_calibrated_ag_cvr = df_calibrated_ag_cvr.append(ag_df)
+            cvr_dict['cvr'].pop(ag)
+        else: # no samples, go directly to bias tuning
             ag_cvr = cvr_dict['cvr'][ag]
-            ag_log = add_value_to_log(ag_log, ag, "bias_tuning", 'offline_attribution_cvr', ag_cvr)
-            ag_df = pd.DataFrame([ag]*len(score_range), columns=['adgroupid'])
-            ag_df['score'] = score_range
-            ag_df = parallelize_dataframe(ag_df, bias, ag_cvr, new_score_fun, n_cores=FLAGS.cpu_cores)
-            df_calibrated_ag_cvr = df_calibrated_ag_cvr.append(ag_df)
-        cvr_dict['cvr'].pop(ag)
+            for testAg in test_adgroups.query(f"BaseAdGroupIdInt=={ag}")['AdGroupIdInt'].unique():
+                # log metrics
+                testAgIdStr = test_adgroups.query(f"AdGroupIdInt=={testAg}")['AdGroupId'].values[0]
+                log_dict[testAgIdStr] = {'method': 'BiasTuning', 'ag_cvr': ag_cvr}
+                # create score to cvr df
+                ag_df = pd.DataFrame([testAg] * len(score_range), columns=['adgroupid'])
+                ag_df['score'] = score_range
+                ag_df = parallelize_dataframe(ag_df, bias, ag_cvr, new_score_fun, n_cores=FLAGS.cpu_cores)
+                df_calibrated_ag_cvr = df_calibrated_ag_cvr.append(ag_df)
 
-    for ag in cvr_dict['cvr']:
-        ag_cvr = cvr_dict['cvr'][ag]
-        ag_log = add_value_to_log(ag_log, ag, "bias_tuning", 'offline_attribution_cvr', ag_cvr)
-        ag_df = pd.DataFrame([ag] * len(score_range), columns=['adgroupid'])
-        ag_df['score'] = score_range
-        ag_df = parallelize_dataframe(ag_df, bias, ag_cvr, new_score_fun, n_cores=FLAGS.cpu_cores)
-        df_calibrated_ag_cvr = df_calibrated_ag_cvr.append(ag_df)
-#
     del impr_label
 
     # generate the log dataframe
-    ag_calibration_logs = pd.DataFrame(ag_log).sort_values('calibration_type')
+    ag_calibration_logs = pd.DataFrame.from_dict(log_dict, orient='index')
 
     # generate the look up table
     fstring = "{"+":.{}f".format(int(math.log10(FLAGS.score_grid_count)))+"}"
@@ -219,13 +262,17 @@ def print_debug(msg):
 def main(argv):
 
     print_debug("load data for isotonic regression and bias tuning")
-    impr_label, bias, cvr_dict, model = load_data()
+    impr_label, bias, cvr_dict, test_adgroups, model = load_data()
 
+    print_debug("modify model embeddings for client test adgroups")
+    # todo: this step is subject to change(may be removed in future) cuz mengxi's working on implementing the mapping in model
+    model = modify_model_embeddings(model, test_adgroups)
+    
     print_debug("1. calculate calibration based on impression and label for each adgroup")
-    ag_calibration_logs,  ag_calibrated_cvr = calculate_calibration_adjustments(impr_label, bias, cvr_dict)
+    ag_calibration_logs,  ag_calibrated_cvr = calculate_calibration_adjustments(impr_label, bias, cvr_dict, test_adgroups)
 
     print_debug("save log and asset to local")
-    ag_calibration_logs.to_csv(f"{FLAGS.calibrated_conversion_models_log}ag_calibration_type.csv", index=False)
+    ag_calibration_logs.to_csv(f"{FLAGS.calibrated_conversion_models_log}ag_calibration_type.csv", index=True)
     ag_calibrated_cvr.to_csv(FLAGS.asset_adgroup_lookup_score_path, index=False, header=False)
 
     print_debug("upload log to s3")
@@ -247,6 +294,5 @@ def main(argv):
     # s3_move(s3_output_path_tmp, s3_output_path)
 
 if __name__ == '__main__':
-    # took 20m for 500 adgroups on 32Gb 8cores machine.
-    # requires data and model in: input/offlineattribution, input/offlineattribution_cvr, output/model
+    # requires data and model in: input/offlineattribution, input/offlineattribution_cvr, input/client_test_adgroups, output/model,
     app.run(main)

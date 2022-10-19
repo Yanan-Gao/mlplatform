@@ -1,10 +1,10 @@
 package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, shiftModUdf}
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.datasets._
-import com.thetradedesk.kongming.{BidsImpressionsS3Path, date, preFilteringWithPolicy}
+import com.thetradedesk.kongming.{BidsImpressionsS3Path, date, multiLevelJoinWithPolicy, preFilteringWithPolicy}
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -13,6 +13,7 @@ import org.apache.spark.sql.expressions.Window
 import java.sql.Timestamp
 import org.apache.spark.sql.functions.unix_timestamp
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import job.GenerateTrainSet.modelDimensions
 import org.apache.spark.sql.types.{DoubleType, FloatType}
 
 object TrainSetTransformation {
@@ -55,6 +56,7 @@ object TrainSetTransformation {
 
   case class TrackingTagWeightsRecord(
                                        TrackingTagId: String,
+                                       ReportingColumnId: Int,
                                        ConfigKey: String,
                                        ConfigValue: String,
                                        NormalizedPixelWeight: Double,
@@ -82,6 +84,11 @@ object TrainSetTransformation {
                                            IsInTrainSet: Boolean
                                          )
 
+  case class BaseAssociateAdGroupMapping(
+                                        AdGroupId: String,
+                                        ConfigValue: String,
+                                      )
+
   def getWeightsForTrackingTags(
                                  adGroupPolicy: Dataset[AdGroupPolicyRecord],
                                  adGroupDS: Dataset[AdGroupRecord],
@@ -102,7 +109,10 @@ object TrainSetTransformation {
           when($"TotalWeight">0,$"Weight"/$"TotalWeight" )
           .otherwise(lit(1)/$"NumberOfConversionTrackers")
         )
-          .otherwise($"Weight")
+          .otherwise(
+            when($"TotalWeight">0,$"Weight" )
+              .otherwise(lit(1))
+          )
       )
       .withColumn("NormalizedCustomCPAClickWeight",
         when(lit(normalized)===lit(true),
@@ -120,15 +130,14 @@ object TrainSetTransformation {
             .otherwise(null)
         )
       )
-      .select($"CampaignId",$"TrackingTagId", $"NormalizedPixelWeight".cast(DoubleType),$"NormalizedCustomCPAClickWeight".cast(DoubleType), $"NormalizedCustomCPAViewthroughWeight".cast(DoubleType) )
+      .select($"CampaignId",$"TrackingTagId", $"ReportingColumnId", $"NormalizedPixelWeight".cast(DoubleType),$"NormalizedCustomCPAClickWeight".cast(DoubleType), $"NormalizedCustomCPAViewthroughWeight".cast(DoubleType) )
 
     // 2. join trackingtag weights with policy table
     adGroupPolicy
       .join(broadcast(adGroupDS), adGroupPolicy("ConfigValue")===adGroupDS("AdGroupId"), "inner")
       .select("CampaignId","ConfigKey", "ConfigValue", "DataAggKey", "DataAggValue")
       .join(ccrcProcessed, Seq("CampaignId"), "inner")
-      .select($"TrackingTagId", $"ConfigKey", $"ConfigValue", $"NormalizedPixelWeight",$"NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAViewthroughWeight" ) // one trackingtagid can have different following values
-      .distinct()
+      .select($"TrackingTagId", $"ReportingColumnId", $"ConfigKey", $"ConfigValue", $"NormalizedPixelWeight",$"NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAViewthroughWeight" ) // one trackingtagid can have different following values
       .selectAs[TrackingTagWeightsRecord]
 
   }
@@ -307,6 +316,16 @@ object TrainSetTransformation {
       .selectAs[PreFeatureJoinRecord].toDF()
     val orgValidationset = validation.toDF()
     adjustedTrainset.union(orgValidationset).selectAs[PreFeatureJoinRecord]
+  }
+
+  def getBaseAssociateAdGroupIntMappings(
+                                       adGroupPolicy: Dataset[AdGroupPolicyRecord],
+                                       adGroupDS: Dataset[AdGroupRecord]): Dataset[BaseAssociateAdGroupMappingIntRecord] = {
+    multiLevelJoinWithPolicy[BaseAssociateAdGroupMapping](adGroupDS, adGroupPolicy)
+      .withColumn("AdGroupIdInt", shiftModUdf(xxhash64(col("AdGroupId")), lit(modelDimensions(0).cardinality.getOrElse(0))))
+      .withColumnRenamed("ConfigValue", "BaseAdGroupId")
+      .withColumn("BaseAdGroupIdInt", shiftModUdf(xxhash64(col("BaseAdGroupId")), lit(modelDimensions(0).cardinality.getOrElse(0))))
+      .selectAs[BaseAssociateAdGroupMappingIntRecord]
   }
 
 

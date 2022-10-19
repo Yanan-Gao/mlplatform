@@ -15,6 +15,7 @@ import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.transform.TrainSetTransformation._
 import org.apache.spark.sql.types.DoubleType
 import job.DailyOfflineScoringSet.{keptFields, modelKeepFeatureColNames, modelKeepFeatureCols}
+import org.apache.spark.sql.expressions.Window
 import org.apache.spark.storage.StorageLevel
 
 /*
@@ -151,13 +152,19 @@ object GenerateTrainSet {
     val validNegatives = negativeExcludePos.join(dataHaveBothTrainVal, Seq("ConfigValue","ConfigKey"), "left_semi" ).selectAs[TrainSetRecord].cache()
 
 
-    // 2. get the latest weights for adgroups in policytable
+    // 2. get the latest weights for trackingtags for adgroups in policytable
+    val trackingTagWindow =  Window.partitionBy($"TrackingTagId", $"ConfigKey", $"ConfigValue")
+      .orderBy($"ReportingColumnId")
     val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
     val trackingTagWithWeight = getWeightsForTrackingTags(adGroupPolicy, adGroupDS, normalized = true)
+      .withColumn("ReportingColumnRank", dense_rank().over(trackingTagWindow))
+      .filter($"ReportingColumnRank"===lit(1))
+      .drop("ReportingColumnId")
+    // to simplify, use the weights of the first reportingcolumn
 
     // 3. transform weights for positive label
     // todo: multi days positive might have different click and  view lookback window, might not alligned with latest weight
-    val positivesWithRawWeight = validPositives.join(trackingTagWithWeight, Seq("TrackingTagId",  "ConfigValue","ConfigKey"))
+    val positivesWithRawWeight = validPositives.join(trackingTagWithWeight, Seq("TrackingTagId", "ConfigValue", "ConfigKey"))
       .withColumn("NormalizedPixelWeight", $"NormalizedPixelWeight".cast(DoubleType))
       .withColumn("NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAClickWeight".cast(DoubleType))
       .withColumn("NormalizedCustomCPAViewthroughWeight", $"NormalizedCustomCPAViewthroughWeight".cast(DoubleType))
@@ -209,6 +216,9 @@ object GenerateTrainSet {
       adjustedValParquet.drop(tfDropColumnNames: _*).as[DataForModelTrainingRecord],
       date, "val", Some(100))
 
+    // 8. save the adgroupIdInt for base adgroups(configvalue) and associated adgroups
+    val adgroupBaseAssociateMapping = getBaseAssociateAdGroupIntMappings(adGroupPolicy, adGroupDS)
+    BaseAssociateAdGroupMappingIntDataset().writePartition(adgroupBaseAssociateMapping, date, Some(1))
 
     outputRowsWrittenGauge.labels("DataForModelTrainingDataset/TFTrain").set(tfTrainRows)
     outputRowsWrittenGauge.labels("DataForModelTrainingDataset/TFVal").set(tfValRows)

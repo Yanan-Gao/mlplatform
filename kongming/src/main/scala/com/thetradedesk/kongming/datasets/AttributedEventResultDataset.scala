@@ -13,7 +13,7 @@ final case class AttributedEventResultRecord(
                                               ConversionTrackerLogEntryTime: String,  // is string in parquet.
                                               CampaignReportingColumnId: String,
                                               AttributionMethodId: String,
-                                              AttributedEventTypeId: String
+//                                              AttributedEventTypeId: String
                                       )
 
 case class AttributedEventResultDataSet() extends IdentitySourcesS3DataSet[AttributedEventResultRecord]("firstpartydata_v2/attributedeventresult")

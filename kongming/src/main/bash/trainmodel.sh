@@ -13,13 +13,13 @@ then
   DATE_PARTITION=$2
 fi
 
-SCORING_LOOKBACK_IN_DAYS=10
+SCORING_LOOKBACK_IN_DAYS=14
 if [ ! -z "$3" ]
 then
   SCORING_LOOKBACK_IN_DAYS=$3
 fi
 
-NUM_DAYS_TO_SCORE=5
+NUM_DAYS_TO_SCORE=13
 if [ ! -z "$4" ]
 then
   NUM_DAYS_TO_SCORE=$4
@@ -39,16 +39,19 @@ fi
 
 BASE_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/data/${READENV}/kongming"
 TRAINING_DATA="trainset/tfrecord/v=1"
+ADGROUPMAPPING_DATA="baseAssociateAdgroup/v=1"
 SCORING_DATA="dailyofflinescore/v=1"
 DATE_PATH="date=${DATE_PARTITION}"
 
 TRAINING_DATA_SOURCE="${BASE_S3_PATH}/${TRAINING_DATA}/${DATE_PATH}/split=train/"
 VALIDATION_DATA_SOURCE="${BASE_S3_PATH}/${TRAINING_DATA}/${DATE_PATH}/split=val/"
+ADGROUPMAPPING_DATA_SOURCE="${BASE_S3_PATH}/${ADGROUPMAPPING_DATA}/${DATE_PATH}/"
 SCORING_DATA_MODEL_S3_LOCATION="${BASE_S3_PATH}/${SCORING_DATA}/"
 
 INPUT_DEST="/mnt/input/"
 TRAINING_DATA_DEST="${INPUT_DEST}train"
 VALIDATION_DATA_DEST="${INPUT_DEST}val"
+MAPPING_DATA_DEST="${INPUT_DEST}adgroupmapping"
 SCORING_DATA_DEST="${INPUT_DEST}scoreset"
 
 echo "restart httpd service so ganglia works"
@@ -79,6 +82,8 @@ do
 
   ((iter=iter+1))
 done
+
+aws s3 cp ${ADGROUPMAPPING_DATA_SOURCE} ${MAPPING_DATA_DEST} --recursive --include "*.csv" --quiet
 
 echo "pulling image and running train and user score steps"
 
@@ -111,6 +116,7 @@ echo "finished train and score, cleaning up data"
 
 rm -r ${TRAINING_DATA_DEST}
 rm -r ${VALIDATION_DATA_DEST}
+rm -r ${MAPPING_DATA_DEST}
 rm -r ${SCORING_DATA_DEST}
 
 echo "finished cleaning up data"

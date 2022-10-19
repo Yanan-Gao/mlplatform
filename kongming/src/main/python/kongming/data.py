@@ -1,14 +1,4 @@
-import os
 import tensorflow as tf
-
-# parse files from the input folder
-def parse_input_files(path):
-
-    files = os.listdir(path)
-    files = [path + file for file in files if
-                   file.startswith("part")]
-
-    return files
 
 def tfrecord_dataset(files, batch_size, map_fn):
     return tf.data.TFRecordDataset(
@@ -104,17 +94,3 @@ def tfrecord_parser(model_features, dim_feature, model_targets, model_type, card
         return parse_input_ae_target(model_features, model_targets, card_cap)
     else:
         return parse_input_single_target(model_features, dim_feature, model_targets, sw_col)
-
-def s3_copy(src_path, dest_path, quiet=True):
-    sync_command = f"aws s3 cp {src_path} {dest_path} --recursive"
-    if (quiet):
-        sync_command = sync_command + " --quiet"
-    os.system(sync_command)
-    return sync_command
-
-def s3_move(src_path, dest_path, quiet=True):
-    sync_command = f"aws s3 mv --recursive {src_path} {dest_path}"
-    if (quiet):
-        sync_command = sync_command + " --quiet"
-    os.system(sync_command)
-    return sync_command
