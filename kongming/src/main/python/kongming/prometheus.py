@@ -1,4 +1,5 @@
 from prometheus_client import CollectorRegistry, Gauge, push_to_gateway
+from typing import Iterable
 import tensorflow as tf
 
 
@@ -9,8 +10,11 @@ class Prometheus:
         self.pushgate = 'prom-push-gateway.adsrvr.org:80'
         self.enabled = True
 
-    def define_gauge(self, metricName, metricDescripton):
-        g = Gauge(name=metricName, documentation=metricDescripton, registry=self.registry)
+    def define_gauge(self,
+                     metric_name: str,
+                     metric_descripton: str,
+                     label_names: Iterable[str] = ()):
+        g = Gauge(name=metric_name, documentation=metric_descripton, labelnames=label_names, registry=self.registry)
         return g
 
     def push(self):

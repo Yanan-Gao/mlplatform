@@ -11,7 +11,7 @@ flags.DEFINE_boolean("run_calibration", default=False, help="Run calibration ste
 # Shared variables
 INPUT_PATH = "./input/"
 S3_MODELS = "s3://thetradedesk-mlplatform-us-east-1/models"
-ENV = "prod"
+ENV = "local"
 flags.DEFINE_string('env', default=ENV, help='training environment.')
 flags.DEFINE_string('s3_models', default=S3_MODELS, help='output model s3 location.')
 flags.DEFINE_string('input_path', default=INPUT_PATH,
