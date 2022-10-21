@@ -1,13 +1,19 @@
+import pandas as pd
 from absl import app, flags
 from kongming.features import default_model_features, default_model_dim_group, default_model_targets, get_target_cat_map
 from kongming.data import tfrecord_dataset, tfrecord_parser
 from kongming.utils import parse_input_files, s3_copy
 from kongming.models import dot_product_model, load_pretrained_embedding, auto_encoder_model
 from kongming.losses import AELoss
+from kongming.metrics import get_auc_dist
 from kongming.prometheus import Prometheus
 from tensorflow_addons.losses import SigmoidFocalCrossEntropy
 import tensorflow as tf
+from tensorflow.python.data.ops.dataset_ops import DatasetV2
 from datetime import datetime
+import matplotlib.pyplot as plt
+import seaborn as sn
+import os
 
 # setting up training configuration
 FLAGS = flags.FLAGS
@@ -62,9 +68,10 @@ flags.DEFINE_integer('num_epochs', default=1, help='Number of epochs for trainin
 # Logging and Metrics
 flags.DEFINE_boolean('push_training_logs', default=False, help=f'option to push all logs to s3 for debugging, defaults to false')
 flags.DEFINE_boolean('push_metrics', default=False, help='To push prometheus metrics or not')
+flags.DEFINE_boolean('generate_adgroup_auc', default=False, help='Whether to generate and save adgroup AUC')
 
 # Eval params
-flags.DEFINE_integer('eval_batch_size', default=10, help='Batch size for evaluation')
+flags.DEFINE_integer('eval_batch_size', default=4096*2, help='Batch size for evaluation')
 
 # Call back
 
@@ -204,7 +211,11 @@ def get_ae_target_size(dataset):
     else:
         return None
 
-def push_metrics(history):
+def set_adgroup_auc(adgroup_auc_gauge, adgroupid, train_auc, val_auc):
+    adgroup_auc_gauge.labels(adgroupid, 'train').set(train_auc)
+    adgroup_auc_gauge.labels(adgroupid, 'val').set(val_auc)
+
+def push_metrics(history, auc_df: pd.DataFrame):
     prometheus = Prometheus("KongmingTraining")
 
     #todo: find out to get these with early stopping
@@ -221,7 +232,43 @@ def push_metrics(history):
     val_loss_gauge.set(history.history['val_loss'][0])
     val_auc_gauge.set(history.history['val_auc'][0])
 
+    if auc_df is not None:
+        adgroup_auc_gauge = prometheus.define_gauge('adgroup_auc', 'AUC during training', ['adgroupid', 'auc_type'])
+
+        auc_df.fillna(0).apply(lambda row:
+            set_adgroup_auc(adgroup_auc_gauge, row['AdGroupId'], row['train_auc'], row['val_auc']), axis=1
+        )
+
     prometheus.push()
+
+
+def generate_adgroup_auc(model: tf.keras.Model, train: DatasetV2, val: DatasetV2) -> pd.DataFrame:
+    # upload train_auc and val_auc to S3
+    train_auc = get_auc_dist(train, model, "train_auc", "train_count")
+    val_auc = get_auc_dist(val, model, "val_auc", "val_count")
+    combined_auc = pd.merge(train_auc, val_auc, on='AdGroupId', how='outer')
+
+    auc_path = "./auc/"
+    os.makedirs(auc_path, exist_ok=True)
+
+    auc_result_location = f"{auc_path}auc.csv"
+    combined_auc.to_csv(auc_result_location, header=True, index=False)
+
+    s3_auc_output_path = f"s3://thetradedesk-mlplatform-us-east-1/data/{FLAGS.env}/kongming/measurement/auc/v=1/date={FLAGS.model_creation_date}"
+    s3_copy(auc_path, s3_auc_output_path)
+
+    # generate plot and upload to s3
+    auc_plot_path = "./auc_plot/"
+    os.makedirs(auc_plot_path, exist_ok=True)
+
+    sn.histplot(train_auc.train_auc)
+    sn.histplot(val_auc.val_auc)
+    plt.savefig(f"{auc_plot_path}auc.png")
+
+    s3_auc_plot_path = f"s3://thetradedesk-mlplatform-us-east-1/data/{FLAGS.env}/kongming/measurement/auc_plot/v=1/date={FLAGS.model_creation_date}"
+    s3_copy(auc_plot_path, s3_auc_plot_path)
+
+    return combined_auc
 
 def main(argv):
 
@@ -262,9 +309,12 @@ def main(argv):
         s3_log_path = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/conversion_model_logs/date={FLAGS.model_creation_date}"
         s3_copy(FLAGS.log_path, s3_log_path)
 
-    if (FLAGS.push_metrics):
-        push_metrics(history)
+    auc_df = None
+    if FLAGS.generate_adgroup_auc:
+        auc_df = generate_adgroup_auc(model, train, val)
 
+    if FLAGS.push_metrics:
+        push_metrics(history, auc_df)
 
 if __name__ == '__main__':
     app.run(main)
