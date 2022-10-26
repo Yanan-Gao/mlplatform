@@ -38,7 +38,7 @@ then
 fi
 
 BASE_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/data/${READENV}/kongming"
-TRAINING_DATA="trainset/tfrecord/v=1"
+TRAINING_DATA="trainset/csv/v=1"
 ADGROUPMAPPING_DATA="baseAssociateAdgroup/v=1"
 SCORING_DATA="dailyofflinescore/v=1"
 DATE_PATH="date=${DATE_PARTITION}"
@@ -62,8 +62,8 @@ rm -rf $INPUT_DEST
 
 echo "starting training data transfer"
 
-aws s3 cp ${TRAINING_DATA_SOURCE} ${TRAINING_DATA_DEST} --recursive --include "*.tfrecord.gz" --quiet
-aws s3 cp ${VALIDATION_DATA_SOURCE} ${VALIDATION_DATA_DEST} --recursive --include "*.tfrecord.gz" --quiet
+aws s3 cp ${TRAINING_DATA_SOURCE} ${TRAINING_DATA_DEST} --recursive --include "*.csv" --quiet
+aws s3 cp ${VALIDATION_DATA_SOURCE} ${VALIDATION_DATA_DEST} --recursive --include "*.csv" --quiet
 
 #copy scoring data
 FIRST_SCORING_DATE=$(date -d "$DATE_PARTITION -$SCORING_LOOKBACK_IN_DAYS days")
@@ -97,17 +97,21 @@ eval docker login -u $DOCKER_USER -p $CREDS $DOCKER_INTERNAL_BASE
 eval docker pull ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_VERSION}
 
 sudo docker run --gpus all \
+           -e TF_GPU_THREAD_MODE=gpu_private \
            -v ${INPUT_DEST}:/opt/application/input/ \
            ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_VERSION} \
       "--env=${ENV}" \
       "--run_train=true" \
+      "--use_csv=true" \
       "--model_creation_date=${DATE_PARTITION}" \
-      "--batch_size=8192" \
+      "--batch_size=65536" \
+      "--learning_rate=0.0028" \
       "--eval_batch_size=197934" \
       "--num_epochs=20" \
       "--model_choice=basic" \
       "--early_stopping_patience=3" \
       "--push_training_logs=true" \
+      "--generate_adgroup_auc=true" \
       "--push_metrics=true" \
       "--run_score=true" \
       "--score_dates=${ALL_SCORING_PARTITIONS}"

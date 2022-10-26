@@ -31,5 +31,7 @@ def main(argv):
         print('Starting calibration step...')
         calibration.main(argv)
 
+    print("FINISHED EXECUTION")
+
 if __name__ == '__main__':
     app.run(main)

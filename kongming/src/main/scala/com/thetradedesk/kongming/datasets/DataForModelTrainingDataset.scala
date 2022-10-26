@@ -3,9 +3,6 @@ package com.thetradedesk.kongming.datasets
 import com.thetradedesk.kongming.{MLPlatformS3Root, getExperimentPath}
 import com.thetradedesk.spark.datasets.core._
 
-import java.time.LocalDate
-import java.time.format.DateTimeFormatter
-
 final case class DataForModelTrainingRecord(
                                  AdGroupId: Int,
                                  Weight: Double,
@@ -38,24 +35,20 @@ final case class DataForModelTrainingRecord(
                                  cos_hour_day: Double,
                                  sin_minute_hour: Double,
                                  cos_minute_hour: Double,
-                                 Latitude: Option[Double],
-                                 Longitude: Option[Double]
+                                 latitude: Option[Double],
+                                 longitude: Option[Double]
                                           )
 
 case class DataForModelTrainingDataset(experimentName: String = "")
-  extends PartitionedS3DataSet2[DataForModelTrainingRecord, LocalDate, String, String, String](
+  extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
     GeneratedDataSet, MLPlatformS3Root, s"kongming/${getExperimentPath(experimentName)}trainset/tfrecord/v=1",
-    "date" -> ColumnExistsInDataSet,
-    "split" -> ColumnExistsInDataSet,
-    fileFormat = TFRecord.Example,
-    writeThroughHdfs = true
+    fileFormat = TFRecord.Example
   ) {
+}
 
-  def partitionField1: (String, PartitionColumnCalculation) = "date" -> ColumnExistsInDataSet
-  def partitionField2: (String, PartitionColumnCalculation) = "split" -> ColumnExistsInDataSet
-
-  def dateTimeFormat: DateTimeFormatter = DefaultTimeFormatStrings.dateTimeFormatter
-
-  override def toStoragePartition1(date: LocalDate): String = date.format(dateTimeFormat)
-  override def toStoragePartition2(split: String): String = split
+case class DataCsvForModelTrainingDataset(experimentName: String = "")
+  extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
+    GeneratedDataSet, MLPlatformS3Root, s"kongming/${getExperimentPath(experimentName)}trainset/csv/v=1",
+    fileFormat = Csv.WithHeader
+  ) {
 }

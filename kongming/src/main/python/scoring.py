@@ -89,7 +89,9 @@ def main(argv):
     available_score_dates = [date for date in FLAGS.score_dates if date in scores_set_dates]
 
     # check if missing dates are tolerable
-    if 1 - (len(available_score_dates) / len(FLAGS.score_dates)) > FLAGS.score_dates_missing_tolerance:
+    if len(FLAGS.score_dates) == 0:
+        raise Exception("No score sets!")
+    elif 1 - (len(available_score_dates) / len(FLAGS.score_dates)) > FLAGS.score_dates_missing_tolerance:
         raise Exception('Not enough score sets!')
 
     # load raw adgroup and mapping, then modify it. todo: this step is subject to change cuz mengxi's working on implementing the mapping in model
@@ -98,6 +100,7 @@ def main(argv):
     model = modify_model_embeddings(model, mapping)
 
     os.makedirs(FLAGS.pred_path, exist_ok=True)
+
     for date in available_score_dates:
         scoring_set = get_scoring_data(score_set_path, model_features, [model_dim_feature], additional_str_grain_map, date)
         pred = predict(model, scoring_set)

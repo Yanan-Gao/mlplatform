@@ -35,6 +35,6 @@ final case class TrainSetFeaturesRecord (
                                           cos_hour_day: Double,
                                           sin_minute_hour: Double,
                                           cos_minute_hour: Double,
-                                          Latitude: Option[Double],
-                                          Longitude: Option[Double]
+                                          latitude: Option[Double],
+                                          longitude: Option[Double]
                                         )

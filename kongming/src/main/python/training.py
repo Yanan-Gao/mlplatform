@@ -1,7 +1,6 @@
-import pandas as pd
 from absl import app, flags
 from kongming.features import default_model_features, default_model_dim_group, default_model_targets, get_target_cat_map
-from kongming.data import tfrecord_dataset, tfrecord_parser
+from kongming.data import cache_prefetch_dataset, tfrecord_dataset, tfrecord_parser, csv_dataset
 from kongming.utils import parse_input_files, s3_copy
 from kongming.models import dot_product_model, load_pretrained_embedding, auto_encoder_model
 from kongming.losses import AELoss
@@ -11,7 +10,11 @@ from tensorflow_addons.losses import SigmoidFocalCrossEntropy
 import tensorflow as tf
 from tensorflow.python.data.ops.dataset_ops import DatasetV2
 from datetime import datetime
+
+import atexit
+import math
 import matplotlib.pyplot as plt
+import pandas as pd
 import seaborn as sn
 import os
 
@@ -62,19 +65,20 @@ flags.DEFINE_boolean('batchnorm', default=True, help='Use BatchNormalization or 
 flags.DEFINE_string("loss_func", default='ce', help="Loss function to choose.")
 
 # Train params
-flags.DEFINE_integer('batch_size', default=4096*2, help='Batch size for training', lower_bound=1)
+flags.DEFINE_integer('batch_size', default=4096*2*8, help='Batch size for training', lower_bound=1)
 flags.DEFINE_integer('num_epochs', default=1, help='Number of epochs for training', lower_bound=1)
+flags.DEFINE_float('learning_rate', default=0.0028, help='Model learning rate', lower_bound=0.001)
+flags.DEFINE_boolean('use_csv', default=False, help='Whether to use csv or not (tfrecord by default)')
+
+# Eval params
+flags.DEFINE_integer('eval_batch_size', default=4096*2, help='Batch size for evaluation')
 
 # Logging and Metrics
 flags.DEFINE_boolean('push_training_logs', default=False, help=f'option to push all logs to s3 for debugging, defaults to false')
 flags.DEFINE_boolean('push_metrics', default=False, help='To push prometheus metrics or not')
 flags.DEFINE_boolean('generate_adgroup_auc', default=False, help='Whether to generate and save adgroup AUC')
 
-# Eval params
-flags.DEFINE_integer('eval_batch_size', default=4096*2, help='Batch size for evaluation')
-
 # Call back
-
 flags.DEFINE_integer('early_stopping_patience', default=5, help='patience for early stopping', lower_bound=2)
 flags.DEFINE_list("profile_batches", default=[100, 120], help="batches to profile")
 
@@ -109,23 +113,34 @@ def get_features_dim_target():
     return features, model_dim, targets
 
 
+def get_csv_cols(features, dim_features, targets, sw_col):
+    selected_cols = {f.name: f.type for f in features}
+    selected_cols.update({d.name: d.type for d in dim_features})
+    selected_cols.update({t.name: t.type for t in targets})
 
+    if sw_col != None:
+        selected_cols[sw_col] = tf.float32
 
-def get_data(features, dim_feature, targets, sw_col):
+    return selected_cols
+
+def get_data(features, dim_features, targets, sw_col, num_gpus, use_csv = False):
     #function to return
     train_files, val_files = parse_input_files(FLAGS.input_path+"train/"), parse_input_files(FLAGS.input_path+"val/")
 
     if len(train_files) == 0 or len(val_files) == 0:
         raise Exception("No training or validation files")
 
-    train = tfrecord_dataset(train_files,
-                                FLAGS.batch_size,
-                                tfrecord_parser(features, dim_feature, targets, FLAGS.model_choice, MAX_CARDINALITY, sw_col)
-                                )
-    val = tfrecord_dataset(val_files,
-                                FLAGS.eval_batch_size,
-                                tfrecord_parser(features, dim_feature, targets, FLAGS.model_choice, MAX_CARDINALITY, sw_col)
-                                )
+    if (use_csv):
+        selected_cols = get_csv_cols(features, dim_features, targets, sw_col)
+
+        # TODO: change this to use targets
+        label_name = "Target"
+        train = csv_dataset(train_files, FLAGS.batch_size * num_gpus, selected_cols, label_name, sw_col)
+        val = csv_dataset(val_files, FLAGS.eval_batch_size * num_gpus, selected_cols, label_name, sw_col)
+    else:
+        map_fn = tfrecord_parser(features, dim_features, targets, FLAGS.model_choice, MAX_CARDINALITY, sw_col)
+        train = tfrecord_dataset(train_files, FLAGS.batch_size * num_gpus, map_fn)
+        val = tfrecord_dataset(val_files, FLAGS.eval_batch_size * num_gpus, map_fn)
     return train, val
 
 
@@ -216,10 +231,11 @@ def set_adgroup_auc(adgroup_auc_gauge, adgroupid, train_auc, val_auc):
     adgroup_auc_gauge.labels(adgroupid, 'val').set(val_auc)
 
 def push_metrics(history, auc_df: pd.DataFrame):
-    prometheus = Prometheus("KongmingTraining")
+    prometheus = Prometheus(environment=FLAGS.env, job_name="Kongming", application="UncalibratedTraining")
 
     #todo: find out to get these with early stopping
-    # epoch_gauge = prometheus.define_gauge('epochs', 'number of epochs')
+    epoch_gauge = prometheus.define_gauge('epochs', 'number of epochs')
+    epoch_gauge.set(len(history.epoch))
     # steps_gauge = prometheus.define_gauge('num_steps', 'number of steps per epoch')
 
     loss_gauge = prometheus.define_gauge('loss', 'loss value')
@@ -227,10 +243,10 @@ def push_metrics(history, auc_df: pd.DataFrame):
     val_loss_gauge = prometheus.define_gauge('val_loss', 'validation loss')
     val_auc_gauge = prometheus.define_gauge('val_auc', 'validation auc')
 
-    loss_gauge.set(history.history['loss'][0])
-    auc_gauge.set(history.history['auc'][0])
-    val_loss_gauge.set(history.history['val_loss'][0])
-    val_auc_gauge.set(history.history['val_auc'][0])
+    loss_gauge.set(history.history['loss'][-1])
+    auc_gauge.set(history.history['auc'][-1])
+    val_loss_gauge.set(history.history['val_loss'][-1])
+    val_auc_gauge.set(history.history['val_auc'][-1])
 
     if auc_df is not None:
         adgroup_auc_gauge = prometheus.define_gauge('adgroup_auc', 'AUC during training', ['adgroupid', 'auc_type'])
@@ -240,7 +256,6 @@ def push_metrics(history, auc_df: pd.DataFrame):
         )
 
     prometheus.push()
-
 
 def generate_adgroup_auc(model: tf.keras.Model, train: DatasetV2, val: DatasetV2) -> pd.DataFrame:
     # upload train_auc and val_auc to S3
@@ -272,31 +287,49 @@ def generate_adgroup_auc(model: tf.keras.Model, train: DatasetV2, val: DatasetV2
 
 def main(argv):
 
+    strategy = tf.distribute.MultiWorkerMirroredStrategy()
+    num_gpus = strategy.num_replicas_in_sync
+    print('Number of devices: {}'.format(num_gpus))
+
     model_features, model_dim_feature, model_targets = get_features_dim_target()
 
-    train, val= get_data(model_features, [model_dim_feature], model_targets, FLAGS.sample_weight_col)
+    train, val = get_data(model_features,
+                          [model_dim_feature],
+                          model_targets,
+                          FLAGS.sample_weight_col,
+                          num_gpus,
+                          use_csv=FLAGS.use_csv)
 
     target_size = get_ae_target_size(train.take(1))
+    train = cache_prefetch_dataset(train)
+    val = cache_prefetch_dataset(val)
 
-    model = get_model(model_features, model_dim_feature, FLAGS.assets_path, target_size)
+    cat_dict = get_target_cat_map(model_targets, MAX_CARDINALITY) if FLAGS.model_choice == 'ae' else None
 
-    model.summary()
+    with strategy.scope():
+        model = get_model(model_features, model_dim_feature, FLAGS.assets_path, target_size)
 
-    cat_dict = get_target_cat_map(model_targets, MAX_CARDINALITY) if FLAGS.model_choice=='ae' else None
+        # todo: do we need this?
+        model.summary()
 
-    model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
-                  loss=get_loss(cat_dict),
-                  metrics=get_metrics())
-                  # loss_weights=None,
-                  # run_eagerly=None,
-                  # steps_per_execution=None)
+        model.compile(optimizer=tf.keras.optimizers.Adam(learning_rate=FLAGS.learning_rate * math.sqrt(num_gpus)),
+                      loss=get_loss(cat_dict),
+                      metrics=get_metrics())
+                      # loss_weights=None,
+                      # run_eagerly=None,
+                      # steps_per_execution=None)
 
     history = model.fit(train,
                         epochs=FLAGS.num_epochs,
-                        verbose=True,
+                        verbose=2,
                         callbacks=get_callbacks(),
                         validation_data=val,
                         validation_batch_size=FLAGS.eval_batch_size)
+
+    # fix the segfault issue because tensorflow doesn't correctly close the pools
+    # https://github.com/tensorflow/tensorflow/issues/50487#issuecomment-1071515037
+    atexit.register(strategy._extended._cross_device_ops._pool.close) # type: ignore
+    atexit.register(strategy._extended._host_cross_device_ops._pool.close) #type: ignore
 
     output_path = FLAGS.output_path if FLAGS.model_choice!='ae' else FLAGS.external_embedding_path
     model_path = f"{output_path}model/{FLAGS.model_choice}_{FLAGS.dropout_rate}/"

@@ -39,9 +39,7 @@ object GenerateTrainSet {
   val STRING_FEATURE_TYPE = "string"
   val INT_FEATURE_TYPE = "int"
   val FLOAT_FEATURE_TYPE = "float"
-  val BOOLEAN_FEATURE_TYPE = "bool"
 
-  val split: Array[ModelFeature] = Array(ModelFeature("IsInTrainSet", BOOLEAN_FEATURE_TYPE, Some(2), 0))
   val modelWeights: Array[ModelFeature] = Array(ModelFeature("Weight", FLOAT_FEATURE_TYPE, None, 0))
 
   val modelDimensions: Array[ModelFeature] = Array(ModelFeature("AdGroupId", STRING_FEATURE_TYPE, Some(500002), 0))
@@ -103,6 +101,7 @@ object GenerateTrainSet {
     val upSamplingValSet = config.getBoolean(path = "upSamplingValSet", false)
     val conversionLookback = config.getInt("conversionLookback", 7)
     val saveParquetData = config.getBoolean("saveParquetData", false)
+    val saveTrainingDataAsTFRecord = config.getBoolean("saveTrainingDataAsTFRecord", false)
 
     val experimentName = config.getString("trainSetExperimentName" , "")
 
@@ -188,17 +187,20 @@ object GenerateTrainSet {
     val adjustedWeightDataset= adjustWeightForTrainset(preFeatureJoinTrainSet,desiredNegOverPos)
 
     // 5. join all these dataset with bidimpression to get features
-    val tensorflowSelectionTabular = intModelFeaturesCols(modelDimensions ++ modelFeatures ++ modelWeights) ++ modelTargetCols(modelTargets)
+    val splitColumn = modelTargetCols(Array(ModelTarget("split", STRING_FEATURE_TYPE, false)))
+    val tensorflowSelectionTabular = intModelFeaturesCols(modelDimensions ++ modelFeatures ++ modelWeights) ++ modelTargetCols(modelTargets) ++ splitColumn
     val parquetSelectionTabular = modelKeepFeatureCols(keptFields) ++ tensorflowSelectionTabular
 
     val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, maxLookback)(prometheus)
+      .withColumn("split",
+        when($"IsInTrainSet"===lit(true), "train").otherwise("val"))
       .select(parquetSelectionTabular: _*)
       .as[ValidationDataForModelTrainingRecord]
       .persist(StorageLevel.DISK_ONLY)
 
     // 6. split train and val
-    val adjustedTrainParquet  = trainDataWithFeature.filter($"IsInTrainSet"===lit(true))
-    val adjustedValParquet = trainDataWithFeature.filter($"IsInTrainSet"===lit(false))
+    val adjustedTrainParquet  = trainDataWithFeature.filter($"split"===lit("train"))
+    val adjustedValParquet = trainDataWithFeature.filter($"split"===lit("val"))
 
     // 7. save as parquet and tfrecord
     if (saveParquetData) {
@@ -209,19 +211,33 @@ object GenerateTrainSet {
     }
 
     val tfDropColumnNames = modelKeepFeatureColNames(keptFields)
-    val tfTrainRows = DataForModelTrainingDataset(experimentName).writePartition(
+
+    if (saveTrainingDataAsTFRecord) {
+      val tfTrainRows = DataForModelTrainingDataset(experimentName).writePartition(
+        adjustedTrainParquet.drop(tfDropColumnNames: _*).as[DataForModelTrainingRecord],
+        date, "train", Some(100))
+      val tfValRows = DataForModelTrainingDataset(experimentName).writePartition(
+        adjustedValParquet.drop(tfDropColumnNames: _*).as[DataForModelTrainingRecord],
+        date, "val", Some(100))
+
+      outputRowsWrittenGauge.labels("DataForModelTrainingDataset/TFTrain").set(tfTrainRows)
+      outputRowsWrittenGauge.labels("DataForModelTrainingDataset/TFVal").set(tfValRows)
+    }
+
+    val csvTrainRows = DataCsvForModelTrainingDataset(experimentName).writePartition(
       adjustedTrainParquet.drop(tfDropColumnNames: _*).as[DataForModelTrainingRecord],
-      date, "train", Some(100))
-    val tfValRows = DataForModelTrainingDataset(experimentName).writePartition(
+      date, "train", Some(200))
+    val csvValRows = DataCsvForModelTrainingDataset(experimentName).writePartition(
       adjustedValParquet.drop(tfDropColumnNames: _*).as[DataForModelTrainingRecord],
       date, "val", Some(100))
+
+    outputRowsWrittenGauge.labels("DataForModelTrainingDataset/CsvTrain").set(csvTrainRows)
+    outputRowsWrittenGauge.labels("DataForModelTrainingDataset/CsvVal").set(csvValRows)
 
     // 8. save the adgroupIdInt for base adgroups(configvalue) and associated adgroups
     val adgroupBaseAssociateMapping = getBaseAssociateAdGroupIntMappings(adGroupPolicy, adGroupDS)
     BaseAssociateAdGroupMappingIntDataset().writePartition(adgroupBaseAssociateMapping, date, Some(1))
 
-    outputRowsWrittenGauge.labels("DataForModelTrainingDataset/TFTrain").set(tfTrainRows)
-    outputRowsWrittenGauge.labels("DataForModelTrainingDataset/TFVal").set(tfValRows)
     jobDurationGaugeTimer.setDuration()
     prometheus.pushMetrics()
 

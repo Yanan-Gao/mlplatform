@@ -121,6 +121,7 @@ project/plugins/project/
 
 venv/*
 plutus/src/main/python/local_data/*
+kongming/src/main/python/input/*
 
 # Build results
 [Dd]ebug/
