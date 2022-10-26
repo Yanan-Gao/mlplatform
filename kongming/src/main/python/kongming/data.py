@@ -1,4 +1,48 @@
+import os
 import tensorflow as tf
+import pandas as pd
+from tensorflow.python.data.ops.dataset_ops import DatasetV2
+
+
+def csv_dataset(files, batch_size, selected_cols, label_name, weight_name):
+    def _generator(csv_file, drop_remainder=False):
+        with pd.read_csv(csv_file.decode(),
+                         chunksize=batch_size,
+                         usecols=[k for k, v in selected_cols.items()],
+                         ) as csv_chunks:
+            for csv_chunk in csv_chunks:
+
+                # skip is not full batch
+                if drop_remainder & (csv_chunk.shape[0] != batch_size): continue
+
+                # TODO: should really remove NA upstream
+                csv_chunk.fillna(0, inplace=True)
+                label = csv_chunk.pop(label_name)
+                weight = csv_chunk.pop(weight_name)
+                yield (dict(csv_chunk), label.values, weight.values)
+
+    def _generator_dataset(file):
+        return tf.data.Dataset.from_generator(
+            _generator,
+            output_signature=(
+                {k: tf.TensorSpec(shape=(None,), dtype=v) for k, v in selected_cols.items() if k not in [label_name, weight_name]},
+                tf.TensorSpec(shape=(None,), dtype=tf.float32),
+                tf.TensorSpec(shape=(None,), dtype=tf.float32)
+            ),
+            args=(file,)
+        )
+
+    def interleaved_generator_dataset(files):
+        options = tf.data.Options()
+        options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.OFF
+
+        return tf.data.Dataset.from_tensor_slices(files).with_options(options).interleave(
+            lambda x: _generator_dataset(x),
+            num_parallel_calls=tf.data.AUTOTUNE,
+            deterministic=False
+        )
+
+    return interleaved_generator_dataset(files)
 
 def tfrecord_dataset(files, batch_size, map_fn):
     return tf.data.TFRecordDataset(
@@ -13,6 +57,8 @@ def tfrecord_dataset(files, batch_size, map_fn):
         deterministic=False
     )
 
+def cache_prefetch_dataset(dataset: DatasetV2):
+    return dataset.cache().prefetch(tf.data.AUTOTUNE)
 
 def parse_input_single_target(model_features, dim_feature, model_targets, sw_col):
 
@@ -94,3 +140,4 @@ def tfrecord_parser(model_features, dim_feature, model_targets, model_type, card
         return parse_input_ae_target(model_features, model_targets, card_cap)
     else:
         return parse_input_single_target(model_features, dim_feature, model_targets, sw_col)
+

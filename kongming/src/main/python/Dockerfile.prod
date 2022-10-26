@@ -11,28 +11,13 @@ RUN apt-get -y install python3-pip
 
 WORKDIR /opt/application/
 
-RUN pip3 install --upgrade pip
-RUN pip3 install --quiet --no-cache-dir \
-    'protobuf==3.20.1' \
-    'tensorflow==2.7.0' \
-    'tensorflow_probability==0.15.0' \
-    'boto3' \
-    'prometheus_client' \
-    'awscli' \
-    'tensorflow-serving-api==2.7.0' \
-    'tensorflow_addons' \
-    'matplotlib' \
-    'pandas==1.3.5' \
-    'scipy==1.7.3' \
-    'scikit-learn==1.0.2' \
-    'seaborn' \
-    'pyarrow==8.0.0' \
-    'cvxopt'
-
-
 COPY kongming ./kongming
 COPY setup.cfg ./
-COPY ["training.py", "scoring.py", "calibration.py", "main.py", "./"]
+COPY ["requirements.txt", "training.py", "scoring.py", "calibration.py", "main.py", "./"]
+
+RUN pip3 install --upgrade pip
+RUN pip3 install --quiet --no-cache-dir -r requirements.txt
+
 RUN mkdir -p output/calibration_log
 RUN mkdir -p conversion-python/assets_string
 

@@ -4,11 +4,15 @@ import tensorflow as tf
 
 
 class Prometheus:
-    def __init__(self, job_name: str):
+    def __init__(self, environment: str, job_name: str, application: str):
         self.registry = CollectorRegistry()
         self.jobName = job_name
         self.pushgate = 'prom-push-gateway.adsrvr.org:80'
         self.enabled = True
+        self.grouping_key = {
+            "environment": environment,
+            "application": application
+        }
 
     def define_gauge(self,
                      metric_name: str,
@@ -19,7 +23,7 @@ class Prometheus:
 
     def push(self):
         if (self.enabled):
-            push_to_gateway(self.pushgate, job=self.jobName, registry=self.registry)
+            push_to_gateway(self.pushgate, job=self.jobName, registry=self.registry, grouping_key=self.grouping_key)
 
 
 class BatchTensorBoard(tf.keras.callbacks.TensorBoard):

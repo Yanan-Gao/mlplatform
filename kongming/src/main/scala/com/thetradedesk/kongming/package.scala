@@ -21,6 +21,8 @@ package object kongming {
   val RunTimeGaugeName = "run_time_seconds"
   val OutputRowCountGaugeName = "output_rows_written"
 
+  val writeThroughHdfs = config.getBoolean("writeThroughHdfs", true)
+
   var date = config.getDate("date" , LocalDate.now())
   val RoundUpTimeUnit = "minute"
   val policyDate = config.getDate("policydate" , LocalDate.parse("2022-03-15"))

@@ -18,7 +18,7 @@ def get_auc_dist(val: DatasetV2,
   for item,t,w in val:
       xi = item
       pi = model.predict_on_batch(xi)
-      df = pd.DataFrame(xi)
+      df = pd.DataFrame({'AdGroupId': xi['AdGroupId']})
       df['pred']=pi
       df['target']=t
       dfList.append(df)

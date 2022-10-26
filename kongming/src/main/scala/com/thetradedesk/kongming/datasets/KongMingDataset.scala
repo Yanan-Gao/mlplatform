@@ -1,6 +1,6 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.kongming.{MLPlatformS3Root, getExperimentPath}
+import com.thetradedesk.kongming.{MLPlatformS3Root, getExperimentPath, writeThroughHdfs}
 import com.thetradedesk.spark.datasets.core._
 
 /**
@@ -17,6 +17,6 @@ abstract class KongMingDataset[T <: Product : Manifest](dataSetType: DataSetType
     rootFolderPath = s"kongming/${getExperimentPath(experimentName)}${s3DatasetPath}",
     fileFormat = fileFormat,
     partitionField = partitionField,
-    writeThroughHdfs = true
+    writeThroughHdfs = writeThroughHdfs
 ) {
 }

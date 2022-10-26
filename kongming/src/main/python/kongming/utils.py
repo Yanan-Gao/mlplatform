@@ -1,5 +1,6 @@
 import pandas as pd
 import os
+
 # parse files from the input folder
 def parse_input_files(path):
 
