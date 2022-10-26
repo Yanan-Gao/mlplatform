@@ -78,7 +78,7 @@ def new_score_fun(df, bias, ag_cvr):
     :param df: the dataframe with the scores and adgroupids
     :param bias: the bias term in the logistic regression
     :param ag_cvr: the cvr for each adgroup
-    :return: A dataframe with a new column called 'calibrated_cvr'
+    :return: A dataframe with a new column called 'predicted_cvr'
     """
     df['predicted_cvr'] = df.\
         apply(lambda row: expit(logit(row['score']) - bias + logit(ag_cvr)), axis=1)
@@ -136,7 +136,8 @@ def getMetrics(df: pd.DataFrame):
     r2 = lin_reg.score(binned_cvr, predicted_cvr)
     slope = lin_reg.coef_[0]
     # oe, when it is higher than 1, means underestimate cvr. When is lower than 1, means overestimate cvr.
-    oe = sum(label).sum() / sum(predicted_cvr).sum()
+    # todo: we may use this oe to predicted adjust cvr
+    oe = (np.inner(label.reshape(1,-1), sample_weight.reshape(1,-1))/np.inner(predicted_cvr.reshape(1,-1), sample_weight.reshape(1,-1)))[0][0]
     # auc
     fpr, tpr, _ = metrics.roc_curve(label, score, pos_label=1, sample_weight=sample_weight)
     auc = metrics.auc(fpr, tpr)
@@ -145,8 +146,10 @@ def getMetrics(df: pd.DataFrame):
 
 
 def recoverCVR(groupDF):
+    # positive impressions are not sampled, imr_weight_for_model is the summed conversion weight
     conversions = groupDF.query('label==1')['imr_weight_for_model'].sum()
-    impressions = groupDF['imr_weight_for_model'].sum()
+    # negative impressions are sampled, imr_weight_for_model is the inverse of sample rate
+    impressions = groupDF.query('label==1')['imr_weight_for_model'].count() + groupDF.query('label==0')['imr_weight_for_model'].sum()
     return conversions / impressions
 
 def calculate_calibration_adjustments(impr_label, bias, cvr_dict, test_adgroups):
@@ -157,7 +160,7 @@ def calculate_calibration_adjustments(impr_label, bias, cvr_dict, test_adgroups)
     alphas = np.linspace(0.1, 1, 10)
 
     score_range = np.array(range(1, FLAGS.score_grid_count))/FLAGS.score_grid_count
-    df_calibrated_ag_cvr = pd.DataFrame(columns=['adgroupid', 'score', 'calibrated_cvr'])
+    df_calibrated_ag_cvr = pd.DataFrame(columns=['adgroupid', 'score', 'predicted_cvr'])
 
     for ag in test_adgroups['BaseAdGroupIdInt'].unique():
         traintest = impr_label.query(f'adgroupid == {ag}')
@@ -166,7 +169,9 @@ def calculate_calibration_adjustments(impr_label, bias, cvr_dict, test_adgroups)
 
             # CVR binning
             boundary = optimal_binning_boundary(x=traintest['score'],
-                                                y=traintest['label'], criterion='entropy', max_leaf_nodes=FLAGS.max_leaf_nodes,
+                                                y=traintest['label'],
+                                                sample_weight = traintest['imr_weight_for_model'],
+                                                criterion='entropy', max_leaf_nodes=FLAGS.max_leaf_nodes,
                                                 min_samples_leaf=FLAGS.min_samples_leaf)
 
             bins = np.digitize(traintest['score'], boundary)
@@ -196,7 +201,7 @@ def calculate_calibration_adjustments(impr_label, bias, cvr_dict, test_adgroups)
                     # create score to cvr df
                     ag_df = pd.DataFrame([testAg] * len(score_range), columns=['adgroupid'])
                     ag_df['score'] = score_range
-                    ag_df['calibrated_cvr'] = myf_cvr_smooth.predict(score_range)
+                    ag_df['predicted_cvr'] = myf_cvr_smooth.predict(score_range)
                     df_calibrated_ag_cvr = df_calibrated_ag_cvr.append(ag_df)
             else:
                 # todo: initial experiment shows cvr of ag optimize oe towards 1, while r2 is not necessarily optimized
@@ -237,7 +242,7 @@ def calculate_calibration_adjustments(impr_label, bias, cvr_dict, test_adgroups)
     fstring = "{"+":.{}f".format(int(math.log10(FLAGS.score_grid_count)))+"}"
     df_calibrated_ag_cvr['key'] = (df_calibrated_ag_cvr['adgroupid'] + df_calibrated_ag_cvr['score']).apply(lambda x: fstring.format(x))
 
-    return ag_calibration_logs,  df_calibrated_ag_cvr[['key', 'calibrated_cvr']]
+    return ag_calibration_logs,  df_calibrated_ag_cvr[['key', 'predicted_cvr']]
 
 def add_calibration_layer(model):
 

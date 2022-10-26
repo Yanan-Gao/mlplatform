@@ -1,7 +1,7 @@
 import pandas as pd
 from sklearn.tree import DecisionTreeClassifier
 
-def optimal_binning_boundary(x: pd.Series, y: pd.Series, criterion='entropy',
+def optimal_binning_boundary(x: pd.Series, y: pd.Series, sample_weight: pd.Series, criterion='entropy',
                              max_leaf_nodes = 100, min_samples_leaf = 0.01, nan: float = -999.) -> list:
     '''
         Generate the best binning best on decision tree split nodes.
@@ -15,7 +15,7 @@ def optimal_binning_boundary(x: pd.Series, y: pd.Series, criterion='entropy',
                                  max_leaf_nodes=max_leaf_nodes,
                                  min_samples_leaf=min_samples_leaf)
 
-    clf.fit(x.reshape(-1, 1), y)  # Train the decision tree
+    clf.fit(x.reshape(-1, 1), y, sample_weight = sample_weight)  # Train the decision tree
 
     n_nodes = clf.tree_.node_count
     children_left = clf.tree_.children_left
