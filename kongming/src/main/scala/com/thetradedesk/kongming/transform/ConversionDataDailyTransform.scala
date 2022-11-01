@@ -51,7 +51,9 @@ object ConversionDataDailyTransform {
       //TODO: check if this is the right way to add UID2 for conv data. Or there's better way to do it.
       .select($"TDID",//coalesce($"TDID",$"UnifiedId2").as("TDID"),
         $"TrackingTagId",
-        $"ConversionTime")
+        $"ConversionTime",
+        $"AdvertiserId"
+      )
 
     // get subset of trackingtag to process based on policy table and campaign setting
     // get the trackingtag weight in as well
@@ -63,17 +65,19 @@ object ConversionDataDailyTransform {
     val ccrcProcessed = ccrc
       .join(broadcast(campaignDS.select($"CampaignId", $"CustomCPATypeId")), Seq("CampaignId"), "left")
       .filter(($"CustomCPATypeId"===0 && $"ReportingColumnId"===1) || ($"CustomCPATypeId">0 && $"IncludeInCustomCPA") )
-      .select("CampaignId","TrackingTagId")//, "Weight")
+      .select("CampaignId","TrackingTagId", "AdvertiserId")//, "Weight")
+
+
 
     val trackingTagWithWeight = adGroupPolicy
       .join(broadcast(adGroupDS), adGroupPolicy("ConfigValue")===adGroupDS("AdGroupId"), "inner")
       .select("CampaignId","DataAggKey","DataAggValue","CrossDeviceUsage","CrossDeviceConfidenceLevel")
       .join(ccrcProcessed, Seq("CampaignId"), "inner")
-      .select( "TrackingTagId","DataAggKey","DataAggValue","CrossDeviceUsage","CrossDeviceConfidenceLevel")//, "Weight")
+      .select( "TrackingTagId","DataAggKey","DataAggValue","CrossDeviceUsage","CrossDeviceConfidenceLevel","AdvertiserId")//, "Weight")
       //distinct to remove possible duplicate dataAggValue in the policy table
       .distinct
 
-    val convResult = conv.join(trackingTagWithWeight, Seq("TrackingTagId"), "inner").selectAs[DailyTransformedConversionDataRecord].cache()
+    val convResult = conv.join(trackingTagWithWeight, Seq("TrackingTagId", "AdvertiserId"), "inner").selectAs[DailyTransformedConversionDataRecord].cache()
     val distinctId = convResult.select($"TDID".as("uiid")).distinct.selectAs[IDRecord]
 
     (convResult, distinctId)
