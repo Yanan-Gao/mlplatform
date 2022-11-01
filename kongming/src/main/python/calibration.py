@@ -14,7 +14,8 @@ from kongming.layers import VocabLookup
 from sklearn import metrics
 from multiprocessing import Pool
 from itertools import repeat
-
+import seaborn as sns
+import matplotlib.pyplot as plt
 import os
 import kongming.models
 
@@ -121,7 +122,7 @@ def load_data():
     return impr_label, bias, cvr_dict, test_adgroups, model
 
 
-def getMetrics(df: pd.DataFrame):
+def get_metrics(df: pd.DataFrame):
     label = df['label'].values.reshape((-1, 1))
     score = df['score'].values.reshape((-1, 1))
     sample_weight = df['imr_weight_for_model'].values.reshape((-1, 1))
@@ -144,6 +145,24 @@ def getMetrics(df: pd.DataFrame):
 
     return r2, slope, oe, auc
 
+def get_score_plot_with_bin_cvr(df: pd.DataFrame, ag_log_key, score_plot_path):
+    # generate plot
+    sns.scatterplot(data=df, x='score', y='cvr', label='score to cvr', s=1)
+    sns.scatterplot(data=df, x='score', y='predicted_cvr', label='score to calibrated cvr', s=1)
+    plt.legend()
+    plt.title(ag_log_key)
+    plt.savefig(f"{score_plot_path}{ag_log_key}.png")
+    plt.clf()
+
+def get_score_plot_without_bin_cvr(df: pd.DataFrame, ag_log_key, score_plot_path):
+    # generate plot
+    sns.scatterplot(data=df, x='score', y='predicted_cvr', label='score to calibrated cvr', s=1)
+    plt.legend()
+    plt.title(ag_log_key)
+    plt.savefig(f"{score_plot_path}{ag_log_key}.png")
+    plt.clf()
+
+
 
 def recoverCVR(groupDF):
     # positive impressions are not sampled, imr_weight_for_model is the summed conversion weight
@@ -155,6 +174,8 @@ def recoverCVR(groupDF):
 def calculate_calibration_adjustments(impr_label, bias, cvr_dict, test_adgroups):
     # initialize metrics log
     log_dict = {}
+    score_plot_path = f"{FLAGS.calibrated_conversion_models_log}score_plot/"
+    os.makedirs(score_plot_path, exist_ok=True)
 
     # define hyper parameters
     alphas = np.linspace(0.1, 1, 10)
@@ -190,31 +211,33 @@ def calculate_calibration_adjustments(impr_label, bias, cvr_dict, test_adgroups)
             traintest_binned['predicted_cvr'] = traintest_binned['predicted_cvr'].apply(lambda x: x if x > 0 else 0)
 
             # calculate metrics based on sampled impressions
-            r2, slope, oe, auc = getMetrics(traintest_binned)
+            r2, slope, oe, auc = get_metrics(traintest_binned)
             print(f"r-square is {r2}, observation over estimation is {oe}")
 
             if ((slope) > 0) and (r2 > FLAGS.r2_threshold):
-                for testAg in test_adgroups.query(f"BaseAdGroupIdInt=={ag}")['AdGroupIdInt'].unique():
+                for test_ag in test_adgroups.query(f"BaseAdGroupIdInt=={ag}")['AdGroupIdInt'].unique():
                     # log metrics
-                    testAgIdStr = test_adgroups.query(f"AdGroupIdInt=={testAg}")['AdGroupId'].values[0]
-                    log_dict[testAgIdStr] = {'method': 'SmoothedIsotonic', 'r2': r2, 'oe': oe, 'auc': auc, 'ag_cvr': ag_cvr}
+                    test_ag_id_str = test_adgroups.query(f"AdGroupIdInt=={test_ag}")['AdGroupId'].values[0]
+                    log_dict[test_ag_id_str] = {'method': 'SmoothedIsotonic', 'r2': r2, 'oe': oe, 'auc': auc, 'ag_cvr': ag_cvr}
+                    get_score_plot_with_bin_cvr(traintest_binned, test_ag_id_str, score_plot_path)
                     # create score to cvr df
-                    ag_df = pd.DataFrame([testAg] * len(score_range), columns=['adgroupid'])
+                    ag_df = pd.DataFrame([test_ag] * len(score_range), columns=['adgroupid'])
                     ag_df['score'] = score_range
                     ag_df['predicted_cvr'] = myf_cvr_smooth.predict(score_range)
                     df_calibrated_ag_cvr = df_calibrated_ag_cvr.append(ag_df)
             else:
                 # todo: initial experiment shows cvr of ag optimize oe towards 1, while r2 is not necessarily optimized
-                for testAg in test_adgroups.query(f"BaseAdGroupIdInt=={ag}")['AdGroupIdInt'].unique():
+                for test_ag in test_adgroups.query(f"BaseAdGroupIdInt=={ag}")['AdGroupIdInt'].unique():
                     # calculate metrics based on sampled impressions
                     traintest_binned['score'] = traintest_binned['score'].apply(lambda x: x-(1e-10) if x == 1 else x)
                     traintest_binned_bias_tuning = parallelize_dataframe(traintest_binned, bias, ag_cvr, new_score_fun, n_cores=FLAGS.cpu_cores)
-                    r2, slope, oe, auc = getMetrics(traintest_binned_bias_tuning)
+                    r2, slope, oe, auc = get_metrics(traintest_binned_bias_tuning)
                     # log metrics
-                    testAgIdStr = test_adgroups.query(f"AdGroupIdInt=={testAg}")['AdGroupId'].values[0]
-                    log_dict[testAgIdStr] = {'method': 'BiasTuning', 'r2': r2, 'oe': oe, 'auc': auc, 'ag_cvr': ag_cvr}
+                    test_ag_id_str = test_adgroups.query(f"AdGroupIdInt=={test_ag}")['AdGroupId'].values[0]
+                    log_dict[test_ag_id_str] = {'method': 'BiasTuning', 'r2': r2, 'oe': oe, 'auc': auc, 'ag_cvr': ag_cvr}
+                    get_score_plot_with_bin_cvr(traintest_binned_bias_tuning, test_ag_id_str, score_plot_path)
                     # create score to cvr df
-                    ag_df = pd.DataFrame([testAg]*len(score_range), columns=['adgroupid'])
+                    ag_df = pd.DataFrame([test_ag]*len(score_range), columns=['adgroupid'])
                     ag_df['score'] = score_range
                     ag_df = parallelize_dataframe(ag_df, bias, ag_cvr, new_score_fun, n_cores=FLAGS.cpu_cores)
                     df_calibrated_ag_cvr = df_calibrated_ag_cvr.append(ag_df)
@@ -223,17 +246,22 @@ def calculate_calibration_adjustments(impr_label, bias, cvr_dict, test_adgroups)
             del traintest_binned
             cvr_dict['cvr'].pop(ag)
         else: # no samples, go directly to bias tuning
-            for testAg in test_adgroups.query(f"BaseAdGroupIdInt=={ag}")['AdGroupIdInt'].unique():
+            for test_ag in test_adgroups.query(f"BaseAdGroupIdInt=={ag}")['AdGroupIdInt'].unique():
                 # log metrics
-                testAgIdStr = test_adgroups.query(f"AdGroupIdInt=={testAg}")['AdGroupId'].values[0]
-                log_dict[testAgIdStr] = {'method': 'BiasTuning', 'ag_cvr': ag_cvr}
+                test_ag_id_str = test_adgroups.query(f"AdGroupIdInt=={test_ag}")['AdGroupId'].values[0]
+                log_dict[test_ag_id_str] = {'method': 'BiasTuning', 'ag_cvr': ag_cvr}
                 # create score to cvr df
-                ag_df = pd.DataFrame([testAg] * len(score_range), columns=['adgroupid'])
+                ag_df = pd.DataFrame([test_ag] * len(score_range), columns=['adgroupid'])
                 ag_df['score'] = score_range
                 ag_df = parallelize_dataframe(ag_df, bias, ag_cvr, new_score_fun, n_cores=FLAGS.cpu_cores)
+                get_score_plot_without_bin_cvr(ag_df, test_ag_id_str, score_plot_path)
                 df_calibrated_ag_cvr = df_calibrated_ag_cvr.append(ag_df)
 
     del impr_label
+
+    # upload calibration plot to s3
+    s3_score_plot_path = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/calibrated_conversion_model_log/calibrate_date={FLAGS.date}/score_plot"
+    s3_copy(score_plot_path, s3_score_plot_path)
 
     # generate the log dataframe
     ag_calibration_logs = pd.DataFrame.from_dict(log_dict, orient='index').reset_index().rename(columns = {'index':'AdGroupId'})
