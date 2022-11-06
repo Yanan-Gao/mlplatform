@@ -1,5 +1,7 @@
 package com.thetradedesk.audience.datasets
 
+import com.thetradedesk.spark.datasets.core.ProvisioningS3DataSet
+
 final case class CampaignConversionReportingColumnRecord(AdvertiserId: String,
                                                          CampaignId: String,
                                                          ReportingColumnId: Int,
@@ -9,4 +11,4 @@ final case class CampaignConversionReportingColumnRecord(AdvertiserId: String,
                                                          Weight: Option[BigDecimal])
 
 case class CampaignConversionReportingColumnDataset() extends
-  LightReadableDataset[CampaignConversionReportingColumnRecord]("/warehouse.external/thetradedesk.db/provisioning/campaignconversionreportingcolumn/v=1", "s3a://thetradedesk-useast-qubole")
+  ProvisioningS3DataSet[CampaignConversionReportingColumnRecord]("campaignconversionreportingcolumn/v=1", true)
