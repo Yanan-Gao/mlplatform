@@ -44,8 +44,10 @@ final case class FirstPartyPixelModelInputRecord(
                                                   cos_hour_week: Double,
                                                   sin_hour_day: Double,
                                                   cos_hour_day: Double,
+
                                                   Latitude: Double,
                                                   Longitude: Double,
+
                                                   Target: Double,
 
                                                   TDID: String,
@@ -55,5 +57,5 @@ final case class FirstPartyPixelModelInputRecord(
                                                   AdGroupId: String,
                                                 )
 
-case class FirstPartyPixelModelInputDataset() extends
-  LightWritableDataset[FirstPartyPixelModelInputRecord](s"/${ttdEnv}/audience/firstPartyPixel/dailyConversionSample/v=1", S3Roots.ML_PLATFORM_ROOT, 100)
+case class FirstPartyPixelModelInputDataset(tag: String) extends
+  LightWritableDataset[FirstPartyPixelModelInputRecord](s"/${ttdEnv}/audience/firstPartyPixel/${tag}/v=1", S3Roots.ML_PLATFORM_ROOT, 100)
