@@ -3,16 +3,24 @@ package com.thetradedesk.audience.datasets
 import com.thetradedesk.geronimo.shared.{loadParquetData, loadParquetDataHourly, parquetDataPaths, parquetHourlyDataPaths}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
+import com.thetradedesk.spark.util.io.FSUtils
+
 import org.apache.spark.sql.{Dataset, SaveMode, SparkSession}
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import scala.reflect.runtime.universe._
+
+object DatasetSource {
+  val Logs: String = "Log"
+}
 
 abstract class LightDataset(dataSetPath: String,
                             rootPath: String,
                             dateFormat: String) {
   lazy val basePath: String = LightDataset.ConcatPath(dataSetPath, rootPath)
   private lazy val dateFormatter = DateTimeFormatter.ofPattern(dateFormat)
+  lazy val logsDateFormatter = DateTimeFormatter.ofPattern("yyyy/MM/dd")
 
   def DatePartitionedPath(
                            date: Option[LocalDate] = None,
@@ -101,12 +109,25 @@ abstract class LightReadableDataset[T <: Product : Manifest](
                     format: Option[String] = None,
                     lookBack: Option[Int] = None,
                     dateSeparator: Option[String] = None)(implicit spark: SparkSession): Dataset[T] = {
+    val paths = source match {
+      case Some(DatasetSource.Logs) => (0 to lookBack.getOrElse(0)) map (x => s"$basePath/${date.minusDays(x).format(logsDateFormatter)}")
+      case _ => parquetDataPaths(basePath, date, source, lookBack, separator = dateSeparator)
+    }
     format match {
       case Some("tfrecord") => spark
         .read
         .format("tfrecord")
         .option("recordType", "Example")
-        .load(parquetDataPaths(basePath, date, source, lookBack, separator = dateSeparator) : _*)
+        .load(paths: _*)
+        .selectAs[T]
+      case Some("tsv") => spark
+        .read
+        .format("com.databricks.spark.csv")
+        .option("delimiter", "\t")
+        .option("header", "true")
+        .option("inferSchema", "true")
+        .load(paths.flatMap(x => FSUtils.listFiles(x, true)(spark).map(y => x + "/" + y)): _*)
+        .toDF(typeOf[T].members.sorted.collect { case m: MethodSymbol if m.isCaseAccessor => m.name.toString }: _*)
         .selectAs[T]
       case _ => loadParquetData[T](basePath, date, source, lookBack, dateSeparator)
     }
@@ -115,12 +136,24 @@ abstract class LightReadableDataset[T <: Product : Manifest](
   def readPartitionHourly(date: LocalDate,
                           hours: Seq[Int],
                           format: Option[String] = None)(implicit spark: SparkSession): Dataset[T] = {
+    val paths = source match {
+      case Some(DatasetSource.Logs) => hours.map(h => "%s/%s/%02d".format(basePath, date.format(logsDateFormatter), h))
+      case _ => parquetHourlyDataPaths(basePath, date, source, hours)
+    }
+
     format match {
       case Some("tfrecord") => spark
         .read
         .format("tfrecord")
         .option("recordType", "Example")
-        .load(parquetHourlyDataPaths(basePath, date, source, hours) : _*)
+        .load(paths: _*)
+        .selectAs[T]
+      case Some("tsv") => spark
+        .read
+        .format("com.databricks.spark.csv")
+        .option("delimiter", "\t")
+        .option("header", "true")
+        .load(paths.flatMap(x => FSUtils.listFiles(x, true)(spark).map(y => x + "/" + y)): _*)
         .selectAs[T]
       case _ => loadParquetDataHourly[T](basePath, date, hours, source)
     }
