@@ -1,8 +1,8 @@
 package com.thetradedesk.audience.datasets
 
+import com.thetradedesk.audience.ttdEnv
 import com.thetradedesk.geronimo.shared.{FLOAT_FEATURE_TYPE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE}
 import com.thetradedesk.audience.transform.FeatureDesc
-import com.thetradedesk.audience.ttdEnv
 
 import java.sql.Timestamp
 

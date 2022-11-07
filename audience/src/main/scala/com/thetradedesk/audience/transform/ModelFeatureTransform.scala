@@ -52,6 +52,24 @@ object ModelFeatureTransform {
     }.flatten.toArray
   }
 
+  def tryGetFeatureCardinality[T <: Product : Manifest](name: String) = {
+    try {
+      typeOf[T].members.collect {
+
+        case t: TermSymbol if t.isVal && t.name.toString.trim() == name =>
+          t.annotations.collect {
+
+            case annotation if ModelFeatureTransform.tryGetAnnotationName(annotation) == classOf[com.thetradedesk.audience.transform.FeatureDesc].getName =>
+              annotation.tree.children.tail match {
+                case List(Literal(Constant(nme: String)), Literal(Constant(dtype: String)), Literal(Constant(cardinality: Int))) => cardinality
+              }
+          }
+      }.flatten.toList(0)
+    } catch {
+      case _: Throwable => 0
+    }
+  }
+
   def tryGetAnnotationName(annotation: Annotation): String = {
     try {
       annotation.tree.children.head.children.head.children.head.toString()

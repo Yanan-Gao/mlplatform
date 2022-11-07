@@ -1,7 +1,7 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.datasets.{FirstPartyPixelModelInputDataset, FirstPartyPixelModelInputRecord, SeenInBiddingV3DeviceDataSet, TargetingDataDataset, TrackingTagDataset, UniversalPixelDataset, UniversalPixelTrackingTagDataset}
-import com.thetradedesk.audience.date
+import com.thetradedesk.audience.{date, sampleHit, trainSetDownSampleFactor}
 import com.thetradedesk.audience.sample.DownSample.hashSampleV2
 import com.thetradedesk.audience.transform.{ModelFeatureTransform,FirstPartyDataTransform}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
@@ -20,7 +20,6 @@ import org.apache.spark.sql.functions._
 object FirstPartyPixelModelDailySIBSampleGeneration {
   private val bidsImpressionLookBack = config.getInt("bidsImpressionLookBack", 5)
   private val tdidSampleMod = config.getInt("tdidSampleMod", 1)
-  private val sampleHit = config.getString("sampleHit", "0")
   private val subFolder = config.getString("subFolder", "split")
   private val numTDID = config.getInt("numTDID", 100)
   // control maximum positive records for a pxiel on given day; without it, the data size will be huge
@@ -28,7 +27,6 @@ object FirstPartyPixelModelDailySIBSampleGeneration {
   // used for the hard negative samples generation
   private val softNegFactor = config.getInt("softNegFactor", default = 10)
   private val hardNegFactor = config.getInt("hardNegFactor", default = 10)
-  private val trainSetDownSampleFactor = config.getInt("trainSetDownSampleFactor", default = 2)
   private val partitionCount = config.getInt("partitionCount", default = 120)
   private val selectedPixelsConfigPath = config.getString("selectedPixelsConfigPath", "s3a://thetradedesk-useast-hadoop/Data_Science/Yang/audience_extension/selected_1pp/firstPixel200_TargetingDataId/")
 
