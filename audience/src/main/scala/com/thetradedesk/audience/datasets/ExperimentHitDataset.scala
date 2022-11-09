@@ -1,11 +1,12 @@
 package com.thetradedesk.audience.datasets
 
-final case class ExperimentHitRecord(LogTime: java.sql.Timestamp,
+final case class ExperimentHitRecord(LogTime: String,
                                      AvailableBidRequestId: String,
-                                    TDID: String,
-                                    AdGroupId: String,
-                                    AEScore: Double,
-                                    Type: Int
+                                     TDID: String,
+                                     AdGroupId: String,
+                                     AEScore: Double,
+                                     Type: Int,
+                                     Stage: Int
                                     )
 
 case class ExperimentHitDataset() extends
@@ -15,4 +16,9 @@ object ExperimentHitType extends Enumeration {
   type Type = Value
 
   val LAL, Model = Value
+}
+
+object ExperimentHitStage extends Enumeration {
+  type Type = Value
+  val Index = Value
 }

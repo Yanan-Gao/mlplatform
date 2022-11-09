@@ -4,7 +4,7 @@ import com.thetradedesk.spark.datasets.core.ProvisioningS3DataSet
 
 final case class AudienceExtensionSeedSettingsRecord(AdGroupId: String,
                                                      SeedId: BigInt,
-                                                     IsInclusive: Int,
+                                                     IsInclusive: Boolean,
                                                      Seedtype: Int)
 
 case class AudienceExtensionSeedSettingsDataset() extends
