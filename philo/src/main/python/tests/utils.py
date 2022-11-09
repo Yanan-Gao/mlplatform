@@ -345,3 +345,11 @@ def check_model(model, model_name, x, y, check_model_io=True):
         print(model_name + " test save load model pass!")
 
     print(model_name + " test pass!")
+
+
+def make_test_model(name_size):
+    model = tf.keras.models.Sequential()
+    model.add(tf.keras.Input(shape=(4,)))
+    for name, size in name_size.items():
+        model.add(tf.keras.layers.Dense(8, activation='relu', use_bias=False, name=name))
+    return model

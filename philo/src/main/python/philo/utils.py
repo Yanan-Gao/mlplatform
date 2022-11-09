@@ -1,6 +1,7 @@
 import tensorflow as tf
 import numpy as np
 import pandas as pd
+import warnings
 
 
 def get_callbacks(log_path, profile_batches, early_stopping_patience, checkpoint_base_path):
@@ -59,3 +60,80 @@ def generate_results(model, predict_data):
     comparisons = pd.DataFrame(
         {'BidRequestId': br_id.flatten(), 'labels': labels.flatten(), 'prediction': pred.flatten()})
     return comparisons
+
+
+def load_partial_weights(new_model, old_model, inclusion=[], exclusion=[]):
+    """
+    load partial weights from the old model, if inclusion and exclusion are both empty,
+    will copy all the weights from old_model, if both are not empty, will only use the
+    inclusion list, this function will directly operate on the new_model, therefore, won't
+    return anything
+    Args:
+        new_model: new model that will be further trained
+        old_model: old_model from previous training
+        inclusion: included layer names for reusing
+        exclusion: excluded layer names for reusing
+
+    Returns:
+        None
+    """
+    if inclusion:
+        if exclusion:
+            warnings.warn("Can only have either inclusion or exclusion, will only use the inclusion list here")
+        include_layer(new_model, old_model, inclusion)
+
+    elif exclusion:
+        exclude_layer(new_model, old_model, exclusion)
+
+    else:
+        # if both list are empty, copy all the available weight, it is equivalent to not exclude any
+        warnings.warn("no value for inclusion or exclusion list, copy the entire model weights from the old model")
+        exclude_layer(new_model, old_model, exclusion)
+
+
+def exclude_layer(new_model, old_model, exclusion):
+    """
+        load partial weights from the old model, exclude the ones from exclusion list.
+        Args:
+            new_model: new model that will be further trained
+            old_model: old_model from previous training
+            exclusion: excluded layer names for reusing
+
+        Returns:
+            None
+        """
+    for i in new_model.layers:
+        layer_name = i.name
+        if layer_name not in exclusion:
+            try:
+                weights = old_model.get_layer(layer_name).get_weights()
+                i.set_weights(weights)
+                print(f"Copied weights for {i.name}")
+            except ValueError as ve:
+                print(f'error, for layer {i}, {ve}, skipping')
+
+
+def include_layer(new_model, old_model, inclusion):
+    """
+        load partial weights from the old model, exclude the ones from exclusion list.
+        Args:
+            new_model: new model that will be further trained
+            old_model: old_model from previous training
+            inclusion: excluded layer names for reusing
+
+        Returns:
+            None
+        """
+    for i in inclusion:
+        try:
+            weights = old_model.get_layer(i).get_weights()
+            try:
+                new_model.get_layer(i).set_weights(weights)
+                print(f"Copied weights for {i}")
+            except ValueError as ve:
+                print(f'error, for layer {i}, {ve}, skipping')
+                continue
+        except ValueError as ve:
+            print(f'error, for layer {i}, {ve}, skipping')
+            continue
+
