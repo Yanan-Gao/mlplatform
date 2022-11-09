@@ -1,7 +1,7 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.{date, sampleHit, trainSetDownSampleFactor}
-import com.thetradedesk.audience.datasets.{AudienceExtensionSeedSettingsDataset, ExperimentEventDataset, ExperimentEventRecord, ExperimentHitDataset, ExperimentHitType, FirstPartyPixelModelInputDataset, SeenInBiddingV3DeviceDataSet}
+import com.thetradedesk.audience.datasets.{AudienceExtensionSeedSettingsDataset, ExperimentEventDataset, ExperimentEventRecord, ExperimentHitDataset, ExperimentHitStage, ExperimentHitType, FirstPartyPixelModelInputDataset, SeenInBiddingV3DeviceDataSet}
 import com.thetradedesk.audience.transform.ModelFeatureTransform
 import com.thetradedesk.geronimo.shared.shiftModUdf
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -16,6 +16,7 @@ import java.time.LocalDate
 object ExperimentMetricsReporter {
   def main(args: Array[String]): Unit = {
     val testHits = ExperimentHitDataset().readPartition(date, format=Some("tsv"))(spark)
+      .filter('Stage === lit(ExperimentHitStage.Index.id))
     val modelHits = testHits.filter('Type === lit(ExperimentHitType.Model.id))
     val lalHits = testHits.filter('Type === lit(ExperimentHitType.LAL.id))
 
