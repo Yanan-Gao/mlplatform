@@ -7,6 +7,7 @@ FLAGS = flags.FLAGS
 flags.DEFINE_boolean("run_train", default=False, help="Run training step")
 flags.DEFINE_boolean("run_score", default=False, help="Run scoring step")
 flags.DEFINE_boolean("run_calibration", default=False, help="Run calibration step")
+flags.DEFINE_integer("seed", default=42, help="Random seed")
 
 # Shared variables
 INPUT_PATH = "./input/"

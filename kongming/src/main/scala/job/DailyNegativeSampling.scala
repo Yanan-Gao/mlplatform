@@ -79,7 +79,8 @@ object DailyNegativeSampling {
         grainSamplingStartingFrequency= grainSamplingStartingFrequency,
         grainDiscardUntil = grainDiscardUntil,
         grainSampleRateSmoother = grainSampleRateSmoother,
-        totalBidPenalty = totalBidPenalty
+        totalBidPenalty = totalBidPenalty,
+        samplingSeed = samplingSeed
       )(prometheus)
       .toDF()
       .selectAs[DailyNegativeSampledBidRequestRecord]

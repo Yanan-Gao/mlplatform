@@ -162,7 +162,8 @@ object OfflineAttributionTransform {
                                            defaultCvr: Double,
                                            adGroupPolicy: Dataset[AdGroupPolicyRecord],
                                            IsotonicRegPositiveLabelCountThreshold: Int,
-                                           IsotonicRegNegSampleRate: Double
+                                           IsotonicRegNegSampleRate: Double,
+                                           samplingSeed:Long
                                          )(implicit prometheus:PrometheusClient): Tuple2[Dataset[ImpressionForIsotonicRegRecord], Dataset[AdGroupCvrForBiasTuningRecord]] = {
 
   val impressionLevelPerformanceAggBaseAdgroup =   impressionLevelPerformance.drop("AdGroupId").withColumnRenamed("BaseAdGroupId","AdGroupId").cache()
@@ -187,7 +188,7 @@ object OfflineAttributionTransform {
     // downsample negative samples, reflect the sample rate to weight.
     val feedToIsotonicRegressionSampled = feedToIsotonicRegressionImpressions
       .filter($"Label"===lit(0))
-      .sample(IsotonicRegNegSampleRate)
+      .sample(IsotonicRegNegSampleRate, seed=samplingSeed)
       .withColumn("ImpressionWeightForCalibrationModel", $"ImpressionWeightForCalibrationModel"/lit(IsotonicRegNegSampleRate))
       .union(
         feedToIsotonicRegressionImpressions.filter($"Label"===lit(1))

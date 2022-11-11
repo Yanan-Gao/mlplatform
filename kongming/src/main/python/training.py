@@ -17,6 +17,8 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sn
 import os
+import random
+import numpy as np
 
 # setting up training configuration
 FLAGS = flags.FLAGS
@@ -285,7 +287,20 @@ def generate_adgroup_auc(model: tf.keras.Model, train: DatasetV2, val: DatasetV2
 
     return combined_auc
 
+def set_seed(seed: int):
+    random.seed(seed)
+    np.random.seed(seed)
+    tf.random.set_seed(seed)
+    tf.experimental.numpy.random.seed(seed)
+    # When running on the CuDNN backend, two further options must be set
+    os.environ['TF_CUDNN_DETERMINISTIC'] = '1'
+    os.environ['TF_DETERMINISTIC_OPS'] = '1'
+    # Set a fixed value for the hash seed
+    os.environ["PYTHONHASHSEED"] = str(seed)
+    print(f"Random seed set as {seed}")
+
 def main(argv):
+    set_seed(FLAGS.seed)
 
     strategy = tf.distribute.MultiWorkerMirroredStrategy()
     num_gpus = strategy.num_replicas_in_sync

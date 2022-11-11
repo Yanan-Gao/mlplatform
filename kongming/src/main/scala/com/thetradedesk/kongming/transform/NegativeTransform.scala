@@ -62,7 +62,8 @@ object NegativeTransform {
                         grainSamplingStartingFrequency: Int,
                         grainDiscardUntil: Int,
                         grainSampleRateSmoother: Double,
-                        totalBidPenalty: Double
+                        totalBidPenalty: Double,
+                        samplingSeed: Long
                       )(implicit prometheus:PrometheusClient): Dataset[NegativeSamplingBidRequestGrainsRecord] ={
 
     val windowAggregationKeyGrain = Window.partitionBy(grainsForSampling.head, grainsForSampling.tail:_*)
@@ -83,7 +84,7 @@ object NegativeTransform {
         ).
           otherwise(lit(1))   // if grain frequency is between grainDiscardUntil and grainSamplingStartingFrequency, remain all the bids
       )
-      .withColumn("rand", rand())
+      .withColumn("rand", rand(seed=samplingSeed))
       .filter($"rand"<$"SamplingRate")
       .selectAs[NegativeSamplingBidRequestGrainsRecord]
 
