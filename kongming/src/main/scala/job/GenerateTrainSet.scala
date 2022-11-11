@@ -133,16 +133,15 @@ object GenerateTrainSet {
       .cache()
 
     /*
-     current thought is: if there are no val set that's probably because positives are too less so the hash mod is biased.
-     The model probably is not going to perform anyways with too less positive.
-     But it's better to at least have a model.
+     Make sure there are train and val in negative samples.
+     Make sure there are train in positive samples.
      */
     val  dataHaveBothTrainVal = negativeExcludePos
       .groupBy("ConfigValue","ConfigKey").agg(collect_set("IsInTrainSet").as("hasValOrTrain"))
       .filter(size($"hasValOrTrain")===lit(2))
       .join(
-        aggregatedPositiveSet.groupBy("ConfigValue","ConfigKey").agg(collect_set("IsInTrainSet").as("hasValOrTrain"))
-          .filter(size($"hasValOrTrain")===lit(2)),
+        aggregatedPositiveSet.groupBy("ConfigValue","ConfigKey").agg(max("IsInTrainSet").as("hasTrain"))
+          .filter($"hasTrain"===lit(true)),
         Seq("ConfigValue","ConfigKey"),
         "inner"
       ).cache()
@@ -175,7 +174,7 @@ object GenerateTrainSet {
 
 
     // 4. balance  pos and neg
-    val balancedTrainset= balancePosNeg(realPositives, validNegatives, desiredNegOverPos, maxNegativeCount, upSamplingValSet = upSamplingValSet)(prometheus)
+    val balancedTrainset= balancePosNeg(realPositives, validNegatives, desiredNegOverPos, maxNegativeCount, upSamplingValSet = upSamplingValSet, samplingSeed = samplingSeed)(prometheus)
 
     val adjustedPos = balancedTrainset._1.withColumn("Target", lit(1))
     val adjustedNeg = balancedTrainset._2.withColumn("Target", lit(0))

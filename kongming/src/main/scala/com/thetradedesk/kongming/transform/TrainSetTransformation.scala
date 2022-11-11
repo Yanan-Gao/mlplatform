@@ -190,14 +190,15 @@ object TrainSetTransformation {
                      desiredNegOverPos:Int = 9,
                      maxNegativeCount: Int = 500000,
                      method: Option[String] = None,
-                     upSamplingValSet: Boolean = false
+                     upSamplingValSet: Boolean = false,
+                     samplingSeed: Long
                    )(implicit prometheus:PrometheusClient): Tuple2[Dataset[TrainSetRecord], Dataset[TrainSetRecord]] = {
 /*
 1. upsampling vs. class weight https://datascience.stackexchange.com/questions/44755/why-doesnt-class-weight-resolve-the-imbalanced-classification-problem/44760#44760
 2. smote: https://github.com/mjuez/approx-smote
  */
     method match {
-      case _ => upSamplingBySamplyByKey(realPositives, realNegatives, desiredNegOverPos, maxNegativeCount, upSamplingValSet)
+      case _ => upSamplingBySamplyByKey(realPositives, realNegatives, desiredNegOverPos, maxNegativeCount, upSamplingValSet, samplingSeed)
 //        case Some("smote") =>
     }
 
@@ -216,7 +217,8 @@ object TrainSetTransformation {
                                 realNegatives: Dataset[TrainSetRecord],
                                 desiredNegOverPos:Int = 9,
                                 maxNegativeCount: Int = 500000,
-                                upSamplingValSet: Boolean = false
+                                upSamplingValSet: Boolean = false,
+                                samplingSeed: Long
                              ): Tuple2[Dataset[TrainSetRecord], Dataset[TrainSetRecord]] ={
 
     // 1. randomly throw out negatives if it's more than maxNegativeCount
@@ -231,7 +233,7 @@ object TrainSetTransformation {
       .withColumn("RetainRate", least(lit(maxNegativeCount)/$"NegBidCount", lit(1)))
 
     val downSampledNegatives = realNegatives.join(negativeCountsRaw, Seq("ConfigValue", "ConfigKey") )
-      .withColumn("Rand", rand() )
+      .withColumn("Rand", rand(seed=samplingSeed) )
       .filter($"Rand"<=$"RetainRate")
       .selectAs[TrainSetRecord]
       .cache()
@@ -267,14 +269,14 @@ object TrainSetTransformation {
     // 4. upsampling pos  and neg
     val upSampledPos = positivesToResample
       .join(upSamplingFraction.filter($"UpSamplingPosFraction".isNotNull), Seq("ConfigValue", "ConfigKey"),"leftsemi").selectAs[TrainSetRecord]
-      .rdd.keyBy(x => ( x.ConfigValue, x.ConfigKey)).sampleByKey(true, posUpSamplingFraction)
+      .rdd.keyBy(x => ( x.ConfigValue, x.ConfigKey)).sampleByKey(true, posUpSamplingFraction, seed=samplingSeed)
       .map(x=> x._2)
       .toDF()
       .selectAs[TrainSetRecord]
 
     val upSampledNeg = negativeToResample
       .join(upSamplingFraction.filter($"UpSamplingNegFraction".isNotNull), Seq("ConfigValue", "ConfigKey"),"leftsemi").selectAs[TrainSetRecord]
-      .rdd.keyBy(x => ( x.ConfigValue, x.ConfigKey)).sampleByKey(true, negUpSamplingFraction)
+      .rdd.keyBy(x => ( x.ConfigValue, x.ConfigKey)).sampleByKey(true, negUpSamplingFraction, seed=samplingSeed)
       .map(x=> x._2)
       .toDF()
       .selectAs[TrainSetRecord]

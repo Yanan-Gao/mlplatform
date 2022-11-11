@@ -26,6 +26,7 @@ package object kongming {
   var date = config.getDate("date" , LocalDate.now())
   val RoundUpTimeUnit = "minute"
   val policyDate = config.getDate("policydate" , LocalDate.parse("2022-03-15"))
+  val samplingSeed = config.getLong(path = "samplingSeed", 42)
 
   def getExperimentPath(experimentName: String): String = {
     var result:String = ""

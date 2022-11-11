@@ -1,7 +1,7 @@
 package job
 
 import com.thetradedesk.kongming.datasets.{AdGroupCvrForBiasTuningDataset, AdGroupPolicyDataset, BaseAssociateAdGroupMappingIntDataset, ImpressionForIsotonicRegDataset, UnifiedAdGroupDataSet}
-import com.thetradedesk.kongming.{KongmingApplicationName, OutputRowCountGaugeName, RunTimeGaugeName, date, policyDate}
+import com.thetradedesk.kongming.{KongmingApplicationName, OutputRowCountGaugeName, RunTimeGaugeName, date, policyDate, samplingSeed}
 import com.thetradedesk.kongming.transform.TrainSetTransformation.{TrackingTagWeightsRecord, getWeightsForTrackingTags}
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -64,7 +64,7 @@ object OfflineScoringSetAttribution{
     val impressionLevelPerformance =  getOfflineScoreImpressionAndPiecePerformance(offlineScoreLabel)(prometheus)
 
     // 5. get inputs for isotonic regression and bias tuning
-    val inputForCalibration = getInputForCalibrationAndBiasTuning(impressionLevelPerformance, defaultCvr, adGroupPolicy, IsotonicRegPositiveLabelCountThreshold, IsotonicRegNegSampleRate)(prometheus)
+    val inputForCalibration = getInputForCalibrationAndBiasTuning(impressionLevelPerformance, defaultCvr, adGroupPolicy, IsotonicRegPositiveLabelCountThreshold, IsotonicRegNegSampleRate, samplingSeed)(prometheus)
 
     // 6.  todo: temporary in testing phase: read the client test adgroups
     val clientTestAdGroups =  ClientTestAdGroupsIntIdDataset().readClientTestAdGroupsRecord()
