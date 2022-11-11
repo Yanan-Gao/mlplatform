@@ -7,6 +7,7 @@ from absl import app, flags
 from datetime import datetime
 from scoring import get_model
 from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
 from kongming.treebin import optimal_binning_boundary
 from kongming.isotonic_regressor import isotonic_regressor
 from kongming.utils import load_csv, s3_copy, modify_model_embeddings
@@ -51,8 +52,8 @@ flags.DEFINE_string('conversion_model_path', default=MODEL_PATH,
 flags.DEFINE_integer('score_grid_count', default=100000, help='Grid count of scores')
 
 flags.DEFINE_integer('max_leaf_nodes', default=100, help='CVR binning max leaf nodes')
-flags.DEFINE_float('min_samples_leaf', default=0.01, help='CVR binning min samples per leaf')
-flags.DEFINE_float('r2_threshold', default=0.2, help='Isotonic regression r2 threshold.')
+flags.DEFINE_float('min_samples_leaf', default=0.05, help='CVR binning min samples per leaf')
+flags.DEFINE_float('r2_threshold', default=0.1, help='Isotonic regression r2 threshold.')
 
 flags.DEFINE_integer('cpu_cores', default=6, help='Number of cpu cores. It is used for multithread computing.')
 flags.DEFINE_string('asset_adgroup_lookup_score_path', default=ASSET_ADGROUP_LOOKUP_SCORE_PATH, help='asset adgroup look up score path')
@@ -135,15 +136,20 @@ def get_metrics(df: pd.DataFrame):
         , y=predicted_cvr
     )
     r2 = lin_reg.score(binned_cvr, predicted_cvr)
-    slope = lin_reg.coef_[0]
+    slope = lin_reg.coef_[0][0]
     # oe, when it is higher than 1, means underestimate cvr. When is lower than 1, means overestimate cvr.
     # todo: we may use this oe to predicted adjust cvr
     oe = (np.inner(label.reshape(1,-1), sample_weight.reshape(1,-1))/np.inner(predicted_cvr.reshape(1,-1), sample_weight.reshape(1,-1)))[0][0]
+    # mean-squared-error for positives and negative
+    mse_pos = mean_squared_error(df.query('label==1')['cvr'].values, df.query('label==1')['predicted_cvr'].values, sample_weight = df.query('label==1')['imr_weight_for_model'].values)
+    mse_neg = mean_squared_error(df.query('label==0')['cvr'].values, df.query('label==0')['predicted_cvr'].values, sample_weight = df.query('label==0')['imr_weight_for_model'].values)
+    mse_all = mean_squared_error(binned_cvr, predicted_cvr, sample_weight=sample_weight)
     # auc
     fpr, tpr, _ = metrics.roc_curve(label, score, pos_label=1, sample_weight=sample_weight)
     auc = metrics.auc(fpr, tpr)
 
-    return r2, slope, oe, auc
+    metric_dict={ 'R2BinCvrPredCvr': r2, 'SlopeBinCvrPredCvr':slope, 'ObservationOverEstimation': oe, 'AUC': auc, 'MSE_Pos':mse_pos, 'MSE_Neg':mse_neg, 'MSE_All':mse_all}
+    return metric_dict
 
 def get_score_plot_with_bin_cvr(df: pd.DataFrame, ag_log_key, score_plot_path):
     # generate plot
@@ -211,14 +217,14 @@ def calculate_calibration_adjustments(impr_label, bias, cvr_dict, test_adgroups)
             traintest_binned['predicted_cvr'] = traintest_binned['predicted_cvr'].apply(lambda x: x if x > 0 else 0)
 
             # calculate metrics based on sampled impressions
-            r2, slope, oe, auc = get_metrics(traintest_binned)
-            print(f"r-square is {r2}, observation over estimation is {oe}")
+            metrics_dict = get_metrics(traintest_binned)
 
-            if ((slope) > 0) and (r2 > FLAGS.r2_threshold):
+            if ((metrics_dict['SlopeBinCvrPredCvr']) > 0) and (metrics_dict['R2BinCvrPredCvr'] > FLAGS.r2_threshold):
                 for test_ag in test_adgroups.query(f"BaseAdGroupIdInt=={ag}")['AdGroupIdInt'].unique():
                     # log metrics
                     test_ag_id_str = test_adgroups.query(f"AdGroupIdInt=={test_ag}")['AdGroupId'].values[0]
-                    log_dict[test_ag_id_str] = {'method': 'SmoothedIsotonic', 'r2': r2, 'oe': oe, 'auc': auc, 'ag_cvr': ag_cvr}
+                    metrics_dict.update({'Method': 'SmoothedIsotonic', 'Ag_CVR': ag_cvr})
+                    log_dict[test_ag_id_str] = metrics_dict
                     get_score_plot_with_bin_cvr(traintest_binned, test_ag_id_str, score_plot_path)
                     # create score to cvr df
                     ag_df = pd.DataFrame([test_ag] * len(score_range), columns=['adgroupid'])
@@ -231,10 +237,11 @@ def calculate_calibration_adjustments(impr_label, bias, cvr_dict, test_adgroups)
                     # calculate metrics based on sampled impressions
                     traintest_binned['score'] = traintest_binned['score'].apply(lambda x: x-(1e-10) if x == 1 else x)
                     traintest_binned_bias_tuning = parallelize_dataframe(traintest_binned, bias, ag_cvr, new_score_fun, n_cores=FLAGS.cpu_cores)
-                    r2, slope, oe, auc = get_metrics(traintest_binned_bias_tuning)
                     # log metrics
                     test_ag_id_str = test_adgroups.query(f"AdGroupIdInt=={test_ag}")['AdGroupId'].values[0]
-                    log_dict[test_ag_id_str] = {'method': 'BiasTuning', 'r2': r2, 'oe': oe, 'auc': auc, 'ag_cvr': ag_cvr}
+                    metrics_dict = get_metrics(traintest_binned_bias_tuning)
+                    metrics_dict.update({'Method': 'BiasTuning', 'Ag_CVR': ag_cvr})
+                    log_dict[test_ag_id_str] = metrics_dict
                     get_score_plot_with_bin_cvr(traintest_binned_bias_tuning, test_ag_id_str, score_plot_path)
                     # create score to cvr df
                     ag_df = pd.DataFrame([test_ag]*len(score_range), columns=['adgroupid'])
@@ -249,7 +256,7 @@ def calculate_calibration_adjustments(impr_label, bias, cvr_dict, test_adgroups)
             for test_ag in test_adgroups.query(f"BaseAdGroupIdInt=={ag}")['AdGroupIdInt'].unique():
                 # log metrics
                 test_ag_id_str = test_adgroups.query(f"AdGroupIdInt=={test_ag}")['AdGroupId'].values[0]
-                log_dict[test_ag_id_str] = {'method': 'BiasTuning', 'ag_cvr': ag_cvr}
+                log_dict[test_ag_id_str] = {'Method': 'BiasTuning', 'Ag_CVR': ag_cvr}
                 # create score to cvr df
                 ag_df = pd.DataFrame([test_ag] * len(score_range), columns=['adgroupid'])
                 ag_df['score'] = score_range
