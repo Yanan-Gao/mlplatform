@@ -68,9 +68,7 @@ object DailyNegativeSampling {
 
     val grainDiscardUntil = config.getInt(path="grainDiscardUntil", 30)
 
-    val grainSampleRateSmoother = config.getDouble(path="grainSampleRateSmoother", 0.95)
-
-    val totalBidPenalty = config.getDouble(path="totalBidPenalty", 0.5)
+    val grainSampleRateSmoother = config.getDouble(path="grainSampleRateSmoother", 0.5)
 
     val downSampledBidRequestByGrain = NegativeTransform
       .samplingByGrains(
@@ -79,7 +77,6 @@ object DailyNegativeSampling {
         grainSamplingStartingFrequency= grainSamplingStartingFrequency,
         grainDiscardUntil = grainDiscardUntil,
         grainSampleRateSmoother = grainSampleRateSmoother,
-        totalBidPenalty = totalBidPenalty,
         samplingSeed = samplingSeed
       )(prometheus)
       .toDF()
