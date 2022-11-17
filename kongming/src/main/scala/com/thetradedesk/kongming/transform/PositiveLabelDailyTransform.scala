@@ -180,6 +180,7 @@ case class IntraDayBidRequestWithPolicyRecord(
         , $"DataLookBackInSeconds")
     )
     .withColumn("TouchConvTimeDiffInSeconds", unix_timestamp($"ConversionTime") - unix_timestamp($"LogEntryTime"))
+    .filter($"TouchConvTimeDiffInSeconds" >= 0)
     .filter($"lookbackInSeconds">=$"TouchConvTimeDiffInSeconds")
     .withColumn("TruncatedLogEntryTime", date_trunc(RoundUpTimeUnit, $"LogEntryTime"))
     .withColumn("RecencyRank", dense_rank().over(window))

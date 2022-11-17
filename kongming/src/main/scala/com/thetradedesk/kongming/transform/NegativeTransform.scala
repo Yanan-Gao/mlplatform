@@ -52,8 +52,7 @@ object NegativeTransform {
    * @param grainsForSampling sample by those grains
    * @param grainSamplingStartingFrequency when grain's frequency is larger than this, start to down sample grain
    * @param grainDiscardUntil  when grain's frequency is smaller than this, discard grain, because model can't learn from it
-   * @param grainSampleRateSmoother the large the smoother, the more we sample small grains comparing to large grains
-   * @param totalBidPenalty  the more the adgroup's total bids is, the less sample rate is. large smoother will make sample rate less.
+   * @param grainSampleRateSmoother the large the smoother, the more we sample large grains comparing to small grains
    * @return
    */
   def samplingByGrains(
@@ -62,27 +61,22 @@ object NegativeTransform {
                         grainSamplingStartingFrequency: Int,
                         grainDiscardUntil: Int,
                         grainSampleRateSmoother: Double,
-                        totalBidPenalty: Double,
                         samplingSeed: Long
                       )(implicit prometheus:PrometheusClient): Dataset[NegativeSamplingBidRequestGrainsRecord] ={
 
     val windowAggregationKeyGrain = Window.partitionBy(grainsForSampling.head, grainsForSampling.tail:_*)
-    val windowAggregationKey = Window.partitionBy($"AdGroupId")
 
     negativeSamplingBidWithGrains
       .withColumn("GrainFrequency", count($"BidRequestId").over(windowAggregationKeyGrain))
-      .withColumn("TotalBid", count($"BidRequestId").over(windowAggregationKey))
       .withColumn("FlatSampleRate", lit(grainSamplingStartingFrequency)/$"GrainFrequency")
       .withColumn("SamplingRate",
         when(
           $"GrainFrequency"< grainDiscardUntil, lit(0)  // if grain show up too rarely, discard all the bids
         ).when(
-          $"FlatSampleRate"<1,   // if grain frequency exceeds threshold, down sample grain
-          (
-            pow($"FlatSampleRate",grainSampleRateSmoother)*pow(lit(1)/$"TotalBid",  totalBidPenalty)
-            )
-        ).
-          otherwise(lit(1))   // if grain frequency is between grainDiscardUntil and grainSamplingStartingFrequency, remain all the bids
+            $"GrainFrequency"< grainSamplingStartingFrequency, lit(1)
+        ).otherwise(
+          pow($"FlatSampleRate",  grainSampleRateSmoother)
+        )
       )
       .withColumn("rand", rand(seed=samplingSeed))
       .filter($"rand"<$"SamplingRate")
