@@ -13,67 +13,88 @@ def get_tfrecord_files(dir_list):
     files_result = []
     for dir in tqdm(dir_list):
         files = tf.io.gfile.listdir(dir)
-        files_result.extend([
-            os.path.join(dir, f)
-            for f in files
-            if f.endswith(".tfrecord") or f.endswith(".gz")
-        ])
+        files_result.extend(
+            [
+                os.path.join(dir, f)
+                for f in files
+                if f.endswith(".tfrecord") or f.endswith(".gz")
+            ]
+        )
 
     return files_result
 
 
-def tfrecord_dataset(files, batch_size, map_fn, train=True, buffer_size=10000):
+def tfrecord_dataset(files, batch_size, map_fn, train=True, buffer_size=10000, seed=13):
 
     if train:
-        return tf.data.TFRecordDataset(
-            files,
-            compression_type="GZIP",
-        ).shuffle(
-            buffer_size=buffer_size,
-            seed=13,
-            reshuffle_each_iteration=True, # shuffle data after each epoch
-        ).batch(
-            batch_size=batch_size,
-            drop_remainder=True  # make sure each batch has the same batch size
-        ).map(
-            map_fn,
-            num_parallel_calls=tf.data.AUTOTUNE, # parallel computing
-            deterministic=False # concurrency deterministic control like synchronize setting in java
+        return (
+            tf.data.TFRecordDataset(
+                files,
+                compression_type="GZIP",
+            )
+            .shuffle(
+                buffer_size=buffer_size,
+                seed=seed,
+                reshuffle_each_iteration=True,  # shuffle data after each epoch
+            )
+            .batch(
+                batch_size=batch_size,
+                drop_remainder=True,  # make sure each batch has the same batch size
+            )
+            .map(
+                map_fn,
+                num_parallel_calls=tf.data.AUTOTUNE,  # parallel computing
+                deterministic=False,  # concurrency deterministic control like synchronize setting in java
+            )
         )
 
     else:
-        return tf.data.TFRecordDataset(
-            files,
-            compression_type="GZIP",
-        ).batch(
-            batch_size=batch_size,
-            drop_remainder=True  # make sure each batch has the same batch size
-        ).map(
-            map_fn,
-            num_parallel_calls=tf.data.AUTOTUNE, # parallel computing
-            deterministic=False # concurrency deterministic control like synchronize setting in java
+        return (
+            tf.data.TFRecordDataset(
+                files,
+                compression_type="GZIP",
+            )
+            .batch(
+                batch_size=batch_size,
+                drop_remainder=True,  # make sure each batch has the same batch size
+            )
+            .map(
+                map_fn,
+                num_parallel_calls=tf.data.AUTOTUNE,  # parallel computing
+                deterministic=False,  # concurrency deterministic control like synchronize setting in java
+            )
         )
 
 
 # features parser for tfrecord
 class feature_parser:
-    def __init__(self, model_features, model_targets, TargetingDataIdList, Target, exp_var=True):
+    def __init__(
+        self, model_features, model_targets, TargetingDataIdList, Target, exp_var=True
+    ):
         self.Target = Target
         self.TargetingDataIdList = TargetingDataIdList
         self.exp_var = exp_var
         self.feature_description = {}
         for f in model_features:
             if f.type == tf.int32:
-                self.feature_description.update({f.name: tf.io.FixedLenFeature([], tf.int64, f.default_value)})
+                self.feature_description.update(
+                    {f.name: tf.io.FixedLenFeature([], tf.int64, f.default_value)}
+                )
             elif f.type == tf.variant:
                 # variant length generate sparse tensor
                 self.feature_description.update({f.name: tf.io.VarLenFeature(tf.int64)})
             else:
                 # looks like tfrecord convert the data to float32
-                self.feature_description.update({f.name: tf.io.FixedLenFeature([], tf.float32, f.default_value)})
+                self.feature_description.update(
+                    {f.name: tf.io.FixedLenFeature([], tf.float32, f.default_value)}
+                )
 
         self.feature_description.update(
-            {t.name: tf.io.FixedLenFeature([], tf.float32, t.default_value) for t in model_targets})
+            {
+                t.name: tf.io.FixedLenFeature([], tf.float32, t.default_value)
+                for t in model_targets
+            }
+        )
 
     # return function for tf data to use for parsing
     def parser(self):
@@ -81,18 +102,24 @@ class feature_parser:
         # parse function for the tfrecorddataset
         def parse(example):
             # parse example to dict of tensor
-            input_ = tf.io.parse_example(example,  # data: serial Example
-                                         self.feature_description) # schema
-            input_[self.TargetingDataIdList] = tf.sparse.to_dense(input_[self.TargetingDataIdList])
+            input_ = tf.io.parse_example(
+                example, self.feature_description  # data: serial Example
+            )  # schema
+            input_[self.TargetingDataIdList] = tf.sparse.to_dense(
+                input_[self.TargetingDataIdList]
+            )
             # tf.expand_dims: add one more axis here
             # prepare for the matrix calculation in the model part
             if self.exp_var:
-                input_[self.TargetingDataIdList] = tf.expand_dims(input_[self.TargetingDataIdList], axis=1)
+                input_[self.TargetingDataIdList] = tf.expand_dims(
+                    input_[self.TargetingDataIdList], axis=1
+                )
             input_[self.Target] = tf.cast(input_[self.Target], tf.float32)
             target = tf.cast(input_.pop(self.Target), tf.float32)
             return input_, target
 
         return parse
+
 
 # # parse files from the input folder
 # def parse_input_files(path):
