@@ -1,13 +1,6 @@
-from absl import flags
 from tensorflow import keras
 import tensorflow as tf
 from tensorflow.keras import layers, models
-
-FLAGS = flags.FLAGS
-
-flags.DEFINE_string('initializer', default='he_normal', help='initializer to use in the MLP')
-flags.DEFINE_float('feature_dim_factor', default=1.3, help='Tabnet feature dimension factor')
-flags.DEFINE_integer('num_decision_steps', default=5, help='Tabnet num decision steps')
 
 
 def value_feature(name, dtype=tf.float32):
@@ -15,49 +8,63 @@ def value_feature(name, dtype=tf.float32):
     return i, i
 
 
-def get_initialiser():
-    if FLAGS.initializer == "he_normal":
-        return tf.keras.initializers.HeNormal()
+def get_initialiser(initializer="he_normal", seed=13):
+    if initializer == "he_normal":
+        return tf.keras.initializers.HeNormal(seed)
+    else:
+        raise Exception("Initializer not found.")
 
 
-def embedding(name, vocab_size=10000, emb_dim=40, dtype=tf.int32):
+def embedding(
+    name, vocab_size=10000, emb_dim=40, dtype=tf.int32, dropout_rate=0.2, seed=13
+):
     i = keras.Input(shape=(1,), dtype=dtype, name=f"{name}")
-    em = layers.Embedding(input_dim=vocab_size, output_dim=emb_dim, name=f"embedding_{name}",
-                          embeddings_initializer=get_initialiser(),) # output shape: (None,1,emb_dim)
-    f = layers.Flatten(name=f"flatten_{name}") # flatten output shape: (None,1*emb_dim)
-    dr = layers.Dropout(seed=13, rate=0.2, name=f"layer_{name}_dropout")
+    em = layers.Embedding(
+        input_dim=vocab_size,
+        output_dim=emb_dim,
+        name=f"embedding_{name}",
+        embeddings_initializer=get_initialiser(seed=seed),
+    )  # output shape: (None,1,emb_dim)
+    f = layers.Flatten(name=f"flatten_{name}")  # flatten output shape: (None,1*emb_dim)
+    dr = layers.Dropout(seed=seed, rate=dropout_rate, name=f"layer_{name}_dropout")
     return i, dr(f(em(i)))
 
 
-def list_to_embedding(name, vocab_size, em_size):
+def list_to_embedding(name, vocab_size, em_size, dropout_rate=0.2, seed=13):
     i = keras.Input(shape=(1, None), dtype=tf.int32, name=f"{name}")
-    em = layers.Embedding(input_dim=vocab_size, output_dim=em_size, name=f"embedding_{name}",
-                          embeddings_initializer=get_initialiser())
+    em = layers.Embedding(
+        input_dim=vocab_size,
+        output_dim=em_size,
+        name=f"embedding_{name}",
+        embeddings_initializer=get_initialiser(seed=seed),
+    )
     # use for the vary length matrix
     re = layers.Reshape(target_shape=(-1, em_size), name=f"reshape_{name}")
-    dr = layers.Dropout(seed=13, rate=0.2, name=f"layer_{name}_dropout")
+    dr = layers.Dropout(seed=seed, rate=dropout_rate, name=f"layer_{name}_dropout")
     return i, dr(re(em(i)))
 
 
 class TransformBlock(tf.keras.Model):
-
-    def __init__(self, features,
-                 momentum=0.9,
-                 virtual_batch_size=None,
-                 block_name='',
-                 **kwargs):
+    def __init__(
+        self, features, momentum=0.9, virtual_batch_size=None, block_name="", **kwargs
+    ):
         super(TransformBlock, self).__init__(**kwargs)
 
         self.features = features
         self.momentum = momentum
         self.virtual_batch_size = virtual_batch_size
 
-        self.transform = layers.Dense(self.features, use_bias=False, name=f'transformblock_dense_{block_name}')
+        self.transform = layers.Dense(
+            self.features, use_bias=False, name=f"transformblock_dense_{block_name}"
+        )
 
         # in case that the virtual_batch_size cannot work
-        self.bn = tf.keras.layers.BatchNormalization(axis=-1, momentum=momentum,
-                                                     virtual_batch_size=virtual_batch_size,
-                                                     name=f'transformblock_bn_{block_name}')
+        self.bn = tf.keras.layers.BatchNormalization(
+            axis=-1,
+            momentum=momentum,
+            virtual_batch_size=virtual_batch_size,
+            name=f"transformblock_bn_{block_name}",
+        )
 
     def call(self, inputs, training=True):
         x = self.transform(inputs)
@@ -66,16 +73,18 @@ class TransformBlock(tf.keras.Model):
 
 
 class TabNet(tf.keras.Model):
-
-    def __init__(self, num_features,
-                 feature_dim=64,
-                 output_dim=64,
-                 num_decision_steps=5,
-                 relaxation_factor=1.5,
-                 batch_momentum=0.98,
-                 virtual_batch_size=None,
-                 epsilon=1e-5,
-                 **kwargs):
+    def __init__(
+        self,
+        num_features,
+        feature_dim=64,
+        output_dim=64,
+        num_decision_steps=5,
+        relaxation_factor=1.5,
+        batch_momentum=0.98,
+        virtual_batch_size=None,
+        epsilon=1e-5,
+        **kwargs,
+    ):
         """
         a few general principles on hyperparameter
         selection:
@@ -117,7 +126,9 @@ class TabNet(tf.keras.Model):
             raise ValueError("Num decision steps must be greater than 0.")
 
         if feature_dim <= output_dim:
-            raise ValueError("To compute `features_for_coef`, feature_dim must be larger than output dim")
+            raise ValueError(
+                "To compute `features_for_coef`, feature_dim must be larger than output dim"
+            )
 
         feature_dim = int(feature_dim)
         output_dim = int(output_dim)
@@ -126,7 +137,7 @@ class TabNet(tf.keras.Model):
         batch_momentum = float(batch_momentum)
         epsilon = float(epsilon)
 
-        if relaxation_factor < 0.:
+        if relaxation_factor < 0.0:
             raise ValueError("`relaxation_factor` cannot be negative !")
 
         if virtual_batch_size is not None:
@@ -142,29 +153,51 @@ class TabNet(tf.keras.Model):
         self.virtual_batch_size = virtual_batch_size
         self.epsilon = epsilon
 
-        self.input_bn = tf.keras.layers.BatchNormalization(axis=-1, momentum=batch_momentum, name='input_bn')
+        self.input_bn = tf.keras.layers.BatchNormalization(
+            axis=-1, momentum=batch_momentum, name="input_bn"
+        )
 
-        self.transform_f1 = TransformBlock(self.feature_dim, self.batch_momentum, self.virtual_batch_size,
-                                           block_name='f1')
+        self.transform_f1 = TransformBlock(
+            self.feature_dim,
+            self.batch_momentum,
+            self.virtual_batch_size,
+            block_name="f1",
+        )
 
-        self.transform_f2 = TransformBlock(self.feature_dim, self.batch_momentum, self.virtual_batch_size,
-                                           block_name='f2')
+        self.transform_f2 = TransformBlock(
+            self.feature_dim,
+            self.batch_momentum,
+            self.virtual_batch_size,
+            block_name="f2",
+        )
 
         self.transform_f3_list = [
-            TransformBlock(self.feature_dim, self.batch_momentum, self.virtual_batch_size,
-                           block_name=f'f3_{i}')
+            TransformBlock(
+                self.feature_dim,
+                self.batch_momentum,
+                self.virtual_batch_size,
+                block_name=f"f3_{i}",
+            )
             for i in range(self.num_decision_steps)
         ]
 
         self.transform_f4_list = [
-            TransformBlock(self.feature_dim, self.batch_momentum, self.virtual_batch_size,
-                           block_name=f'f4_{i}')
+            TransformBlock(
+                self.feature_dim,
+                self.batch_momentum,
+                self.virtual_batch_size,
+                block_name=f"f4_{i}",
+            )
             for i in range(self.num_decision_steps)
         ]
 
         self.transform_coef_list = [
-            TransformBlock(self.num_features,
-                           self.batch_momentum, self.virtual_batch_size, block_name=f'coef_{i}')
+            TransformBlock(
+                self.num_features,
+                self.batch_momentum,
+                self.virtual_batch_size,
+                block_name=f"coef_{i}",
+            )
             for i in range(self.num_decision_steps - 1)
         ]
 
@@ -186,8 +219,7 @@ class TabNet(tf.keras.Model):
         # the mask for the input features
         mask_values = tf.zeros([batch_size, self.num_features])
         aggregated_mask_values = tf.zeros([batch_size, self.num_features])
-        complementary_aggregated_mask_values = tf.ones(
-            [batch_size, self.num_features])
+        complementary_aggregated_mask_values = tf.ones([batch_size, self.num_features])
 
         for ni in range(self.num_decision_steps):
             # Feature transformer with two shared and two decision step dependent
@@ -196,18 +228,24 @@ class TabNet(tf.keras.Model):
 
             transform_f2 = self.transform_f2(transform_f1, training=training)
 
-            transform_f2 = transform_f2 * tf.constant(0.4) + transform_f1 * tf.constant(0.8)
+            transform_f2 = transform_f2 * tf.constant(0.4) + transform_f1 * tf.constant(
+                0.8
+            )
 
             transform_f3 = self.transform_f3_list[ni](transform_f2, training=training)
 
-            transform_f3 = transform_f3 * tf.constant(0.4) + transform_f2 * tf.constant(0.8)
+            transform_f3 = transform_f3 * tf.constant(0.4) + transform_f2 * tf.constant(
+                0.8
+            )
 
             transform_f4 = self.transform_f4_list[ni](transform_f3, training=training)
 
-            transform_f4 = transform_f4 * tf.constant(0.4) + transform_f3 * tf.constant(0.8)
+            transform_f4 = transform_f4 * tf.constant(0.4) + transform_f3 * tf.constant(
+                0.8
+            )
 
-            if (ni > 0 or self.num_decision_steps == 1):
-                decision_out = tf.nn.relu(transform_f4[:, :self.output_dim])
+            if ni > 0 or self.num_decision_steps == 1:
+                decision_out = tf.nn.relu(transform_f4[:, : self.output_dim])
 
                 # Decision aggregation.
                 output_aggregated += decision_out
@@ -217,7 +255,9 @@ class TabNet(tf.keras.Model):
                 scale_agg = tf.reduce_sum(decision_out, axis=1, keepdims=True)
 
                 if self.num_decision_steps > 1:
-                    scale_agg = scale_agg / tf.cast(self.num_decision_steps - 1, tf.float32)
+                    scale_agg = scale_agg / tf.cast(
+                        self.num_decision_steps - 1, tf.float32
+                    )
 
                 aggregated_mask_values += mask_values * scale_agg
 
@@ -226,7 +266,9 @@ class TabNet(tf.keras.Model):
             if ni < (self.num_decision_steps - 1):
                 # Determines the feature masks via linear and nonlinear
                 # transformations, taking into account of aggregated feature use.
-                mask_values = self.transform_coef_list[ni](features_for_coef, training=training)
+                mask_values = self.transform_coef_list[ni](
+                    features_for_coef, training=training
+                )
                 mask_values *= complementary_aggregated_mask_values
 
                 mask_values = tf.nn.softmax(mask_values * tf.constant(100.0), axis=-1)
@@ -234,7 +276,9 @@ class TabNet(tf.keras.Model):
                 # Relaxation factor controls the amount of reuse of features between
                 # different decision blocks and updated with the values of
                 # coefficients.
-                complementary_aggregated_mask_values *= (self.relaxation_factor - mask_values)
+                complementary_aggregated_mask_values *= (
+                    self.relaxation_factor - mask_values
+                )
 
                 # Feature selection.
                 masked_features = tf.multiply(mask_values, features)
@@ -256,16 +300,42 @@ class TabNet(tf.keras.Model):
         return self._step_aggregate_feature_selection_mask
 
 
-def init_model(model_features, model_dim_group, search_emb_size):
-    model_input_features_tuple = [embedding(f.name, f.cardinality, f.embedding_dim, f.type)
-                                  if f.type == tf.int32 else value_feature(f.name)
-                                  for f in model_features]
+def init_model(
+    model_features,
+    model_dim_group,
+    search_emb_size,
+    feature_dim_factor,
+    num_decision_steps,
+    relaxation_factor=1.5,
+    tabnet_factor=0.15,
+    embedding_factor=1,
+    dropout_rate=0.2,
+    seed=13,
+):
+    model_input_features_tuple = [
+        embedding(
+            name=f.name,
+            vocab_size=f.cardinality,
+            emb_dim=f.embedding_dim,
+            dtype=f.type,
+            seed=seed,
+        )
+        if f.type == tf.int32
+        else value_feature(f.name)
+        for f in model_features
+    ]
     model_input_features = [x[0] for x in model_input_features_tuple]
     model_input_layers = [x[1] for x in model_input_features_tuple]
     model_input_layers = layers.concatenate(model_input_layers)
 
     # model_input_dim = list_to_embedding(model_dim_group[0].name, model_dim_group[0].cardinality, search_emb_size) # model_input_layers.shape[1])
-    model_input_dim = list_to_embedding(model_dim_group[0].name, model_dim_group[0].cardinality, model_input_layers.shape[1])
+    model_input_dim = list_to_embedding(
+        name=model_dim_group[0].name,
+        vocab_size=model_dim_group[0].cardinality,
+        em_size=model_input_layers.shape[1],
+        dropout_rate=dropout_rate,
+        seed=seed,
+    )
     model_inputs_dim = model_input_dim[0]
     input_layer_dim = model_input_dim[1]
 
@@ -277,17 +347,25 @@ def init_model(model_features, model_dim_group, search_emb_size):
     multiply_lambda = lambda array: tf.keras.layers.multiply([array[0], array[1]])
     residual1 = layers.Lambda(multiply_lambda)([model_input_layers, input_layer_dim])
 
-    tabnet = TabNet(num_features=model_input_layers.shape[-1], feature_dim=int(FLAGS.feature_dim_factor * input_layer_dim.shape[-1]), output_dim=input_layer_dim.shape[-1],
-                    num_decision_steps=FLAGS.num_decision_steps)
+    tabnet = TabNet(
+        num_features=model_input_layers.shape[-1],
+        feature_dim=int(feature_dim_factor * input_layer_dim.shape[-1]),
+        output_dim=input_layer_dim.shape[-1],
+        num_decision_steps=num_decision_steps,
+        relaxation_factor=relaxation_factor,
+    )
     tab = tabnet(model_input_layers)
 
     residual2 = layers.Lambda(multiply_lambda)([tab, input_layer_dim])
-    output = residual2 * tf.constant(0.15) + residual1
-    output = layers.Flatten(name="Output")(layers.Dense(1, activation='sigmoid', kernel_initializer=tf.keras.initializers.HeNormal())(output))
+    output = residual2 * tf.constant(tabnet_factor) + residual1 * embedding_factor
+    output = layers.Flatten(name="Output")(
+        layers.Dense(
+            1,
+            activation="sigmoid",
+            kernel_initializer=tf.keras.initializers.HeNormal(seed=seed),
+        )(output)
+    )
 
-    model = models.Model(
-        inputs=model_input,
-        outputs=output,
-        name="Audience_Extension")
+    model = models.Model(inputs=model_input, outputs=output, name="Audience_Extension")
 
     return model

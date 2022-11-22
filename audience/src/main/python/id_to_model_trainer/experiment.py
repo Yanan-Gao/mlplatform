@@ -1,0 +1,340 @@
+from datetime import datetime
+import gc
+import tensorflow as tf
+from id_to_model_trainer import models, features, data
+import mlflow
+from sklearn import metrics
+import pandas as pd
+import seaborn as sns
+import numpy as np
+import os
+import random
+import matplotlib.pyplot as plt
+
+S3_MODELS = "s3://thetradedesk-mlplatform-us-east-1/models"
+ENV = "prod"
+INPUT_PATH = "./input/"
+OUTPUT_PATH = "./output/"
+TOPIC = "ae_date0812_large"
+LOGS_PATH = "./logs/"
+
+
+class AudienceModelExperiment:
+    def __init__(self, **kwargs) -> None:
+
+        # model env config
+        self.input_path = INPUT_PATH
+        self.test_input_path = INPUT_PATH
+        self.output_path = OUTPUT_PATH
+        self.s3_models = S3_MODELS
+        self.env = ENV
+        self.topic = TOPIC
+        self.model_weight_path = None
+        self.model_upload_weights = False
+        self.model_creation_date = datetime.now().strftime("%Y%m%d-%H%M%S")
+        self.log_path = LOGS_PATH
+        self.log_tag = f"{datetime.now().strftime('%Y-%m-%d-%H')}"
+        self.profile_batches = [100, 120]
+        self.subfolder = "split"
+
+        # model params initialize
+        self.search_embedding_size = 64
+        self.batch_size = 10240
+        self.num_epochs = 12
+        self.buffer_size = 1000000
+        self.eval_batch_size = 102400
+        self.num_decision_steps = 5
+        self.feature_dim_factor = 1.3
+        self.learning_rate = 0.001
+        self.relaxation_factor = 1.5
+        self.optimizer = "nadam"
+        self.label_smoothing = 0.001
+        self.tabnet_factor = 0.15
+        self.embedding_factor = 1.0
+        self.dropout_rate = 0.2
+        self.class_weight = {0: 1.0, 1: 1.0}
+        self.seed = 13
+
+        # callback
+        self.save_best = True
+        self.early_stopping_patience = 5
+
+    def update_metadata(self, **kwargs):
+
+        for k, v in kwargs.items():
+            self.__setattr__(k, v)
+
+    def set_seed(self):
+        random.seed(self.seed)
+        np.random.seed(self.seed)
+        tf.random.set_seed(self.seed)
+        tf.experimental.numpy.random.seed(self.seed)
+        # When running on the CuDNN backend, two further options must be set
+        os.environ["TF_CUDNN_DETERMINISTIC"] = "1"
+        os.environ["TF_DETERMINISTIC_OPS"] = "1"
+        # Set a fixed value for the hash seed
+        os.environ["PYTHONHASHSEED"] = str(self.seed)
+        print(f"Random seed set as {self.seed}")
+
+    def get_data(self):
+
+        tf_parser = data.feature_parser(
+            features.model_features + features.model_dim_group,
+            features.model_targets,
+            features.TargetingDataIdList,
+            features.Target,
+            exp_var=False,
+        )
+
+        train_files = data.get_tfrecord_files(
+            [self.input_path + f"{self.subfolder}=train_tfrecord/"]
+        )
+        val_files = data.get_tfrecord_files(
+            [self.input_path + f"{self.subfolder}=val_tfrecord/"]
+        )
+
+        test_files = data.get_tfrecord_files(
+            [self.test_input_path + f"{self.subfolder}=val_tfrecord/"]
+        )
+
+        if len(train_files) == 0 or len(val_files) == 0 or len(test_files) == 0:
+            raise Exception("No training or validation or test files")
+
+        train = data.tfrecord_dataset(
+            train_files,
+            self.batch_size,
+            tf_parser.parser(),
+            train=True,
+            buffer_size=self.buffer_size,
+            seed=self.seed,
+        )
+        val = data.tfrecord_dataset(
+            val_files,
+            self.eval_batch_size,
+            tf_parser.parser(),
+            train=False,
+            seed=self.seed,
+        )
+
+        test = data.tfrecord_dataset(
+            test_files,
+            self.eval_batch_size,
+            tf_parser.parser(),
+            train=False,
+            seed=self.seed,
+        )
+
+        return train, val, test
+
+    def get_optimizer(self):
+        if self.optimizer == "nadam":
+            return tf.keras.optimizers.Nadam(learning_rate=self.learning_rate)
+        elif self.optimizer == "aadam":
+            return tf.keras.optimizers.Adam(learning_rate=self.learning_rate)
+        else:
+            raise Exception("Optimizer not supported.")
+
+    def get_callbacks(self):
+        tb_callback = tf.keras.callbacks.TensorBoard(
+            log_dir=f"{self.log_path}{self.log_tag}",
+            write_graph=True,
+            profile_batch=self.profile_batches,
+        )
+
+        es_cb = tf.keras.callbacks.EarlyStopping(
+            patience=self.early_stopping_patience, restore_best_weights=True
+        )
+
+        checkpoint_base_path = f"{self.output_path}checkpoints/"
+        checkpoint_filepath = (
+            checkpoint_base_path + "weights.{epoch:02d}-{val_loss:.2f}"
+        )
+        chkp_cb = tf.keras.callbacks.ModelCheckpoint(
+            filepath=checkpoint_filepath,
+            save_weights_only=True,
+            monitor="val_loss",
+            mode="min",
+            save_best_only=self.save_best,
+            save_freq="epoch",
+        )
+
+        return [tb_callback, es_cb, chkp_cb]
+
+    def init_model(self):
+
+        model = models.init_model(
+            features.model_features,
+            features.model_dim_group,
+            self.search_embedding_size,
+            self.feature_dim_factor,
+            self.num_decision_steps,
+            self.relaxation_factor,
+            self.tabnet_factor,
+            self.embedding_factor,
+            self.dropout_rate,
+            self.seed,
+        )
+
+        return model
+
+    def generate_model(self):
+
+        model = self.init_model()
+
+        model.summary()
+
+        model.compile(
+            optimizer=self.get_optimizer(),
+            loss=tf.keras.losses.BinaryCrossentropy(
+                from_logits=False, label_smoothing=self.label_smoothing
+            ),
+            metrics=[
+                tf.keras.metrics.AUC(),
+                tf.keras.metrics.Recall(),
+                tf.keras.metrics.Precision(),
+            ],
+        )
+
+        if self.model_weight_path is not None:
+            model.load_weights(self.model_weight_path)
+
+        return model
+
+    def get_AUC_dist(self, val, model):
+        def AUC(df):
+            y = df["target"]
+            pred = df["pred"]
+            fpr, tpr, thresholds = metrics.roc_curve(y, pred, pos_label=1)
+            return metrics.auc(fpr, tpr)
+
+        dfList = []
+        for input, target in val:
+            pred = model.predict_on_batch(input)
+            input["TargetingDataId"] = tf.reshape(input["TargetingDataId"], -1, 1)
+            df = pd.DataFrame(input)
+            df["pred"] = pred
+            df["target"] = target
+            dfList.append(df)
+
+        df_final = pd.concat(dfList, axis=0)
+        df_agg = (
+            df_final.groupby("TargetingDataId")
+            .apply(lambda df: pd.Series({"AUC": AUC(df), "count": df.shape[0]}))
+            .reset_index()
+        )
+
+        df_agg["pixel_rk"] = df_agg["count"].rank(pct=True)
+        df_agg["pixel_size"] = df_agg["pixel_rk"].apply(
+            lambda x: "small" if x <= 0.33 else ("mid" if x <= 0.67 else "large")
+        )
+
+        return df_agg
+
+    def log_auc_fig(self, dataset, model, prefix):
+        # get AUC for each targetingDataId for val data
+        df_agg = self.get_AUC_dist(dataset, model)
+
+        plt.figure()
+        auc_by_pixel = sns.histplot(df_agg.AUC)
+        auc_fig = auc_by_pixel.get_figure()
+        mlflow.log_figure(auc_fig, f"{prefix}_auc_pixel_hist.png")
+        plt.clf()
+
+        plt.figure()
+        auc_by_size = sns.displot(data=df_agg, x="AUC", col="pixel_size")
+        auc_fig_by_size = auc_by_size.fig
+        mlflow.log_figure(auc_fig_by_size, f"{prefix}_auc_by_pixel_size_hist.png")
+        plt.clf()
+
+        df_agg.to_csv(f"{self.output_path}auc/{prefix}_auc.csv")
+        mlflow.log_artifact(f"{self.output_path}auc/{prefix}_auc.csv")
+
+    def run_experiment(self, data, features, **kwargs):
+
+        mlflow.tensorflow.autolog()
+        self.update_metadata(
+            model_creation_date=datetime.now().strftime("%Y%m%d-%H%M%S")
+        )
+
+        with mlflow.start_run(run_name=f"{self.topic}_{self.model_creation_date}"):
+            self.update_metadata(**kwargs)
+
+            # reset seed every time update metadata
+            self.set_seed()
+
+            train, val, test = self.get_data()
+
+            model = self.generate_model()
+
+            model.fit(
+                train,
+                epochs=self.num_epochs,
+                validation_data=val,
+                callbacks=self.get_callbacks(),
+                class_weight=self.class_weight,
+                verbose=True,
+            )
+
+            self.model_path = f"{self.output_path}models/{self.topic}/creation_date={self.model_creation_date}/"
+            model.save(self.model_path)
+
+            if self.model_upload_weights:
+                self.s3_model_output_path = f"{self.s3_models}/{self.env}/audience/model/experiment/date={self.model_creation_date}/"
+
+                data.s3_copy(self.model_path, self.s3_model_output_path)
+
+            # log AUC for each targetingDataId for val and test data
+            self.log_auc_fig(val, model, "val")
+
+            self.log_auc_fig(test, model, "test")
+
+            # get test metrics
+            test_score = model.evaluate(test)
+
+            # log extra params and metrics
+            mlflow.log_params(
+                {
+                    "search_embedding_size": self.search_embedding_size,
+                    "train_batch_size": self.batch_size,
+                    "num_epochs": self.num_epochs,
+                    "buffer_size": self.buffer_size,
+                    "eval_batch_size": self.eval_batch_size,
+                    "learning_rate": self.learning_rate,
+                    "relaxation_factor": self.relaxation_factor,
+                    "feature_dim_facor": self.feature_dim_factor,
+                    "num_decision_steps": self.num_decision_steps,
+                    "tabnet_factor": self.tabnet_factor,
+                    "embedding_factor": self.embedding_factor,
+                    "optimizer": self.optimizer,
+                    "label_smoothing": self.label_smoothing,
+                    "seed": self.seed,
+                    "dropout_rate": self.dropout_rate,
+                    "class_weight": self.class_weight,
+                }
+            )
+
+            mlflow.set_tag(
+                "trainingSet", self.input_path + f"{self.subfolder}=train_tfrecord/"
+            )
+            mlflow.set_tag(
+                "validationSet", self.input_path + f"{self.subfolder}=val_tfrecord/"
+            )
+            mlflow.set_tag(
+                "testSet", self.test_input_path + f"{self.subfolder}=val_tfrecord/"
+            )
+
+            mlflow.log_metrics(
+                {
+                    "test_loss": test_score[0],
+                    "test_auc": test_score[1],
+                }
+            )
+
+            del (
+                train,
+                val,
+                test,
+                model,
+            )
+            tf.keras.backend.clear_session()
+            gc.collect()
