@@ -52,9 +52,7 @@ object AdGroupPolicyDataset {
 
   def readHardCodedDataset(date: LocalDate): Dataset[AdGroupPolicyRecord] = {
 
-    val hardCodedPolicy = spark.read
-      .options(Map("inferSchema"->"true","delimiter"->",","header"->"true"))
-      .csv(s"${S3Path}/date=${date.toString}")
+    val hardCodedPolicy = readHardCodedDataFrame(date)
 
     //load advertiser dataset for attribution window and campaign data for aux
     val advertiserDS = AdvertiserDataSet().readLatestPartition()
@@ -67,4 +65,11 @@ object AdGroupPolicyDataset {
 
     adGroupPolicy
   }
+
+  def readHardCodedDataFrame(date: LocalDate): DataFrame =  {
+    spark.read
+      .options(Map("inferSchema" -> "true", "delimiter" -> ",", "header" -> "true"))
+      .csv(s"${S3Path}/date=${date.toString}")
+  }
+
 }
