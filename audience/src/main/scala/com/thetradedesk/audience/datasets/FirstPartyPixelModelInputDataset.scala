@@ -31,9 +31,9 @@ final case class FirstPartyPixelModelInputRecord(
                                                   RenderingContext: Option[Int],
                                                   @FeatureDesc("DeviceType", "int", 9)
                                                   DeviceType: Option[Int],
-                                                  @FeatureDesc("OperatingSystemFamily", "int", 6)
+                                                  @FeatureDesc("OperatingSystemFamily", "int", 8)
                                                   OperatingSystemFamily: Option[Int],
-                                                  @FeatureDesc("Browser", "int", 15)
+                                                  @FeatureDesc("Browser", "int", 16)
                                                   Browser: Option[Int],
                                                   @FeatureDesc("TargetingDataId", "long", 2000003)
                                                   TargetingDataId: Int,
@@ -55,6 +55,8 @@ final case class FirstPartyPixelModelInputRecord(
                                                   AdvertiserId: String,
                                                   CampaignId: String,
                                                   AdGroupId: String,
+
+                                                  IsPrimaryTDID: Int
                                                 )
 
 case class FirstPartyPixelModelInputDataset(tag: String) extends
