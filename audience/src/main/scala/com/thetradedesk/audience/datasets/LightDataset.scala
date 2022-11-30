@@ -13,14 +13,16 @@ import scala.reflect.runtime.universe._
 
 object DatasetSource {
   val Logs: String = "Log"
+  val CrossDeviceGraph: String = "CrossDeviceGraph"
 }
 
 abstract class LightDataset(dataSetPath: String,
                             rootPath: String,
                             dateFormat: String) {
   lazy val basePath: String = LightDataset.ConcatPath(dataSetPath, rootPath)
-  private lazy val dateFormatter = DateTimeFormatter.ofPattern(dateFormat)
+  lazy val dateFormatter = DateTimeFormatter.ofPattern(dateFormat)
   lazy val logsDateFormatter = DateTimeFormatter.ofPattern("yyyy/MM/dd")
+  lazy val crossDeviceDateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
   def DatePartitionedPath(
                            date: Option[LocalDate] = None,
@@ -109,10 +111,12 @@ abstract class LightReadableDataset[T <: Product : Manifest](
                     format: Option[String] = None,
                     lookBack: Option[Int] = None,
                     dateSeparator: Option[String] = None)(implicit spark: SparkSession): Dataset[T] = {
-    val paths = source match {
+    val paths = (source match {
       case Some(DatasetSource.Logs) => (0 to lookBack.getOrElse(0)) map (x => s"$basePath/${date.minusDays(x).format(logsDateFormatter)}")
+      case Some(DatasetSource.CrossDeviceGraph) => (0 to lookBack.getOrElse(0)) map (x => s"$basePath/${date.minusDays(x).format(crossDeviceDateFormatter)}/success")
       case _ => parquetDataPaths(basePath, date, source, lookBack, separator = dateSeparator)
-    }
+    }).filter(FSUtils.directoryExists(_)(spark))
+
     format match {
       case Some("tfrecord") => spark
         .read
@@ -129,7 +133,12 @@ abstract class LightReadableDataset[T <: Product : Manifest](
         .load(paths.flatMap(x => FSUtils.listFiles(x, true)(spark).map(y => x + "/" + y)): _*)
         .toDF(typeOf[T].members.sorted.collect { case m: MethodSymbol if m.isCaseAccessor => m.name.toString }: _*)
         .selectAs[T]
-      case _ => loadParquetData[T](basePath, date, source, lookBack, dateSeparator)
+      case _ => {
+        source match {
+          case Some(DatasetSource.CrossDeviceGraph) => spark.read.parquet(paths: _*).selectAs[T]
+          case _ => loadParquetData[T](basePath, date, source, lookBack, dateSeparator)
+        }
+      }
     }
   }
 
