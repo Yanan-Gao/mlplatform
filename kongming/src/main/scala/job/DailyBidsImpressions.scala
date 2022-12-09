@@ -30,6 +30,7 @@ object DailyBidsImpressions {
 
     outputRowsWrittenGauge.labels("DailyBidsImpressionsDataset").set(dailyBidsImpressionsRows)
     jobDurationGaugeTimer.setDuration()
+    prometheus.pushMetrics()
     spark.stop()
   }
 }
