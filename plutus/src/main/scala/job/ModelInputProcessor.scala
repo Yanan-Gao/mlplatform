@@ -16,7 +16,7 @@ object ModelInputProcessor extends Logger {
   val ttdEnv = config.getString("ttd.env" , "dev")
   val date = config.getDate("date" , LocalDate.now())
   val daysOfDat = config.getInt("daysOfDat" , 1)
-  val svNames = config.getStringSeq("svNames", Seq("google", "rubicon"))
+  val svNames = config.getStringSeq("svNames", Seq("google", "rubicon", "pubmatic"))
   val inputPath = config.getString("inputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc")
   val inputPrefix = config.getString("inputPrefix" , "clean")
 
