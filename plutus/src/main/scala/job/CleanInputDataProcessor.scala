@@ -17,7 +17,7 @@ object CleanInputDataProcessor {
   val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc")
   val inputPrefix = config.getString("inputPrefix" , "raw")
   val outputPrefix = config.getString("outputPrefix" , "clean")
-  val svNames = config.getStringSeq("svName", Seq("google", "rubicon"))
+  val svNames = config.getStringSeq("svName", Seq("google", "rubicon", "pubmatic"))
   val extremeValueThreshold = config.getDouble("mbwRatio" , 0.8)
   val ttdEnv = config.getString("ttd.env" , "dev")
 
