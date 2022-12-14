@@ -93,30 +93,12 @@ object TrainingDataTransform {
     // load input data
     val paths = inputDataPaths(s3Path = s3Path, s3Prefix = inputS3Prefix, ttdEnv = ttdEnv, svName = svName, endDate = endDate, lookBack = lookBack)
 
-    // split the data into training, validation, test
-    // paths --> training_paths, val_ts_path
-    val (trainPaths, valTestPaths) = temporalPathSplits(paths)
-
-    val trainInputData = loadInputData(trainPaths)
-    val valTestInputData = loadInputData(valTestPaths)
-    val (valInputData, testInputData) = createDataSplits(valTestInputData)
-
-    val trainRows = trainInputData.cache.count()
-    val testRows = testInputData.cache.count()
-    val valRows = valInputData.cache.count()
-
-    val metaData: Dataset[MetaData] = Seq(MetaData(endDate, trainRows, testRows, valRows)).toDS()
-    val metaDataS3 = plutusDataPath(s3Path, ttdEnv, prefix = "metadata", svName, endDate)
-
-    metaData.write.option("header", "true")
+  /*  metaData.write.option("header", "true")
       .option("delimiter","\t")
       .mode(SaveMode.Overwrite)
       .csv(metaDataS3)
-
-    trainCount.labels(svName.getOrElse("none")).set(trainRows)
-    validationCount.labels(svName.getOrElse("none")).set(testRows)
-    testCount.labels(svName.getOrElse("none")).set(valRows)
-
+    */
+    
     // convert to int (hash)
     val selectionTabular = intModelFeaturesCols(modelFeatures) ++ modelTargetCols(modelTargets)
 
@@ -131,6 +113,27 @@ object TrainingDataTransform {
       .csv(plutusDataPath(s3Path, ttdEnv, prefix = "singledayprocessed", svName, endDate))
 
     if (!onlyWriteSingleDay) {
+
+      // split the data into training, validation, test
+      // paths --> training_paths, val_ts_path
+      val (trainPaths, valTestPaths) = temporalPathSplits(paths)
+
+      val trainInputData = loadInputData(trainPaths)
+      val valTestInputData = loadInputData(valTestPaths)
+      val (valInputData, testInputData) = createDataSplits(valTestInputData)
+
+      val trainRows = trainInputData.cache.count()
+      val testRows = testInputData.cache.count()
+      val valRows = valInputData.cache.count()
+
+      val metaData: Dataset[MetaData] = Seq(MetaData(endDate, trainRows, testRows, valRows)).toDS()
+      val metaDataS3 = plutusDataPath(s3Path, ttdEnv, prefix = "metadata", svName, endDate)
+
+      trainCount.labels(svName.getOrElse("none")).set(trainRows)
+      validationCount.labels(svName.getOrElse("none")).set(testRows)
+      testCount.labels(svName.getOrElse("none")).set(valRows)
+
+
       outputPermutations(trainInputData, valInputData, testInputData, selectionTabular, formats)
         .foreach {
           case ((name, df, partitions), TFRECORD_FORMAT) =>
