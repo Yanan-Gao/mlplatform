@@ -31,6 +31,14 @@ class NoMask(Layer):
 class Linear(Layer):
 
     def __init__(self, l2_reg=0.0, mode=0, use_bias=False, seed=SEED, **kwargs):
+        """
+        Args:
+            l2_reg: l2 regularization
+            mode: 0: sparse only; 1: linear only, 2: sparse and linear
+            use_bias: either use bias or not for linear product
+            seed: random seed
+            **kwargs:
+        """
 
         self.l2_reg = l2_reg
         if mode not in [0, 1, 2]:
@@ -46,6 +54,8 @@ class Linear(Layer):
                                         shape=(1,),
                                         initializer=Zeros(),
                                         trainable=True)
+        # if model==0, there won't be linear kernel for the model, all the sparse coefficient will be incorporated
+        # in the linear embedding
         if self.mode == 1:
             self.kernel = self.add_weight(
                 'linear_kernel',
@@ -116,6 +126,7 @@ def add_func(inputs):
 
 
 def combined_dnn_input(sparse_embedding_list, dense_value_list):
+    # concat sparse embedding, dense input, flatten for the DNN
     if len(sparse_embedding_list) > 0 and len(dense_value_list) > 0:
         sparse_dnn_input = Flatten()(concat_func(sparse_embedding_list))
         dense_dnn_input = Flatten()(concat_func(dense_value_list))
@@ -130,6 +141,9 @@ def combined_dnn_input(sparse_embedding_list, dense_value_list):
 
 def concat_func(inputs, axis=-1, mask=False):
     if not mask:
+        # old tensorflow might have issue if previous layers are no mask but the new one are masked
+        # added this to make sure no error, new version seems to not have this issue, but need to test it
+        # before get it to the production
         inputs = list(map(NoMask(), inputs))
     if len(inputs) == 1:
         return inputs[0]

@@ -190,7 +190,7 @@ def get_linear_logit(features, feature_columns, units=1, use_bias=False, seed=SE
             linear_feature_columns[i] = linear_feature_columns[i]._replace(
                 sparsefeat=linear_feature_columns[i].sparsefeat._replace(
                     embedding_dim=1, embeddings_initializer=Zeros()))
-    # get the embedding linear logit
+    # get the embedding linear logit, which represents the one hot encoding
     linear_emb_list = [input_from_feature_columns(features, linear_feature_columns, l2_reg, seed,
                                                   prefix=prefix + str(i))[0] for i in range(units)]
     # get the dense input for fm
@@ -234,7 +234,8 @@ def input_from_feature_columns(features, feature_columns, l2_reg, seed, prefix='
         prefix: prefix for the name of the tensor
         seq_mask_zero: whether mask sequence
         support_dense: whether support dense features
-        support_group: whether support grouping features, not used in deepfm
+        support_group: whether support grouping features, not used in deepfm, but if used, it means that there are
+                       certain groups of features that could only interact with the features within the group
 
     Returns: embedding list and dense list
 
@@ -320,3 +321,4 @@ def get_dcn_input(cross_num, dnn_feature_columns, dnn_hidden_units, l2_reg_embed
                                                                          l2_reg_embedding, seed)
     dnn_input = combined_dnn_input(sparse_embedding_list, dense_value_list)
     return dnn_input, inputs_list, linear_logit
+
