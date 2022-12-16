@@ -137,3 +137,17 @@ def include_layer(new_model, old_model, inclusion):
             print(f'error, for layer {i}, {ve}, skipping')
             continue
 
+
+def align_model_feature(input_layers, model_features):
+    """
+    align the model_features order based on model input layers
+    Args:
+        input_layers: list of input layers from previous trained model
+        model_features: model_features that is extracted from the features.json
+
+    Returns: re-aligned model features
+
+    """
+    model_input_order = [i.name for i in input_layers]
+    feature_dict = {i.name: i for i in model_features}
+    return [feature_dict.get(i) for i in model_input_order if feature_dict.get(i) is not None]

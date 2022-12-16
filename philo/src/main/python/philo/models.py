@@ -1,11 +1,14 @@
 from philo.features import build_input_features, get_linear_logit, input_from_feature_columns, SparseFeat, DenseFeat, \
     get_dcn_input
-from philo.layers import add_func, concat_func, combined_dnn_input, DNN, FM, PredictionLayer, CrossNet, CrossNetMix, CIN
-
+from philo.layers import add_func, concat_func, combined_dnn_input, \
+    DNN, FM, PredictionLayer, CrossNet, CrossNetMix, CIN, Linear
+import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.initializers import glorot_normal
-from tensorflow.keras.layers import Dense, Concatenate
+from tensorflow.keras.layers import Dense, Concatenate, Embedding, InputLayer
+from collections import OrderedDict
 from itertools import chain
+import warnings
 
 ############################################################################################
 # starting of ctr model
@@ -200,7 +203,7 @@ def dcn(linear_feature_columns, dnn_feature_columns, cross_num=2, cross_paramete
         dnn_hidden_units=(256, 128, 64), l2_reg_linear=1e-5, l2_reg_embedding=1e-5,
         l2_reg_cross=1e-5, l2_reg_dnn=0, seed=1024, dnn_dropout=0, dnn_use_bn=False,
         dnn_activation='relu', task='binary'):
-    """Instantiates the Deep&Cross Network architecture.
+    """Instantiates the Deep&Cross Network architecture. added by Paniti
     :param linear_feature_columns: An iterable containing all the features used by linear part of the model.
     :param dnn_feature_columns: An iterable containing all the features used by deep part of the model.
     :param cross_num: positive integet,cross layer number

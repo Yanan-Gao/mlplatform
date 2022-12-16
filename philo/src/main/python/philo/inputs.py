@@ -104,7 +104,7 @@ def embedding_lookup(sparse_embedding_dict, sparse_input_dict, sparse_feature_co
 
 def varlen_embedding_lookup(embedding_dict, sequence_input_dict, varlen_sparse_feature_columns):
     """
-    create a list of embedded features
+    create a list of embedded features for variable length embedding layers
     Args:
         embedding_dict: embedding dictionary
         sequence_input_dict: dictionary for sequence inputs

@@ -353,3 +353,9 @@ def make_test_model(name_size):
     for name, size in name_size.items():
         model.add(tf.keras.layers.Dense(8, activation='relu', use_bias=False, name=name))
     return model
+
+
+def create_weights_for_layer(layer):
+    weights = layer.get_weights()
+    return [np.random.randn(*weights[0].shape)]
+
