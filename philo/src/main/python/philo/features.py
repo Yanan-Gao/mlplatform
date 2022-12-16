@@ -308,6 +308,32 @@ def get_map_function_test(model_features, model_target, keep_id):
     return _parse_examples
 
 
+def get_map_function_weighted(model_features, model_target, weight_name, weight_value):
+    """create function for transforming data during tf data pipeline
+
+    Args:
+        model_features (list): feature definition
+        model_target (nametuple): target nametuple
+        weight_name (string): name of weight column in dataframe
+        weight_value: if 100, then upweight would be 101
+
+    Returns:
+        function: function for transforming
+    """
+    feature_description = {f.name: tf.io.FixedLenFeature(1, f.type, f.default_value) for f
+                           in model_features}
+    feature_description[model_target.name] = tf.io.FixedLenFeature(1, model_target.type, model_target.default_value)
+    feature_description[weight_name] = tf.io.FixedLenFeature(1, tf.int64, 0)
+
+    def _parse_examples(serial_exmp):
+        features = tf.io.parse_example(serial_exmp, features=feature_description)
+        label = features.pop(model_target.name)
+        weight = tf.add(tf.multiply(features.pop(weight_name), weight_value), 1)
+        return features, label, weight
+
+    return _parse_examples
+
+
 def get_dcn_input(cross_num, dnn_feature_columns, dnn_hidden_units, l2_reg_embedding, l2_reg_linear,
                   linear_feature_columns, seed):
     if len(dnn_hidden_units) == 0 and cross_num == 0:

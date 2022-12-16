@@ -9,7 +9,7 @@ import pandas as pd
 import numpy as np
 from tensorflow_serving.apis import predict_pb2
 
-from philo.features import get_map_function, get_map_function_test
+from philo.features import get_map_function, get_map_function_test, get_map_function_weighted
 
 TRAIN = "train"
 VAL = "validation"
@@ -157,8 +157,7 @@ def tfrecord_dataset(files, batch_size, map_fn, compression_type="GZIP", prefetc
 
 
 def create_datasets(files_dict, batch_size, model_features,
-                    model_target, map_function=get_map_function,
-                    map_function_test=get_map_function_test,
+                    model_target, map_function,
                     compression_type="GZIP", eval_batch_size=None,
                     prefetch_num=10, test_batch_size=2 ** 17,
                     offline_test=False, repeat=False):
@@ -171,14 +170,13 @@ def create_datasets(files_dict, batch_size, model_features,
         model_features: list of features
         model_target: model target
         map_function: transformation function
-        map_function_test: transformation function during offline testing
         compression_type: type of tfrecords compression format
         eval_batch_size: batch size for evaluation
         test_batch_size: batch size for testing
         offline_test: do offline test or not, this decides whether test data will generate bidRequestId
         repeat: whether repeat dataset or not, useful if run through data set in multiple epochs, need to set the
                 steps_per_epochs if repeat is true
-    Returns:
+    Returns: dictionary of datasets
 
     """
     ds = {}
@@ -186,27 +184,28 @@ def create_datasets(files_dict, batch_size, model_features,
         if split == TRAIN:
             ds[split] = tfrecord_dataset(files=files,
                                          batch_size=batch_size,
-                                         map_fn=map_function(model_features, model_target),
+                                         map_fn=map_function,
                                          compression_type=compression_type,
                                          prefetch_num=prefetch_num, repeat=repeat
                                          )
         elif split == TEST:
             if offline_test:
+                map_test_func = get_map_function_test(model_features, model_target, "BidRequestId")
                 ds[split] = tfrecord_dataset(files=files,
                                              batch_size=test_batch_size if test_batch_size is not None else batch_size,
-                                             map_fn=map_function_test(model_features, model_target, "BidRequestId"),
+                                             map_fn=map_test_func,
                                              compression_type=compression_type
                                              )
             else:
                 ds[split] = tfrecord_dataset(files=files,
                                              batch_size=eval_batch_size if eval_batch_size is not None else batch_size,
-                                             map_fn=map_function(model_features, model_target),
+                                             map_fn=map_function,
                                              compression_type=compression_type
                                              )
         else:
             ds[split] = tfrecord_dataset(files=files,
                                          batch_size=eval_batch_size if eval_batch_size is not None else batch_size,
-                                         map_fn=map_function(model_features, model_target),
+                                         map_fn=map_function,
                                          compression_type=compression_type
                                          )
     return ds
@@ -257,7 +256,8 @@ def prepare_dummy_data(model_features, model_target, batch_size):
 
 def prepare_real_data(model_features, model_target, input_path,
                       batch_size, eval_batch_size, prefetch_num=10,
-                      offline_test=False, repeat=False):
+                      offline_test=False, repeat=False, weight_name=None,
+                      weight_value=None):
     """
     create real dataset
     Args:
@@ -269,16 +269,25 @@ def prepare_real_data(model_features, model_target, input_path,
         eval_batch_size: batch size for evaluating
         offline_test: if true, generate bidRequestId besides features and target
         repeat: if data is split into trunks, need to set it to True
+        weight_name: name for the weight column
+        weight_value: weight value
 
-    Returns:
+    Returns: dictionary of dataset
 
     """
     # print(input_path)
     files = list_tfrecord_files(input_path)
     # print(files)
+    if weight_name is not None and weight_value is not None:
+        map_func = get_map_function_weighted(model_features, model_target, weight_name, weight_value)
+    elif weight_name is None and weight_value is None:
+        map_func = get_map_function(model_features, model_target)
+    else:
+        raise Exception('weight_name and weight have to be both not None to use the sample_weight')
     return create_datasets(files_dict=files, batch_size=batch_size, model_features=model_features,
-                           model_target=model_target, compression_type="GZIP", eval_batch_size=eval_batch_size,
-                           prefetch_num=prefetch_num, offline_test=offline_test, repeat=repeat)
+                           model_target=model_target, map_function=map_func, compression_type="GZIP",
+                           eval_batch_size=eval_batch_size, prefetch_num=prefetch_num, offline_test=offline_test,
+                           repeat=repeat)
 
 
 def generate_random_grpc_query(model_features, model_name, version=None):
