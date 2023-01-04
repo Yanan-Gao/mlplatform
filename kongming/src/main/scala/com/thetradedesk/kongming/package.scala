@@ -43,6 +43,7 @@ package object kongming {
   def multiLevelJoinWithPolicy[T: Encoder](
                                             inputDataSet: Dataset[_]
                                             , adGroupPolicy: Dataset[AdGroupPolicyRecord]
+                                            , joinType: String
                                           ): Dataset[T] = {
     // TODO: will need to enrich this logic but for now assuming hierarchical structure of keys
     // Caution: there might be cases where adgroupid, campaignId, advertiserId collide. Will need to resolve that at some point.
@@ -51,7 +52,7 @@ package object kongming {
     val joinCondition = fieldsToJoin.map(x => col(x._1) === col(x._2)).reduce(_ || _)
 
     inputDataSet
-      .join(broadcast(adGroupPolicy), joinCondition, "inner")
+      .join(broadcast(adGroupPolicy), joinCondition, joinType)
       .selectAs[T]
   }
 
@@ -60,6 +61,7 @@ package object kongming {
                                             inputDataSet: Dataset[_]
                                             , adGroupPolicy: Dataset[AdGroupPolicyRecord]
                                             , filterCondition: Column
+                                            , joinType: String
                                           ): Dataset[T] = {
     // TODO: will need to enrich this logic but for now assuming hierarchical structure of keys
     // Caution: there might be cases where adgroupid, campaignId, advertiserId collide. Will need to resolve that at some point.
@@ -68,7 +70,7 @@ package object kongming {
     val joinCondition = fieldsToJoin.map(x => col(x._1) === col(x._2)).reduce(_ || _)
 
     inputDataSet
-      .join(broadcast(adGroupPolicy), joinCondition, "inner")
+      .join(broadcast(adGroupPolicy), joinCondition, joinType)
       .filter(filterCondition)
       .selectAs[T]
   }

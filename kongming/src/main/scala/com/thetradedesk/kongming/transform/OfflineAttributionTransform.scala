@@ -60,7 +60,7 @@ object OfflineAttributionTransform {
     // AttributedEventTypeId: 1->Click, 2-> Impression；
     // AttributionMethodId: 0 -> 'LastClick' , 1 -> 'ViewThrough' , 2 -> 'Touch'
     val attributedEvent =  AttributedEventDataSet().readRange(endDate.minusDays(lookBack), endDate, isInclusive = true).selectAs[AttributedEventRecord]
-    val filteredAttributedEvent = multiLevelJoinWithPolicy[AttributedEventRecord](attributedEvent, adGroupPolicy)
+    val filteredAttributedEvent = multiLevelJoinWithPolicy[AttributedEventRecord](attributedEvent, adGroupPolicy, joinType = "left_semi")
       .filter($"AttributedEventTypeId".isin(List("1", "2"): _*))
       .withColumn("AttributedEventLogEntryTime", to_timestamp(col("AttributedEventLogEntryTime")).as("AttributedEventLogEntryTime"))
       .selectAs[AttributedEventRecord]

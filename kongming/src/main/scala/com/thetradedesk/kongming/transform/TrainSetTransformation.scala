@@ -323,7 +323,7 @@ object TrainSetTransformation {
   def getBaseAssociateAdGroupIntMappings(
                                        adGroupPolicy: Dataset[AdGroupPolicyRecord],
                                        adGroupDS: Dataset[AdGroupRecord]): Dataset[BaseAssociateAdGroupMappingIntRecord] = {
-    multiLevelJoinWithPolicy[BaseAssociateAdGroupMapping](adGroupDS, adGroupPolicy)
+    multiLevelJoinWithPolicy[BaseAssociateAdGroupMapping](adGroupDS, adGroupPolicy, "inner")
       .withColumn("AdGroupIdInt", shiftModUdf(xxhash64(col("AdGroupId")), lit(modelDimensions(0).cardinality.getOrElse(0))))
       .withColumnRenamed("ConfigValue", "BaseAdGroupId")
       .withColumn("BaseAdGroupIdInt", shiftModUdf(xxhash64(col("BaseAdGroupId")), lit(modelDimensions(0).cardinality.getOrElse(0))))

@@ -30,7 +30,7 @@ object OfflineScoringSetTransform {
     val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
 
     val filterCondition = $"IsImp" === true
-    val bidsImpressionsFilterByPolicy = multiLevelJoinWithPolicy[BidsImpressionsSchema](prefilteredDS, adGroupPolicy, filterCondition)
+    val bidsImpressionsFilterByPolicy = multiLevelJoinWithPolicy[BidsImpressionsSchema](prefilteredDS, adGroupPolicy, filterCondition, joinType = "left_semi")
 
     bidsImpressionsFilterByPolicy
       //Assuming ConfigKey will always be adgroupId.
