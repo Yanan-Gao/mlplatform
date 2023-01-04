@@ -15,14 +15,18 @@ package object audience {
   val trainSetDownSampleFactor = config.getInt("trainSetDownSampleFactor", default = 2)
   val sampleHit = config.getString("sampleHit", "0")
 
+  val userDownSampleBasePopulation = config.getInt("userDownSampleBasePopulation", default = 1000000)
+  val userDownSampleHitPopulation = config.getInt("userDownSampleHitPopulation", default = 10000)
+  val userDownSampleHitPopulationV2 = config.getInt("userDownSampleHitPopulationV2", default = 100000)
+
   private val userIsInSampleUDF = udf[Boolean, String, Long, Long](userIsInSample)
   private val doNotTrackTDID = lit("00000000-0000-0000-0000-000000000000")
 
   def shouldConsiderTDID(symbol: Symbol) = {
-    symbol.isNotNullOrEmpty && symbol =!= doNotTrackTDID && substring(symbol, 9, 1) === lit("-") && userIsInSampleUDF(symbol, lit(1000000), lit(10000))
+    symbol.isNotNullOrEmpty && symbol =!= doNotTrackTDID && substring(symbol, 9, 1) === lit("-") && userIsInSampleUDF(symbol, lit(userDownSampleBasePopulation), lit(userDownSampleHitPopulation))
   }
 
   def shouldConsiderTDID2(symbol: Symbol) = {
-    symbol.isNotNullOrEmpty && symbol =!= doNotTrackTDID && substring(symbol, 9, 1) === lit("-") && userIsInSampleUDF(symbol, lit(1000000), lit(100000))
+    symbol.isNotNullOrEmpty && symbol =!= doNotTrackTDID && substring(symbol, 9, 1) === lit("-") && userIsInSampleUDF(symbol, lit(userDownSampleBasePopulation), lit(userDownSampleHitPopulationV2))
   }
 }

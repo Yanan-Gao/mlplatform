@@ -59,5 +59,5 @@ final case class FirstPartyPixelModelInputRecord(
                                                   IsPrimaryTDID: Int
                                                 )
 
-case class FirstPartyPixelModelInputDataset(tag: String) extends
-  LightWritableDataset[FirstPartyPixelModelInputRecord](s"/${ttdEnv}/audience/firstPartyPixel/${tag}/v=1", S3Roots.ML_PLATFORM_ROOT, 100)
+case class FirstPartyPixelModelInputDataset(tag: String, version: Int) extends
+  LightWritableDataset[FirstPartyPixelModelInputRecord](s"/${ttdEnv}/audience/firstPartyPixel/${tag}/v=${version}", S3Roots.ML_PLATFORM_ROOT, 100)

@@ -3,7 +3,7 @@ package com.thetradedesk.audience.jobs
 import com.thetradedesk.audience.datasets.{ConversionDataset, CrossDeviceGraphDataset, FirstPartyPixelModelInputDataset, FirstPartyPixelModelInputRecord, SampledCrossDeviceGraphDataset, SeenInBiddingV3DeviceDataSet, TargetingDataDataset, TrackingTagDataset, UniversalPixelDataset, UniversalPixelTrackingTagDataset}
 import com.thetradedesk.audience.{date, sampleHit, shouldConsiderTDID, shouldConsiderTDID2, trainSetDownSampleFactor}
 import com.thetradedesk.audience.sample.DownSample.hashSampleV2
-import com.thetradedesk.audience.transform.{ModelFeatureTransform,FirstPartyDataTransform}
+import com.thetradedesk.audience.transform.{FirstPartyDataTransform, ModelFeatureTransform}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.sql.SQLFunctions._
@@ -12,6 +12,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
+
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import org.apache.spark.sql.{Column, DataFrame, Dataset, SaveMode}
@@ -36,6 +37,8 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
 
     var subFolder = config.getString("subFolder", "split")
     var datasetName = config.getString("datasetName", "dailySIBSample")
+    var datasetVersion = config.getInt("datasetVersion", 1)
+    var useDownSampledDeviceGraph = config.getBoolean("useDownSampledDeviceGraph", default = true)
   }
 
   def main(args: Array[String]): Unit = {
@@ -46,7 +49,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
     val (trainingSet, validationSet) = runETLPipeline(date)
 
     validationSet.cache()
-    FirstPartyPixelModelInputDataset(Config.datasetName).writePartition(
+    FirstPartyPixelModelInputDataset(Config.datasetName, Config.datasetVersion).writePartition(
       validationSet.filter('IsPrimaryTDID === lit(1)),
       date,
       subFolderKey = Some(Config.subFolder),
@@ -54,7 +57,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
       format = Some("tfrecord"),
       saveMode = SaveMode.Overwrite
     )
-    FirstPartyPixelModelInputDataset(Config.datasetName + "CrossDeviceGraphExtension").writePartition(
+    FirstPartyPixelModelInputDataset(Config.datasetName + "CrossDeviceGraphExtension", Config.datasetVersion).writePartition(
       validationSet.filter('IsPrimaryTDID =!= lit(1)),
       date,
       subFolderKey = Some(Config.subFolder),
@@ -67,7 +70,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
 
     val hashedTrainingSet = trainingSet.withColumn("TDIDHash", abs(hash(concat(Config.trainSetDownSampleKeys.map(col(_)): _*))))
     hashedTrainingSet.cache()
-    FirstPartyPixelModelInputDataset(Config.datasetName).writePartition(
+    FirstPartyPixelModelInputDataset(Config.datasetName, Config.datasetVersion).writePartition(
       hashedTrainingSet.filter('TDIDHash % trainSetDownSampleFactor === lit(sampleHit) && 'IsPrimaryTDID === lit(1)).drop("TDIDHash").as[FirstPartyPixelModelInputRecord],
       date,
       subFolderKey = Some(Config.subFolder),
@@ -75,7 +78,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
       format = Some("tfrecord"),
       saveMode = SaveMode.Overwrite
     )
-    FirstPartyPixelModelInputDataset(Config.datasetName + "CrossDeviceGraphExtension").writePartition(
+    FirstPartyPixelModelInputDataset(Config.datasetName + "CrossDeviceGraphExtension", Config.datasetVersion).writePartition(
       hashedTrainingSet.filter('TDIDHash % trainSetDownSampleFactor === lit(sampleHit) && 'IsPrimaryTDID =!= lit(1)).drop("TDIDHash").as[FirstPartyPixelModelInputRecord],
       date,
       subFolderKey = Some(Config.subFolder),
@@ -83,7 +86,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
       format = Some("tfrecord"),
       saveMode = SaveMode.Overwrite
     )
-    FirstPartyPixelModelInputDataset(Config.datasetName).writePartition(
+    FirstPartyPixelModelInputDataset(Config.datasetName, Config.datasetVersion).writePartition(
       hashedTrainingSet.filter('TDIDHash % trainSetDownSampleFactor =!= lit(sampleHit) && 'IsPrimaryTDID === lit(1)).drop("TDIDHash").as[FirstPartyPixelModelInputRecord],
       date,
       subFolderKey = Some(Config.subFolder),
@@ -91,7 +94,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
       format = Some("tfrecord"),
       saveMode = SaveMode.Overwrite
     )
-    FirstPartyPixelModelInputDataset(Config.datasetName + "CrossDeviceGraphExtension").writePartition(
+    FirstPartyPixelModelInputDataset(Config.datasetName + "CrossDeviceGraphExtension", Config.datasetVersion).writePartition(
       hashedTrainingSet.filter('TDIDHash % trainSetDownSampleFactor =!= lit(sampleHit) && 'IsPrimaryTDID =!= lit(1)).drop("TDIDHash").as[FirstPartyPixelModelInputRecord],
       date,
       subFolderKey = Some(Config.subFolder),
@@ -109,7 +112,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
     if (!Config.useCrossDeviceGraph) {
       labels.withColumn("isPrimaryTDID", lit(1))
     } else {
-      val graph = SampledCrossDeviceGraphDataset().readPartition(date, lookBack=Some(6))(spark)
+      val graph = SampledCrossDeviceGraphDataset().readPartition(date, lookBack = Some(6))(spark)
 
       val sampledGraph = CrossDeviceGraphSampler.downSampleGraph(graph, samplingFunction).drop("deviceType")
 
@@ -403,7 +406,7 @@ object FirstPartyPixelDailyConversionModelInputGenerator extends FirstPartyPixel
 
     val conversionDS = ConversionDataset(defaultCloudProvider).readRange(date.minusDays(ConversionConfig.conversionLookBack).atStartOfDay(), date.atStartOfDay())
       .select('TDID, 'TrackingTagId)
-      .filter(samplingFunction('TDID))
+//      .filter(samplingFunction('TDID)) we may loss data if we downsample conversion dataset
       .join(broadcast(allTargetingDataIds), Seq("TrackingTagId"), "inner")
       .select('TargetingDataId, 'TDID)
       .distinct()
