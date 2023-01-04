@@ -22,7 +22,7 @@ object BidRequestTransform {
 
     val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
     val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
-    val bidsImpressionFilterByPolicy = multiLevelJoinWithPolicy[BidRequestPolicyRecord](prefilteredDS, adGroupPolicy)
+    val bidsImpressionFilterByPolicy = multiLevelJoinWithPolicy[BidRequestPolicyRecord](prefilteredDS, adGroupPolicy, "inner")
 
     bidsImpressionFilterByPolicy
       //TODO: need to revisit this later, since it has assumption on the policy grain has only adgroupid.

@@ -102,7 +102,7 @@ object NegativeTransform {
     val prefilteredDS = preFilteringWithPolicy[DailyNegativeSampledBidRequestRecord](dailyNegativeSampledBids, adGroupPolicy, adGroupDS)
 
     val filterCondition = date_add($"LogEntryTime", $"DataLookBack")>=date
-    val dailyNegativeSampledBidsFilterByPolicy = multiLevelJoinWithPolicy[AggregateNegativesRecord](prefilteredDS, adGroupPolicy, filterCondition)
+    val dailyNegativeSampledBidsFilterByPolicy = multiLevelJoinWithPolicy[AggregateNegativesRecord](prefilteredDS, adGroupPolicy, filterCondition, "inner")
 
     dailyNegativeSampledBidsFilterByPolicy
   }

@@ -54,7 +54,7 @@ case class IntraDayBidRequestWithPolicyRecord(
 
     //filtering bidImpressions based on policy
     val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
-    val filteredBidRequest = multiLevelJoinWithPolicy[IntraDayBidRequestWithPolicyRecord](prefilteredDS, adGroupPolicy)
+    val filteredBidRequest = multiLevelJoinWithPolicy[IntraDayBidRequestWithPolicyRecord](prefilteredDS, adGroupPolicy, "inner")
 
     val window = Window.partitionBy($"DataAggKey", $"DataAggValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"TruncatedLogEntryTime".desc)
 
