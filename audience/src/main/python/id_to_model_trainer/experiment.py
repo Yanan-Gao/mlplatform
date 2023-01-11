@@ -24,7 +24,9 @@ class AudienceModelExperiment:
 
         # model env config
         self.input_path = INPUT_PATH
+        self.graph_input_path = None
         self.test_input_path = INPUT_PATH
+        self.test_graph_input_path = None
         self.output_path = OUTPUT_PATH
         self.s3_models = S3_MODELS
         self.env = ENV
@@ -36,6 +38,7 @@ class AudienceModelExperiment:
         self.log_tag = f"{datetime.now().strftime('%Y-%m-%d-%H')}"
         self.profile_batches = [100, 120]
         self.subfolder = "split"
+        self.graph = False
 
         # model params initialize
         self.search_embedding_size = 64
@@ -54,6 +57,11 @@ class AudienceModelExperiment:
         self.dropout_rate = 0.2
         self.class_weight = {0: 1.0, 1: 1.0}
         self.seed = 13
+        self.fgm = False
+        self.fgm_layer = None
+        self.fgm_epsilon = 0.08
+        self.sum_residual_dropout = False
+        self.sum_residual_dropout_rate = 0.4
 
         # callback
         self.save_best = True
@@ -86,16 +94,33 @@ class AudienceModelExperiment:
             exp_var=False,
         )
 
-        train_files = data.get_tfrecord_files(
+        train_wo_graph_files = data.get_tfrecord_files(
             [self.input_path + f"{self.subfolder}=train_tfrecord/"]
         )
-        val_files = data.get_tfrecord_files(
-            [self.input_path + f"{self.subfolder}=val_tfrecord/"]
-        )
+        val_wo_graph_files = data.get_tfrecord_files([self.input_path + f"{self.subfolder}=val_tfrecord/"])
 
-        test_files = data.get_tfrecord_files(
+        test_wo_graph_files = data.get_tfrecord_files(
             [self.test_input_path + f"{self.subfolder}=val_tfrecord/"]
         )
+
+        train_wi_graph_files = data.get_tfrecord_files(
+          [self.graph_input_path + f"{self.subfolder}=train_tfrecord/"]
+        )
+        val_wi_graph_files = data.get_tfrecord_files([self.graph_input_path + f"{self.subfolder}=val_tfrecord/"])
+
+        test_wi_graph_files = data.get_tfrecord_files(
+            [self.test_graph_input_path + f"{self.subfolder}=val_tfrecord/"]
+        )
+
+        if self.graph:
+            train_files = train_wi_graph_files + train_wo_graph_files
+            val_files = val_wi_graph_files + val_wo_graph_files
+            test_files = test_wi_graph_files + test_wo_graph_files
+
+        else:
+            train_files = train_wo_graph_files
+            val_files = val_wo_graph_files
+            test_files = test_wi_graph_files + test_wo_graph_files
 
         if len(train_files) == 0 or len(val_files) == 0 or len(test_files) == 0:
             raise Exception("No training or validation or test files")
@@ -129,7 +154,7 @@ class AudienceModelExperiment:
     def get_optimizer(self):
         if self.optimizer == "nadam":
             return tf.keras.optimizers.Nadam(learning_rate=self.learning_rate)
-        elif self.optimizer == "aadam":
+        elif self.optimizer == "adam":
             return tf.keras.optimizers.Adam(learning_rate=self.learning_rate)
         else:
             raise Exception("Optimizer not supported.")
@@ -173,6 +198,8 @@ class AudienceModelExperiment:
             self.embedding_factor,
             self.dropout_rate,
             self.seed,
+            self.sum_residual_dropout,
+            self.sum_residual_dropout_rate
         )
 
         return model
@@ -188,11 +215,7 @@ class AudienceModelExperiment:
             loss=tf.keras.losses.BinaryCrossentropy(
                 from_logits=False, label_smoothing=self.label_smoothing
             ),
-            metrics=[
-                tf.keras.metrics.AUC(),
-                tf.keras.metrics.Recall(),
-                tf.keras.metrics.Precision(),
-            ],
+            metrics=[tf.keras.metrics.AUC(), tf.keras.metrics.Recall(), tf.keras.metrics.Precision()],
         )
 
         if self.model_weight_path is not None:
@@ -252,9 +275,7 @@ class AudienceModelExperiment:
     def run_experiment(self, data, features, **kwargs):
 
         mlflow.tensorflow.autolog()
-        self.update_metadata(
-            model_creation_date=datetime.now().strftime("%Y%m%d-%H%M%S")
-        )
+        self.update_metadata(model_creation_date=datetime.now().strftime("%Y%m%d-%H%M%S"))
 
         with mlflow.start_run(run_name=f"{self.topic}_{self.model_creation_date}"):
             self.update_metadata(**kwargs)
@@ -266,20 +287,14 @@ class AudienceModelExperiment:
 
             model = self.generate_model()
 
-            model.fit(
-                train,
-                epochs=self.num_epochs,
-                validation_data=val,
-                callbacks=self.get_callbacks(),
-                class_weight=self.class_weight,
-                verbose=True,
-            )
+            if self.fgm and self.fgm_layer:
+                models.FGM_wrapper(model, self.fgm_layer, self.fgm_epsilon)
 
-            self.model_path = f"{self.output_path}models/{self.topic}/creation_date={self.model_creation_date}/"
+            self.model_path = f"{self.output_path}models/{self.topic}/creation_date={self.model_creation_date}"
             model.save(self.model_path)
 
             if self.model_upload_weights:
-                self.s3_model_output_path = f"{self.s3_models}/{self.env}/audience/model/experiment/date={self.model_creation_date}/"
+                self.s3_model_output_path = f"{self.s3_models}/{self.env}/audience/model/experiment/date={self.model_creation_date}"
 
                 data.s3_copy(self.model_path, self.s3_model_output_path)
 
@@ -310,23 +325,24 @@ class AudienceModelExperiment:
                     "seed": self.seed,
                     "dropout_rate": self.dropout_rate,
                     "class_weight": self.class_weight,
+                    "fgm": self.fgm,
+                    "fgm_layer": self.fgm_layer,
+                    "fgm_epsilon": self.fgm_epsilon,
+                    "sum_residual_dropout": self.sum_residual_dropout,
+                    "sum_residual_dropout_rate": self.sum_residual_dropout_rate
                 }
             )
 
-            mlflow.set_tag(
-                "trainingSet", self.input_path + f"{self.subfolder}=train_tfrecord/"
-            )
-            mlflow.set_tag(
-                "validationSet", self.input_path + f"{self.subfolder}=val_tfrecord/"
-            )
-            mlflow.set_tag(
-                "testSet", self.test_input_path + f"{self.subfolder}=val_tfrecord/"
-            )
+            mlflow.set_tag("trainingSet", self.input_path + "split=train_tfrecord/")
+            mlflow.set_tag("validationSet", self.input_path + "split=val_tfrecord/")
+            mlflow.set_tag("testSet", self.test_input_path + "split=val_tfrecord/")
 
             mlflow.log_metrics(
                 {
                     "test_loss": test_score[0],
                     "test_auc": test_score[1],
+                    "test_recall": test_score[2],
+                    "test_precision": test_score[3],
                 }
             )
 

@@ -1,6 +1,77 @@
 from tensorflow import keras
 import tensorflow as tf
 from tensorflow.keras import layers, models
+from tensorflow.python.keras.engine import data_adapter
+import functools
+
+
+def search_layer(model, name, exclude):
+    """
+    Given the compiled model, find the layers with the key word name
+    """
+    layers = []
+    for layer in model.layers:
+        if name in layer.name:
+            layers.append(layer)
+    if not exclude and not layers:
+        layers = [layer for layer in layers if layer.name not in exclude]
+    # currently, we only support one layer, thus, here we choose the first one
+    return layers[0]
+
+
+def FGM(model, name, epsilon=0.5, exclude=None):
+    target_layer = search_layer(model, name, exclude)
+    if not target_layer:
+        raise ValueError("layer_name has to be valid name for the model layers")
+
+    # fast gradient method: adversarial training method
+    @tf.function
+    def train_step(self, data):
+        """
+        When we want to use adversarial training, use the following code on the complied model, for nlp we use it to add the permutation on embedding layers
+        for cv, we add the permutation to layer we want in general after the input layers
+        1. calculate the permutation on the embedding
+        2. add the permutation on the embedding
+        3. calculate the gradient, loss, update weights and remove the permutation
+        """
+        data = data_adapter.expand_1d(data)
+        x, y, sample_weight = data_adapter.unpack_x_y_sample_weight(data)
+        # caculate the permutation on the target layers and add it to the layer
+        with tf.GradientTape() as tape:
+            y_pred = self(x, training=True)
+            loss = self.compiled_loss(y, y_pred, sample_weight, regularization_losses=self.losses)
+
+        target_layer_weights = target_layer.weights
+        target_layer_weights_gradients = tape.gradient(loss, target_layer_weights)[0]
+        target_layer_weights_gradients = tf.squeeze(
+            tf.zeros_like(target_layer_weights) + target_layer_weights_gradients)
+        delta = epsilon * target_layer_weights_gradients / (tf.math.sqrt(tf.reduce_sum(target_layer_weights_gradients ** 2)) + 1e-8)  # calculate permutation
+
+        target_layer_weights[0].assign_add(delta)
+
+        # calculate the loss based on the layer with permutation and remove the permutation before updating the weights
+        with tf.GradientTape() as tape2:
+            y_pred = self(x, training=True)
+            new_loss = self.compiled_loss(y, y_pred, sample_weight, regularization_losses=self.losses)
+        grads = tape2.gradient(new_loss, self.trainable_variables)
+        target_layer_weights[0].assign_sub(delta)
+
+        self.optimizer.apply_gradients(zip(grads, self.trainable_variables))
+        self.compiled_metrics.update_state(y, y_pred, sample_weight)
+
+        return {m.name: m.result() for m in self.metrics}
+
+    return train_step
+
+
+def FGM_wrapper(model, name, epsilon=0.5, exclude=None):
+    '''
+    if the model has so many dropout or the dropout ratio is large, then the epsilon should be small
+    otherwise, the adversarial training will affect the stability of the gradient descent and worse the model performance
+    '''
+    train_step = FGM(model, name, epsilon, exclude)
+    model.train_step = functools.partial(train_step, model)
+    model.train_function = None
 
 
 def value_feature(name, dtype=tf.float32):
@@ -311,6 +382,9 @@ def init_model(
     embedding_factor=1,
     dropout_rate=0.2,
     seed=13,
+    sum_residual_dropout=False,
+    sum_residual_dropout_rate=0.4,
+    model_name="Audience_Extension"
 ):
     model_input_features_tuple = [
         embedding(
@@ -325,9 +399,9 @@ def init_model(
         for f in model_features
     ]
     model_input_features = [x[0] for x in model_input_features_tuple]
+    # model_input_layers = [x[1] for x in model_input_features_tuple if x[0].name!="Site"]
     model_input_layers = [x[1] for x in model_input_features_tuple]
-    model_input_layers = layers.concatenate(model_input_layers)
-
+    model_input_layers = layers.concatenate(model_input_layers, name='bidimpression_concat_embedding')
     # model_input_dim = list_to_embedding(model_dim_group[0].name, model_dim_group[0].cardinality, search_emb_size) # model_input_layers.shape[1])
     model_input_dim = list_to_embedding(
         name=model_dim_group[0].name,
@@ -358,6 +432,9 @@ def init_model(
 
     residual2 = layers.Lambda(multiply_lambda)([tab, input_layer_dim])
     output = residual2 * tf.constant(tabnet_factor) + residual1 * embedding_factor
+    if sum_residual_dropout:
+        dr = layers.Dropout(seed=seed, rate=sum_residual_dropout_rate, name="layer_sum_residual_dropout")
+        output = dr(output)
     output = layers.Flatten(name="Output")(
         layers.Dense(
             1,
@@ -366,6 +443,6 @@ def init_model(
         )(output)
     )
 
-    model = models.Model(inputs=model_input, outputs=output, name="Audience_Extension")
+    model = models.Model(inputs=model_input, outputs=output, name=model_name)
 
     return model
