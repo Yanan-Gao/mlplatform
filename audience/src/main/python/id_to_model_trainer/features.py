@@ -28,8 +28,8 @@ DEFAULT_CARDINALITIES = {
     #    "AdsTxtSellerType": 7,
     #    "PublisherType": 7,
     "DeviceType": 9,
-    "OperatingSystemFamily": 6,
-    "Browser": 15,
+    "OperatingSystemFamily": 8,
+    "Browser": 16,
     # "InternetConnectionType": 10,
     # "MatchedFoldPosition": 5
 }
