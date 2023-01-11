@@ -4,7 +4,7 @@
 
 import pytest
 from philo.models import deep_fm
-from philo.neo import extract_neo_model, extract_fm_model, combine_neo_results
+from philo.neo import extract_neo_model, extract_fm_model, combine_neo_results, recalibrate_model
 from philo.features import SparseFeat
 from tests.utils import get_test_data, SAMPLE_SIZE, create_weights_for_layer
 from tensorflow.keras.layers import Embedding
@@ -42,3 +42,26 @@ def test_extract_neo_model(dense_feature_num, sparse_feature_num):
 
     assert pytest.approx(fm_linear, rel=1e-5) == linear_logit_op
     assert pytest.approx(fm_vector, rel=1e-5) == fm_vector_op
+
+
+@pytest.mark.parametrize(
+    'dense_feature_num, sparse_feature_num',
+    [(1, 4),  #
+     (0, 4)
+     ]  # (True, (32,), 3), (False, (32,), 1)
+)
+def test_recalibrate_model(dense_feature_num, sparse_feature_num):
+    sample_size = SAMPLE_SIZE
+    x, _, feature_columns = get_test_data(sample_size, sparse_feature_num=sparse_feature_num,
+                                          dense_feature_num=dense_feature_num, sequence_feature=[])
+    model = deep_fm(feature_columns, feature_columns, l2_reg_linear=0.0001)
+    model_r = recalibrate_model(model)
+
+    # check if the weights are retained correctly
+    fm_model = extract_fm_model(model)
+    fm_model_r = extract_fm_model(model_r)
+    fm_linear, fm_vector = fm_model.predict(x)
+    fm_linear_r, fm_vector_r = fm_model_r.predict(x)
+
+    assert pytest.approx(fm_linear, rel=1e-5) == fm_linear_r
+    assert pytest.approx(fm_vector, rel=1e-5) == fm_vector_r

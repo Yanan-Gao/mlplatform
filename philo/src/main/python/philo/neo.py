@@ -6,7 +6,7 @@ import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Embedding, InputLayer, Lambda
 import warnings
-from philo.layers import Linear, FM
+from philo.layers import add_func, Linear, FM, PredictionLayer
 from philo.features import DenseFeat, get_linear_logit, concat_func
 from philo.utils import align_model_feature
 from philo.inputs import get_dense_input
@@ -119,6 +119,37 @@ def build_neo_model(input_layers, linear_feature_columns, one_hot_layers,
     except ValueError as e:
         print(e)
     return model
+
+
+def recalibrate_model(model, task='binary', freeze=True):
+    """
+    Re-construct the prediction layer of the model so that the model only calibrates the output from the factorization
+    machine and linear operation.
+        Args:
+            model: original trained model
+            task: ``"binary"`` for  binary logloss or  ``"regression"`` for regression loss
+            freeze: whether to freeze layers depending on if we want to keep the weights
+
+        Returns: model with new calibration layer
+
+    """
+    # freeze the original trained model
+    model.trainable = freeze
+
+    input_layers = list(filter(lambda x: isinstance(x, InputLayer), model.layers))
+    linear_layer = list(filter(lambda x: isinstance(x, Linear), model.layers))[0]
+    fm_layer = list(filter(lambda x: isinstance(x, FM), model.layers))[0]
+
+    # if all sparse, linear_layer output will be a vector
+    if len(linear_layer.output.shape) > 2:
+        linear_output = tf.squeeze(linear_layer.output, axis=-1)
+    else:
+        linear_output = linear_layer.output
+
+    final_logit = add_func([linear_output, fm_layer.output])
+    output = PredictionLayer(task)(final_logit)
+    new_model = Model(inputs=[i.output for i in input_layers], outputs=output)
+    return new_model
 
 
 def build_linear_logit(one_hot_list, features, linear_feature_columns, use_bias, seed, l2_reg):
