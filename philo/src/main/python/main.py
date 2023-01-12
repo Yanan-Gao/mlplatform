@@ -25,6 +25,7 @@ S3_PROD = "s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/"
 MODEL_OUTPUT = "models/"
 MODEL_REGION = ""
 EVAL_OUTPUT = "eval_metrics/"
+S3_MODEL_LOGS = "model_logs/"
 
 # TRAIN = "train"
 # VAL = "validation"
@@ -55,6 +56,8 @@ flags.DEFINE_string('s3_output_path', default=S3_PROD,
                     help=f'Location of S3 model output files. Default {S3_PROD}')
 # blank region supports existing regionless training
 flags.DEFINE_string('region', default='', help=f'Region for the model data. Default blank {MODEL_REGION}')
+
+flags.DEFINE_boolean('push_training_logs', default=False, help=f'option to push all logs to s3 for debugging. defaulted false')
 
 flags.DEFINE_string('log_tag', default=f"{DATE_TIME.strftime('%Y-%m-%d-%H-%M')}", help='log tag')
 
@@ -112,23 +115,29 @@ def main(argv):
         batch_size=FLAGS.batch_size, eval_batch_size=FLAGS.eval_batch_size, prefetch_num=tf.data.AUTOTUNE,
         repeat=repeat)
 
-    try:
-        model = tf.keras.models.load_model(FLAGS.latest_model_path, custom_objects=custom_objects)
-    except OSError as error:
-        # if no model file, create a new model from scratch
-        print(error)
-        kwargs = {"dnn_hidden_units": tuple(FLAGS.dnn_hidden_units), "l2_reg_linear": FLAGS.l2_reg_linear,
-                  "l2_reg_embedding": FLAGS.l2_reg_embedding, "l2_reg_dnn": FLAGS.l2_reg_dnn,
-                  "dnn_dropout": FLAGS.dnn_dropout, "dnn_activation": FLAGS.dnn_activation,
-                  "dnn_use_bn": FLAGS.dnn_use_bn}
+    mirrored_strategy = tf.distribute.MultiWorkerMirroredStrategy()
+    with mirrored_strategy.scope():
+        try:
+            model = tf.keras.models.load_model(FLAGS.latest_model_path, custom_objects=custom_objects)
+        except OSError as error:
+            # if no model file, create a new model from scratch
+            print(error)
+            kwargs = {"dnn_hidden_units": tuple(FLAGS.dnn_hidden_units), "l2_reg_linear": FLAGS.l2_reg_linear,
+                      "l2_reg_embedding": FLAGS.l2_reg_embedding, "l2_reg_dnn": FLAGS.l2_reg_dnn,
+                      "dnn_dropout": FLAGS.dnn_dropout, "dnn_activation": FLAGS.dnn_activation,
+                      "dnn_use_bn": FLAGS.dnn_use_bn}
+            print('Number of devices: %d' % mirrored_strategy.num_replicas_in_sync)
+            model = model_builder(FLAGS.model_arch, model_features, **kwargs)
+            #model = model_builder(FLAGS.model_arch, model_features, **kwargs)
 
-        model = model_builder(FLAGS.model_arch, model_features, **kwargs)
+        auc = tf.keras.metrics.AUC()
 
     model.summary()
 
-    model.compile("adam",
+    model.compile(tf.keras.optimizers.Adam(learning_rate=FLAGS.learning_rate),
                   "binary_crossentropy",
-                  metrics=['binary_crossentropy', tf.keras.metrics.AUC()])
+                  # when incremental training we need to be careful about how auc gets instantiated
+                  metrics=['binary_crossentropy', auc])
 
     checkpoint_base_path = f"{FLAGS.output_path}checkpoints/"
 
@@ -144,6 +153,9 @@ def main(argv):
 
     model_tag = f"{FLAGS.output_path}model/{FLAGS.model_arch}_{FLAGS.num_epochs}_{FLAGS.dnn_dropout}_{FLAGS.dnn_use_bn}"
     model.save(model_tag)
+
+    if (FLAGS.push_training_logs):
+        s3_sync(FLAGS.log_path, f"{FLAGS.s3_output_path}/{S3_MODEL_LOGS}{FLAGS.region}{FLAGS.model_creation_date}")
 
     s3_sync(model_tag, f"{FLAGS.s3_output_path}{MODEL_OUTPUT}{FLAGS.region}{FLAGS.model_creation_date}")
 

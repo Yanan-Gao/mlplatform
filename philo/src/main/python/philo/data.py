@@ -247,10 +247,14 @@ def prepare_dummy_data(model_features, model_target, batch_size):
         x, y = generate_random_pandas(model_features, model_target, num)
         return dict(x), y
 
+
+    options = tf.data.Options()
+    options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.OFF
+
     return {
-        TRAIN: tf.data.Dataset.from_tensor_slices(generate_tensor_slices(1000)).batch(batch_size),
-        VAL: tf.data.Dataset.from_tensor_slices(generate_tensor_slices(100)).batch(batch_size),
-        TEST: tf.data.Dataset.from_tensor_slices(generate_tensor_slices(100)).batch(batch_size)
+        TRAIN: tf.data.Dataset.from_tensor_slices(generate_tensor_slices(1000)).withOptions(options).batch(batch_size),
+        VAL: tf.data.Dataset.from_tensor_slices(generate_tensor_slices(100)).withOptions(options).batch(batch_size),
+        TEST: tf.data.Dataset.from_tensor_slices(generate_tensor_slices(100)).withOptions(options).batch(batch_size)
     }
 
 
