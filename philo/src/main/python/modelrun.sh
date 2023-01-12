@@ -22,6 +22,8 @@ while getopts "t:o:r:" opt; do
       REGION="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
       echo "Setting region to $OPTARG" >&1
       ;;
+    *)
+      echo "Invalid arg $OPTARG" >&1
   esac
 done
 
@@ -52,14 +54,19 @@ sudo chmod 666 /var/run/docker.sock
 
 eval docker login -u $DOCKER_USER -p $CREDS $DOCKER_INTERNAL_BASE
 
+echo "this is what im trying to pull: " ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${IMAGE_TAG}
+
 eval docker pull ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${IMAGE_TAG}
+
+echo "image pulled, running docker container"
 
 sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v /mnt/tfrecords:${MODEL_INPUT}/tfrecords \
   -v /mnt/metadata:${MODEL_INPUT}/metadata/ \
   -v /mnt/latest_model:${MODEL_INPUT}/latest_model \
   ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${IMAGE_TAG}  \
       "--nodummy" \
-      "--batch_size=2048" \
+      "--batch_size=16384" \
+      "--learning_rate=0.008" \
       "--eval_batch_size=131072" \
       "--data_trunks=3" \
       "--exclude_features=DoNotTrack"\
@@ -68,6 +75,7 @@ sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v /mnt/tfrecords:$
       "--meta_data_path=/var/tmp/input/metadata/" \
       "--latest_model_path=/var/tmp/input/latest_model/" \
       "--s3_output_path=${OUTPUT_PATH}" \
+      "--push_training_logs=true" \
       "--region=${REGION}" \
       "--training_verbosity=2" \
       "--model_arch=deepfm" \
