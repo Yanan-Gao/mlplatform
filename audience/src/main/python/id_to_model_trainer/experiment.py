@@ -23,10 +23,10 @@ class AudienceModelExperiment:
     def __init__(self, **kwargs) -> None:
 
         # model env config
-        self.input_path = INPUT_PATH
-        self.graph_input_path = None
-        self.test_input_path = INPUT_PATH
-        self.test_graph_input_path = None
+        self.input_paths = INPUT_PATH
+        self.graph_input_paths = None
+        self.test_input_paths = INPUT_PATH
+        self.test_graph_input_paths = None
         self.output_path = OUTPUT_PATH
         self.s3_models = S3_MODELS
         self.env = ENV
@@ -39,6 +39,9 @@ class AudienceModelExperiment:
         self.profile_batches = [100, 120]
         self.subfolder = "split"
         self.graph = False
+        self.train_included_holdout = False
+        self.train_included_val = False
+        self.test_as_val = False
 
         # model params initialize
         self.search_embedding_size = 64
@@ -62,6 +65,7 @@ class AudienceModelExperiment:
         self.fgm_epsilon = 0.08
         self.sum_residual_dropout = False
         self.sum_residual_dropout_rate = 0.4
+        self.ignore_index = None
 
         # callback
         self.save_best = True
@@ -84,46 +88,113 @@ class AudienceModelExperiment:
         os.environ["PYTHONHASHSEED"] = str(self.seed)
         print(f"Random seed set as {self.seed}")
 
+    def get_data_files(self):
+
+        train_wo_graph_files = data.get_tfrecord_files(
+            [
+                input_path + f"{self.subfolder}=train_tfrecord/"
+                for input_path in self.input_paths
+            ]
+        )
+        val_wo_graph_files = data.get_tfrecord_files(
+            [
+                input_path + f"{self.subfolder}=val_tfrecord/"
+                for input_path in self.input_paths
+            ]
+        )
+
+        holdout_wo_graph_files = data.get_tfrecord_files(
+            [
+                input_path + f"{self.subfolder}=holdout_tfrecord/"
+                for input_path in self.input_paths
+            ]
+        )
+
+        test_wo_graph_files = data.get_tfrecord_files(
+            [
+                test_input_path + f"{self.subfolder}=val_tfrecord/"
+                for test_input_path in self.test_input_paths
+            ]
+        )
+
+        train_wi_graph_files = data.get_tfrecord_files(
+            [
+                graph_input_path + f"{self.subfolder}=train_tfrecord/"
+                for graph_input_path in self.graph_input_paths
+            ]
+        )
+        val_wi_graph_files = data.get_tfrecord_files(
+            [
+                graph_input_path + f"{self.subfolder}=val_tfrecord/"
+                for graph_input_path in self.graph_input_paths
+            ]
+        )
+
+        holdout_wi_graph_files = data.get_tfrecord_files(
+            [
+                graph_input_path + f"{self.subfolder}=holdout_tfrecord/"
+                for graph_input_path in self.graph_input_paths
+            ]
+        )
+
+        test_wi_graph_files = data.get_tfrecord_files(
+            [
+                test_graph_input_path + f"{self.subfolder}=val_tfrecord/"
+                for test_graph_input_path in self.test_graph_input_paths
+            ]
+        )
+
+        # add holdout files to train files
+        if self.train_included_holdout:
+            final_train_wi_graph_files = train_wi_graph_files + holdout_wi_graph_files
+            final_train_wo_graph_files = train_wo_graph_files + holdout_wo_graph_files
+
+        # add val files to train files
+        if self.train_included_val:
+            final_train_wi_graph_files = train_wi_graph_files + val_wi_graph_files
+            final_train_wo_graph_files = train_wo_graph_files + val_wo_graph_files
+
+        # add val and holdout files to train files
+        if self.train_included_val and self.train_included_holdout:
+            final_train_wi_graph_files = (
+                train_wi_graph_files + val_wi_graph_files + holdout_wi_graph_files
+            )
+            final_train_wo_graph_files = (
+                train_wo_graph_files + val_wo_graph_files + holdout_wo_graph_files
+            )
+
+        else:
+            final_train_wi_graph_files = train_wi_graph_files
+            final_train_wo_graph_files = train_wo_graph_files
+        # add graph data
+        if self.graph:
+            train_files = final_train_wi_graph_files + final_train_wo_graph_files
+            val_files = val_wi_graph_files + val_wo_graph_files
+            test_files = test_wi_graph_files + test_wo_graph_files
+
+        else:
+            train_files = final_train_wo_graph_files
+            val_files = val_wo_graph_files
+            test_files = test_wi_graph_files + test_wo_graph_files
+
+        return train_files, val_files, test_files
+
     def get_data(self):
+
+        train_files, val_files, test_files = self.get_data_files()
 
         tf_parser = data.feature_parser(
             features.model_features + features.model_dim_group,
             features.model_targets,
             features.TargetingDataIdList,
             features.Target,
+            #             features.graph_tag,
             exp_var=False,
         )
 
-        train_wo_graph_files = data.get_tfrecord_files(
-            [self.input_path + f"{self.subfolder}=train_tfrecord/"]
-        )
-        val_wo_graph_files = data.get_tfrecord_files([self.input_path + f"{self.subfolder}=val_tfrecord/"])
-
-        test_wo_graph_files = data.get_tfrecord_files(
-            [self.test_input_path + f"{self.subfolder}=val_tfrecord/"]
-        )
-
-        train_wi_graph_files = data.get_tfrecord_files(
-          [self.graph_input_path + f"{self.subfolder}=train_tfrecord/"]
-        )
-        val_wi_graph_files = data.get_tfrecord_files([self.graph_input_path + f"{self.subfolder}=val_tfrecord/"])
-
-        test_wi_graph_files = data.get_tfrecord_files(
-            [self.test_graph_input_path + f"{self.subfolder}=val_tfrecord/"]
-        )
-
-        if self.graph:
-            train_files = train_wi_graph_files + train_wo_graph_files
-            val_files = val_wi_graph_files + val_wo_graph_files
-            test_files = test_wi_graph_files + test_wo_graph_files
-
-        else:
-            train_files = train_wo_graph_files
-            val_files = val_wo_graph_files
-            test_files = test_wi_graph_files + test_wo_graph_files
-
-        if len(train_files) == 0 or len(val_files) == 0 or len(test_files) == 0:
-            raise Exception("No training or validation or test files")
+        # use test data as validation
+        if self.test_as_val:
+            val_files = test_files
 
         train = data.tfrecord_dataset(
             train_files,
@@ -199,7 +270,8 @@ class AudienceModelExperiment:
             self.dropout_rate,
             self.seed,
             self.sum_residual_dropout,
-            self.sum_residual_dropout_rate
+            self.sum_residual_dropout_rate,
+            self.ignore_index,
         )
 
         return model
@@ -275,8 +347,9 @@ class AudienceModelExperiment:
     def run_experiment(self, data, features, **kwargs):
 
         mlflow.tensorflow.autolog()
-        self.update_metadata(model_creation_date=datetime.now().strftime("%Y%m%d-%H%M%S"))
-
+        self.update_metadata(
+            model_creation_date=datetime.now().strftime("%Y%m%d-%H%M%S")
+        )
         with mlflow.start_run(run_name=f"{self.topic}_{self.model_creation_date}"):
             self.update_metadata(**kwargs)
 
@@ -289,6 +362,15 @@ class AudienceModelExperiment:
 
             if self.fgm and self.fgm_layer:
                 models.FGM_wrapper(model, self.fgm_layer, self.fgm_epsilon)
+
+            model.fit(
+                train,
+                epochs=self.num_epochs,
+                validation_data=val,
+                callbacks=self.get_callbacks(),
+                class_weight=self.class_weight,
+                verbose=True,
+            )
 
             self.model_path = f"{self.output_path}models/{self.topic}/creation_date={self.model_creation_date}"
             model.save(self.model_path)
@@ -329,7 +411,7 @@ class AudienceModelExperiment:
                     "fgm_layer": self.fgm_layer,
                     "fgm_epsilon": self.fgm_epsilon,
                     "sum_residual_dropout": self.sum_residual_dropout,
-                    "sum_residual_dropout_rate": self.sum_residual_dropout_rate
+                    "sum_residual_dropout_rate": self.sum_residual_dropout_rate,
                 }
             )
 

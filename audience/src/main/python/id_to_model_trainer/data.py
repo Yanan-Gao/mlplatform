@@ -39,9 +39,7 @@ def tfrecord_dataset(files, batch_size, map_fn, train=True, buffer_size=10000, s
             )
             .batch(
                 batch_size=batch_size,
-
                 drop_remainder=False,
-
             )
             .map(
                 map_fn,
