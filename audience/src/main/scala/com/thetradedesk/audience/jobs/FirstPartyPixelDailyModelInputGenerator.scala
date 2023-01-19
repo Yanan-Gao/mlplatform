@@ -225,28 +225,24 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
       // SIB
       val positivePool = bidsImpressions.join(labels, Seq("TDID"), "inner")
         .withColumn("TargetingDataId", explode('TargetingDataIds)).drop("TargetingDataIds")
-      val softNegativePool = bidsImpressions.join(labels, Seq("TDID"), "left_anti").withColumn("isPrimaryTDID", lit(1))
+        .cache
+      val softNegativePool = bidsImpressions.join(labels.dropDuplicates("TDID"), Seq("TDID"), "left_anti")
+        .withColumn("isPrimaryTDID", lit(1))
       (positivePool, softNegativePool)
     } else {
       // Conversion Tracker
       val candidatePool = bidsImpressions.join(labels, Seq("TDID"), "left")
         .cache
       val positivePool = candidatePool.filter('TargetingDataId.isNotNull)
+        .cache
       val softNegativePool = candidatePool.filter('TargetingDataId.isNull)
+
       (positivePool, softNegativePool)
     }
 
-    val window = Window.partitionBy('TargetingDataId, 'TDID, 'Date).orderBy('rand.asc)
-
-    val positivePoolWithRands = positivePool
-      .withColumn("rand", rand())
-      .withColumn("row", rank().over(window))
-      .cache()
-
-    val positiveSample = generatePositiveSample(positivePoolWithRands).cache
+    val positiveSample = generatePositiveSample(positivePool).cache
     val negativeSample = generateSoftNegativeSample(positiveSample, softNegativePool)
-    val hardNegativeSample = generateHardNegativeSample(positivePoolWithRands, positiveSample, bidsImpressions)
-    positivePool.unpersist()
+    val hardNegativeSample = generateHardNegativeSample(positivePool, positiveSample, bidsImpressions)
 
     positiveSample
       .unionByName(negativeSample)
@@ -255,10 +251,18 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
   }
 
   def generatePositiveSample(positivePool: DataFrame): DataFrame = {
+    val window = Window.partitionBy('TargetingDataId, 'TDID, 'Date).orderBy('rand.asc)
+
+    val positivePoolWithRands = positivePool
+
+      .cache()
+
     // to control
     val window1 = Window.partitionBy('TargetingDataId, 'Date).orderBy('rand.asc)
     // restrict the number of records for each tdid on every day and the max positive record per day
     var positiveSample = positivePool
+      .withColumn("rand", rand())
+      .withColumn("row", rank().over(window))
       .filter('row <= Config.numTDID)
       .drop("row", "rand")
 
@@ -307,31 +311,30 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
 
   def generateHardNegativeSample(positivePool : DataFrame, positiveSample: DataFrame, sampledBidsImpressions: DataFrame): DataFrame = {
     val trackingTagLevelPool = positivePool
-      .select("TargetingDataId", "CampaignId", "TDID")
+      .select("TargetingDataId", "CampaignId", "TDID", "IsPrimaryTDID")
       .distinct()
 
-    val campaignLevelPoolColumns = Seq("CampaignId", "TDID") ++ (if (positivePool.columns.contains("isPrimaryTDID")) Seq("isPrimaryTDID") else Seq[String]())
     val campaignLevelPool = positivePool
-      .select(campaignLevelPoolColumns.head, campaignLevelPoolColumns.tail: _*)
+      .select("CampaignId", "TDID", "IsPrimaryTDID")
       .distinct()
 
     val campaignTrackingTags = positivePool
-      .select("TargetingDataId", "CampaignId")
+      .select("TargetingDataId", "CampaignId", "IsPrimaryTDID")
       .distinct()
 
     val fullPool = campaignLevelPool
-      .join(campaignTrackingTags, "CampaignId")
+      .join(campaignTrackingTags, Seq("CampaignId", "IsPrimaryTDID"))
 
     val hardNegPool = fullPool
-      .join(trackingTagLevelPool, Seq("TargetingDataId", "CampaignId", "TDID"), "left_anti")
+      .join(trackingTagLevelPool, Seq("TargetingDataId", "IsPrimaryTDID", "CampaignId", "TDID"), "left_anti")
 
     // get the distinct positive impression of the tdid
     val distinctPosPool = sampledBidsImpressions
-      .join(campaignLevelPool.drop("isPrimaryTDID"), Seq("TDID", "CampaignId"), "inner")
+      .join(campaignLevelPool, Seq("TDID", "CampaignId", "IsPrimaryTDID"), "inner")
 
     // generate the impression pool of the hard negative
     val hardNegImp = hardNegPool
-      .join(distinctPosPool, Seq("CampaignId", "TDID"))
+      .join(distinctPosPool, Seq("CampaignId", "TDID", "IsPrimaryTDID"))
       .withColumn("rand", rand()) // for the same tdid in the same of different campaign they will have their own random number
       .cache
 
