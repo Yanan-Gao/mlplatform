@@ -2,7 +2,7 @@ package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{loadModelFeatures, loadParquetData}
-import com.thetradedesk.philo.schema.{ClickTrackerDataset, ClickTrackerRecord}
+import com.thetradedesk.philo.schema.{AdGroupPerformanceModelValueDataset, AdGroupPerformanceModelValueRecord, ClickTrackerDataset, ClickTrackerRecord}
 import com.thetradedesk.philo.transform.ModelInputTransform
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -38,6 +38,7 @@ object ModelInput {
 
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](brBfLoc, date, source = Some("geronimo"))
     val clicks = loadParquetData[ClickTrackerRecord](ClickTrackerDataset.CLICKSS3, date)
+    val performanceModelValues = loadParquetData[AdGroupPerformanceModelValueRecord](AdGroupPerformanceModelValueDataset.AGPMVS3, date);
 
     val modelFeatures = loadModelFeatures(featuresJson)
 
@@ -55,8 +56,8 @@ object ModelInput {
       }
 
       val (filteredData, labelCounts) = filterBy match {
-        case "AdGroupId" => ModelInputTransform.transform(clicks, bidsImpressions, Some(filterByData.as[AdGroupFilterRecord]), None, true, modelFeatures)
-        case "Country" => ModelInputTransform.transform(clicks, bidsImpressions, None, Some(filterByData.as[CountryFilterRecord]), true, modelFeatures)
+        case "AdGroupId" => ModelInputTransform.transform(clicks, bidsImpressions, performanceModelValues, Some(filterByData.as[AdGroupFilterRecord]), None, true, modelFeatures)
+        case "Country" => ModelInputTransform.transform(clicks, bidsImpressions, performanceModelValues, None, Some(filterByData.as[CountryFilterRecord]), true, modelFeatures)
         case _ => throw new Exception(f"Cannot filter by property ${filterBy}")
       }
 
@@ -65,7 +66,7 @@ object ModelInput {
     }
 
     if (!filterResults) {
-      val (trainingData, labelCounts) = ModelInputTransform.transform(clicks, bidsImpressions, None, None, false, modelFeatures)
+      val (trainingData, labelCounts) = ModelInputTransform.transform(clicks, bidsImpressions,performanceModelValues, None, None, false, modelFeatures)
       writeData(trainingData, outputPath, writeEnv, outputPrefix, date, partitions)
       writeData(labelCounts, outputPath, writeEnv, "metadata", date, 1, false)
     }
