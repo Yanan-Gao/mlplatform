@@ -134,7 +134,7 @@ def recalibrate_model(model, task='binary', freeze=True):
 
     """
     # freeze the original trained model
-    model.trainable = freeze
+    model.trainable = not freeze
 
     input_layers = list(filter(lambda x: isinstance(x, InputLayer), model.layers))
     linear_layer = list(filter(lambda x: isinstance(x, Linear), model.layers))[0]
@@ -249,6 +249,25 @@ def combine_neo_results(a_neo_predict, b_neo_predict, combined_value=True):
     if combined_value:
         return linear_logit_op + fm_vector_op
     return linear_logit_op, fm_vector_op
+
+
+def predict_neo_results(a_neo_predict, b_neo_predict, pred_layer_weight):
+    """
+    Output calibrated model output based on neo predictions from adgroup and bidrequest and prediction layer weight.
+    Args:
+        a_neo_predict: tuple that could be unzipped to a_linear_logit, a_fm_float, a_fm_vector
+        b_neo_predict: tuple that could be unzipped to b_linear_logit, b_fm_float, b_fm_vector
+        pred_layer_weight: prediction layer weight from existing trained model
+
+    Returns: model prediction
+
+    """
+    neo_results_combined = combine_neo_results(a_neo_predict, b_neo_predict, combined_value=True)
+    # note that although the name weight here, the value itself actually serves as a bias term
+    pred_input = neo_results_combined + pred_layer_weight
+    # sigmoid function
+    pred_output = 1 / (1 + np.exp(-pred_input))
+    return pred_output
 
 
 def separate_feature(layer_list,
