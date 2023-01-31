@@ -17,6 +17,8 @@ DEFAULT_MODEL_TARGET = Target(name='label', type=tf.int64, default_value=0, enab
 
 DEFAULT_GROUP_NAME = "default_group"
 
+ADGROUP_FEATURE_LIST = ['AdGroupId', 'AdvertiserId', 'CreativeId']
+
 
 class VarLenSparseFeat(namedtuple('VarLenSparseFeat',
                                   ['sparsefeat', 'maxlen', 'combiner',

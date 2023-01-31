@@ -5,12 +5,15 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Embedding, InputLayer, Lambda
+
 import warnings
-from philo.layers import add_func, Linear, FM, PredictionLayer
+from philo.layers import add_func, Linear, FM, PredictionLayer, combined_dnn_input, DNN
 from philo.features import DenseFeat, get_linear_logit, concat_func
 from philo.utils import align_model_feature
 from philo.inputs import get_dense_input
 from collections import OrderedDict
+from itertools import chain
+
 
 SEED = 1024
 
@@ -290,3 +293,16 @@ def separate_feature(layer_list,
         else:
             bidrequest_info.append(i)
     return adgroup_info, bidrequest_info
+
+
+def create_combined_encoder(group_embedding_dict, dense_value_list, adgroup_feature_list, dnn_hidden_units=(64),
+                            l2_reg_dnn=0, seed=SEED, dnn_dropout=0,
+                            dnn_activation='relu', dnn_use_bn=False):
+    sparse_feature_embeddings = list(chain.from_iterable(group_embedding_dict.values()))
+    adgroup_embed, bid_embed = separate_feature(sparse_feature_embeddings, adgroup_feature_list)
+    adgroup_dense, bid_dense = separate_feature(dense_value_list, adgroup_feature_list)
+    adgroup_input = combined_dnn_input(adgroup_embed, adgroup_dense)
+    bid_input = combined_dnn_input(bid_embed, bid_dense)
+    dnn_output_adgroup = DNN(dnn_hidden_units, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed)(adgroup_input)
+    dnn_output_bid = DNN(dnn_hidden_units, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed)(bid_input)
+    return tf.reduce_sum(dnn_output_adgroup * dnn_output_bid, axis=1, keepdims=True)
