@@ -4,8 +4,7 @@ import tensorflow as tf
 from tensorflow.keras.layers import PReLU
 
 from tensorflow.keras.utils import CustomObjectScope
-from philo.layers import Dice, DNN, PredictionLayer, FM, Hash, \
-    NoMask, Linear, CrossNet, CIN
+from philo.layers import Dice, DNN, PredictionLayer, FM, Hash, Linear, CrossNet, CIN  # , NoMask
 from tests.utils import layer_test
 
 tf.keras.backend.set_learning_phase(True)
@@ -22,9 +21,9 @@ def test_dice():
                    input_shape=(2, 3))
 
 
-def test_no_mask():
-    with CustomObjectScope({'NoMask': NoMask}):
-        layer_test(NoMask, kwargs={}, input_shape=(2, 3))
+# def test_no_mask():
+#     with CustomObjectScope({'NoMask': NoMask}):
+#         layer_test(NoMask, kwargs={}, input_shape=(2, 3))
 
 
 @pytest.mark.parametrize(

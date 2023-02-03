@@ -13,19 +13,19 @@ SEED = 1024
 
 
 # utils layers
-class NoMask(Layer):
-    def __init__(self, **kwargs):
-        super(NoMask, self).__init__(**kwargs)
-
-    def build(self, input_shape):
-        # Be sure to call this somewhere!
-        super(NoMask, self).build(input_shape)
-
-    def call(self, x, mask=None, **kwargs):
-        return x
-
-    def compute_mask(self, inputs, mask):
-        return None
+# class NoMask(Layer):
+#     def __init__(self, **kwargs):
+#         super(NoMask, self).__init__(**kwargs)
+#
+#     def build(self, input_shape):
+#         # Be sure to call this somewhere!
+#         super(NoMask, self).build(input_shape)
+#
+#     def call(self, x, mask=None, **kwargs):
+#         return x
+#
+#     def compute_mask(self, inputs, mask):
+#         return None
 
 
 class Linear(Layer):
@@ -139,12 +139,13 @@ def combined_dnn_input(sparse_embedding_list, dense_value_list):
         raise NotImplementedError("dnn_feature_columns can not be empty list")
 
 
-def concat_func(inputs, axis=-1, mask=False):
-    if not mask:
-        # old tensorflow might have issue if previous layers are no mask but the new one are masked
-        # added this to make sure no error, new version seems to not have this issue, but need to test it
-        # before get it to the production
-        inputs = list(map(NoMask(), inputs))
+def concat_func(inputs, axis=-1):
+# def concat_func(inputs, axis=-1, mask=False):
+    # if not mask:
+    #     # old tensorflow might have issue if previous layers are no mask but the new one are masked
+    #     # added this to make sure no error, new version seems to not have this issue, but need to test it
+    #     # before get it to the production
+    #     inputs = list(map(NoMask(), inputs))
     if len(inputs) == 1:
         return inputs[0]
     else:
@@ -1087,7 +1088,7 @@ custom_objects = {'tf': tf,
                   'FM': FM,
                   'Dice': Dice,
                   'SequencePoolingLayer': SequencePoolingLayer,
-                  'NoMask': NoMask,
+                  # 'NoMask': NoMask,
                   'Hash': Hash,
                   'Linear': Linear,
                   'WeightedSequenceLayer': WeightedSequenceLayer,
