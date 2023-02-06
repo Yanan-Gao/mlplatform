@@ -2,6 +2,7 @@ import sys
 from datetime import datetime
 
 import tensorflow as tf
+import atexit
 from absl import app, flags
 
 from philo.data import prepare_dummy_data, prepare_real_data, s3_sync, get_steps_epochs_emr, TRAIN, VAL, TEST
@@ -11,6 +12,7 @@ from philo.models import model_builder
 from philo.utils import get_callbacks
 from philo.prometheus import Prometheus
 from philo.feature_utils import get_features_from_json
+
 
 FLAGS = flags.FLAGS
 
@@ -116,7 +118,15 @@ def main(argv):
         repeat=repeat)
 
     mirrored_strategy = tf.distribute.MultiWorkerMirroredStrategy()
-    with mirrored_strategy.scope():
+    
+    # Tensorflow has a bad exist because it creats a threadpool that it doesn't ever close (https://github.com/tensorflow/tensorflow/issues/50487#issuecomment-997304668)
+    # Future versions of TF might fix this bugs and we can remove it, until then, use atexit to run the thread pool close functions before Python exit
+    # TODO: remove when theres a tf patch to resolve this
+
+    # Register the `_cross_device_ops._pool` and `_host_cross_device_ops._pool`s `.close()` function to run when Python exists
+    atexit.register(mirrored_strategy._extended._cross_device_ops._pool.close)
+    atexit.register(mirrored_strategy._extended._host_cross_device_ops._pool.close)
+    with mirrored_strategy.scope(): 
         try:
             model = tf.keras.models.load_model(FLAGS.latest_model_path, custom_objects=custom_objects)
         except OSError as error:
