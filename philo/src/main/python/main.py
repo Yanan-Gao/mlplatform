@@ -104,6 +104,13 @@ def main(argv):
     model_features = get_features_from_json(FEATURES_PATH, FLAGS.exclude_features)
     model_target = DEFAULT_MODEL_TARGET
 
+    # define training metrics
+    prom = Prometheus('philo', 'modelTraining')
+    epoch_gauge = prom.define_gauge('epochs', 'number of epochs')
+    loss_gauge = prom.define_gauge('loss', 'loss value')
+    val_loss_gauge = prom.define_gauge('val_loss', 'validation loss')
+    eval_philo_gauge = prom.define_gauge('eval', 'evaluation')
+
     # if the training process need to go through the whole dataset in more than 1 epoch
     # we need to repeat the data and get the steps_per_epochs so that tf knows how the
     # data could be digested
@@ -138,7 +145,6 @@ def main(argv):
                       "dnn_use_bn": FLAGS.dnn_use_bn}
             print('Number of devices: %d' % mirrored_strategy.num_replicas_in_sync)
             model = model_builder(FLAGS.model_arch, model_features, **kwargs)
-            #model = model_builder(FLAGS.model_arch, model_features, **kwargs)
 
         auc = tf.keras.metrics.AUC()
 
@@ -169,16 +175,15 @@ def main(argv):
 
     s3_sync(model_tag, f"{FLAGS.s3_output_path}{MODEL_OUTPUT}{FLAGS.region}{FLAGS.model_creation_date}")
 
-    epoch_gauge = Prometheus.define_gauge('epochs', 'number of epochs')
-    loss_gauge = Prometheus.define_gauge('loss', 'loss value')
-    val_loss_gauge = Prometheus.define_gauge('val_loss', 'validation loss')
     epoch_gauge.set(epochs)
     loss_gauge.set(history.history['loss'][-1])
     val_loss_gauge.set(history.history['val_loss'][-1])
 
     evals = model.evaluate(datasets[TEST], verbose=1)
-    eval_philo_gauge = Prometheus.define_gauge('eval', 'evaluation')
     eval_philo_gauge.set(evals[2])
+
+    # push metrics before stopping the job
+    prom.push()
 
 
 if __name__ == '__main__':
