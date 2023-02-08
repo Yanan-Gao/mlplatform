@@ -118,6 +118,7 @@ philo:build_push_training_container:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
         - "philo/src/main/python/*"
+        - "philo/src/main/python/**/*"
       when: manual
   script:
     - export DOCKER_HOST=$DOCKER_PORT
@@ -141,6 +142,7 @@ philo:build_push_release_container:
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
         - "philo/src/main/python/*"
+        - "philo/src/main/python/**/*"
       when: manual
   script:
     - export DOCKER_HOST=$DOCKER_PORT
@@ -159,7 +161,8 @@ philo:deploy_release:
   rules:
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
-        - "philo/src/**/*"
+        - "philo/src/main/scala/*"
+        - "philo/src/main/scala/**/*"
       when: manual
       allow_failure: false
   script:
