@@ -14,18 +14,16 @@ from philo.inputs import get_dense_input
 from collections import OrderedDict
 from itertools import chain
 
-
 SEED = 1024
 
 
-def extract_neo_model(model, model_features,
-                      linear_feature_columns,
-                      adgroup_feature_name,
-                      l2_reg_linear, seed=SEED):
+def extract_neo_model(model, model_arch, model_features, linear_feature_columns, adgroup_feature_name, l2_reg_linear,
+                      seed=SEED):
     """
     Extract adgroup and bidrequest neo model from the factorization machine part of deepfm
     Args:
         model: original trained or untrained model
+        model_arch: the architecture of the input model, currently supports 'deepfm' and 'deepfm_dual'
         model_features: model feature list, which is the input from model_builder
         linear_feature_columns: linear feature columns for the linear interaction
         adgroup_feature_name: features for the adgroup neo model
@@ -50,6 +48,13 @@ def extract_neo_model(model, model_features,
     a_one_hot, b_one_hot = separate_feature(one_hot_list,
                                             adgroup_feature_list=adgroup_feature_name)
     a_input_layers, b_input_layers = separate_feature(input_layers, adgroup_feature_list=adgroup_feature_name)
+    if model_arch == "deepfm_dual":
+        a_dnn_layer = list(filter(lambda x: x.name == 'adgroup_dnn', model.layers))[0]
+        b_dnn_layer = list(filter(lambda x: x.name == 'bidrequest_dnn', model.layers))[0]
+    elif model_arch == "deepfm":
+        a_dnn_layer, b_dnn_layer = None, None
+    else:
+        raise Exception("Model arch is unknown, current options are: deepfm and deepfm_dual.")
 
     linear_layer = list(filter(lambda x: isinstance(x, Linear), model.layers))[0]
     linear_weight = linear_layer.get_weights()
@@ -59,17 +64,16 @@ def extract_neo_model(model, model_features,
         bias = [linear_weight[0]]
         linear_weight = [linear_weight[1]]
     a_neo = build_neo_model(a_input_layers, a_linear_feature_columns, a_one_hot, l2_reg_linear, a_embed_list,
-                            use_bias=use_bias, bias=bias, seed=seed)
+                            dnn_layer=a_dnn_layer, use_bias=use_bias, bias=bias, seed=seed)
     # bidrequest contains continuous features, therefore, need to load the linear weight to it.
     # align_model_feature make sure the weights are loaded to the right features
     b_neo = build_neo_model(b_input_layers, b_linear_feature_columns, b_one_hot, l2_reg_linear, b_embed_list,
-                            linear_weights=linear_weight, seed=seed)
+                            dnn_layer=b_dnn_layer, linear_weights=linear_weight, seed=seed)
     return a_neo, b_neo
 
 
-def build_neo_model(input_layers, linear_feature_columns, one_hot_layers,
-                    l2_reg_linear, embed_list, use_bias=False, bias=None,
-                    linear_weights=None, seed=SEED):
+def build_neo_model(input_layers, linear_feature_columns, one_hot_layers, l2_reg_linear, embed_list,
+                    dnn_layer=None, use_bias=False, bias=None, linear_weights=None, seed=SEED):
     """
     build Neo model
     Args:
@@ -78,6 +82,7 @@ def build_neo_model(input_layers, linear_feature_columns, one_hot_layers,
         one_hot_layers: one hot embedding layers
         l2_reg_linear: l2 regularization for the linear dense part
         embed_list: list of embedding layers
+        dnn_layer: one of the DNN layers from dual tower, depending on adgroup or bidrequest
         bias: if use bias, the value for bias, in the format of [array([float])]
         use_bias: use bias or not
         linear_weights: weights for the dense feature linear kernel, if all sparse feature, it shall be set to None
@@ -105,7 +110,11 @@ def build_neo_model(input_layers, linear_feature_columns, one_hot_layers,
     if not dense_existence:
         linear_logit = tf.squeeze(linear_logit, axis=-1)
     fm_vector, fm_float = get_partial_fm(embed_list)
-    model = Model(inputs=list(features.values()), outputs=[linear_logit, fm_float, fm_vector])
+    if dnn_layer:
+        final_outputs = [linear_logit, fm_float, fm_vector, dnn_layer.output]
+    else:
+        final_outputs = [linear_logit, fm_float, fm_vector]
+    model = Model(inputs=list(features.values()), outputs=final_outputs)
 
     if linear_weights and use_bias:
         weights = linear_weights + bias
@@ -242,16 +251,29 @@ def combine_neo_results(a_neo_predict, b_neo_predict, combined_value=True):
              purpose
 
     """
-    a_linear_logit, a_fm_float, a_fm_vector = a_neo_predict
-    b_linear_logit, b_fm_float, b_fm_vector = b_neo_predict
+    pred_tuple_len = len(a_neo_predict)
+    if pred_tuple_len == 4:
+        a_linear_logit, a_fm_float, a_fm_vector, a_dnn_vector = a_neo_predict
+        b_linear_logit, b_fm_float, b_fm_vector, b_dnn_vector = b_neo_predict
+        dnn_logit_op = np.sum(a_dnn_vector * b_dnn_vector, axis=1, keepdims=True)
+    elif pred_tuple_len == 3:
+        a_linear_logit, a_fm_float, a_fm_vector = a_neo_predict
+        b_linear_logit, b_fm_float, b_fm_vector = b_neo_predict
+    else:
+        raise Exception("Neo pred output dimension is unknown, should be 3 if 'fm' and 4 if 'dual_tower'.")
+
     sum_vector = a_fm_vector + b_fm_vector
     # could also use sum_vector * sum_vector to replace np.square
     vector_op = np.sum(np.square(sum_vector), axis=-1, keepdims=False)
     fm_vector_op = 0.5 * (vector_op - a_fm_float - b_fm_float)
     linear_logit_op = a_linear_logit + b_linear_logit
-    if combined_value:
+
+    if combined_value and pred_tuple_len == 4:
+        return linear_logit_op + fm_vector_op + dnn_logit_op
+    elif combined_value and pred_tuple_len == 3:
         return linear_logit_op + fm_vector_op
-    return linear_logit_op, fm_vector_op
+    else:
+        return linear_logit_op, fm_vector_op
 
 
 def predict_neo_results(a_neo_predict, b_neo_predict, pred_layer_weight):
@@ -295,7 +317,7 @@ def separate_feature(layer_list,
     return adgroup_info, bidrequest_info
 
 
-def create_combined_encoder(group_embedding_dict, dense_value_list, adgroup_feature_list, dnn_hidden_units=(64),
+def create_combined_encoder(group_embedding_dict, dense_value_list, adgroup_feature_list, dnn_hidden_units=[64],
                             l2_reg_dnn=0, seed=SEED, dnn_dropout=0,
                             dnn_activation='relu', dnn_use_bn=False):
     sparse_feature_embeddings = list(chain.from_iterable(group_embedding_dict.values()))
@@ -303,6 +325,8 @@ def create_combined_encoder(group_embedding_dict, dense_value_list, adgroup_feat
     adgroup_dense, bid_dense = separate_feature(dense_value_list, adgroup_feature_list)
     adgroup_input = combined_dnn_input(adgroup_embed, adgroup_dense)
     bid_input = combined_dnn_input(bid_embed, bid_dense)
-    dnn_output_adgroup = DNN(dnn_hidden_units, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed)(adgroup_input)
-    dnn_output_bid = DNN(dnn_hidden_units, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed)(bid_input)
+    dnn_output_adgroup = DNN(dnn_hidden_units, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed,
+                             name="adgroup_dnn")(adgroup_input)
+    dnn_output_bid = DNN(dnn_hidden_units, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed,
+                         name="bidrequest_dnn")(bid_input)
     return tf.reduce_sum(dnn_output_adgroup * dnn_output_bid, axis=1, keepdims=True)
