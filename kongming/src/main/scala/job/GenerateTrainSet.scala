@@ -100,6 +100,18 @@ object GenerateTrainSet {
     val maxNegativeCount = config.getInt(path="maxNegativeCount", 500000)
     val upSamplingValSet = config.getBoolean(path = "upSamplingValSet", false)
     val conversionLookback = config.getInt("conversionLookback", 7)
+
+    val negativeWeightMethod = config.getString("negativeWeightMethod", "PostDistVar")
+
+    /*
+    Params for func generateWeightForNegative
+    The default Offset and Coefficient is derived from f = 1 - a * exp(b*x) that fits the overall distribution of positive samples
+    Need to be updated if the distribution change dramatically
+     */
+    val negativeWeightOffset = config.getDouble("negativeWeightOffset", 0.7)
+    val negativeWeightCoefficient = config.getDouble("negativeWeightCoef", -0.33)
+    val negativeWeightThreshold = config.getInt("negativeWeightThreshold", 3000)
+
     val saveParquetData = config.getBoolean("saveParquetData", false)
     val saveTrainingDataAsTFRecord = config.getBoolean("saveTrainingDataAsTFRecord", false)
 
@@ -172,12 +184,15 @@ object GenerateTrainSet {
     // todo: normalize weight for positives, otherwise pos/neg will be changed if neg has no weight
     // Question: do we need to upsample or just tune weights are enough, consider the naive upsamping. Upsampling can have different strategy though.
 
-
     // 4. balance  pos and neg
     val balancedTrainset= balancePosNeg(realPositives, validNegatives, desiredNegOverPos, maxNegativeCount, upSamplingValSet = upSamplingValSet, samplingSeed = samplingSeed)(prometheus)
 
+    // weighting negatives after balancing to optimize the runtime
+    val negWeightParams = NegativeWeightDistParams(negativeWeightCoefficient, negativeWeightOffset, negativeWeightThreshold)
+    val adjustedNegWithWeight = generateWeightForNegative(balancedTrainset._2, positivesWithRawWeight, maxLookback, Some(negativeWeightMethod), methodDistParams = negWeightParams)(prometheus).cache()
+
+    val adjustedNeg = adjustedNegWithWeight.withColumn("Target", lit(0))
     val adjustedPos = balancedTrainset._1.withColumn("Target", lit(1))
-    val adjustedNeg = balancedTrainset._2.withColumn("Target", lit(0))
 
     val preFeatureJoinTrainSet = adjustedPos.union(adjustedNeg)
       .selectAs[PreFeatureJoinRecord].cache()

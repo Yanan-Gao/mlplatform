@@ -84,6 +84,13 @@ object TrainSetTransformation {
                                            IsInTrainSet: Boolean
                                          )
 
+  case class NegativeWeightDistParams(
+                                       Coefficient: Double,
+                                       Offset: Double,
+                                       Threshold: Int
+                                     )
+
+
   case class BaseAssociateAdGroupMapping(
                                         AdGroupId: String,
                                         ConfigValue: String,
@@ -166,6 +173,63 @@ object TrainSetTransformation {
       }
     }
   }
+
+  /**
+   * @param negativeData  negative dataset
+   * @param positiveData  positive dataset
+   * @param lookBackDays  max lookback days to generate the time frame for distribution
+   * @param weightMethod  indicate the weighting method
+   * @param methodDistParams  a map of params for the weighting method
+   * @return
+   */
+  def generateWeightForNegative(
+                                 negativeData: Dataset[TrainSetRecord],
+                                 positiveData: Dataset[PositiveWithRawWeightsRecord],
+                                 lookBackDays: Int,
+                                 weightMethod: Option[String] = None,
+                                 methodDistParams: NegativeWeightDistParams,
+                               )(implicit prometheus: PrometheusClient): Dataset[TrainSetRecord] = {
+
+    val negativeDataWithDateDiff = negativeData
+      .withColumn("BidDiffDayInSeconds", (unix_timestamp(date_add(lit(date), 1)) - unix_timestamp($"LogEntryTime")) / 86400)
+      .withColumn("BidDiffDayInt", floor($"BidDiffDayInSeconds"))
+
+    val adGroupDailyConvDist = positiveData
+      .withColumn("BidDiffDayInt", floor((unix_timestamp($"ConversionTime") - unix_timestamp($"LogEntryTime")) / 86400).cast("int"))
+      .groupBy("ConfigKey", "ConfigValue", "BidDiffDayInt").agg(count($"BidRequestId").alias("PosDailyCnt"))
+
+    // make sure the distribution is ranged from 0 ~ lookback without missing dates
+    val dayRange = (0 to lookBackDays).toList
+    val adGroupRangeDF = adGroupDailyConvDist.select("ConfigKey", "ConfigValue").distinct()
+      .withColumn("DateRange", typedLit(dayRange))
+      .withColumn("BidDiffDayInt", explode($"DateRange"))
+      .drop("DateRange")
+
+    val adGroupRangeConvDist = adGroupRangeDF
+      .join(adGroupDailyConvDist, Seq("ConfigKey", "ConfigValue", "BidDiffDayInt"), "left")
+      .withColumn("AdGroupSize", sum("PosDailyCnt").over(Window.partitionBy("ConfigKey", "ConfigValue")))
+      .withColumn("PosPctInNDay", sum("PosDailyCnt").over(Window.partitionBy("ConfigKey", "ConfigValue").orderBy("BidDiffDayInt"))
+        / $"AdGroupSize")
+
+    weightMethod match {
+      case Some("PostDistVar") => {
+        /*
+        Use the actual cumulative positive sample distribution to weight large ConfigValue (# pos > Threshold)
+        e.g. If # pos in first 2 days took 40% of total, use 0.4 to weight negatives happened 2 days ago
+        For small ConfigValue, the weighting is calculated by an exponential function: 1 - Offset * exp( Coef * DayDiff )
+         */
+        // broadcast join here cause adGroupRangeConvDist is small
+        negativeDataWithDateDiff.join(broadcast(adGroupRangeConvDist), Seq("ConfigKey", "ConfigValue", "BidDiffDayInt"), "left")
+          .withColumn("WeightDecayFunc", lit(1) - lit(methodDistParams.Offset) * exp(lit(methodDistParams.Coefficient) * $"BidDiffDayInSeconds"))
+          .withColumn("Weight", when($"AdGroupSize" > methodDistParams.Threshold, $"PosPctInNDay").otherwise($"WeightDecayFunc").cast(DoubleType))
+          .selectAs[TrainSetRecord]
+      }
+      case _ => { // default is non-weighting
+        negativeData
+      }
+    }
+  }
+
 
   def attachTrainsetWithFeature(
                           trainset: Dataset[PreFeatureJoinRecord],
