@@ -7,7 +7,8 @@ variables:
   KONGMING_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/jars/prod"
   KONGMING_ASSEMBLY_OUT: "$CI_PROJECT_DIR/kongming/target/scala-2.12/kongming.jar"
   KONGMING_SCRIPTS_SOURCE: "src/main/bash/"
-  KONGMING_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/scripts/"
+  KONGMING_MERGEREQUESTS_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/scripts/mergerequests"
+  KONGMING_PROD_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/scripts/prod/"
   PYTHON_BUILD_IMAGE: "python:3.8"
   KONGMING_TRAINING_IMAGE: "kongming/training-gpu"
 
@@ -85,7 +86,24 @@ kongming:deploy_release:
     - popd
     - echo "ran KONGMING_deploy_release"
 
-kongming:push_scripts:
+kongming:push_mergerequests_scripts:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: deploy
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "kongming/src/main/bash/**/*"
+        - "kongming/.gitlab-ci.yml"
+  script:
+    - pushd ./kongming/
+    - DEST=${KONGMING_MERGEREQUESTS_SCRIPTS_DEST}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - DEST_FIXED=${KONGMING_MERGEREQUESTS_SCRIPTS_DEST}/${CI_COMMIT_REF_NAME}/latest
+    - aws s3 cp ${KONGMING_SCRIPTS_SOURCE} ${DEST} --recursive
+    - aws s3 cp ${KONGMING_SCRIPTS_SOURCE} ${DEST_FIXED} --recursive
+    - popd
+    - echo "ran push_mergerequests_scripts"
+
+kongming:push_prod_scripts:
   image: "$PYTHON_BUILD_IMAGE"
   stage: deploy
   rules:
@@ -95,9 +113,9 @@ kongming:push_scripts:
         - "kongming/.gitlab-ci.yml"
   script:
     - pushd ./kongming/
-    - aws s3 cp ${KONGMING_SCRIPTS_SOURCE} ${KONGMING_SCRIPTS_DEST} --recursive
+    - aws s3 cp ${KONGMING_SCRIPTS_SOURCE} ${KONGMING_PROD_SCRIPTS_DEST} --recursive
     - popd
-    - echo "ran push_set_scripts"
+    - echo "ran push_prod_scripts"
 
 kongming:build_push_test_container:
   image: "$PYTHON_BUILD_IMAGE"
