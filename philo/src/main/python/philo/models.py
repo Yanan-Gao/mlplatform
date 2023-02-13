@@ -53,7 +53,7 @@ def model_builder(model_arch, model_features, **kwargs):
 
 
 def deep_fm_dual_tower(linear_feature_columns, dnn_feature_columns, adgroup_feature_list, fm_group=[DEFAULT_GROUP_NAME],
-                       dnn_hidden_units=(64), l2_reg_linear=0.00001, l2_reg_embedding=0.00001,
+                       dnn_hidden_units=[64], l2_reg_linear=0.00001, l2_reg_embedding=0.00001,
                        l2_reg_dnn=0, seed=SEED, dnn_dropout=0,
                        dnn_activation='relu', dnn_use_bn=False, task='binary'):
     """Instantiates the DeepFM Network architecture with adgroup and bidrequest feature splitted in mlp part
@@ -111,7 +111,7 @@ def deep_fm_dual_tower(linear_feature_columns, dnn_feature_columns, adgroup_feat
     return model
 
 
-def deep_fm(linear_feature_columns, dnn_feature_columns, fm_group=[DEFAULT_GROUP_NAME], dnn_hidden_units=(128, 128),
+def deep_fm(linear_feature_columns, dnn_feature_columns, fm_group=[DEFAULT_GROUP_NAME], dnn_hidden_units=[128, 128],
             l2_reg_linear=0.00001, l2_reg_embedding=0.00001, l2_reg_dnn=0, seed=SEED, dnn_dropout=0,
             dnn_activation='relu', dnn_use_bn=False, task='binary'):
     """Instantiates the DeepFM Network architecture. https://arxiv.org/abs/1703.04247
@@ -159,7 +159,7 @@ def deep_fm(linear_feature_columns, dnn_feature_columns, fm_group=[DEFAULT_GROUP
     return model
 
 
-def xdeepfm(linear_feature_columns, dnn_feature_columns, dnn_hidden_units=(256, 128, 64),
+def xdeepfm(linear_feature_columns, dnn_feature_columns, dnn_hidden_units=[256, 128, 64],
             cin_layer_size=(128, 128,), cin_split_half=True, cin_activation='relu', l2_reg_linear=0.00001,
             l2_reg_embedding=0.00001, l2_reg_dnn=0, l2_reg_cin=0, seed=1024, dnn_dropout=0,
             dnn_activation='relu', dnn_use_bn=False, task='binary'):
@@ -216,7 +216,7 @@ def xdeepfm(linear_feature_columns, dnn_feature_columns, dnn_hidden_units=(256, 
 
 
 def dcn_mix(linear_feature_columns, dnn_feature_columns, cross_num=2,
-            dnn_hidden_units=(256, 128, 64), l2_reg_linear=1e-5, l2_reg_embedding=1e-5, low_rank=32, num_experts=4,
+            dnn_hidden_units=[256, 128, 64], l2_reg_linear=1e-5, l2_reg_embedding=1e-5, low_rank=32, num_experts=4,
             l2_reg_cross=1e-5, l2_reg_dnn=0, seed=1024, dnn_dropout=0, dnn_use_bn=False,
             dnn_activation='relu', task='binary'):
     """Instantiates the Deep&Cross Network with mixture of experts architecture.
@@ -266,7 +266,7 @@ def dcn_mix(linear_feature_columns, dnn_feature_columns, cross_num=2,
 
 
 def dcn(linear_feature_columns, dnn_feature_columns, cross_num=2, cross_parameterization='vector',
-        dnn_hidden_units=(256, 128, 64), l2_reg_linear=1e-5, l2_reg_embedding=1e-5,
+        dnn_hidden_units=[256, 128, 64], l2_reg_linear=1e-5, l2_reg_embedding=1e-5,
         l2_reg_cross=1e-5, l2_reg_dnn=0, seed=1024, dnn_dropout=0, dnn_use_bn=False,
         dnn_activation='relu', task='binary'):
     """Instantiates the Deep&Cross Network architecture. added by Paniti
