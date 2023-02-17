@@ -264,7 +264,6 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
       .withColumn("rand", rand())
       .withColumn("row", rank().over(window))
       .filter('row <= Config.numTDID)
-      .drop("row", "rand")
 
     if (Config.maxPositiveSamplesPerSegment > 0) {
       positiveSample = positiveSample.withColumn("pos_row", row_number().over(window1))
@@ -272,7 +271,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
         .drop("pos_row")
     }
 
-    positiveSample.withColumn("Target", lit(1.0))
+    positiveSample.drop("row", "rand").withColumn("Target", lit(1.0))
   }
 
   def generateSoftNegativeSample(positiveSample: DataFrame, softNegativePool: DataFrame): DataFrame = {
@@ -330,7 +329,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
 
     // get the distinct positive impression of the tdid
     val distinctPosPool = sampledBidsImpressions
-      .join(campaignLevelPool, Seq("TDID", "CampaignId", "IsPrimaryTDID"), "inner")
+      .join(campaignLevelPool, Seq("TDID", "CampaignId"), "inner")
 
     // generate the impression pool of the hard negative
     val hardNegImp = hardNegPool
