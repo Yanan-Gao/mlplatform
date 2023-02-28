@@ -1,5 +1,5 @@
-from collections import namedtuple
 import tensorflow as tf
+import numpy as np
 
 DEFAULT_EMB_DIM = 16
 
@@ -29,13 +29,61 @@ DEFAULT_CARDINALITIES = {
     # "SupplyVendorSiteId": 102,
     # "UserHourOfWeek": 24,
     "Zip": 90002,
+    "HasContextualCategory": 3,
+    "ContextualCategories": 700,
+    "HasContextualCategoryTier1": 3,
+    "ContextualCategoriesTier1": 31,
 }
 
-Feature = namedtuple("Feature", "name, type, cardinality, default_value, embedding_dim, ppmethod") #ppmethod stands for pre-processing method: simple, int_vocab, string_vocab, string_map
+# ppmethod stands for pre-processing method: simple, int_vocab, string_vocab, string_map
+class Feature:
+    def __init__(self, name, type, cardinality, default_value, embedding_dim=None, ppmethod=None, column_name=None, preprocessor=None, base_type=None):
+        self.name = name
+        self.type = type
+        self.cardinality = cardinality
+        self.default_value = default_value
+        self.embedding_dim = embedding_dim
+        self.ppmethod = ppmethod
+        self.column_name = column_name or self.name # for list feature
+        self.preprocessor = preprocessor
+        self.base_type = base_type or type
+
+    def __repr__(self):
+        return "name=%s type=%s cardinality=%s default_value=%s embedding_dim=%s ppmethod=%s column_name=%s base_type=%s" % (
+            self.name,
+            self.type,
+            self.cardinality,
+            self.default_value,
+            self.embedding_dim,
+            self.ppmethod,
+            self.column_name,
+            self.base_type
+        )
 
 def emb_sz_rule(n_cat):
     "Rule of thumb to pick embedding size corresponding to `n_cat`"
     return min(DEFAULT_EMB_DIM, round(1.6 * n_cat**0.56))
+
+
+contextual_tier1_features = [
+    Feature("ContextualCategoryLengthTier1", tf.float32, 1, 0.0),
+    # has tier1 contextual or not
+    # default value is 1
+    Feature("HasContextualCategoryTier1", tf.int64,
+            DEFAULT_CARDINALITIES["HasContextualCategoryTier1"], 1,
+            emb_sz_rule(DEFAULT_CARDINALITIES["HasContextualCategoryTier1"]), "simple"),
+    # tier1 contextual categories
+    # default value is all zeros
+    Feature("ContextualCategoriesTier1", tf.variant,
+            DEFAULT_CARDINALITIES["ContextualCategoriesTier1"], [0]*DEFAULT_CARDINALITIES["ContextualCategoriesTier1"],
+            emb_sz_rule(DEFAULT_CARDINALITIES["ContextualCategoriesTier1"]), "simple",
+            ["ContextualCategoriesTier1_Column{}".format(i) for i in range(DEFAULT_CARDINALITIES["ContextualCategoriesTier1"])],
+            None, tf.int64),
+]
+
+extended_features = {
+    "contextual": contextual_tier1_features,
+}
 
 #preprocessed int and string features
 default_model_features = [ # 17 active features
@@ -64,23 +112,20 @@ default_model_features = [ # 17 active features
     # Feature("UserHourOfWeek", tf.int64, DEFAULT_CARDINALITIES["UserHourOfWeek"]*7+2, 0, emb_sz_rule( DEFAULT_CARDINALITIES["SupplyVendor"] ), "simple"),
     Feature("Zip", tf.int64, DEFAULT_CARDINALITIES["Zip"], 0, emb_sz_rule( DEFAULT_CARDINALITIES["Zip"] ), "simple"),
 ] + [ # 8 features
-    Feature("sin_hour_day", tf.float32, 1, 0.0, None, None),
-    Feature("cos_hour_day", tf.float32, 1, 0.0, None, None),
-    Feature("sin_minute_hour", tf.float32, 1, 0.0, None, None),
-    Feature("cos_minute_hour", tf.float32, 1, 0.0, None, None),
-    Feature("sin_hour_week", tf.float32, 1, 0.0, None, None),
-    Feature("cos_hour_week", tf.float32, 1, 0.0, None, None),
-    Feature("latitude", tf.float32, 1, 0.0, None, None),
-    Feature("longitude", tf.float32, 1, 0.0, None, None)
+    Feature("sin_hour_day", tf.float32, 1, 0.0),
+    Feature("cos_hour_day", tf.float32, 1, 0.0),
+    Feature("sin_minute_hour", tf.float32, 1, 0.0),
+    Feature("cos_minute_hour", tf.float32, 1, 0.0),
+    Feature("sin_hour_week", tf.float32, 1, 0.0),
+    Feature("cos_hour_week", tf.float32, 1, 0.0),
+    Feature("latitude", tf.float32, 1, 0.0),
+    Feature("longitude", tf.float32, 1, 0.0)
 ]
 
-#
 default_model_dim_group = Feature("AdGroupId", tf.int64, DEFAULT_CARDINALITIES["AdGroupId"], 0, emb_sz_rule( DEFAULT_CARDINALITIES["AdGroupId"] ), "simple")
 
 
-Target = namedtuple("Feature", "name, type, default_value")
-
-default_model_targets = [Target("Target", tf.int64, None)]
+default_model_targets = [Feature("Target", tf.int64, cardinality=None, default_value=None)]
 
 def get_target_cat_map(model_targets, card_cap):
     #get categorical target dict for AE

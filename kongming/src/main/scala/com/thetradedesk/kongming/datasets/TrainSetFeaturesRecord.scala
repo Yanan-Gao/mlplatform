@@ -29,6 +29,11 @@ final case class TrainSetFeaturesRecord (
                                           InternetConnectionType: Option[Int],
                                           MatchedFoldPosition: Int,
 
+                                          HasContextualCategoryTier1: Int,
+                                          ContextualCategoryNumberTier1: Int,
+                                          ContextualCategoryLengthTier1: Double,
+                                          ContextualCategoriesTier1: Array[Int],
+
                                           sin_hour_week: Double,
                                           cos_hour_week: Double,
                                           sin_hour_day: Double,

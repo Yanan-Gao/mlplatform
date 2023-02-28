@@ -8,13 +8,14 @@ import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.geronimo.shared.intModelFeaturesCols
+import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, intModelFeaturesCols}
+import com.thetradedesk.kongming.policyDate
 import com.thetradedesk.kongming.transform.NegativeTransform.aggregateNegatives
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.transform.TrainSetTransformation._
 import org.apache.spark.sql.types.DoubleType
-import job.DailyOfflineScoringSet.{keptFields, modelKeepFeatureColNames, modelKeepFeatureCols}
+import job.DailyOfflineScoringSet.{keptFields, modelKeepFeatureColNames}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.storage.StorageLevel
 
@@ -68,6 +69,11 @@ object GenerateTrainSet {
     ModelFeature("InternetConnectionType", INT_FEATURE_TYPE, Some(10), 0),
     ModelFeature("MatchedFoldPosition", INT_FEATURE_TYPE, Some(5), 0),
 
+    // made its card=3 to avoid all 1's after hashing
+    ModelFeature("HasContextualCategoryTier1", INT_FEATURE_TYPE, Some(3), 0),
+    ModelFeature("ContextualCategoryLengthTier1", FLOAT_FEATURE_TYPE, None, 0),
+    ModelFeature("ContextualCategoriesTier1", ARRAY_INT_FEATURE_TYPE, Some(31), 0),
+
     ModelFeature("sin_hour_day", FLOAT_FEATURE_TYPE, None, 0),
     ModelFeature("cos_hour_day", FLOAT_FEATURE_TYPE, None, 0),
     ModelFeature("sin_minute_hour", FLOAT_FEATURE_TYPE, None, 0),
@@ -86,6 +92,21 @@ object GenerateTrainSet {
 
   def modelTargetCols(targets: Seq[ModelTarget]): Array[Column] = {
     targets.map(t => col(t.name).alias(t.name)).toArray
+  }
+
+  val seqFields: Array[ModelFeature] = Array(
+    ModelFeature("ContextualCategoriesTier1", ARRAY_INT_FEATURE_TYPE, Some(31), 0),
+  )
+
+  def seqModelFeaturesCols(inputColAndDims: Seq[ModelFeature]): Array[Column] = {
+    inputColAndDims.map {
+      case ModelFeature(name, ARRAY_INT_FEATURE_TYPE, Some(cardinality), _) =>
+        (0 until cardinality).map(c => when(col(name).isNotNull && size(col(name))>c, col(name)(c)).otherwise(0).alias(name+s"_Column$c"))
+    }.toArray.flatMap(_.toList)
+  }
+
+  def modelKeepFeatureCols(features: Seq[ModelFeature]): Array[Column] = {
+    features.map(f => col(f.name).alias(f.name + "Str")).toArray
   }
 
 
@@ -114,6 +135,7 @@ object GenerateTrainSet {
 
     val saveParquetData = config.getBoolean("saveParquetData", false)
     val saveTrainingDataAsTFRecord = config.getBoolean("saveTrainingDataAsTFRecord", false)
+    val saveCSV = config.getBoolean("saveCSV", true)
 
     val experimentName = config.getString("trainSetExperimentName" , "")
 
@@ -202,7 +224,10 @@ object GenerateTrainSet {
 
     // 5. join all these dataset with bidimpression to get features
     val splitColumn = modelTargetCols(Array(ModelTarget("split", STRING_FEATURE_TYPE, false)))
-    val tensorflowSelectionTabular = intModelFeaturesCols(modelDimensions ++ modelFeatures ++ modelWeights) ++ modelTargetCols(modelTargets) ++ splitColumn
+    // features to hash, including everyone except seq
+    var hashFeatures = modelDimensions ++ modelFeatures ++ modelWeights
+    hashFeatures = hashFeatures.filter(x => !seqFields.contains(x))
+    val tensorflowSelectionTabular = intModelFeaturesCols(hashFeatures) ++ seqModelFeaturesCols(seqFields) ++ modelTargetCols(modelTargets) ++ splitColumn
     val parquetSelectionTabular = modelKeepFeatureCols(keptFields) ++ tensorflowSelectionTabular
 
     val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, maxLookback)(prometheus)
@@ -238,15 +263,23 @@ object GenerateTrainSet {
       outputRowsWrittenGauge.labels("DataForModelTrainingDataset/TFVal").set(tfValRows)
     }
 
-    val csvTrainRows = DataCsvForModelTrainingDataset(experimentName).writePartition(
-      adjustedTrainParquet.drop(tfDropColumnNames: _*).as[DataForModelTrainingRecord],
-      date, "train", Some(200))
-    val csvValRows = DataCsvForModelTrainingDataset(experimentName).writePartition(
-      adjustedValParquet.drop(tfDropColumnNames: _*).as[DataForModelTrainingRecord],
-      date, "val", Some(100))
+    if (saveCSV) {
+      val csvTrainRows = DataCsvForModelTrainingDataset(experimentName).writePartition(
+        adjustedTrainParquet.drop(tfDropColumnNames: _*)
+//          .drop($"ContextualCategories")
+          .drop($"ContextualCategoriesTier1")
+          .as[DataForModelTrainingRecord],
+        date, "train", Some(200))
+      val csvValRows = DataCsvForModelTrainingDataset(experimentName).writePartition(
+        adjustedValParquet.drop(tfDropColumnNames: _*)
+//          .drop($"ContextualCategories")
+          .drop($"ContextualCategoriesTier1")
+          .as[DataForModelTrainingRecord],
+        date, "val", Some(100))
 
-    outputRowsWrittenGauge.labels("DataForModelTrainingDataset/CsvTrain").set(csvTrainRows)
-    outputRowsWrittenGauge.labels("DataForModelTrainingDataset/CsvVal").set(csvValRows)
+      outputRowsWrittenGauge.labels("DataForModelTrainingDataset/CsvTrain").set(csvTrainRows)
+      outputRowsWrittenGauge.labels("DataForModelTrainingDataset/CsvVal").set(csvValRows)
+    }
 
     // 8. save the adgroupIdInt for base adgroups(configvalue) and associated adgroups
     val adgroupBaseAssociateMapping = getBaseAssociateAdGroupIntMappings(adGroupPolicy, adGroupDS)

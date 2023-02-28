@@ -1,7 +1,7 @@
 import keras
 from keras.layers import Embedding
 import pandas as pd
-from kongming.layers import VocabLookup
+from kongming.layers import VocabLookup, MultiLabelEmbedding
 from kongming.features import *
 
 #regular input, assuming shiftmod already done
@@ -27,8 +27,21 @@ def int_embedding(name, vocab_size=10000, emb_dim=40, dtype=tf.int32):
     d = keras.layers.Dropout(seed=42, rate=0.3, name=f"{name}_dropout")
     return i, d(f( em((i)) ))
 
+def multihot_embedding(name, maxlen=1, vocab_size=10000, emb_dim=40, dtype=tf.int32):
+    i = keras.Input(shape=(maxlen,), dtype=dtype, name=f"{name}")
+    em = MultiLabelEmbedding(vocab_size=vocab_size, embed_size=emb_dim
+                             , name=f"{name}_embedding"
+                                , mask_zero=True)
+    f = keras.layers.Flatten(name=f"{name}_flatten")
+    d = keras.layers.Dropout(seed=42, rate=0.3, name=f"{name}_dropout")
+    return i, d(f( em((i)) ))
+
 def float_feature(name, dtype=tf.float32):
     i = keras.Input(shape=(1,), dtype=dtype, name=f"{name}")
+    return i, i
+
+def float_list_feature(name, length=1, dtype=tf.float32):
+    i = keras.Input(shape=(length,), dtype=dtype, name=f"{name}")
     return i, i
 
 def string_embedding(name, em_size, assets_path):

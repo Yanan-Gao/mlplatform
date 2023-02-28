@@ -1,5 +1,5 @@
 from absl import app, flags
-from kongming.features import default_model_features, default_model_dim_group, default_model_targets, get_target_cat_map
+from kongming.features import default_model_features, extended_features, default_model_dim_group, default_model_targets, get_target_cat_map, Feature
 from kongming.data import cache_prefetch_dataset, tfrecord_dataset, tfrecord_parser, csv_dataset
 from kongming.utils import parse_input_files, s3_copy
 from kongming.models import dot_product_model, load_pretrained_embedding, auto_encoder_model
@@ -48,6 +48,7 @@ flags.DEFINE_string('activation', default='relu', help='activation to use in the
 flags.DEFINE_list("string_features", default=[], help="String features for vocab lookup")
 flags.DEFINE_list("int_features", default=[], help="int features for vocab lookup")
 flags.DEFINE_string('sample_weight_col', default='Weight', help='sample weight column specification')
+flags.DEFINE_list("extended_features", default=[], help="List of extended features")
 
 flags.DEFINE_string('model_choice', default="basic",
                     help=f'Model under consideration.')
@@ -87,9 +88,12 @@ flags.DEFINE_list("profile_batches", default=[100, 120], help="batches to profil
 
 #TODO: will need to move these functions to some abstract class or within the models.py file.
 def get_features_dim_target():
+    extended_model_features = [f for k in FLAGS.extended_features if k in extended_features.keys()
+                              for f in extended_features[k] if len(extended_features[k]) > 0]
+    model_features = default_model_features + extended_model_features
 
     features = [f._replace(ppmethod='string_vocab')._replace(type=tf.string)._replace(default_value='UNK')
-                if f.name in FLAGS.string_features else f for f in default_model_features]
+                if f.name in FLAGS.string_features else f for f in model_features]
 
     if default_model_dim_group.name in FLAGS.string_features:
         model_dim = default_model_dim_group._replace(ppmethod='string_mapping')._replace(type=tf.string)._replace(
@@ -116,12 +120,12 @@ def get_features_dim_target():
 
 
 def get_csv_cols(features, dim_features, targets, sw_col):
-    selected_cols = {f.name: f.type for f in features}
-    selected_cols.update({d.name: d.type for d in dim_features})
-    selected_cols.update({t.name: t.type for t in targets})
+    selected_cols = {f.name: f for f in features}
+    selected_cols.update({d.name: d for d in dim_features})
+    selected_cols.update({t.name: t for t in targets})
 
     if sw_col != None:
-        selected_cols[sw_col] = tf.float32
+        selected_cols[sw_col] = Feature(sw_col, tf.float32, cardinality=None, default_value=None)
 
     return selected_cols
 

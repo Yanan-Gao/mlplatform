@@ -37,8 +37,6 @@ libraryDependencies ++= Seq(
   "com.thetradedesk" %% "eldorado-core" % "1.0.20-spark-3.2.1",
 )
 
-
-
 assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
 assemblyJarName in assembly := "kongming.jar"
 
