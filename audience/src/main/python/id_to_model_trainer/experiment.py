@@ -415,9 +415,9 @@ class AudienceModelExperiment:
                 }
             )
 
-            mlflow.set_tag("trainingSet", self.input_path + "split=train_tfrecord/")
-            mlflow.set_tag("validationSet", self.input_path + "split=val_tfrecord/")
-            mlflow.set_tag("testSet", self.test_input_path + "split=val_tfrecord/")
+            mlflow.set_tag("trainingSet", self.input_paths[0] + "split=train_tfrecord/")
+            mlflow.set_tag("validationSet", self.input_paths[0] + "split=val_tfrecord/")
+            mlflow.set_tag("testSet", self.test_input_paths[0] + "split=val_tfrecord/")
 
             mlflow.log_metrics(
                 {
