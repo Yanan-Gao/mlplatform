@@ -28,8 +28,8 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
     // control maximum positive records for a pxiel on given day; without it, the data size will be huge
     var maxPositiveSamplesPerSegment = config.getInt("maxPositiveSamplesPerSegment", default = 0)
     // used for the hard negative samples generation
-    var softNegFactor = config.getInt("softNegFactor", default = 10)
-    var hardNegFactor = config.getInt("hardNegFactor", default = 10)
+    var softNegFactor = config.getDouble("softNegFactor", default = 10.0)
+    var hardNegFactor = config.getDouble("hardNegFactor", default = 10.0)
     var persistHoldoutSet = config.getBoolean("persistHoldoutSet", default = false)
     var useCrossDeviceGraph = config.getBoolean("useCrossDeviceGraph", default = false)
     var trainSetDownSampleKeysRaw = config.getString("trainSetDownSampleKeys", default = "TDID,TargetingDataId")
@@ -305,7 +305,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
 
     val negativeSample = negativePool
       .join(broadcast(negativeStats1), Seq("CampaignId", "Date"), "inner")
-      .filter($"rand" <= $"Rate")
+      .filter($"rand" < $"Rate")
       .drop("rand", "Rate")
       .withColumn("Target", lit(0.0))
 
@@ -356,7 +356,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
 
     val hardNegSample = hardNegImp
       .join(hardNegStats, Seq("TargetingDataId", "CampaignId"), "inner")
-      .filter($"rand" <= $"SampleRate")
+      .filter($"rand" < $"SampleRate")
       .drop("rand", "SampleRate")
       .withColumn("Target", lit(0.0))
 
