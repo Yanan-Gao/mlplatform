@@ -28,6 +28,10 @@ final case class DailyOfflineScoringRecord(
                                            InternetConnectionType: Option[Int],
                                            MatchedFoldPosition: Int,
 
+                                           HasContextualCategoryTier1: Int,
+                                           ContextualCategoryLengthTier1: Double,
+                                           ContextualCategoriesTier1: Array[Int],
+
                                            sin_hour_week: Double,
                                            cos_hour_week: Double,
                                            sin_hour_day: Double,
@@ -38,7 +42,8 @@ final case class DailyOfflineScoringRecord(
                                            longitude: Option[Double]
                                       )
 
-case class DailyOfflineScoringDataset() extends KongMingDataset[DailyOfflineScoringRecord](
+case class DailyOfflineScoringDataset(experimentName: String = "") extends KongMingDataset[DailyOfflineScoringRecord](
   s3DatasetPath = "dailyofflinescore/v=1",
+  experimentName = experimentName,
   fileFormat = TFRecord.Example
 )

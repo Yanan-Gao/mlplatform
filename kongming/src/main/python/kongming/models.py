@@ -17,6 +17,13 @@ def model_input_layer(features, top_mlp_layers, dropout_p, activation, assets_pa
         for f in features:
             if f.type == tf.int64 and f.ppmethod=='simple':
                 input_tuple_cat.append( int_embedding(f.name, f.cardinality, f.embedding_dim) )
+            elif f.type == tf.variant and f.ppmethod=='simple':
+                # multihot-embedding for list of categories
+                # note difference between length and cardinality
+                input_tuple_cat.append(multihot_embedding(f.name, len(f.default_value), f.cardinality, f.embedding_dim))
+            elif f.type == tf.variant and f.ppmethod!='simple':
+                # list of float features
+                input_tuple_con.append(float_list_feature(f.name, f.cardinality))
             elif f.type == tf.float32:
                 input_tuple_con.append(float_feature(f.name, f.type))
             elif f.type == tf.string:
@@ -25,7 +32,7 @@ def model_input_layer(features, top_mlp_layers, dropout_p, activation, assets_pa
                 else:
                     raise Exception("Wrong preprocessing method or no asset file.")
             else:
-                raise Exception("unknown input config.")
+                raise Exception("unknown input config. f.name={}, f.type={}, f.ppmethod={}".format(f.name, f.type, f.ppmethod))
 
         #concat, drop for categorical
         input_cat = [x[0] for x in input_tuple_cat]

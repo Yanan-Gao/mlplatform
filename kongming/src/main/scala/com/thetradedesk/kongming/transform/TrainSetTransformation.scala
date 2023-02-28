@@ -1,20 +1,17 @@
 package com.thetradedesk.kongming.transform
 
-import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, shiftModUdf}
+import com.thetradedesk.geronimo.shared.shiftModUdf
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.datasets._
-import com.thetradedesk.kongming.{BidsImpressionsS3Path, date, multiLevelJoinWithPolicy, preFilteringWithPolicy}
+import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
+import com.thetradedesk.kongming.{date, multiLevelJoinWithPolicy}
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.expressions.Window
-
-import java.sql.Timestamp
-import org.apache.spark.sql.functions.unix_timestamp
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import job.GenerateTrainSet.modelDimensions
-import org.apache.spark.sql.types.{DoubleType, FloatType}
+import org.apache.spark.sql.types.DoubleType
 
 object TrainSetTransformation {
   case class UpSamplingPosFractionRecord(
@@ -237,7 +234,7 @@ object TrainSetTransformation {
                           )(implicit prometheus:PrometheusClient): Dataset[TrainSetFeaturesRecord] ={
     val bidsImpressions = DailyBidsImpressionsDataset().readRange(date.minusDays(lookbackDays), date, isInclusive = true)
 
-    trainset.join(bidsImpressions.drop("AdGroupId"), Seq("BidRequestId"), joinType =  "inner")
+    val df = trainset.join(bidsImpressions.drop("AdGroupId"), Seq("BidRequestId"), joinType =  "inner")
       .withColumn("AdFormat",concat(col("AdWidthInPixels"),lit('x'), col("AdHeightInPixels")))
       .withColumn("RenderingContext", $"RenderingContext.value")
       .withColumn("DeviceType", $"DeviceType.value")
@@ -245,6 +242,15 @@ object TrainSetTransformation {
       .withColumn("Browser", $"Browser.value")
       .withColumn("InternetConnectionType", $"InternetConnectionType.value")
       .withColumnRenamed("ConfigValue", "AdGroupId")
+
+    val bidsImpContextual = ContextualTransform
+      .generateContextualFeatureTier1(
+        df.select("BidRequestId", "ContextualCategories")
+          .dropDuplicates("BidRequestId").selectAs[ContextualData]
+      )
+
+    df
+      .join(bidsImpContextual, Seq("BidRequestId"), "left")
       .selectAs[TrainSetFeaturesRecord]
   }
 
@@ -393,7 +399,6 @@ object TrainSetTransformation {
       .withColumn("BaseAdGroupIdInt", shiftModUdf(xxhash64(col("BaseAdGroupId")), lit(modelDimensions(0).cardinality.getOrElse(0))))
       .selectAs[BaseAssociateAdGroupMappingIntRecord]
   }
-
 
 
 }

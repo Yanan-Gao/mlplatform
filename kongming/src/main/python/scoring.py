@@ -1,7 +1,7 @@
 from collections import namedtuple
 
 from absl import app, flags
-from kongming.features import default_model_features, default_model_dim_group, Feature
+from kongming.features import default_model_features, default_model_dim_group, Feature, extended_features
 from kongming.data import tfrecord_dataset, parse_scoring_data
 from kongming.utils import parse_input_files, s3_copy, load_csv, modify_model_embeddings
 import tensorflow as tf
@@ -35,7 +35,9 @@ def get_features_dim_target(additional_str_grain_map):
 
     features = [f._replace(ppmethod='string_vocab')._replace(type=tf.string)._replace(default_value='UNK')
                 if f.name in FLAGS.string_features else f for f in default_model_features]
-
+    extended_model_features = [f for k in FLAGS.extended_features if k in extended_features.keys()
+                               for f in extended_features[k] if len(extended_features[k]) > 0]
+    features += extended_model_features
     features.append(Feature(additional_str_grain_map.BidRequestId, tf.string, None, '', None , 'simple'))
     features.append(Feature(additional_str_grain_map.AdGroupId, tf.string, None, '', None , 'simple'))
 

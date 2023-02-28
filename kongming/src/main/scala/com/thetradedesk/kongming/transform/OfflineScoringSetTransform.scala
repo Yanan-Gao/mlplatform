@@ -1,8 +1,9 @@
 package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
-import com.thetradedesk.kongming
+import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, DailyOfflineScoringRecord, UnifiedAdGroupDataSet}
+import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
 import com.thetradedesk.kongming.{multiLevelJoinWithPolicy, preFilteringWithPolicy}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -32,7 +33,7 @@ object OfflineScoringSetTransform {
     val filterCondition = $"IsImp" === true
     val bidsImpressionsFilterByPolicy = multiLevelJoinWithPolicy[BidsImpressionsSchema](prefilteredDS, adGroupPolicy, filterCondition, joinType = "left_semi")
 
-    bidsImpressionsFilterByPolicy
+    val bidsImp = bidsImpressionsFilterByPolicy
       //Assuming ConfigKey will always be adgroupId.
       .withColumn("AdFormat",concat(col("AdWidthInPixels"),lit('x'), col("AdHeightInPixels")))
       .withColumn("RenderingContext", $"RenderingContext.value")
@@ -40,6 +41,14 @@ object OfflineScoringSetTransform {
       .withColumn("OperatingSystem", $"OperatingSystem.value")
       .withColumn("Browser", $"Browser.value")
       .withColumn("InternetConnectionType", $"InternetConnectionType.value")
+
+    val bidsImpContextual = ContextualTransform.generateContextualFeatureTier1(
+      bidsImp.select("BidRequestId","ContextualCategories")
+        .dropDuplicates("BidRequestId").selectAs[ContextualData]
+    )
+
+    bidsImp
+      .join(bidsImpContextual, Seq("BidRequestId"), "left")
       .select(selectionTabular: _*)
       .as[DailyOfflineScoringRecord]
   }

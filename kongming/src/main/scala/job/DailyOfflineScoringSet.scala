@@ -1,20 +1,18 @@
 package job
 
-import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, STRING_FEATURE_TYPE, loadParquetData}
+import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, STRING_FEATURE_TYPE, intModelFeaturesCols, loadParquetData}
+import com.thetradedesk.kongming._
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyOfflineScoringDataset}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
-import com.thetradedesk.geronimo.shared.intModelFeaturesCols
-import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyOfflineScoringDataset}
 import com.thetradedesk.kongming.transform.OfflineScoringSetTransform
+import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.Column
-import job.GenerateTrainSet.{modelDimensions, modelFeatures}
-
-import java.time.LocalDate
+import job.GenerateTrainSet.{modelDimensions, modelFeatures, seqFields}
 
 object DailyOfflineScoringSet {
 
@@ -31,6 +29,10 @@ object DailyOfflineScoringSet {
     features.map(f => f.name+"Str").toArray
   }
 
+  def intactFeatureCols(features: Seq[ModelFeature]): Array[Column] = {
+    features.map(f => col(f.name)).toArray
+  }
+
   def main(args: Array[String]): Unit = {
 
     val prometheus = new PrometheusClient(KongmingApplicationName, "DailyOfflineScoringSet")
@@ -40,10 +42,13 @@ object DailyOfflineScoringSet {
 
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
+    val experimentName = config.getString("offlineScoresetExperimentName" , "")
     val adGroupPolicyHardCodedDate = policyDate
     val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate)
 
-    val selectionTabular = intModelFeaturesCols(modelDimensions ++ modelFeatures) ++ modelKeepFeatureCols(keptFields)
+    var hashFeatures = modelDimensions ++ modelFeatures
+    hashFeatures = hashFeatures.filter(x => !seqFields.contains(x))
+    val selectionTabular = intModelFeaturesCols(hashFeatures) ++ intactFeatureCols(seqFields) ++ modelKeepFeatureCols(keptFields)
 
     val scoringFeatureDS = OfflineScoringSetTransform.dailyTransform(
       bidsImpressions,
@@ -52,7 +57,7 @@ object DailyOfflineScoringSet {
     )(prometheus)
 
     //assuming Yuehan has implemented the tfrecord write this way. has dependency on the changes she is doing.
-    val dailyOfflineScoringRows = DailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(100))
+    val dailyOfflineScoringRows = DailyOfflineScoringDataset(experimentName).writePartition(scoringFeatureDS, date, Some(100))
 
     outputRowsWrittenGauge.labels("DailyOfflineScoringDataset").set(dailyOfflineScoringRows)
     jobDurationGaugeTimer.setDuration()
