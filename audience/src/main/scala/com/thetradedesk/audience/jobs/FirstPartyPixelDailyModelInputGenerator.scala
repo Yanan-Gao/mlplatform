@@ -30,6 +30,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
     // used for the hard negative samples generation
     var softNegFactor = config.getInt("softNegFactor", default = 10)
     var hardNegFactor = config.getInt("hardNegFactor", default = 10)
+    var persistHoldoutSet = config.getBoolean("persistHoldoutSet", default = false)
     var useCrossDeviceGraph = config.getBoolean("useCrossDeviceGraph", default = false)
     var trainSetDownSampleKeysRaw = config.getString("trainSetDownSampleKeys", default = "TDID,TargetingDataId")
     var selectedPixelsConfigPath = config.getString("selectedPixelsConfigPath", "s3a://thetradedesk-useast-hadoop/Data_Science/freeman/audience_extension/firstPixel46_TargetingDataId/")
@@ -86,22 +87,26 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
       format = Some("tfrecord"),
       saveMode = SaveMode.Overwrite
     )
-    FirstPartyPixelModelInputDataset(Config.datasetName, Config.datasetVersion).writePartition(
-      hashedTrainingSet.filter('TDIDHash % trainSetDownSampleFactor =!= lit(sampleHit) && 'IsPrimaryTDID === lit(1)).drop("TDIDHash").as[FirstPartyPixelModelInputRecord],
-      date,
-      subFolderKey = Some(Config.subFolder),
-      subFolderValue = Some("holdout_tfrecord"),
-      format = Some("tfrecord"),
-      saveMode = SaveMode.Overwrite
-    )
-    FirstPartyPixelModelInputDataset(Config.datasetName + "CrossDeviceGraphExtension", Config.datasetVersion).writePartition(
-      hashedTrainingSet.filter('TDIDHash % trainSetDownSampleFactor =!= lit(sampleHit) && 'IsPrimaryTDID =!= lit(1)).drop("TDIDHash").as[FirstPartyPixelModelInputRecord],
-      date,
-      subFolderKey = Some(Config.subFolder),
-      subFolderValue = Some("holdout_tfrecord"),
-      format = Some("tfrecord"),
-      saveMode = SaveMode.Overwrite
-    )
+
+    if (Config.persistHoldoutSet) {
+      FirstPartyPixelModelInputDataset(Config.datasetName, Config.datasetVersion).writePartition(
+        hashedTrainingSet.filter('TDIDHash % trainSetDownSampleFactor =!= lit(sampleHit) && 'IsPrimaryTDID === lit(1)).drop("TDIDHash").as[FirstPartyPixelModelInputRecord],
+        date,
+        subFolderKey = Some(Config.subFolder),
+        subFolderValue = Some("holdout_tfrecord"),
+        format = Some("tfrecord"),
+        saveMode = SaveMode.Overwrite
+      )
+      FirstPartyPixelModelInputDataset(Config.datasetName + "CrossDeviceGraphExtension", Config.datasetVersion).writePartition(
+        hashedTrainingSet.filter('TDIDHash % trainSetDownSampleFactor =!= lit(sampleHit) && 'IsPrimaryTDID =!= lit(1)).drop("TDIDHash").as[FirstPartyPixelModelInputRecord],
+        date,
+        subFolderKey = Some(Config.subFolder),
+        subFolderValue = Some("holdout_tfrecord"),
+        format = Some("tfrecord"),
+        saveMode = SaveMode.Overwrite
+      )
+    }
+
     trainingSampledCount.set(trainingSet.count())
     trainingSet.unpersist()
 
@@ -129,12 +134,15 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
 
       if (labelsWithGraph.columns.contains("TargetingDataIds")) {
         val flatten_distinct = (array_distinct _) compose (flatten _)
-        labelsWithGraph.withColumn("isPrimaryTDID", when('isPrimaryTDID === lit(1), lit("yes")).otherwise(lit("no")))
-          .groupBy('TDID).pivot('isPrimaryTDID).agg(flatten_distinct(collect_set('TargetingDataIds)))
+        val aggregatedSegments = labelsWithGraph.groupBy('TDID, 'isPrimaryTDID).agg(flatten_distinct(collect_set('TargetingDataIds)).as("TargetingDataIds"))
+        val mutuallyExclusiveSegments = aggregatedSegments.filter('isPrimaryTDID === lit(1)).withColumnRenamed("TargetingDataIds", "yes").select("TDID", "yes")
+          .join(aggregatedSegments.filter('isPrimaryTDID =!= lit(1)).withColumnRenamed("TargetingDataIds", "no").select("TDID", "no"), Seq("TDID"), "outer")
+          .withColumn("yes", when('yes.isNotNull, 'yes).otherwise(typedLit(Seq[BigInt]())))
+          .withColumn("no", when('no.isNotNull, 'no).otherwise(typedLit(Seq[BigInt]())))
           .withColumn("no", array_except('no, 'yes))
-          .selectExpr("TDID", "stack(2, 1, yes, 0, no)")
-          .withColumnRenamed("col0", "isPrimaryTDID")
-          .withColumnRenamed("col1", "TargetingDataIds")
+
+        mutuallyExclusiveSegments.select("TDID", "yes").withColumnRenamed("yes", "TargetingDataIds").withColumn("isPrimaryTDID", lit(1))
+          .unionByName(mutuallyExclusiveSegments.select("TDID", "no").withColumnRenamed("no", "TargetingDataIds").withColumn("isPrimaryTDID", lit(0)))
           .filter('TargetingDataIds.isNotNull && size('TargetingDataIds) > 0)
       } else {
         labelsWithGraph.groupBy('TargetingDataId, 'TDID).agg(max('isPrimaryTDID).as('isPrimaryTDID))
@@ -236,6 +244,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
       val positivePool = candidatePool.filter('TargetingDataId.isNotNull)
         .cache
       val softNegativePool = candidatePool.filter('TargetingDataId.isNull)
+        .withColumn("isPrimaryTDID", lit(1))
 
       (positivePool, softNegativePool)
     }
@@ -252,13 +261,8 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
 
   def generatePositiveSample(positivePool: DataFrame): DataFrame = {
     val window = Window.partitionBy('TargetingDataId, 'TDID, 'Date).orderBy('rand.asc)
-
-    val positivePoolWithRands = positivePool
-
-      .cache()
-
-    // to control
     val window1 = Window.partitionBy('TargetingDataId, 'Date).orderBy('rand.asc)
+
     // restrict the number of records for each tdid on every day and the max positive record per day
     var positiveSample = positivePool
       .withColumn("rand", rand())
@@ -408,7 +412,6 @@ object FirstPartyPixelDailyConversionModelInputGenerator extends FirstPartyPixel
 
     val conversionDS = ConversionDataset(defaultCloudProvider).readRange(date.minusDays(ConversionConfig.conversionLookBack).atStartOfDay(), date.atStartOfDay())
       .select('TDID, 'TrackingTagId)
-//      .filter(samplingFunction('TDID)) we may loss data if we downsample conversion dataset
       .join(broadcast(allTargetingDataIds), Seq("TrackingTagId"), "inner")
       .select('TargetingDataId, 'TDID)
       .distinct()
@@ -445,7 +448,7 @@ object CrossDeviceGraphSampler {
           .select("personID", "TDID", "deviceType")
           .distinct
 
-        val sampledGraph =downSampleGraph(graph, shouldConsiderTDID2)
+        val sampledGraph = downSampleGraph(graph, shouldConsiderTDID2)
 
         sampledGraph.write.parquet(destPath)
 
