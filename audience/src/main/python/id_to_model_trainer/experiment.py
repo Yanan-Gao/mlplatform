@@ -1,7 +1,8 @@
 from datetime import datetime
 import gc
 import tensorflow as tf
-from id_to_model_trainer import models, features, data
+from id_to_model_trainer import models, features, data, utils
+from pyspark.sql import SparkSession
 import mlflow
 from sklearn import metrics
 import pandas as pd
@@ -287,7 +288,11 @@ class AudienceModelExperiment:
             loss=tf.keras.losses.BinaryCrossentropy(
                 from_logits=False, label_smoothing=self.label_smoothing
             ),
-            metrics=[tf.keras.metrics.AUC(), tf.keras.metrics.Recall(), tf.keras.metrics.Precision()],
+            metrics=[
+                tf.keras.metrics.AUC(),
+                tf.keras.metrics.Recall(),
+                tf.keras.metrics.Precision(),
+            ],
         )
 
         if self.model_weight_path is not None:
@@ -309,13 +314,19 @@ class AudienceModelExperiment:
             df = pd.DataFrame(input)
             df["pred"] = pred
             df["target"] = target
-            dfList.append(df)
+            # pass flake8 check, get existing spark session
+            spark = SparkSession.builder.getOrCreate()
+            df_spark = spark.createDataFrame(df)
+            dfList.append(df_spark)
 
-        df_final = pd.concat(dfList, axis=0)
+        df_final = utils.unionAllDF(*dfList)
         df_agg = (
             df_final.groupby("TargetingDataId")
-            .apply(lambda df: pd.Series({"AUC": AUC(df), "count": df.shape[0]}))
-            .reset_index()
+            .agg(
+                utils.auc_udf(df_final["target"], df_final["pred"]).alias("AUC"),
+                utils.count_udf(df_final["target"]).alias("count"),
+            )
+            .toPandas()
         )
 
         df_agg["pixel_rk"] = df_agg["count"].rank(pct=True)
