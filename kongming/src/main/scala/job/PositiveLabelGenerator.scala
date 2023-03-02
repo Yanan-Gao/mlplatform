@@ -40,9 +40,8 @@ object PositiveLabelGenerator extends Logger{
     val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
 
     // read master policy
-    val adGroupPolicyHardCodedDate = policyDate
-    val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate).cache
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
+    val adGroupPolicy = AdGroupPolicySnapshotDataset().readDataset(date).cache
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
 
     // resolve for maxLookback
     val maxPolicyLookbackInDays = adGroupPolicy.agg(max($"DataLookBack")).head.getAs[Int](0)

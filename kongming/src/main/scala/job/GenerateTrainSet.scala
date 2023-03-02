@@ -140,15 +140,14 @@ object GenerateTrainSet {
     val experimentName = config.getString("trainSetExperimentName" , "")
 
     // test only adgroups in the policy table. since aggKey are all adgroupId, we filter by adgroup id
-    val adGroupPolicyHardCodedDate = policyDate
-    val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate).cache()
+    val adGroupPolicy = AdGroupPolicySnapshotDataset().readDataset(date).cache()
 
     // maximum lookback from adgroup's policy
     val maxLookback = adGroupPolicy.agg(max("DataLookBack")).first.getInt(0)
 
     // 0. load aggregated negatives
     val dailyNegativeSampledBids = DailyNegativeSampledBidRequestDataSet().readRange(date.minusDays(maxLookback-1), date, true)
-    val aggregatedNegativeSet = aggregateNegatives(dailyNegativeSampledBids, adGroupPolicy)(prometheus)
+    val aggregatedNegativeSet = aggregateNegatives(date, dailyNegativeSampledBids, adGroupPolicy)(prometheus)
       .withColumn("IsInTrainSet", when($"UIID".isNotNull && $"UIID"=!=lit("00000000-0000-0000-0000-000000000000"),
         when(abs(hash($"UIID")%100)<=trainRatio*100, lit(true)).otherwise(false)).otherwise(
         when(abs(hash($"BidRequestId")%100)<=trainRatio*100, lit(true)).otherwise(false)
@@ -156,9 +155,8 @@ object GenerateTrainSet {
       .withColumn("Weight", lit(1))  // placeholder: 1. assign format with positive 2. we might weight for negative in the future, TBD.
 
     //    load aggregated positives
-      val aggregatedPositiveSet =  DailyPositiveBidRequestDataset().readRange(date.minusDays(conversionLookback-1), date, true)
+    val aggregatedPositiveSet =  DailyPositiveBidRequestDataset().readRange(date.minusDays(conversionLookback-1), date, true)
       .withColumn("IsInTrainSet", when(abs(hash($"UIID")%100)<=trainRatio*100, lit(true)).otherwise(false))
-
 
     // 1. exclude positives from negative;  remain pos and neg that have both train and val
     val negativeExcludePos = aggregatedNegativeSet
@@ -187,8 +185,8 @@ object GenerateTrainSet {
     // 2. get the latest weights for trackingtags for adgroups in policytable
     val trackingTagWindow =  Window.partitionBy($"TrackingTagId", $"ConfigKey", $"ConfigValue")
       .orderBy($"ReportingColumnId")
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
-    val trackingTagWithWeight = getWeightsForTrackingTags(adGroupPolicy, adGroupDS, normalized = true)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
+    val trackingTagWithWeight = getWeightsForTrackingTags(date, adGroupPolicy, adGroupDS, normalized = true)
       .withColumn("ReportingColumnRank", dense_rank().over(trackingTagWindow))
       .filter($"ReportingColumnRank"===lit(1))
       .drop("ReportingColumnId")

@@ -12,6 +12,8 @@ import job.GenerateTrainSet.STRING_FEATURE_TYPE
 import org.apache.spark.sql.{Column, Dataset}
 import org.apache.spark.sql.functions.{col, lit}
 
+import java.time.LocalDate
+
 final case class BidsImpressionsFeatureMappingRecord(
                                                // original columns
                                                OriginalAdGroupId: Option[String],
@@ -61,7 +63,8 @@ object TrainSetFeatureMappingTransform {
   val originalFeatureNamePrefix = "Original"
   val hashedFeatureNamePrefix = "Hashed"
 
-  def dailyTransform(bidsImpressions: Dataset[BidsImpressionsSchema]
+  def dailyTransform(date: LocalDate,
+                     bidsImpressions: Dataset[BidsImpressionsSchema]
                     )
                     (implicit prometheus: PrometheusClient): Dataset[TrainSetFeatureMappingRecord] = {
     // duplicate columns for later hashing
@@ -84,7 +87,7 @@ object TrainSetFeatureMappingTransform {
       dailyFeatureMappings = dailyFeatureMappings.union(featureMappingTransform(bidsImpressionsMappings, f.name))
     }
     // union existing mappings with latest mappings and return distinct mappings
-    val existingFeatureMappings = TrainSetFeatureMappingDataset().readLatestPartition().selectAs[TrainSetFeatureMappingRecord]
+    val existingFeatureMappings = TrainSetFeatureMappingDataset().readLatestPartitionUpTo(date).selectAs[TrainSetFeatureMappingRecord]
     existingFeatureMappings.union(dailyFeatureMappings).distinct()
   }
 

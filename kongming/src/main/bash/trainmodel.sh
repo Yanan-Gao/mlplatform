@@ -5,12 +5,13 @@ DOCKER_IMAGE_VERSION="release"
 ENV="dev"
 DATE_PARTITION=$(date -d "$date -1 days" +"%Y%m%d")
 
-while getopts e:d:v: flag
+while getopts e:d:v:x: flag
 do
   case "${flag}" in
     v) DOCKER_IMAGE_VERSION=${OPTARG};;
     e) ENV=${OPTARG};;
     d) DATE_PARTITION=${OPTARG};;
+    x) EXPERIMENT_NAME="experiment=${OPTARG}/"; EXPERIMENT_NAME_FLAG="--experiment=${OPTARG}";;
   esac
 done
 
@@ -20,15 +21,17 @@ DOCKER_USER="svc.emr-docker-ro"
 HOME_HADOOP="/mnt"
 
 READENV=$ENV
-if [ $ENV == "prodTest" ]
+if [ $EXPERIMENT_NAME != "" ]
+then
+  READENV="test"
+elif [ $ENV == "prodTest" ]
 then
   READENV="prod"
 fi
 
 BASE_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/data/${READENV}/kongming"
-TRAINING_DATA="trainset/csv/v=1"
+TRAINING_DATA="${EXPERIMENT_NAME}trainset/csv/v=1"
 DATE_PATH="date=${DATE_PARTITION}"
-
 TRAINING_DATA_SOURCE="${BASE_S3_PATH}/${TRAINING_DATA}/${DATE_PATH}/split=train/"
 VALIDATION_DATA_SOURCE="${BASE_S3_PATH}/${TRAINING_DATA}/${DATE_PATH}/split=val/"
 
@@ -71,7 +74,8 @@ sudo docker run --gpus all \
       "--early_stopping_patience=3" \
       "--push_training_logs=true" \
       "--generate_adgroup_auc=true" \
-      "--push_metrics=true"
+      "--push_metrics=true" \
+      $EXPERIMENT_NAME_FLAG
 
 echo "finished model training, cleaning up data"
 

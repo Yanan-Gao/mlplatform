@@ -4,7 +4,7 @@ import com.thetradedesk.kongming.{MLPlatformS3Root, getExperimentPath, writeThro
 import com.thetradedesk.spark.datasets.core.PartitionedS3DataSet.buildPath
 import com.thetradedesk.spark.datasets.core._
 import com.thetradedesk.spark.util.{ProdTesting, Testing}
-import com.thetradedesk.spark.util.TTDConfig.environment
+import com.thetradedesk.spark.util.TTDConfig.{config, environment}
 import com.thetradedesk.spark.util.io.FSUtils
 import org.apache.spark.sql.Dataset
 

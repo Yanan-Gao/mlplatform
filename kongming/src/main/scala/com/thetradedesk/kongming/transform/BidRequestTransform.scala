@@ -11,16 +11,19 @@ import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions.{date_trunc, dense_rank}
 
+import java.time.LocalDate
+
 object BidRequestTransform {
   val DEFAULT_NUM_PARTITION = 200
 
-  def dailyTransform(bidsImpressions: Dataset[BidsImpressionsSchema],
+  def dailyTransform(date: LocalDate,
+                     bidsImpressions: Dataset[BidsImpressionsSchema],
                      adGroupPolicy: Dataset[AdGroupPolicyRecord]
                     )
                     (implicit prometheus: PrometheusClient): Dataset[DailyBidRequestRecord] = {
     val window = Window.partitionBy($"DataAggValue", $"UIID").orderBy($"TruncatedLogEntryTime".desc)
 
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
     val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
     val bidsImpressionFilterByPolicy = multiLevelJoinWithPolicy[BidRequestPolicyRecord](prefilteredDS, adGroupPolicy, "inner")
 

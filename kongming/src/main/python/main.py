@@ -17,7 +17,8 @@ flags.DEFINE_string('env', default=ENV, help='training environment.')
 flags.DEFINE_string('s3_models', default=S3_MODELS, help='output model s3 location.')
 flags.DEFINE_string('input_path', default=INPUT_PATH,
                     help=f'Location of input files (TFRecord). Default {INPUT_PATH}')
-
+flags.DEFINE_string('experiment', default="",
+                    help=f'Optional experiment dataset to use. Default ""')
 app.define_help_flags()
 app.parse_flags_with_usage(sys.argv)
 

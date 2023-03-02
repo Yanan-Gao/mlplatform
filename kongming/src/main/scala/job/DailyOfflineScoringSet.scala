@@ -3,7 +3,7 @@ package job
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, STRING_FEATURE_TYPE, intModelFeaturesCols, loadParquetData}
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyOfflineScoringDataset}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicySnapshotDataset, DailyOfflineScoringDataset}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -43,14 +43,14 @@ object DailyOfflineScoringSet {
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
     val experimentName = config.getString("offlineScoresetExperimentName" , "")
-    val adGroupPolicyHardCodedDate = policyDate
-    val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate)
+    val adGroupPolicy = AdGroupPolicySnapshotDataset().readDataset(date)
 
     var hashFeatures = modelDimensions ++ modelFeatures
     hashFeatures = hashFeatures.filter(x => !seqFields.contains(x))
     val selectionTabular = intModelFeaturesCols(hashFeatures) ++ intactFeatureCols(seqFields) ++ modelKeepFeatureCols(keptFields)
 
     val scoringFeatureDS = OfflineScoringSetTransform.dailyTransform(
+      date,
       bidsImpressions,
       adGroupPolicy,
       selectionTabular

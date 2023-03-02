@@ -18,7 +18,7 @@ object GenerateTrainSetFeatureMapping {
     val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
 
     val bidsImpressions = DailyBidsImpressionsDataset().readDate(date)
-    val featureMappings = TrainSetFeatureMappingTransform.dailyTransform(bidsImpressions)(prometheus)
+    val featureMappings = TrainSetFeatureMappingTransform.dailyTransform(date, bidsImpressions)(prometheus)
     val featureMappingRows = TrainSetFeatureMappingDataset().writePartition(featureMappings, fixedDateParquet, Some(100))
     outputRowsWrittenGauge.labels("TrainSetFeatureMappingDataset").set(featureMappingRows)
     jobDurationGaugeTimer.setDuration()

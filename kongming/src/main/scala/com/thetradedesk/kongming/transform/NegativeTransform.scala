@@ -10,6 +10,8 @@ import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions.{count, date_add, hash, lit, pow, rand, when}
 import org.apache.spark.sql.Dataset
 
+import java.time.LocalDate
+
 object NegativeTransform {
 
   final case class NegativeSamplingBidRequestGrainsRecord(
@@ -89,6 +91,7 @@ object NegativeTransform {
   }
 
   def aggregateNegatives(
+                          date: LocalDate,
                           dailyNegativeSampledBids: Dataset[DailyNegativeSampledBidRequestRecord],
                           adGroupPolicy: Dataset[AdGroupPolicyRecord])
                         (implicit prometheus:PrometheusClient): Dataset[AggregateNegativesRecord] = {
@@ -98,7 +101,7 @@ object NegativeTransform {
      */
     // todo: pre-check possible aggregation levels.
 
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
     val prefilteredDS = preFilteringWithPolicy[DailyNegativeSampledBidRequestRecord](dailyNegativeSampledBids, adGroupPolicy, adGroupDS)
 
     val filterCondition = date_add($"LogEntryTime", $"DataLookBack")>=date

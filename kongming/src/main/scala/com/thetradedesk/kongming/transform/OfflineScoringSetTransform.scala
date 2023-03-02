@@ -10,6 +10,8 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.{Column, Dataset}
 import org.apache.spark.sql.functions.{col, concat, lit}
 
+import java.time.LocalDate
+
 object OfflineScoringSetTransform {
   val DEFAULT_NUM_PARTITION = 200
 
@@ -21,13 +23,14 @@ object OfflineScoringSetTransform {
    * @param prometheus
    * @return
    */
-  def dailyTransform(bidsImpressions: Dataset[BidsImpressionsSchema],
+  def dailyTransform(date: LocalDate,
+                     bidsImpressions: Dataset[BidsImpressionsSchema],
                      adGroupPolicy: Dataset[AdGroupPolicyRecord],
                      selectionTabular: Array[Column]
                     )
                     (implicit prometheus: PrometheusClient): Dataset[DailyOfflineScoringRecord] = {
 
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
     val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
 
     val filterCondition = $"IsImp" === true

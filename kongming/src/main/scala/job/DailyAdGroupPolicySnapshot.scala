@@ -1,7 +1,7 @@
 package job
 
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, AdGroupPolicySnapshotDataset, AdGroupPolicySnapshotRecord}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, AdGroupPolicySnapshotDataset, AdGroupPolicyRecord}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
@@ -16,10 +16,9 @@ object DailyAdGroupPolicySnapshot {
     val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
 
     val adGroupPolicyHardCodedDate = policyDate
-    val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataFrame(adGroupPolicyHardCodedDate).selectAs[AdGroupPolicySnapshotRecord]
+    val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataFrame(adGroupPolicyHardCodedDate)
 
     val dailyAdGroupPolicyRows = AdGroupPolicySnapshotDataset().writePartition(adGroupPolicy, date, Some(100))
-
 
     outputRowsWrittenGauge.labels("DailyAdGroupPolicySnapshotDataset").set(dailyAdGroupPolicyRows)
     jobDurationGaugeTimer.setDuration()
