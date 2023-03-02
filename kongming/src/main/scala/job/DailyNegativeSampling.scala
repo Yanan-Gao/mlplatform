@@ -31,11 +31,9 @@ object DailyNegativeSampling {
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
     // test only adgroups in the policy table. since aggKey are all adgroupId, we filter by adgroup id
-    val adGroupPolicyHardCodedDate = policyDate
-    val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate)
+    val adGroupPolicy = AdGroupPolicySnapshotDataset().readDataset(date)
 
-
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
     val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
     val bidsImpressionFilterByPolicy = multiLevelJoinWithPolicy[BidsImpressionsSchema](prefilteredDS, adGroupPolicy, joinType = "left_semi")
 

@@ -3,7 +3,7 @@ package job
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyBidsImpressionsDataset, UnifiedAdGroupDataSet}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicySnapshotDataset, DailyBidsImpressionsDataset, UnifiedAdGroupDataSet}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -19,10 +19,9 @@ object DailyBidsImpressions {
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
-    val adGroupPolicyHardCodedDate = policyDate
-    val adGroupPolicy = AdGroupPolicyDataset.readHardCodedDataset(adGroupPolicyHardCodedDate)
+    val adGroupPolicy = AdGroupPolicySnapshotDataset().readDataset(date)
 
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartition()
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
 
     val dailyBidsImpressions = multiLevelJoinWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, joinType = "left_semi")
 

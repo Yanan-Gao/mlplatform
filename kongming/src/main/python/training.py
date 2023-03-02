@@ -354,11 +354,11 @@ def main(argv):
     model_path = f"{output_path}model/{FLAGS.model_choice}_{FLAGS.dropout_rate}/"
     model.save(model_path)
 
-    s3_output_path = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/conversion_model/date={FLAGS.model_creation_date}"
+    s3_output_path = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/{FLAGS.experiment}/conversion_model/date={FLAGS.model_creation_date}"
     s3_copy(model_path, s3_output_path)
 
     if (FLAGS.push_training_logs):
-        s3_log_path = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/conversion_model_logs/date={FLAGS.model_creation_date}"
+        s3_log_path = f"{FLAGS.s3_models}/{FLAGS.env}/kongming/{FLAGS.experiment}/conversion_model_logs/date={FLAGS.model_creation_date}"
         s3_copy(FLAGS.log_path, s3_log_path)
 
     auc_df = None

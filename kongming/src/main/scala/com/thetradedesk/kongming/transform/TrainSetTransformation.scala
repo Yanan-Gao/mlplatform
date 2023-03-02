@@ -9,6 +9,7 @@ import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.expressions.Window
+import java.time.LocalDate
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import job.GenerateTrainSet.modelDimensions
 import org.apache.spark.sql.types.DoubleType
@@ -94,13 +95,14 @@ object TrainSetTransformation {
                                       )
 
   def getWeightsForTrackingTags(
+                                 date: LocalDate,
                                  adGroupPolicy: Dataset[AdGroupPolicyRecord],
                                  adGroupDS: Dataset[AdGroupRecord],
                                  normalized: Boolean=false
                                ): Dataset[TrackingTagWeightsRecord]= {
     // 1. get the latest weights per campaign and trackingtagid
-    val campaignDS = CampaignDataSet().readLatestPartition()
-    val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartition()
+    val campaignDS = CampaignDataSet().readLatestPartitionUpTo(date)
+    val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartitionUpTo(date)
     val ccrcWindow = Window.partitionBy($"CampaignId")
 
     val ccrcProcessed = ccrc
