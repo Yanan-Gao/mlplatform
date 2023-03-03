@@ -273,12 +273,19 @@ def get_map_function(model_features, model_target):
     Returns:
         function: function for transforming
     """
-    feature_description = {f.name: tf.io.FixedLenFeature(1, f.type, f.default_value) for f
-                           in model_features}
+
+    feature_description = {f.name: (tf.io.FixedLenFeature(1, f.type, f.default_value) if f.max_len == 0 else tf.io.VarLenFeature(dtype=f.type)) for f
+                                                         in model_features }
+
     feature_description[model_target.name] = tf.io.FixedLenFeature(1, model_target.type, model_target.default_value)
 
     def _parse_examples(serial_exmp):
+
         features = tf.io.parse_example(serial_exmp, features=feature_description)
+        for f in model_features:
+            key = f.name
+            if f.max_len > 0:
+                features[key] = tf.sparse.to_dense(features[key])
         label = features.pop(model_target.name)
         return features, label
 
@@ -296,14 +303,19 @@ def get_map_function_test(model_features, model_target, keep_id):
     Returns:
         mapping function
     """
-    feature_description = {f.name: tf.io.FixedLenFeature(1, f.type, f.default_value)
-                           for f in model_features}
+    feature_description = {f.name: (tf.io.FixedLenFeature(1, f.type, f.default_value) if f.max_len==0 else tf.io.VarLenFeature(dtype=f.type)) for f
+                                                         in model_features }
+
     feature_description[model_target.name] = tf.io.FixedLenFeature(1, model_target.type, 0)
+
     feature_description[keep_id] = tf.io.FixedLenFeature(1, tf.string, '0')
 
     def _parse_examples(serial_exmp):
         features = tf.io.parse_example(serial_exmp, features=feature_description)
-
+        for f in model_features:
+                    key = f.name
+                    if f.max_len > 0:
+                        features[key] = tf.sparse.to_dense(features[key])
         labels = features.pop(model_target.name)
         ids = features.pop(keep_id)
         return features, labels, ids
@@ -323,13 +335,17 @@ def get_map_function_weighted(model_features, model_target, weight_name, weight_
     Returns:
         function: function for transforming
     """
-    feature_description = {f.name: tf.io.FixedLenFeature(1, f.type, f.default_value) for f
-                           in model_features}
+    feature_description = {f.name: (tf.io.FixedLenFeature(1, f.type, f.default_value) if f.max_len == 0 else tf.io.VarLenFeature(dtype=f.type)) for f
+                                                     in model_features }
     feature_description[model_target.name] = tf.io.FixedLenFeature(1, model_target.type, model_target.default_value)
     feature_description[weight_name] = tf.io.FixedLenFeature(1, tf.int64, 0)
 
     def _parse_examples(serial_exmp):
         features = tf.io.parse_example(serial_exmp, features=feature_description)
+        for f in model_features:
+                    key = f.name
+                    if f.max_len > 0:
+                        features[key] = tf.sparse.to_dense(features[key])
         label = features.pop(model_target.name)
         weight = tf.add(tf.multiply(features.pop(weight_name), weight_value), 1)
         return features, label, weight
