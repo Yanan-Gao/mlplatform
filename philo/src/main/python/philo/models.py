@@ -1,5 +1,5 @@
 from philo.features import build_input_features, get_linear_logit, input_from_feature_columns, SparseFeat, DenseFeat, \
-    get_dcn_input
+    get_dcn_input, VarLenSparseFeat
 from philo.layers import add_func, concat_func, combined_dnn_input, \
     DNN, FM, PredictionLayer, CrossNet, CrossNetMix, CIN, Linear
 from philo.neo import create_combined_encoder
@@ -30,9 +30,11 @@ def model_builder(model_arch, model_features, **kwargs):
         model
     """
     fixlen_feature_columns = [SparseFeat(feat.name, vocabulary_size=feat.cardinality, embedding_dim=feat.embedding_dim)
-                              if feat.sparse else DenseFeat(feat.name, 1, ) for feat in model_features]
-    dnn_feature_columns = fixlen_feature_columns
-    linear_feature_columns = fixlen_feature_columns
+                              if feat.sparse else DenseFeat(feat.name, 1, ) for feat in model_features if feat.max_len == 0]
+    varlen_feature_columns = [VarLenSparseFeat(SparseFeat(feat.name, vocabulary_size=feat.cardinality+1, embedding_dim=feat.embedding_dim), maxlen=feat.max_len, combiner='mean',
+                                                                                weight_name=None) for feat in model_features if feat.max_len != 0]
+    dnn_feature_columns = fixlen_feature_columns + varlen_feature_columns
+    linear_feature_columns = fixlen_feature_columns + varlen_feature_columns
     if model_arch == 'deepfm':
         model = deep_fm(linear_feature_columns, dnn_feature_columns, task='binary', **kwargs)
     elif model_arch == 'deepfm_dual':
