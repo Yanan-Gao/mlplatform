@@ -25,12 +25,13 @@ object OfflineScoringSetAttribution{
     val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
 
     val IsotonicRegPositiveLabelCountThreshold = config.getInt(path="positiveLabelCountThresholdForIsotonicReg", 10)
-    val IsotonicRegNegSampleRate = config.getDouble(path="IsotonicRegNegSampleRate", 1.0/3)
+    val IsotonicRegNegCap = config.getInt(path="IsotonicRegNegCap", 1000000)
+    val IsotonicRegNegMaxSampleRate = config.getDouble(path="IsotonicRegNegMaxSampleRate", 1.0/3)
+
     val defaultCvr = config.getDouble(path="DefaultConversionRate", 1e-3)
 
     val adGroupPolicy = AdGroupPolicySnapshotDataset().readDataset(date).cache()
     val adgroupBaseAssociateMapping = BaseAssociateAdGroupMappingIntDataset().readDate(date)
-
     // prerequisite:
     // 1. the model used to score impressions should be the same as model in production, which has modelDate
     // modelDate can be earlier than date.
@@ -62,7 +63,7 @@ object OfflineScoringSetAttribution{
     val impressionLevelPerformance =  getOfflineScoreImpressionAndPiecePerformance(offlineScoreLabel)(prometheus)
 
     // 5. get inputs for isotonic regression and bias tuning
-    val inputForCalibration = getInputForCalibrationAndBiasTuning(impressionLevelPerformance, defaultCvr, adGroupPolicy, IsotonicRegPositiveLabelCountThreshold, IsotonicRegNegSampleRate, samplingSeed)(prometheus)
+    val inputForCalibration = getInputForCalibrationAndBiasTuning(impressionLevelPerformance, defaultCvr, adGroupPolicy, IsotonicRegPositiveLabelCountThreshold, IsotonicRegNegCap, IsotonicRegNegMaxSampleRate, samplingSeed)(prometheus)
 
     // 6.  todo: temporary in testing phase: read the client test adgroups
     val clientTestAdGroups =  ClientTestAdGroupsIntIdDataset().readClientTestAdGroupsRecord()

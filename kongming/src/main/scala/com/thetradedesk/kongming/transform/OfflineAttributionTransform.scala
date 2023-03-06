@@ -5,6 +5,7 @@ import com.thetradedesk.geronimo.shared.schemas.{BidFeedbackDataset, BidFeedback
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.multiLevelJoinWithPolicy
 import com.thetradedesk.kongming.transform.TrainSetTransformation.TrackingTagWeightsRecord
+import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -46,11 +47,17 @@ object OfflineAttributionTransform {
   final case class OfflineScoreAttributionResultRecord(
                                                   AdGroupId: String,
                                                   BaseAdGroupId: String,
-                                                  BidFeedbackId: String,
                                                   Score: Double,
                                                   Label:Int,
                                                   ImpressionWeightForCalibrationModel: Double
   )
+
+  final case class OfflineScoreAttributionResultPerAdGroupRecord(
+                                                        AdGroupId: String,
+                                                        Score: Double,
+                                                        Label:Int,
+                                                        ImpressionWeightForCalibrationModel: Double
+                                                      )
 
   def getAttributedEventAndResult(
                                  adGroupPolicy: Dataset[AdGroupPolicyRecord],
@@ -87,6 +94,7 @@ object OfflineAttributionTransform {
     val multidayOfflineScore = OfflineScoredImpressionDataset(modelDate)
       .readRange(endDate.minusDays(lookBack), endDate, true)
       .select($"BidRequestId", $"BaseAdGroupId", $"AdGroupId", $"Score")
+
 
     // todo: maybe we should add bidfeedbackid to bidimpression schema
     //  , and add bidbeedbackid to scoring dataset. So there's no need to join feedback again here.
@@ -162,7 +170,8 @@ object OfflineAttributionTransform {
                                            defaultCvr: Double,
                                            adGroupPolicy: Dataset[AdGroupPolicyRecord],
                                            IsotonicRegPositiveLabelCountThreshold: Int,
-                                           IsotonicRegNegSampleRate: Double,
+                                           IsotonicRegNegCap: Int,
+                                           IsotonicRegNegMaxSampleRate: Double,
                                            samplingSeed:Long
                                          )(implicit prometheus:PrometheusClient): Tuple2[Dataset[ImpressionForIsotonicRegRecord], Dataset[AdGroupCvrForBiasTuningRecord]] = {
 
@@ -171,7 +180,7 @@ object OfflineAttributionTransform {
   val convertedImpressions = impressionLevelPerformanceAggBaseAdgroup.filter($"Label"===lit(1)).cache()
 
     // 1. prepare adgroup data for isotonic regression
-    // filter out adgroups impressions that has conversions more than threshold.
+    // filter in adgroups impressions that has conversions more than threshold.
     val adGroupsHaveEnoughConversion = convertedImpressions
       .groupBy($"AdGroupId").count()
       .filter($"count">IsotonicRegPositiveLabelCountThreshold)
@@ -181,17 +190,22 @@ object OfflineAttributionTransform {
       .join(
         adGroupsHaveEnoughConversion,
         Seq("AdGroupId"), "left_semi"
-      )
+      ).cache()
+
+    // subsample negatives by cap
+    val feedToIsotonicRegressionImpressionsNeg = feedToIsotonicRegressionImpressions.filter($"Label"===lit(0)).cache()
+    val negCount = feedToIsotonicRegressionImpressionsNeg.groupBy($"AdGroupId").count()
+      .withColumn("NegSampleRate", least(lit(IsotonicRegNegCap)/col("count"), lit(IsotonicRegNegMaxSampleRate)))
+    val feedToIsotonicRegressionImpressionsNegSampled = feedToIsotonicRegressionImpressionsNeg.join(negCount, Seq("AdGroupId"), "inner")
+      .filter(rand(seed=samplingSeed)<col("NegSampleRate"))
+      .withColumn("ImpressionWeightForCalibrationModel", $"ImpressionWeightForCalibrationModel"/$"NegSampleRate")
+      .selectAs[OfflineScoreAttributionResultPerAdGroupRecord]
 
     val adgroupIdCardinality = modelDimensions(0).cardinality.getOrElse(0)
 
-    // downsample negative samples, reflect the sample rate to weight.
-    val feedToIsotonicRegressionSampled = feedToIsotonicRegressionImpressions
-      .filter($"Label"===lit(0))
-      .sample(IsotonicRegNegSampleRate, seed=samplingSeed)
-      .withColumn("ImpressionWeightForCalibrationModel", $"ImpressionWeightForCalibrationModel"/lit(IsotonicRegNegSampleRate))
-      .union(
-        feedToIsotonicRegressionImpressions.filter($"Label"===lit(1))
+    // union negative and positive
+    val feedToIsotonicRegressionSampled = feedToIsotonicRegressionImpressionsNegSampled.union(
+        feedToIsotonicRegressionImpressions.filter($"Label"===lit(1)).selectAs[OfflineScoreAttributionResultPerAdGroupRecord]
       )
       .withColumn("AdGroupIdInt", shiftModUdf(xxhash64(col("AdGroupId")), lit(adgroupIdCardinality)))
       .select($"AdGroupId".as("AdGroupIdStr"),$"AdgroupIdInt".as("AdgroupId"),$"Score",$"Label",$"ImpressionWeightForCalibrationModel")
