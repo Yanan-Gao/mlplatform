@@ -214,6 +214,8 @@ def get_linear_logit(features, feature_columns, units=1, use_bias=False, seed=SE
                 sparse_input = Lambda(lambda x: x[0] * tf.expand_dims(x[1], axis=1))(
                     [sparse_input, sparse_feat_refine_weight])
             linear_logit = Linear(l2_reg, mode=0, use_bias=use_bias, seed=seed)(sparse_input)
+            # add on top of existing code to align dimensions, revert following line if code breaks somewhere downstream
+            linear_logit = tf.squeeze(linear_logit, axis=-1)
         elif len(dense_input_list) > 0:
             dense_input = concat_func(dense_input_list)
             linear_logit = Linear(l2_reg, mode=1, use_bias=use_bias, seed=seed)(dense_input)
@@ -365,4 +367,3 @@ def get_dcn_input(cross_num, dnn_feature_columns, dnn_hidden_units, l2_reg_embed
                                                                          l2_reg_embedding, seed)
     dnn_input = combined_dnn_input(sparse_embedding_list, dense_value_list)
     return dnn_input, inputs_list, linear_logit
-

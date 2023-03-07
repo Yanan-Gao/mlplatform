@@ -5,6 +5,7 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Embedding, InputLayer, Lambda
+from keras.engine.keras_tensor import KerasTensor
 
 import warnings
 from philo.layers import add_func, Linear, FM, PredictionLayer, combined_dnn_input, DNN
@@ -200,13 +201,19 @@ def get_partial_fm(embed_list):
     """
     get vector part for neo sum, square and sum operation, float part of square and sum operation
     Args:
-        embed_list: list of embedding layers
+        embed_list: list of embedding layers or their output logits
 
-    Returns: fm vector part and float part
     Returns: fm vector part and float part
 
     """
-    embed_logit = [i.output for i in embed_list]
+    # adjust input types, make sure whether input list is embedding or its logit, the embed_logit contains logits for
+    # the next step
+    if all(isinstance(x, Embedding) for x in embed_list):
+        embed_logit = [i.output for i in embed_list]
+    elif all(isinstance(x, KerasTensor) for x in embed_list):
+        embed_logit = embed_list
+    else:
+        raise Exception("embed_list type not recognized, should be either Embedding layers or their tensor logits.")
     embedding_input = concat_func(embed_logit, axis=1)
     # original shall be sum, square then sum, here vectors from bidrequest or adgroups are summed first, bid cache need
     # to sum it with the other part, then square and sum
@@ -276,6 +283,26 @@ def combine_neo_results(a_neo_predict, b_neo_predict, combined_value=True):
         return linear_logit_op, fm_vector_op
 
 
+def combine_neo_fm_logits(fm_logits_a, fm_logits_b):
+    """
+    combine Neo FM logits from adgroup and bidrequest parts to rebuild the original FM logit.
+    Args:
+        fm_logits_a: tuple that could be unzipped to fm_vector_a, fm_float_a
+        fm_logits_b: tuple that could be unzipped to fm_vector_b, fm_float_b
+
+    Returns: combined FM logit
+
+    """
+    fm_vector_a, fm_float_a = fm_logits_a
+    fm_vector_b, fm_float_b = fm_logits_b
+
+    sum_vector = fm_vector_a + fm_vector_b
+    sum_of_square = tf.reduce_sum(sum_vector * sum_vector, axis=2, keepdims=False)
+    fm_logit_combined = 0.5 * (sum_of_square - fm_float_a - fm_float_b)
+
+    return fm_logit_combined
+
+
 def predict_neo_results(a_neo_predict, b_neo_predict, pred_layer_weight):
     """
     Output calibrated model output based on neo predictions from adgroup and bidrequest and prediction layer weight.
@@ -295,25 +322,33 @@ def predict_neo_results(a_neo_predict, b_neo_predict, pred_layer_weight):
     return pred_output
 
 
-def separate_feature(layer_list,
-                     adgroup_feature_list=['AdGroupId', 'AdvertiserId', 'CreativeId']
-                     ):
+def separate_feature(iterable, adgroup_feature_list=['AdGroupId', 'AdvertiserId', 'CreativeId']):
     """
     Separate features into adgroup and bidrequest
     Args:
-        layer_list: keras layer list from original model
+        iterable: iterable from original model to be separated, could be keras layer list or feature dict
         adgroup_feature_list: adgroup feature list
 
-    Returns: two group of keras layers
+    Returns: two same type of iterables, separated according to the given list
 
     """
-    adgroup_info = []
-    bidrequest_info = []
-    for i in layer_list:
-        if any(x in i.name for x in adgroup_feature_list):
-            adgroup_info.append(i)
-        else:
-            bidrequest_info.append(i)
+    # based on the type of the input, decide to use either list or dict to separate and return results
+    if isinstance(iterable, list):
+        adgroup_info = []
+        bidrequest_info = []
+        for i in iterable:
+            if any(x in i.name for x in adgroup_feature_list):
+                adgroup_info.append(i)
+            else:
+                bidrequest_info.append(i)
+    elif isinstance(iterable, dict):
+        adgroup_info = OrderedDict()
+        bidrequest_info = OrderedDict()
+        for key, value in iterable.items():
+            if key in adgroup_feature_list:
+                adgroup_info[key] = value
+            else:
+                bidrequest_info[key] = value
     return adgroup_info, bidrequest_info
 
 
@@ -329,4 +364,4 @@ def create_combined_encoder(group_embedding_dict, dense_value_list, adgroup_feat
                              name="adgroup_dnn")(adgroup_input)
     dnn_output_bid = DNN(dnn_hidden_units, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed,
                          name="bidrequest_dnn")(bid_input)
-    return tf.reduce_sum(dnn_output_adgroup * dnn_output_bid, axis=1, keepdims=True)
+    return tf.reduce_sum(dnn_output_adgroup * dnn_output_bid, axis=1, keepdims=True), dnn_output_adgroup, dnn_output_bid
