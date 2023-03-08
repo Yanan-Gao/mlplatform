@@ -19,6 +19,7 @@ DOCKER_IMAGE_NAME="kongming/training-gpu"
 DOCKER_INTERNAL_BASE="internal.docker.adsrvr.org"
 DOCKER_USER="svc.emr-docker-ro"
 HOME_HADOOP="/mnt"
+EXTENDED_FEATURES="contextual"
 
 READENV=$ENV
 if [ $EXPERIMENT_NAME != "" ]
@@ -65,6 +66,7 @@ sudo docker run --gpus all \
       "--env=${ENV}" \
       "--run_train=true" \
       "--use_csv=true" \
+      "--extended_features=${EXTENDED_FEATURES}" \
       "--model_creation_date=${DATE_PARTITION}" \
       "--batch_size=65536" \
       "--learning_rate=0.0028" \
