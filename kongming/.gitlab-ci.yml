@@ -10,7 +10,6 @@ variables:
   KONGMING_MERGEREQUESTS_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/scripts/mergerequests"
   KONGMING_PROD_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/scripts/prod/"
   PYTHON_BUILD_IMAGE: "python:3.8"
-  KONGMING_TRAINING_IMAGE: "kongming/training-gpu"
 
 kongming:test:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
@@ -116,50 +115,4 @@ kongming:push_prod_scripts:
     - aws s3 cp ${KONGMING_SCRIPTS_SOURCE} ${KONGMING_PROD_SCRIPTS_DEST} --recursive
     - popd
     - echo "ran push_prod_scripts"
-
-kongming:build_push_test_container:
-  image: "$PYTHON_BUILD_IMAGE"
-  stage: k8s_deploy
-  services:
-    - docker:dind
-  before_script:
-    - apt update
-    - apt-get install docker.io -y
-  rules:
-    - if: $CI_PIPELINE_SOURCE == "merge_request_event"
-      changes:
-        - "kongming/src/main/python/**/*"
-        - "kongming/.gitlab-ci.yml"
-  script:
-    - export DOCKER_HOST=$DOCKER_PORT
-    - pushd ./kongming/src/main/python/
-    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
-    - docker build -f Dockerfile.prod -t ${KONGMING_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA} .
-    - docker tag ${KONGMING_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA} ${DOCKER_INTERNAL_REGISTRY}/${KONGMING_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA}
-    - docker push ${DOCKER_INTERNAL_REGISTRY}/${KONGMING_TRAINING_IMAGE}:${CI_COMMIT_SHORT_SHA}
-    - popd
-    - echo "test container for commit pushed"
-
-kongming:build_push_release_container:
-  image: "$PYTHON_BUILD_IMAGE"
-  stage: k8s_deploy
-  services:
-    - docker:dind
-  before_script:
-    - apt update
-    - apt-get install docker.io -y
-  rules:
-    - if: $CI_COMMIT_BRANCH == "master"
-      changes:
-        - "kongming/src/main/python/**/*"
-        - "kongming/.gitlab-ci.yml"
-  script:
-    - export DOCKER_HOST=$DOCKER_PORT
-    - pushd ./kongming/src/main/python/
-    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
-    - docker build -f Dockerfile.prod -t ${KONGMING_TRAINING_IMAGE}:release .
-    - docker tag ${KONGMING_TRAINING_IMAGE}:release ${DOCKER_INTERNAL_REGISTRY}/${KONGMING_TRAINING_IMAGE}:release
-    - docker push ${DOCKER_INTERNAL_REGISTRY}/${KONGMING_TRAINING_IMAGE}:release
-    - popd
-    - echo "release training container pushed"
 
