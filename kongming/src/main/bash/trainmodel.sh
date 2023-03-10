@@ -15,7 +15,7 @@ do
   esac
 done
 
-DOCKER_IMAGE_NAME="kongming/training-gpu"
+DOCKER_IMAGE_NAME="ttd-base/audauto/kongming"
 DOCKER_INTERNAL_BASE="internal.docker.adsrvr.org"
 DOCKER_USER="svc.emr-docker-ro"
 HOME_HADOOP="/mnt"
@@ -62,7 +62,9 @@ eval docker pull ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_VER
 sudo docker run --gpus all \
            -e TF_GPU_THREAD_MODE=gpu_private \
            -v ${INPUT_DEST}:/opt/application/input/ \
+           --entrypoint python3 \
            ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_VERSION} \
+           /opt/application/app/main.py \
       "--env=${ENV}" \
       "--run_train=true" \
       "--use_csv=true" \

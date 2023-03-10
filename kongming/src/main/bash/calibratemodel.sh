@@ -13,7 +13,7 @@ then
   DATE_PARTITION=$2
 fi
 
-DOCKER_IMAGE_NAME="kongming/training-gpu"
+DOCKER_IMAGE_NAME="ttd-base/audauto/kongming"
 DOCKER_IMAGE_VERSION="release"
 DOCKER_INTERNAL_BASE="internal.docker.adsrvr.org"
 DOCKER_USER="svc.emr-docker-ro"
@@ -70,7 +70,9 @@ eval docker pull ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_VER
 
 sudo docker run --gpus all \
            -v ${INPUT_DEST}:/opt/application/input/ \
+           --entrypoint python3 \
            ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_VERSION} \
+           /opt/application/app/main.py \
       "--env=${ENV}" \
       "--run_calibration=true" \
       "--date=${DATE_PARTITION}" \
