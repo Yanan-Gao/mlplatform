@@ -33,6 +33,12 @@ final case class FirstPartyPixelModelInputRecord(
                                                   DeviceType: Option[Int],
                                                   @FeatureDesc("OperatingSystemFamily", "int", 8)
                                                   OperatingSystemFamily: Option[Int],
+                                                  @FeatureDesc("OperatingSystem", "int", 72)
+                                                  OperatingSystem: Option[Int],
+                                                  @FeatureDesc("MatchedFoldPosition", "int", 5)
+                                                  MatchedFoldPosition: Option[Int],
+                                                  @FeatureDesc("InternetConnectionType", "int", 10)
+                                                  InternetConnectionType: Option[Int],
                                                   @FeatureDesc("Browser", "int", 16)
                                                   Browser: Option[Int],
                                                   @FeatureDesc("TargetingDataId", "long", 2000003)
@@ -44,6 +50,10 @@ final case class FirstPartyPixelModelInputRecord(
                                                   cos_hour_week: Double,
                                                   sin_hour_day: Double,
                                                   cos_hour_day: Double,
+                                                  sin_minute_hour: Double,
+                                                  cos_minute_hour: Double,
+                                                  sin_minute_day: Double,
+                                                  cos_minute_day: Double,
 
                                                   Latitude: Double,
                                                   Longitude: Double,

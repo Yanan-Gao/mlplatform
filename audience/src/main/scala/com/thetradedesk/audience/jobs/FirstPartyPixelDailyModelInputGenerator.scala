@@ -182,12 +182,21 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
         'sin_hour_day,
         'cos_hour_day,
         'Latitude,
-        'Longitude
+        'Longitude,
+        'MatchedFoldPosition,
+        'InternetConnectionType,
+        'OperatingSystem,
+        'sin_minute_hour,
+        'cos_minute_hour,
+        'sin_minute_day,
+        'cos_minute_day
       )
       // they saved in struct type
       .withColumn("OperatingSystemFamily", 'OperatingSystemFamily("value"))
       .withColumn("Browser", 'Browser("value"))
       .withColumn("RenderingContext", 'RenderingContext("value"))
+      .withColumn("InternetConnectionType", 'InternetConnectionType("value"))
+      .withColumn("OperatingSystem", 'OperatingSystem("value"))
       .withColumn("DeviceType", 'DeviceType("value"))
       .withColumn("AdWidthInPixels", ('AdWidthInPixels - lit(1.0))/lit(9999.0)) // 1 - 10000
       .withColumn("AdWidthInPixels", when('AdWidthInPixels.isNotNull, 'AdWidthInPixels).otherwise(0))
