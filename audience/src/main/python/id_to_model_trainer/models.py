@@ -3,6 +3,8 @@ import tensorflow as tf
 from tensorflow.keras import layers, models
 from tensorflow.python.keras.engine import data_adapter
 import functools
+import ctypes
+import os
 
 
 def search_layer(model, name, exclude):
@@ -45,9 +47,13 @@ def FGM(model, name, epsilon=0.5, exclude=None):
 
         target_layer_weights = target_layer.weights
         target_layer_weights_gradients = tape.gradient(loss, target_layer_weights)[0]
-        target_layer_weights_gradients = tf.squeeze(tf.zeros_like(target_layer_weights) + target_layer_weights_gradients)
+        target_layer_weights_gradients = tf.squeeze(
+            tf.zeros_like(target_layer_weights) + target_layer_weights_gradients
+        )
         # calculate permutation
-        delta = epsilon * target_layer_weights_gradients / (tf.math.sqrt(tf.reduce_sum(target_layer_weights_gradients ** 2)) + 1e-8)
+        delta = (
+            epsilon * target_layer_weights_gradients / (tf.math.sqrt(tf.reduce_sum(target_layer_weights_gradients ** 2)) + 1e-8)
+        )
 
         target_layer_weights[0].assign_add(delta)
 
@@ -78,6 +84,41 @@ def FGM_wrapper(model, name, epsilon=0.5, exclude=None):
     model.train_function = None
 
 
+def GPU_setting():
+    # Reduce gpu fragmentation
+    os.environ["TF_GPU_ALLOCATOR"] = "cuda_malloc_async"
+    gpus = tf.config.experimental.list_physical_devices("GPU")
+    for gpu in gpus:
+        tf.config.experimental.set_memory_growth(gpu, True)
+
+    # L2 cache setting
+    _libcudart = ctypes.CDLL("libcudart.so")
+    # Set device limit on the current device
+    # cudaLimitMaxL2FetchGranularity = 0x05
+    pValue = ctypes.cast((ctypes.c_int * 1)(), ctypes.POINTER(ctypes.c_int))
+    _libcudart.cudaDeviceSetLimit(ctypes.c_int(0x05), ctypes.c_int(128))
+    _libcudart.cudaDeviceGetLimit(pValue, ctypes.c_int(0x05))
+    assert pValue.contents.value == 128
+
+
+class poly1_cross_entropy(tf.keras.losses.Loss):
+    def __init__(self, label_smoothing=0, epsilon=1):
+        super().__init__()
+        self.label_smoothing = label_smoothing
+        self.epsilon = epsilon
+
+    def call(self, y_true, y_pred):
+        ce_loss = tf.keras.losses.BinaryCrossentropy(
+            from_logits=False,
+            label_smoothing=self.label_smoothing,
+        )(y_true, y_pred)
+        # add label smoothing to poly
+        y_true1 = y_true * (1 - self.label_smoothing) + self.label_smoothing / 2
+        one_minus_pt = tf.reduce_sum(y_true1 * (1 - y_pred), axis=-1)
+        poly1_loss = ce_loss + self.epsilon * one_minus_pt
+        return poly1_loss
+
+
 def value_feature(name, dtype=tf.float32):
     i = keras.Input(shape=(1,), dtype=dtype, name=f"{name}")
     return i, i
@@ -91,7 +132,7 @@ def get_initialiser(initializer="he_normal", seed=13):
 
 
 def embedding(
-    name, vocab_size=10000, emb_dim=40, dtype=tf.int32, dropout_rate=0.2, seed=13
+        name, vocab_size=10000, emb_dim=40, dtype=tf.int32, dropout_rate=0.2, seed=13
 ):
     i = keras.Input(shape=(1,), dtype=dtype, name=f"{name}")
     em = layers.Embedding(
@@ -99,6 +140,7 @@ def embedding(
         output_dim=emb_dim,
         name=f"embedding_{name}",
         embeddings_initializer=get_initialiser(seed=seed),
+        # mask_zero=True,
     )  # output shape: (None,1,emb_dim)
     f = layers.Flatten(name=f"flatten_{name}")  # flatten output shape: (None,1*emb_dim)
     dr = layers.Dropout(seed=seed, rate=dropout_rate, name=f"layer_{name}_dropout")
@@ -112,6 +154,7 @@ def list_to_embedding(name, vocab_size, em_size, dropout_rate=0.2, seed=13):
         output_dim=em_size,
         name=f"embedding_{name}",
         embeddings_initializer=get_initialiser(seed=seed),
+        # mask_zero=True,
     )
     # use for the vary length matrix
     re = layers.Reshape(target_shape=(-1, em_size), name=f"reshape_{name}")
@@ -121,7 +164,7 @@ def list_to_embedding(name, vocab_size, em_size, dropout_rate=0.2, seed=13):
 
 class TransformBlock(tf.keras.Model):
     def __init__(
-        self, features, momentum=0.9, virtual_batch_size=None, block_name="", **kwargs
+            self, features, momentum=0.9, virtual_batch_size=None, block_name="", **kwargs
     ):
         super(TransformBlock, self).__init__(**kwargs)
 
@@ -149,16 +192,16 @@ class TransformBlock(tf.keras.Model):
 
 class TabNet(tf.keras.Model):
     def __init__(
-        self,
-        num_features,
-        feature_dim=64,
-        output_dim=64,
-        num_decision_steps=5,
-        relaxation_factor=1.5,
-        batch_momentum=0.98,
-        virtual_batch_size=None,
-        epsilon=1e-5,
-        **kwargs,
+            self,
+            num_features,
+            feature_dim=64,
+            output_dim=64,
+            num_decision_steps=5,
+            relaxation_factor=1.5,
+            batch_momentum=0.98,
+            virtual_batch_size=None,
+            epsilon=1e-5,
+            **kwargs,
     ):
         """
         a few general principles on hyperparameter
@@ -288,13 +331,21 @@ class TabNet(tf.keras.Model):
 
         # Initializes decision-step dependent variables.
         # aggregate for the final output
-        output_aggregated = tf.zeros([batch_size, self.output_dim])
+        output_aggregated = tf.zeros(
+            [batch_size, self.output_dim], dtype=self.compute_dtype
+        )
         # even the beginning, the features can be considered as masked one without using mask
         masked_features = features
         # the mask for the input features
-        mask_values = tf.zeros([batch_size, self.num_features])
-        aggregated_mask_values = tf.zeros([batch_size, self.num_features])
-        complementary_aggregated_mask_values = tf.ones([batch_size, self.num_features])
+        mask_values = tf.zeros(
+            [batch_size, self.num_features], dtype=self.compute_dtype
+        )
+        aggregated_mask_values = tf.zeros(
+            [batch_size, self.num_features], dtype=self.compute_dtype
+        )
+        complementary_aggregated_mask_values = tf.ones(
+            [batch_size, self.num_features], dtype=self.compute_dtype
+        )
 
         for ni in range(self.num_decision_steps):
             # Feature transformer with two shared and two decision step dependent
@@ -303,21 +354,21 @@ class TabNet(tf.keras.Model):
 
             transform_f2 = self.transform_f2(transform_f1, training=training)
 
-            transform_f2 = transform_f2 * tf.constant(0.4) + transform_f1 * tf.constant(
-                0.8
-            )
+            transform_f2 = transform_f2 * tf.constant(
+                0.4, dtype=self.compute_dtype
+            ) + transform_f1 * tf.constant(0.8, dtype=self.compute_dtype)
 
             transform_f3 = self.transform_f3_list[ni](transform_f2, training=training)
 
-            transform_f3 = transform_f3 * tf.constant(0.4) + transform_f2 * tf.constant(
-                0.8
-            )
+            transform_f3 = transform_f3 * tf.constant(
+                0.4, dtype=self.compute_dtype
+            ) + transform_f2 * tf.constant(0.8, dtype=self.compute_dtype)
 
             transform_f4 = self.transform_f4_list[ni](transform_f3, training=training)
 
-            transform_f4 = transform_f4 * tf.constant(0.4) + transform_f3 * tf.constant(
-                0.8
-            )
+            transform_f4 = transform_f4 * tf.constant(
+                0.4, dtype=self.compute_dtype
+            ) + transform_f3 * tf.constant(0.8, dtype=self.compute_dtype)
 
             if ni > 0 or self.num_decision_steps == 1:
                 decision_out = tf.nn.relu(transform_f4[:, : self.output_dim])
@@ -331,7 +382,7 @@ class TabNet(tf.keras.Model):
 
                 if self.num_decision_steps > 1:
                     scale_agg = scale_agg / tf.cast(
-                        self.num_decision_steps - 1, tf.float32
+                        self.num_decision_steps - 1, self.compute_dtype
                     )
 
                 aggregated_mask_values += mask_values * scale_agg
@@ -346,7 +397,9 @@ class TabNet(tf.keras.Model):
                 )
                 mask_values *= complementary_aggregated_mask_values
 
-                mask_values = tf.nn.softmax(mask_values * tf.constant(100.0), axis=-1)
+                mask_values = tf.nn.softmax(
+                    mask_values * tf.constant(100.0, dtype=self.compute_dtype), axis=-1
+                )
 
                 # Relaxation factor controls the amount of reuse of features between
                 # different decision blocks and updated with the values of
@@ -376,20 +429,20 @@ class TabNet(tf.keras.Model):
 
 
 def init_model(
-    model_features,
-    model_dim_group,
-    search_emb_size,
-    feature_dim_factor,
-    num_decision_steps,
-    relaxation_factor=1.5,
-    tabnet_factor=0.15,
-    embedding_factor=1,
-    dropout_rate=0.2,
-    seed=13,
-    sum_residual_dropout=False,
-    sum_residual_dropout_rate=0.4,
-    ignore_index=None,
-    model_name="Audience_Extension"
+        model_features,
+        model_dim_group,
+        search_emb_size,
+        feature_dim_factor,
+        num_decision_steps,
+        relaxation_factor=1.5,
+        tabnet_factor=0.15,
+        embedding_factor=1,
+        dropout_rate=0.2,
+        seed=13,
+        sum_residual_dropout=False,
+        sum_residual_dropout_rate=0.4,
+        ignore_index=None,
+        model_name="Audience_Extension",
 ):
     model_input_features_tuple = [
         embedding(
@@ -431,8 +484,9 @@ def init_model(
     # add one more dense here to make sure the impression site and pixel site's embedding size are correct
     # model_input_layers = layers.Dense(search_emb_size, activation=None, kernel_initializer=tf.keras.initializers.HeNormal(), name=f"embedding{search_emb_size}_imp")(model_input_layers)
 
-    multiply_lambda = lambda array: tf.keras.layers.multiply([array[0], array[1]])
-    residual1 = layers.Lambda(multiply_lambda)([model_input_layers, input_layer_dim])
+    #     multiply_lambda = lambda array: tf.keras.layers.multiply([array[0], array[1]])
+    #     residual1 = layers.Lambda(multiply_lambda)([model_input_layers, input_layer_dim])
+    # residual1 = tf.math.multiply(tf.expand_dims(model_input_layers,1),input_layer_dim)
 
     tabnet = TabNet(
         num_features=model_input_layers.shape[-1],
@@ -443,20 +497,31 @@ def init_model(
     )
     tab = tabnet(model_input_layers)
 
-    residual2 = layers.Lambda(multiply_lambda)([tab, input_layer_dim])
-    output = residual2 * tf.constant(tabnet_factor) + residual1 * embedding_factor
+    # residual2 = layers.Lambda(multiply_lambda)([tab, input_layer_dim])
+    # residual2 = tf.math.multiply(tf.expand_dims(tab,1), input_layer_dim)
+    # output = residual2 * tf.constant(tabnet_factor) + residual1 * embedding_factor
+    output = tf.math.multiply(
+        tf.expand_dims(tab, 1) * tabnet_factor + tf.expand_dims(model_input_layers, 1) * embedding_factor,
+        input_layer_dim,
+    )
     if sum_residual_dropout:
         dr = layers.Dropout(
             seed=seed, rate=sum_residual_dropout_rate, name="layer_sum_residual_dropout"
         )
         output = dr(output)
-    output = layers.Flatten(name="Output")(
-        layers.Dense(
-            1,
-            activation="sigmoid",
-            kernel_initializer=tf.keras.initializers.HeNormal(seed=seed),
-        )(output)
-    )
+    #     output = layers.Flatten(name="Output")(
+    #         layers.Dense(
+    #             1,
+    #             activation="sigmoid",
+    #             kernel_initializer=tf.keras.initializers.HeNormal(seed=seed),
+    #         )(output)
+    #     )
+    output = layers.Dense(
+        1,
+        kernel_initializer=tf.keras.initializers.HeNormal(seed=seed),
+    )(output)
+    output = layers.Activation("sigmoid", dtype="float32", name="predictions")(output)
+    output = layers.Flatten(name="Output")(output)
 
     model = models.Model(inputs=model_input, outputs=output, name=model_name)
 
