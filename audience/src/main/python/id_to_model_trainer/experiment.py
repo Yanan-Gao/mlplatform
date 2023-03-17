@@ -11,6 +11,8 @@ import numpy as np
 import os
 import random
 import matplotlib.pyplot as plt
+from id_to_model_trainer.lion_optimizer import Lion
+import tensorflow_addons as tfa
 
 S3_MODELS = "s3://thetradedesk-mlplatform-us-east-1/models"
 ENV = "prod"
@@ -18,6 +20,7 @@ INPUT_PATH = "./input/"
 OUTPUT_PATH = "./output/"
 TOPIC = "ae_date0812_large"
 LOGS_PATH = "./logs/"
+models.GPU_setting()
 
 
 class AudienceModelExperiment:
@@ -36,8 +39,8 @@ class AudienceModelExperiment:
         self.model_upload_weights = False
         self.model_creation_date = datetime.now().strftime("%Y%m%d-%H%M%S")
         self.log_path = LOGS_PATH
-        self.log_tag = f"{datetime.now().strftime('%Y-%m-%d-%H')}"
-        self.profile_batches = [100, 120]
+        self.log_tag = f"{datetime.now().strftime('%Y-%m-%d-%H-%M')}"
+        self.profile_batches = [100, 200]
         self.subfolder = "split"
         self.graph = False
         self.train_included_holdout = False
@@ -49,12 +52,20 @@ class AudienceModelExperiment:
         self.batch_size = 10240
         self.num_epochs = 12
         self.buffer_size = 1000000
-        self.eval_batch_size = 102400
+        # Very important information: for the protection mechanism from cuda
+        # for matmul operation, the limitation size is size(matrix) <= 172800 for cuda9, for cuda10, the size is larger
+        # for [N,a,b], the size is N; for [N,M,a,b], the size is N*M
+        # so for the model which can handle multiple pixels, the setting of batch_size and eval_batch_size are important
+        # otherwise, Blas xGEMMBatched launch failed will pop up
+        self.eval_batch_size = 10240
         self.num_decision_steps = 5
         self.feature_dim_factor = 1.3
-        self.learning_rate = 0.001
+        self.learning_rate = 0.001 # for lion-> suggest 3e-4
+        self.beta_1 = 0.9
+        self.beta_2 = 0.99
+        self.wd = 0.01 # weight decay or lambda
         self.relaxation_factor = 1.5
-        self.optimizer = "nadam"
+        self.optimizer = "lion"
         self.label_smoothing = 0.001
         self.tabnet_factor = 0.15
         self.embedding_factor = 1.0
@@ -67,6 +78,12 @@ class AudienceModelExperiment:
         self.sum_residual_dropout = False
         self.sum_residual_dropout_rate = 0.4
         self.ignore_index = None
+        self.swa = False
+        self.swa_start_averaging = 133 * 3
+        self.swa_average_period = 15
+        self.loss = 'binary'
+        self.poly_epsilon = 1
+        self.mixed_training = False
 
         # callback
         self.save_best = True
@@ -190,7 +207,7 @@ class AudienceModelExperiment:
             features.TargetingDataIdList,
             features.Target,
             #             features.graph_tag,
-            exp_var=False,
+            exp_var=True,
         )
 
         # use test data as validation
@@ -223,13 +240,26 @@ class AudienceModelExperiment:
 
         return train, val, test
 
-    def get_optimizer(self):
+    def get_optimizer(self, learning_rate):
         if self.optimizer == "nadam":
-            return tf.keras.optimizers.Nadam(learning_rate=self.learning_rate)
+            return tf.keras.optimizers.Nadam(learning_rate=learning_rate)
         elif self.optimizer == "adam":
-            return tf.keras.optimizers.Adam(learning_rate=self.learning_rate)
+            return tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        elif self.optimizer == 'lion':
+            return Lion(learning_rate=learning_rate, beta_1=self.beta_1, beta_2=self.beta_2, wd=self.wd)
         else:
             raise Exception("Optimizer not supported.")
+
+    def get_loss(self):
+        if self.loss == "binary":
+            return tf.keras.losses.BinaryCrossentropy(
+                from_logits=False,
+                label_smoothing=self.label_smoothing
+            )
+        elif self.loss == "poly":
+            return models.poly1_cross_entropy(self.label_smoothing, self.poly_epsilon)
+        else:
+            raise Exception("Loss not supported.")
 
     def get_callbacks(self):
         tb_callback = tf.keras.callbacks.TensorBoard(
@@ -242,20 +272,20 @@ class AudienceModelExperiment:
             patience=self.early_stopping_patience, restore_best_weights=True
         )
 
-        checkpoint_base_path = f"{self.output_path}checkpoints/"
-        checkpoint_filepath = (
-            checkpoint_base_path + "weights.{epoch:02d}-{val_loss:.2f}"
-        )
-        chkp_cb = tf.keras.callbacks.ModelCheckpoint(
-            filepath=checkpoint_filepath,
-            save_weights_only=True,
-            monitor="val_loss",
-            mode="min",
-            save_best_only=self.save_best,
-            save_freq="epoch",
-        )
+        # checkpoint_base_path = f"{self.output_path}checkpoints/"
+        # checkpoint_filepath = (
+        #     checkpoint_base_path + "weights.{epoch:02d}-{val_loss:.2f}"
+        # )
+        # chkp_cb = tf.keras.callbacks.ModelCheckpoint(
+        #     filepath=checkpoint_filepath,
+        #     save_weights_only=True,
+        #     monitor="val_loss",
+        #     mode="min",
+        #     save_best_only=self.save_best,
+        #     save_freq="epoch",
+        # )
 
-        return [tb_callback, es_cb, chkp_cb]
+        return [tb_callback, es_cb,] # chkp_cb
 
     def init_model(self):
 
@@ -278,21 +308,17 @@ class AudienceModelExperiment:
         return model
 
     def generate_model(self):
-
         model = self.init_model()
-
         model.summary()
-
+        if self.swa:
+            # general suggestions: start_averaging=n*(number steps in each epoch) and average_period=0.1 or 0.2*(number steps in each epoch)
+            self.op = tfa.optimizers.SWA(self.get_optimizer(self.learning_rate), start_averaging=self.swa_start_averaging, average_period=self.swa_average_period)
+        else:
+            self.op = self.get_optimizer(self.learning_rate)
         model.compile(
-            optimizer=self.get_optimizer(),
-            loss=tf.keras.losses.BinaryCrossentropy(
-                from_logits=False, label_smoothing=self.label_smoothing
-            ),
-            metrics=[
-                tf.keras.metrics.AUC(),
-                tf.keras.metrics.Recall(),
-                tf.keras.metrics.Precision(),
-            ],
+            optimizer=self.op,
+            loss=self.get_loss(),
+            metrics=[tf.keras.metrics.AUC(), tf.keras.metrics.Recall(), tf.keras.metrics.Precision()],
         )
 
         if self.model_weight_path is not None:
@@ -320,6 +346,7 @@ class AudienceModelExperiment:
             dfList.append(df_spark)
 
         df_final = utils.unionAllDF(*dfList)
+
         df_agg = (
             df_final.groupby("TargetingDataId")
             .agg(
@@ -362,6 +389,9 @@ class AudienceModelExperiment:
             model_creation_date=datetime.now().strftime("%Y%m%d-%H%M%S")
         )
         with mlflow.start_run(run_name=f"{self.topic}_{self.model_creation_date}"):
+            if self.mixed_training:
+                policy = tf.keras.mixed_precision.Policy('mixed_float16')
+                tf.keras.mixed_precision.set_global_policy(policy)
             self.update_metadata(**kwargs)
 
             # reset seed every time update metadata
@@ -381,11 +411,31 @@ class AudienceModelExperiment:
                 callbacks=self.get_callbacks(),
                 class_weight=self.class_weight,
                 verbose=True,
+                # validation_freq=3,
+                validation_batch_size=self.batch_size * 2,
             )
 
-            self.model_path = f"{self.output_path}models/{self.topic}/creation_date={self.model_creation_date}"
-            model.save(self.model_path)
+            if self.swa:
+                self.op.assign_average_vars(model.trainable_variables)
+                # to handle the batchnormalization, we need to use 1 epoch forward pass to update the weights of bn
+                print('Extra epoch run for the Normalization weights update with SWA')
+                model.compile(
+                    optimizer=self.get_optimizer(0),
+                    loss=self.get_loss(),
+                    metrics=[tf.keras.metrics.AUC(), tf.keras.metrics.Recall(), tf.keras.metrics.Precision()],
+                )
+                model.fit(
+                    train,
+                    validation_data=None,
+                    epochs=1,
+                )
 
+            self.model_path = f"{self.output_path}models/{self.topic}/creation_date={self.model_creation_date}"
+            model.save(
+              self.model_path,
+              # the optimizer's momentum vector or similar history-tracking properties without it -> the retraining model the optimizer like adam will work in different way, warmup will needed
+              # include_optimizer=False,
+            )
             if self.model_upload_weights:
                 self.s3_model_output_path = f"{self.s3_models}/{self.env}/audience/model/experiment/date={self.model_creation_date}"
 

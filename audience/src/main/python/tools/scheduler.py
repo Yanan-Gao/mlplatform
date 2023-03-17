@@ -42,6 +42,7 @@ class BatchLearningRateScheduler(Callback):
 Warm-up: A phase in the beginning of your neural network training where you start with a learning rate
 much smaller than your "initial" learning rate and then increase it over a few iterations or epochs
 until it reaches that "initial" learning rate.
+way of use: warm_up = BatchLearningRateScheduler(warmup(model, epoch_steps)) -> put warm_up into the callbacks in model
 """
 
 

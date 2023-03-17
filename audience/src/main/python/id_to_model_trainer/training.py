@@ -3,9 +3,11 @@ from datetime import datetime
 from absl import app, flags
 from tensorflow.keras.callbacks import EarlyStopping, ModelCheckpoint
 import tensorflow as tf
-
+from id_to_model_trainer.lion_optimizer import Lion
 from . import data, features, models
 
+if tf.test.is_gpu_available():
+    models.GPU_setting()
 # setting up training configuration
 FLAGS = flags.FLAGS
 OUTPUT_PATH = "./output/"
@@ -140,7 +142,7 @@ def main(argv):
     )
 
     model.compile(
-        optimizer="Nadam",
+        optimizer=Lion(),
         loss=tf.keras.losses.BinaryCrossentropy(
             from_logits=False, label_smoothing=0.001
         ),
@@ -157,6 +159,8 @@ def main(argv):
         validation_data=val,
         callbacks=get_callbacks(save_best=FLAGS.save_best),
         verbose=True,
+        # validation_freq=3,
+        validation_batch_size=FLAGS.batch_size * 2,
     )
 
     model_path = f"{FLAGS.output_path}model/{FLAGS.topic}/"

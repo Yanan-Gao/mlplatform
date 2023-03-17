@@ -25,43 +25,52 @@ def get_tfrecord_files(dir_list):
 
 
 def tfrecord_dataset(files, batch_size, map_fn, train=True, buffer_size=10000, seed=13):
-
+    files = tf.data.Dataset.from_tensor_slices(files)
     if train:
         return (
-            tf.data.TFRecordDataset(
-                files,
-                compression_type="GZIP",
+            files.interleave(
+             lambda x: tf.data.TFRecordDataset(x, compression_type="GZIP", num_parallel_reads=tf.data.AUTOTUNE,),
+             num_parallel_calls=tf.data.AUTOTUNE,
+             cycle_length=tf.data.AUTOTUNE,
+             deterministic=False
             )
             .shuffle(
-                buffer_size=buffer_size,
-                seed=seed,
-                reshuffle_each_iteration=True,  # shuffle data after each epoch
+             buffer_size=buffer_size,
+             seed=seed,
+             reshuffle_each_iteration=True,  # shuffle data after each epoch
             )
             .batch(
-                batch_size=batch_size,
-                drop_remainder=False,
+             batch_size=batch_size,
+             drop_remainder=False,
+             num_parallel_calls=tf.data.AUTOTUNE,
             )
             .map(
-                map_fn,
-                num_parallel_calls=tf.data.AUTOTUNE,  # parallel computing
-                deterministic=False,  # concurrency deterministic control like synchronize setting in java
+             map_fn,
+             num_parallel_calls=tf.data.AUTOTUNE,  # parallel computing
+             deterministic=False,  # concurrency deterministic control like synchronize setting in java
+            )
+            .prefetch(
+             tf.data.AUTOTUNE
             )
         )
 
     else:
         return (
-            tf.data.TFRecordDataset(
-                files,
-                compression_type="GZIP",
+            files.interleave(
+             lambda x: tf.data.TFRecordDataset(x, compression_type="GZIP", num_parallel_reads=tf.data.AUTOTUNE,),
+             num_parallel_calls=tf.data.AUTOTUNE,
+             cycle_length=tf.data.AUTOTUNE,
+             deterministic=False
             )
             .batch(
-                batch_size=batch_size,
-                drop_remainder=False,
+             batch_size=batch_size,
+             drop_remainder=False,
+             num_parallel_calls=tf.data.AUTOTUNE,
             )
             .map(
-                map_fn,
-                num_parallel_calls=tf.data.AUTOTUNE,  # parallel computing
-                deterministic=False,  # concurrency deterministic control like synchronize setting in java
+             map_fn,
+             num_parallel_calls=tf.data.AUTOTUNE,  # parallel computing
+             deterministic=False,  # concurrency deterministic control like synchronize setting in java
             )
         )
 
@@ -75,14 +84,17 @@ class feature_parser:
         self.TargetingDataIdList = TargetingDataIdList
         self.exp_var = exp_var
         self.feature_description = {}
+        self.int_features = []
         for f in model_features:
             if f.type == tf.int32:
                 self.feature_description.update(
                     {f.name: tf.io.FixedLenFeature([], tf.int64, f.default_value)}
                 )
+                self.int_features.append(f.name)
             elif f.type == tf.variant:
                 # variant length generate sparse tensor
-                self.feature_description.update({f.name: tf.io.VarLenFeature(tf.int64)})
+                # self.feature_description.update({f.name: tf.io.VarLenFeature(tf.int64)})
+                self.feature_description.update({f.name: tf.io.FixedLenSequenceFeature((), tf.int64, default_value=0, allow_missing=True)})
             else:
                 # looks like tfrecord convert the data to float32
                 self.feature_description.update(
@@ -91,7 +103,13 @@ class feature_parser:
 
         self.feature_description.update(
             {
-                t.name: tf.io.FixedLenFeature([], tf.float32, t.default_value)
+                # to make sure that the model can handle with various length targetingdataid which will make the target
+                # has various length -> we need to change the feature type of it to VarLenFeature
+                # also, within a batch, TF will auto padding the VarLenFeature to the maximize length with 0
+                # this change will also ask the input data type of target to become sth like [1]
+                # t.name: tf.io.FixedLenFeature([], tf.float32, t.default_value)
+                t.name: tf.io.FixedLenSequenceFeature([], tf.float32, default_value=0.0, allow_missing=True)
+                # t.name: tf.io.VarLenFeature(tf.float32)
                 for t in model_targets
             }
         )
@@ -105,17 +123,20 @@ class feature_parser:
             input_ = tf.io.parse_example(
                 example, self.feature_description  # data: serial Example
             )  # schema
-            input_[self.TargetingDataIdList] = tf.sparse.to_dense(
-                input_[self.TargetingDataIdList]
-            )
+#             input_[self.TargetingDataIdList] = tf.sparse.to_dense(
+#                 input_[self.TargetingDataIdList]
+#             )
             # tf.expand_dims: add one more axis here
             # prepare for the matrix calculation in the model part
+            # to work well with the embedding input of TargetingDataIdList (1,None), it is good to use exp_var
             if self.exp_var:
                 input_[self.TargetingDataIdList] = tf.expand_dims(
                     input_[self.TargetingDataIdList], axis=1
                 )
-            input_[self.Target] = tf.cast(input_[self.Target], tf.float32)
             target = tf.cast(input_.pop(self.Target), tf.float32)
+            # target = tf.cast(tf.sparse.to_dense(input_.pop(self.Target)), tf.float32)
+            for name in self.int_features:
+                input_[name] = tf.cast(input_[name], tf.int32)
             return input_, target
 
         return parse
