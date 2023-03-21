@@ -62,7 +62,7 @@ def model_builder(model_arch, model_features, **kwargs):
 
 
 def deep_fm_dual_tower(linear_feature_columns, dnn_feature_columns, adgroup_feature_list, fm_group=[DEFAULT_GROUP_NAME],
-                       dnn_hidden_units=[64], l2_reg_linear=0.00001, l2_reg_embedding=0.00001,
+                       dnn_hidden_units=[[64, 64], [128, 64]], l2_reg_linear=0.00001, l2_reg_embedding=0.00001,
                        l2_reg_dnn=0, seed=SEED, dnn_dropout=0,
                        dnn_activation='relu', dnn_use_bn=False, task='binary'):
     """Instantiates the DeepFM Network architecture with adgroup and bidrequest feature splitted in mlp part
@@ -122,7 +122,7 @@ def deep_fm_dual_tower(linear_feature_columns, dnn_feature_columns, adgroup_feat
 
 
 def deep_fm_dual_tower_neo(linear_feature_columns, dnn_feature_columns, adgroup_feature_list,
-                           fm_group=[DEFAULT_GROUP_NAME], dnn_hidden_units=[64, 64], l2_reg_linear=0.00001,
+                           fm_group=[DEFAULT_GROUP_NAME], dnn_hidden_units=[[64, 64], [128, 64]], l2_reg_linear=0.00001,
                            l2_reg_embedding=0.00001, l2_reg_dnn=0, seed=SEED, dnn_dropout=0, dnn_activation='relu',
                            dnn_use_bn=False, task='binary'):
     """Instantiates the DeepFM Network architecture with adgroup and bidrequest feature split in mlp part, and along

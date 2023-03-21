@@ -50,8 +50,8 @@ def extract_neo_model(model, model_arch, model_features, linear_feature_columns,
                                             adgroup_feature_list=adgroup_feature_name)
     a_input_layers, b_input_layers = separate_feature(input_layers, adgroup_feature_list=adgroup_feature_name)
     if model_arch == "deepfm_dual":
-        a_dnn_layer = list(filter(lambda x: x.name == 'adgroup_dnn', model.layers))[0]
-        b_dnn_layer = list(filter(lambda x: x.name == 'bidrequest_dnn', model.layers))[0]
+        a_dnn_layer = model.get_layer('adgroup_dnn')
+        b_dnn_layer = model.get_layer('bidrequest_dnn')
     elif model_arch == "deepfm":
         a_dnn_layer, b_dnn_layer = None, None
     else:
@@ -206,11 +206,11 @@ def get_partial_fm(embed_list):
     Returns: fm vector part and float part
 
     """
-    # adjust input types, make sure whether input list is embedding or its logit, the embed_logit contains logits for
-    # the next step
+    # check if input list contains only embedding layers or logits of embedding layers, then change accordingly to make
+    # sure embed_logit contains the embedding layer logits for the next step
     if all(isinstance(x, Embedding) for x in embed_list):
         embed_logit = [i.output for i in embed_list]
-    elif all(isinstance(x, KerasTensor) for x in embed_list):
+    elif all(isinstance(x, KerasTensor) and isinstance(x._keras_history.layer, Embedding) for x in embed_list):
         embed_logit = embed_list
     else:
         raise Exception("embed_list type not recognized, should be either Embedding layers or their tensor logits.")
@@ -352,16 +352,82 @@ def separate_feature(iterable, adgroup_feature_list=['AdGroupId', 'AdvertiserId'
     return adgroup_info, bidrequest_info
 
 
-def create_combined_encoder(group_embedding_dict, dense_value_list, adgroup_feature_list, dnn_hidden_units=[64],
-                            l2_reg_dnn=0, seed=SEED, dnn_dropout=0,
-                            dnn_activation='relu', dnn_use_bn=False):
+def create_combined_encoder(group_embedding_dict, dense_value_list, adgroup_feature_list,
+                            dnn_hidden_units=[[64, 64], [128, 64]],
+                            dnn_activation='relu', l2_reg_dnn=0, dnn_dropout=0,
+                            dnn_use_bn=False, seed=SEED):
+    """
+    From the embedding layers created before, build dual tower DNN model part.
+    Args:
+        group_embedding_dict: embedding input list.
+        dense_value_list: dense input list.
+        adgroup_feature_list: adgroup feature list.
+        dnn_hidden_units: [array([float])] or array([float]) depending on if the two towers are different. Hidden unit
+                          settings for the dual towers. If first case, the order of units is: adgroup, bidrequest.
+        dnn_activation: Activation function to use.
+        l2_reg_dnn: float between 0 and 1. L2 regularizer strength applied to the kernel weights matrix.
+        dnn_dropout: float in [0,1). Fraction of the units to dropout.
+        dnn_use_bn: bool. Whether use BatchNormalization before activation or not.
+        seed: A Python integer to use as random seed.
+
+    Returns: logits for dual tower DNN and individual Neo DNN's.
+
+    """
     sparse_feature_embeddings = list(chain.from_iterable(group_embedding_dict.values()))
     adgroup_embed, bid_embed = separate_feature(sparse_feature_embeddings, adgroup_feature_list)
     adgroup_dense, bid_dense = separate_feature(dense_value_list, adgroup_feature_list)
     adgroup_input = combined_dnn_input(adgroup_embed, adgroup_dense)
     bid_input = combined_dnn_input(bid_embed, bid_dense)
-    dnn_output_adgroup = DNN(dnn_hidden_units, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed,
+    if all(isinstance(x, list) for x in dnn_hidden_units):
+        if len(dnn_hidden_units) == 2:
+            # Note that the order of units is: adgroup, bidrequest
+            dnn_hidden_units_a, dnn_hidden_units_b = dnn_hidden_units[0], dnn_hidden_units[1]
+        else:
+            raise Exception(
+                "If dnn_hidden_units is provided as a list of lists, 2 and only 2 lists specifying adgroup and "
+                "bidrequest dnn structures are required.")
+    elif all(isinstance(x, int) for x in dnn_hidden_units):
+        dnn_hidden_units_a = dnn_hidden_units_b = dnn_hidden_units
+    else:
+        raise Exception("dnn_hidden_units should be either 1) list of only integers so that both dnn towers have the "
+                        "same structure, or 2) list of 2 lists containing integers, specifying different structures for"
+                        " the two towers.")
+    dnn_output_adgroup = DNN(dnn_hidden_units_a, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed,
                              name="adgroup_dnn")(adgroup_input)
-    dnn_output_bid = DNN(dnn_hidden_units, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed,
+    dnn_output_bid = DNN(dnn_hidden_units_b, dnn_activation, l2_reg_dnn, dnn_dropout, dnn_use_bn, seed=seed,
                          name="bidrequest_dnn")(bid_input)
     return tf.reduce_sum(dnn_output_adgroup * dnn_output_bid, axis=1, keepdims=True), dnn_output_adgroup, dnn_output_bid
+
+
+def extract_dnn_only_models(model, task='binary', adgroup_feature_list=['AdGroupId', 'AdvertiserId', 'CreativeId']):
+    """
+    From any model with Dual DNN towers, extract and build a new model that predicts only utilizing the DNN
+    parts. Along with it, build Neo A and B model from each single DNN tower.
+    Args:
+        model: model with Dual DNN tower structures
+        task: ``"binary"`` for  binary logloss or  ``"regression"`` for regression loss
+        adgroup_feature_list: adgroup feature list
+
+    Returns: new model utilizing only the DNN part, Neo DNN model for adgroup and bidrequest
+
+    """
+    input_layers = list(filter(lambda x: isinstance(x, InputLayer), model.layers))
+    input_layers_a, input_layers_b = separate_feature(input_layers, adgroup_feature_list=adgroup_feature_list)
+
+    try:
+        a_dnn_layer = model.get_layer('adgroup_dnn')
+        b_dnn_layer = model.get_layer('bidrequest_dnn')
+    except ValueError as e:
+        print(e)
+        print("extract_dnn_only_models() can only be applied to models with dual tower structure, more specifically 2 "
+              "layers named as 'adgroup_dnn' and 'bidrequest_dnn'.")
+
+    dual_combined_output = tf.reduce_sum(a_dnn_layer.output * b_dnn_layer.output, axis=1, keepdims=True)
+    new_final_logit = add_func([dual_combined_output])
+    new_output = PredictionLayer(task)(new_final_logit)
+
+    model_deepfm_dnn = Model(inputs=[i.output for i in input_layers], outputs=new_output)
+    model_neo_dnn_a = Model(inputs=[i.output for i in input_layers_a], outputs=a_dnn_layer.output)
+    model_neo_dnn_b = Model(inputs=[i.output for i in input_layers_b], outputs=b_dnn_layer.output)
+
+    return model_deepfm_dnn, model_neo_dnn_a, model_neo_dnn_b
