@@ -35,6 +35,8 @@ abstract class FirstPartyPixelDailyModelInputGeneratorV2 {
     val seedToSplitDataset = config.getString("seedToSplitDataset", "@5u*&5vh")
 
     val validateDatasetSplitModule = config.getInt("validateDatasetSplitModule", default = 5)
+
+    val lastTouchNumberInBR = config.getInt("lastTouchNumberInBR", 3)
   }
 
   def main(args: Array[String]): Unit = {
@@ -119,12 +121,21 @@ abstract class FirstPartyPixelDailyModelInputGeneratorV2 {
 
     val sampledBidsImpressionsKeys = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date.minusDays(Config.labelLookBack), source = Some(GERONIMO_DATA_SOURCE))
       .withColumnRenamed("UIID", "TDID")
-      .select('BidRequestId, 'TDID, 'CampaignId)
-      .filter(samplingFunction('TDID)) // in the future, we may not have the id, good to think about how to solve
+      .select('BidRequestId, 'TDID, 'CampaignId, 'LogEntryTime)
+      .filter(samplingFunction('TDID))
 
-    (sampledBidsImpressionsKeys, bidsImpressionsLong)
+    (ApplyNLastTouchOnSameTdid(Config.lastTouchNumberInBR, sampledBidsImpressionsKeys), bidsImpressionsLong)
+  }
+
+  def ApplyNLastTouchOnSameTdid(n: Int, sampledBidsImpressionsKeys: DataFrame) = {
+    val window = Window.partitionBy('TDID).orderBy('LogEntryTime.desc)
+    sampledBidsImpressionsKeys.withColumn("row", row_number().over(window))
+      .filter('row <= n)
+      .drop('LogEntryTime)
+      .drop('row)
   }
 }
+
 
 object FirstPartyPixelDailySIBModelInputGeneratorV2 extends FirstPartyPixelDailyModelInputGeneratorV2 {
 
