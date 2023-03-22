@@ -2,7 +2,8 @@
 
 # sync model input files for the given date range to the local machine from s3
 
-BASE_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1"
+BASE_DATA_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1"
+BASE_MODEL_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/models"
 
 LOOKBACK=9
 
@@ -72,23 +73,23 @@ fi
 if [ -z "$REGION" ]
 then
    REGION=""
-   echo "No region set. Falling back to empty region $REGION" >&1
+   echo "No region set. Falling back to region $REGION" >&1
 fi
 
 if [ -z "$LATEST_MODEL_PATH" ]
 then
-   LATEST_MODEL_PATH=${BASE_S3_PATH}/${ENV}/models/${REGION}/
+   LATEST_MODEL_PATH="${BASE_MODEL_S3_PATH}/${ENV}/philo/v=1/${REGION}/models/"
    echo "No latest model path set. Falling back to $LATEST_MODEL_PATH" >&1
 fi
 
 MNT="../../../../../../mnt/"
 
 # filtered data locations
-DATA_SOURCE="${BASE_S3_PATH}/${ENV}/${PREFIX}"
+DATA_SOURCE="${BASE_DATA_S3_PATH}/${ENV}/${PREFIX}"
 SYNC_DEST="tfrecords/"
 
 # meta locations
-META_SOURCE="${BASE_S3_PATH}/${ENV}/${META_PREFIX}"
+META_SOURCE="${BASE_DATA_S3_PATH}/${ENV}/${META_PREFIX}"
 META_DEST="metadata/"
 
 # latest trained model

@@ -22,10 +22,10 @@ MODEL_LOGS = "/var/tmp/logs/"
 META_DATA_INPUT = "/var/tmp/input"
 LATEST_MODEL = "/var/tmp/input"
 FEATURES_PATH = "features.json"
-S3_PROD = "s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/"
+S3_PROD = "s3://thetradedesk-mlplatform-us-east-1/models/{env}/philo/v=1/{region}/"
 # PARAM_MODEL_OUTPUT = "models_params/"
 MODEL_OUTPUT = "models/"
-MODEL_REGION = ""
+MODEL_REGION = "namer"
 EVAL_OUTPUT = "eval_metrics/"
 S3_MODEL_LOGS = "model_logs/"
 
@@ -34,6 +34,8 @@ S3_MODEL_LOGS = "model_logs/"
 # TEST = "test"
 
 DATE_TIME = datetime.now()
+
+flags.DEFINE_string('env', default='dev', help=f'Execution environment (dev, test, prod)')
 
 # define model structure
 flags.DEFINE_string("model_arch", default="deepfm", help="Model Architecture, currently only have deep fm")
@@ -105,11 +107,11 @@ def main(argv):
     model_target = DEFAULT_MODEL_TARGET
 
     # define training metrics
-    prom = Prometheus('philo', 'modelTraining')
-    epoch_gauge = prom.define_gauge('epochs', 'number of epochs')
-    loss_gauge = prom.define_gauge('loss', 'loss value')
-    val_loss_gauge = prom.define_gauge('val_loss', 'validation loss')
-    eval_philo_gauge = prom.define_gauge('eval', 'evaluation')
+    prom = Prometheus(job_name='philo', application='modelTraining', environment=FLAGS.env)
+    epoch_gauge = prom.define_gauge('epochs', 'number of epochs', ['region'])
+    loss_gauge = prom.define_gauge('loss', 'loss value', ['region'])
+    val_loss_gauge = prom.define_gauge('val_loss', 'validation loss', ['region'])
+    eval_philo_gauge = prom.define_gauge('eval', 'evaluation', ['region'])
 
     # if the training process need to go through the whole dataset in more than 1 epoch
     # we need to repeat the data and get the steps_per_epochs so that tf knows how the
@@ -170,17 +172,25 @@ def main(argv):
     model_tag = f"{FLAGS.output_path}model/{FLAGS.model_arch}_{FLAGS.num_epochs}_{FLAGS.dnn_dropout}_{FLAGS.dnn_use_bn}"
     model.save(model_tag)
 
-    if (FLAGS.push_training_logs):
-        s3_sync(FLAGS.log_path, f"{FLAGS.s3_output_path}/{S3_MODEL_LOGS}{FLAGS.region}{FLAGS.model_creation_date}")
+    base_s3_path = FLAGS.s3_output_path.format(env=FLAGS.env, region=FLAGS.region)
 
-    s3_sync(model_tag, f"{FLAGS.s3_output_path}{MODEL_OUTPUT}{FLAGS.region}{FLAGS.model_creation_date}")
+    # push logs if needed
+    if FLAGS.push_training_logs:
+        path = f"{base_s3_path}{S3_MODEL_LOGS}{FLAGS.model_creation_date}"
+        print(f"Writing logs to {path}...")
+        s3_sync(FLAGS.log_path, path)
 
-    epoch_gauge.set(epochs)
-    loss_gauge.set(history.history['loss'][-1])
-    val_loss_gauge.set(history.history['val_loss'][-1])
+    # copy model output to final location
+    path = f"{base_s3_path}{MODEL_OUTPUT}{FLAGS.model_creation_date}"
+    print(f"Writing model to {path}...")
+    s3_sync(model_tag, path)
+
+    epoch_gauge.labels(region=FLAGS.region).set(epochs)
+    loss_gauge.labels(region=FLAGS.region).set(history.history['loss'][-1])
+    val_loss_gauge.labels(region=FLAGS.region).set(history.history['val_loss'][-1])
 
     evals = model.evaluate(datasets[TEST], verbose=1)
-    eval_philo_gauge.set(evals[2])
+    eval_philo_gauge.labels(region=FLAGS.region).set(evals[2])
 
     # push metrics before stopping the job
     prom.push()
