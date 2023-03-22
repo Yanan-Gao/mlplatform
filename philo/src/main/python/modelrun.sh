@@ -5,11 +5,13 @@ DOCKER_IMAGE_NAME="philo-training"
 DOCKER_INTERNAL_BASE="internal.docker.adsrvr.org"
 DOCKER_USER="svc.emr-docker-ro"
 HOME_HADOOP="../../../../../../mnt"
-# output_path move to main to make it consistent
-# S3_OUTPUT_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/"
 
-while getopts "t:o:r:" opt; do
+while getopts "e:t:o:r:" opt; do
   case "$opt" in
+    e)
+      ENV="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
+      echo "Setting environment to $OPTARG" >&1
+      ;;
     t)
       IMAGE_TAG="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
       echo "Setting image tag to $OPTARG" >&1
@@ -33,9 +35,15 @@ then
    echo "No image flag set. Falling back to $IMAGE_TAG" >&1
 fi
 
+if [ -z "$ENV" ]
+then
+   $ENV="dev"
+   echo "No environment. Falling back to $ENV" >&1
+fi
+
 if [ -z "$OUTPUT_PATH" ]
 then
-   OUTPUT_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/"
+   OUTPUT_PATH="s3://thetradedesk-mlplatform-us-east-1/models/{env}/philo/v=1/{region}/"
    echo "No output path set. Falling back to $OUTPUT_PATH" >&1
 fi
 
@@ -74,9 +82,10 @@ sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v /mnt/tfrecords:$
       "--input_path=/var/tmp/input/tfrecords/" \
       "--meta_data_path=/var/tmp/input/metadata/" \
       "--latest_model_path=/var/tmp/input/latest_model/" \
-      "--s3_output_path=${OUTPUT_PATH}" \
       "--push_training_logs=true" \
+      "--env=${ENV}" \
       "--region=${REGION}" \
+      "--s3_output_path=${OUTPUT_PATH}" \
       "--training_verbosity=2" \
       "--model_arch=deepfm" \
       "--early_stopping_patience=5"
