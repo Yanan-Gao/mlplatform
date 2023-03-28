@@ -1,5 +1,7 @@
 package com.thetradedesk.kongming.datasets
 
+import com.thetradedesk.spark.util.TTDConfig.config
+
 final case class DailyNegativeSampledBidRequestRecord (
                                                         BidRequestId: String,
                                                         LogEntryTime: java.sql.Timestamp,
@@ -10,5 +12,6 @@ final case class DailyNegativeSampledBidRequestRecord (
                                                       )
 
 case class DailyNegativeSampledBidRequestDataSet() extends KongMingDataset[DailyNegativeSampledBidRequestRecord](
-  s3DatasetPath = "dailynegativesampledbidrequest/v=1"
+  s3DatasetPath = "dailynegativesampledbidrequest/v=1",
+  experimentName = config.getString("ttd.DailyNegativeSampledBidRequestDataSet.experimentName", "")
 )

@@ -1,5 +1,7 @@
 package com.thetradedesk.kongming.datasets
 
+import com.thetradedesk.spark.util.TTDConfig.config
+
 final case class DailyConversionDataRecord( TrackingTagId: String,
                                             UIID: String,
                                             DataAggKey: String,
@@ -9,5 +11,6 @@ final case class DailyConversionDataRecord( TrackingTagId: String,
 
 
 case class DailyConversionDataset() extends KongMingDataset[DailyConversionDataRecord](
-  s3DatasetPath = "dailyconversion/v=1"
+  s3DatasetPath = "dailyconversion/v=1",
+  experimentName = config.getString("ttd.DailyConversionDataset.experimentName", "")
 )
