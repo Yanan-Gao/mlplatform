@@ -1,6 +1,7 @@
 package com.thetradedesk.kongming.datasets
 
 import com.thetradedesk.spark.datasets.core.TFRecord
+import com.thetradedesk.spark.util.TTDConfig.config
 
 //TODO: will need to be able to extend what Yuehan has as final result for trainingset.
 final case class DailyOfflineScoringRecord(
@@ -42,8 +43,8 @@ final case class DailyOfflineScoringRecord(
                                            longitude: Option[Double]
                                       )
 
-case class DailyOfflineScoringDataset(experimentName: String = "") extends KongMingDataset[DailyOfflineScoringRecord](
+case class DailyOfflineScoringDataset() extends KongMingDataset[DailyOfflineScoringRecord](
   s3DatasetPath = "dailyofflinescore/v=1",
-  experimentName = experimentName,
+  experimentName = config.getString("ttd.DailyOfflineScoringDataset.experimentName", ""),
   fileFormat = TFRecord.Example
 )

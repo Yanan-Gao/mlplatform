@@ -42,7 +42,6 @@ object DailyOfflineScoringSet {
 
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
-    val experimentName = config.getString("offlineScoresetExperimentName" , "")
     val adGroupPolicy = AdGroupPolicySnapshotDataset().readDataset(date)
 
     var hashFeatures = modelDimensions ++ modelFeatures
@@ -57,7 +56,7 @@ object DailyOfflineScoringSet {
     )(prometheus)
 
     //assuming Yuehan has implemented the tfrecord write this way. has dependency on the changes she is doing.
-    val dailyOfflineScoringRows = DailyOfflineScoringDataset(experimentName).writePartition(scoringFeatureDS, date, Some(100))
+    val dailyOfflineScoringRows = DailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(100))
 
     outputRowsWrittenGauge.labels("DailyOfflineScoringDataset").set(dailyOfflineScoringRows)
     jobDurationGaugeTimer.setDuration()

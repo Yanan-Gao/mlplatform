@@ -18,7 +18,7 @@ final case class DailyPositiveLabelRecord(
                                            IsInViewAttributionWindow: Boolean
                                          )
 
-case class DailyPositiveBidRequestDataset(experimentName: String = "") extends KongMingDataset[DailyPositiveLabelRecord](
+case class DailyPositiveBidRequestDataset() extends KongMingDataset[DailyPositiveLabelRecord](
   s3DatasetPath = "dailypositive/v=1",
   experimentName = config.getString("ttd.DailyPositiveBidRequestDataset.experimentName", "")
 )
