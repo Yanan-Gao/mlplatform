@@ -3,6 +3,7 @@ package com.thetradedesk.audience.jobs
 import com.amazonaws.regions.Regions
 import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder}
 import com.thetradedesk.audience.datasets.{AudienceModelPolicyDataset, AudienceModelPolicyRecord, CrossDeviceVendor, DataSource, Model, SeenInBiddingV3DeviceDataSet}
+import com.thetradedesk.audience.sample.WeightSampling.{generatePositiveSample, generateNegativeSample, getLabels, zipAndGroupUDF}
 import com.thetradedesk.audience.{date, shouldConsiderTDID2}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
@@ -37,9 +38,9 @@ object AudienceModelInputGeneratorJob {
       policyTable.foreach(typePolicyTable => {
         val dataset = typePolicyTable match {
           case ((Model.AEM, DataSource.SIB, CrossDeviceVendor.None), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
-            FirstPartyPixelSIBModelInputGenerator.generateDataset(date, spark.sparkContext.broadcast(subPolicyTable))
+            FirstPartyPixelSIBModelInputGenerator.generateDataset(date, subPolicyTable)
           case ((Model.RSM, DataSource.Seed, CrossDeviceVendor.None), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
-            SeedDailyModelInputGenerator.generateDataset(date, spark.sparkContext.broadcast(subPolicyTable))
+            SeedDailyModelInputGenerator.generateDataset(date, subPolicyTable)
           case _ =>
             // todo make this better
             throw new Exception("error")
@@ -88,12 +89,22 @@ abstract class AudienceModelInputGenerator {
     val seedMetadataPath = config.getString("seedMetadataPath", "")
 
     val lastTouchNumberInBR = config.getInt("lastTouchNumberInBR", 3)
+
+    val positiveSampleUpperThreshold = config.getDouble("positiveSampleUpperThreshold", default = 20000.0)
+
+    val positiveSampleLowerThreshold = config.getDouble("positiveSampleLowerThreshold", default = 2000.0)
+    
+    val positiveSampleSmoothingFactor = config.getDouble("positiveSampleSmoothingFactor", default = 0.95)
+    
+    val negativeSampleRatio = config.getInt("negativeSampleRatio", default = 5)
+    
+    val labelMaxLength = config.getInt("labelMaxLength", default = 50)
   }
 
   /**
    * Core logic to generate model training dataset should be put here
    */
-  def generateDataset(date: LocalDate, policyTable: Broadcast[Array[AudienceModelPolicyRecord]]): DataFrame
+  def generateDataset(date: LocalDate, policyTable: Array[AudienceModelPolicyRecord]): DataFrame
 
   def generateLabels(date: LocalDate, policyTable: Broadcast[Array[AudienceModelPolicyRecord]]): DataFrame
 
@@ -154,6 +165,79 @@ abstract class AudienceModelInputGenerator {
     (ApplyNLastTouchOnSameTdid(sampledBidsImpressionsKeys), bidsImpressionsLong)
   }
 
+  def sampleLabels(labels: DataFrame, policyTable: Array[AudienceModelPolicyRecord], targetName:String): DataFrame = {
+    
+    // Aggregate policy table as an one row
+    val policyTableDF = policyTable.toSeq.toDF()
+    val aggregatedPolicy = policyTableDF.agg(collect_list(struct(col(targetName), col("OrderId"), col("size")))
+                                      .alias("id_size_pairs"))
+                                      .selectExpr(s"transform(id_size_pairs, x -> x.${targetName}) as id", "transform(id_size_pairs, x -> x.size) as size", "transform(id_size_pairs, x -> x.OrderId) as OrderId")
+                                      .cache()
+    
+    val aggregatedPolicyAboveThreshold = policyTableDF.filter(col("size")>Config.positiveSampleLowerThreshold)
+                                      .withColumn("adjustedSize", when(col("size")>Config.positiveSampleUpperThreshold, Config.positiveSampleUpperThreshold).otherwise(col("size")))
+                                      .agg(collect_list(struct(col(targetName), col("OrderId"), col("size"), col("adjustedSize")))
+                                      .alias("id_size_pairs"))
+                                      .selectExpr(s"transform(id_size_pairs, x -> x.${targetName}) as AboveThresholdId", "transform(id_size_pairs, x -> x.size) as AboveThresholdSize", "transform(id_size_pairs, x -> x.adjustedSize) as adjustedAboveThresholdSize", "transform(id_size_pairs, x -> x.OrderId) as adjustedAboveThresholdOrderId")
+                                      .cache()
+
+    // calculate the 95 percentile of length of the id array column
+    val label_95_pct = labels.withColumn("size", size(col(s"${targetName}s")))
+                              .agg(percentile_approx('size, lit(0.95),lit(10000000)))
+                              .head()
+                              .getInt(0)
+                              .toDouble
+
+    // repartition labels table to larger size for better parallel computing
+    val labels_repartitioned = labels.repartition(500)
+//                                   .filter(size(col(s"${targetName}s"))<=label_95_pct)
+                                  .cache()
+
+    val labels_overall_size = labels_repartitioned.count()
+    
+    // downsample positive labels to keep # of positive labels among targets balanced 
+    val positiveLabelResult = labels_repartitioned.select(col("TDID"), col(s"${targetName}s"))
+                          .crossJoin(aggregatedPolicy)
+                          .crossJoin(aggregatedPolicyAboveThreshold)
+                          .select(col("TDID"), col(s"${targetName}s"), col("id"), col("OrderId"), col("size"), col("AboveThresholdId"), col("AboveThresholdSize"), col("adjustedAboveThresholdSize"), col("adjustedAboveThresholdOrderId"))
+                          .withColumn("positiveResults", generatePositiveSample(col(s"${targetName}s")
+                                                                              , col("id")
+                                                                              , col("OrderId")
+                                                                              , col("size")
+                                                                              , lit(Config.positiveSampleUpperThreshold)
+                                                                              , lit(Config.positiveSampleLowerThreshold)
+                                                                              , lit(Config.positiveSampleSmoothingFactor)
+                                                                              , lit(labels_overall_size)))
+                          .withColumn("positiveSamples", col("positiveResults._1"))
+                          .withColumn("positiveOrderIds", col("positiveResults._2"))
+                          
+                          .cache()
+    
+    // sample negative labels to match the pos:neg ratio per targets
+    val labelResult = positiveLabelResult.withColumn("negativeResults", generateNegativeSample(col("AboveThresholdId")
+                                                                              , col("adjustedAboveThresholdOrderId")
+                                                                              , col("AboveThresholdSize")
+                                                                              , col("adjustedAboveThresholdSize") 
+                                                                              , lit(Config.positiveSampleUpperThreshold)
+                                                                              , lit(Config.positiveSampleLowerThreshold)
+                                                                              , lit(labels_overall_size)
+                                                                              , lit(Config.negativeSampleRatio)*size(col("positiveSamples"))))
+                          .withColumn("negativeSamples", col("negativeResults._1"))
+                          .withColumn("negativeOrderIds", col("negativeResults._2"))
+                          .withColumn("negativeSamples", array_except(col("negativeSamples"),col(s"${targetName}s")))
+                          .withColumn("positiveTargets", getLabels($"positiveSamples",lit(1)))
+                          .withColumn("negativeTargets", getLabels($"negativeSamples",lit(0)))
+                          .withColumn(s"${targetName}s", concat($"positiveSamples",$"negativeSamples"))
+                          .withColumn("targets", concat($"positiveTargets",$"negativeTargets"))
+                          .select(col("TDID"), col(s"${targetName}s"), col("targets"))
+                          // partialy explode the result to keep the target array within the max length
+                          .withColumn("zipped_targets", zipAndGroupUDF(col(s"${targetName}s"), col("targets"), lit(Config.labelMaxLength)))
+                          .select(col("TDID"),explode(col("zipped_targets")).as("zipped_targets"))
+                          .select(col("TDID"), col("zipped_targets").getField("_1").as(s"${targetName}s"), col("zipped_targets").getField("_2").as("targets"))
+
+    labelResult
+  }
+
   private def ApplyNLastTouchOnSameTdid(sampledBidsImpressionsKeys: DataFrame) = {
     val window = Window.partitionBy('TDID).orderBy('LogEntryTime.desc)
     sampledBidsImpressionsKeys.withColumn("row", row_number().over(window))
@@ -170,13 +254,14 @@ abstract class AudienceModelInputGenerator {
  */
 object FirstPartyPixelSIBModelInputGenerator extends AudienceModelInputGenerator {
 
-  def generateDataset(date: LocalDate, policyTable: Broadcast[Array[AudienceModelPolicyRecord]]): DataFrame = {
+  def generateDataset(date: LocalDate, policyTable: Array[AudienceModelPolicyRecord]): DataFrame = {
     val (sampledBidsImpressionsKeys, bidsImpressionsLong) = getBidImpressions(date)
-    val labels = generateLabels(date, policyTable)
+    val labels = generateLabels(date, spark.sparkContext.broadcast(policyTable))
 
     // TODO dedup sampledBidsImpressionsKeys in case huge impressions for same TDID
     val roughDataset = sampledBidsImpressionsKeys
-      .join(refineLabels(labels), Seq("TDID"), "inner")
+      .join(
+        sampleLabels(labels, policyTable, "TargetingDataId"), Seq("TDID"), "inner")
       .join(bidsImpressionsLong, Seq("BidRequestId"), "inner")
 
     // TODO refine/re-sample dataset
@@ -184,6 +269,7 @@ object FirstPartyPixelSIBModelInputGenerator extends AudienceModelInputGenerator
 
     refinedDataset
   }
+
 
   def refineLabels(labels: DataFrame): DataFrame = {
     /* TODO add weighted downSample logic to refine positive label size and negative label size
@@ -201,9 +287,9 @@ object FirstPartyPixelSIBModelInputGenerator extends AudienceModelInputGenerator
       .withColumnRenamed("DeviceId", "TDID")
       .filter(samplingFunction('TDID))
       // only support first party targeting data ids in current solution
-      .withColumn("PositiveTargetingDataIds", array_intersect('FirstPartyTargetingDataIds, typedLit(targetingDataIds)))
-      .withColumn("NegativeTargetingDataIds", array_except(typedLit(targetingDataIds), 'PositiveTargetingDataIds))
-      .select('TDID, 'PositiveTargetingDataIds, 'NegativeTargetingDataIds)
+      .withColumn("TargetingDataIds", array_intersect('FirstPartyTargetingDataIds, typedLit(targetingDataIds)))
+      .filter(size(col("TargetingDataIds"))>0)
+      .select('TDID, 'TargetingDataIds)
   }
 }
 
@@ -212,8 +298,8 @@ object FirstPartyPixelSIBModelInputGenerator extends AudienceModelInputGenerator
  * using the dataset provided by seed service
  */
 object SeedDailyModelInputGenerator extends AudienceModelInputGenerator {
-  override def generateDataset(date: LocalDate, policyTable: Broadcast[Array[AudienceModelPolicyRecord]]): DataFrame = {
-    val seedDataset = generateLabels(date, policyTable)
+  override def generateDataset(date: LocalDate, policyTable: Array[AudienceModelPolicyRecord]): DataFrame = {
+    val seedDataset = generateLabels(date, spark.sparkContext.broadcast(policyTable))
     seedDataset
   }
 
