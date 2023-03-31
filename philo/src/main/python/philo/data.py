@@ -16,7 +16,7 @@ VAL = "validation"
 TEST = "test"
 
 
-def s3_sync(src_path, dst_path):
+def s3_sync(src_path, dst_path, quiet=True):
     """
     Sync data from source path to destination path, need awscli
     Args:
@@ -27,8 +27,28 @@ def s3_sync(src_path, dst_path):
 
     """
     sync_command = f"aws s3 sync {src_path} {dst_path}"
+    if quiet:
+        sync_command = sync_command + " --quiet"
     os.system(sync_command)
     return sync_command
+
+
+def s3_copy(src_path, dest_path, quiet=True):
+    """
+    Copy data from source path to destination path, need awscli
+    Args:
+        src_path: source path
+        dest_path: destination path
+        quiet: print out copy message or not
+
+    Returns:command for copying
+
+    """
+    cp_command = f"aws s3 cp {src_path} {dest_path} --recursive"
+    if quiet:
+        cp_command = cp_command + " --quiet"
+    os.system(cp_command)
+    return cp_command
 
 
 def read_metadata(file_names):

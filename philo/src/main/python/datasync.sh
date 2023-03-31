@@ -3,7 +3,7 @@
 # sync model input files for the given date range to the local machine from s3
 
 BASE_DATA_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1"
-BASE_MODEL_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/models"
+#BASE_MODEL_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/models"
 
 LOOKBACK=9
 
@@ -107,22 +107,18 @@ for i in {1..9}; do
     DAY=$(date -d "$START_DATE -$i days" +"%d")
     S3_SOURCE="${DATA_SOURCE}/year=${YEAR}/month=${MONTH}/day=${DAY}/"
     S3_META_SOURCE="${META_SOURCE}/year=${YEAR}/month=${MONTH}/day=${DAY}/"
-    if ((i <= 7))
-      then echo "syncing from ${S3_SOURCE} to "${SYNC_DEST}/train""
-      aws s3 sync ${S3_SOURCE} "${SYNC_DEST}/train/" --exclude "*" --include "part-*0000?*.gz" --quiet
-      echo "syncing meta data form ${S3_META_SOURCE} to ${META_DEST}"
-      aws s3 sync ${S3_META_SOURCE} "${META_DEST}/" --exclude "*" --include "*.csv" --quiet
-     fi
-
-    if ((i == 8))
-      then echo "syncing from ${S3_SOURCE}  to "${SYNC_DEST}/validation""
-      aws s3 sync ${S3_SOURCE} "${SYNC_DEST}/test/" --exclude "*" --include "part-*0000?*.gz" --quiet
-    fi
-
-    if ((i == 9))
+    if ((i == 1))
       then echo "syncing from ${S3_SOURCE}  to "${SYNC_DEST}/test""
-      aws s3 sync ${S3_SOURCE} "${SYNC_DEST}/validation/" --exclude "*" --include "part-*0000?*.gz" --quiet
-    fi
+      aws s3 cp ${S3_SOURCE} "${SYNC_DEST}/test/" --recursive --exclude "*" --include "*.gz" --quiet
+    elif ((i == 2))
+      then echo "syncing from ${S3_SOURCE}  to "${SYNC_DEST}/validation""
+      aws s3 cp ${S3_SOURCE} "${SYNC_DEST}/validation/" --recursive --exclude "*" --include "*.gz" --quiet
+    else
+      echo "copying from ${S3_SOURCE} to "${SYNC_DEST}/train""
+      aws s3 cp ${S3_SOURCE} "${SYNC_DEST}/train/" --recursive --exclude "*" --include "*.gz" --quiet
+      echo "syncing meta data form ${S3_META_SOURCE} to ${META_DEST}"
+      aws s3 cp ${S3_META_SOURCE} "${META_DEST}/" --recursive --exclude "*" --include "*.csv" --quiet
+     fi
 
 done
 

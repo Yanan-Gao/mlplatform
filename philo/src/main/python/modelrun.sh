@@ -74,11 +74,11 @@ sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v /mnt/tfrecords:$
   ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${IMAGE_TAG}  \
       "--nodummy" \
       "--batch_size=16384" \
-      "--learning_rate=0.008" \
+      "--learning_rate=0.0008" \
       "--eval_batch_size=131072" \
-      "--data_trunks=3" \
+      "--data_trunks=1" \
       "--exclude_features=DoNotTrack"\
-      "--num_epochs=3" \
+      "--num_epochs=1" \
       "--input_path=/var/tmp/input/tfrecords/" \
       "--meta_data_path=/var/tmp/input/metadata/" \
       "--latest_model_path=/var/tmp/input/latest_model/" \
