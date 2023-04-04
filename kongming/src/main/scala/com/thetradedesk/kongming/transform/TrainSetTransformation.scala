@@ -261,17 +261,19 @@ object TrainSetTransformation {
                      realNegatives: Dataset[TrainSetRecord],
                      desiredNegOverPos:Int = 9,
                      maxNegativeCount: Int = 500000,
-                     method: Option[String] = None,
-                     upSamplingValSet: Boolean = false,
+                     balanceMethod: Option[String] = None,
+                     sampleValSet: Boolean = true,
                      samplingSeed: Long
                    )(implicit prometheus:PrometheusClient): Tuple2[Dataset[TrainSetRecord], Dataset[TrainSetRecord]] = {
 /*
 1. upsampling vs. class weight https://datascience.stackexchange.com/questions/44755/why-doesnt-class-weight-resolve-the-imbalanced-classification-problem/44760#44760
 2. smote: https://github.com/mjuez/approx-smote
  */
-    method match {
-      case _ => upSamplingBySamplyByKey(realPositives, realNegatives, desiredNegOverPos, maxNegativeCount, upSamplingValSet, samplingSeed)
+    balanceMethod match {
+      case Some("upsampling") => upSamplingBySamplyByKey(realPositives, realNegatives, desiredNegOverPos, maxNegativeCount, sampleValSet, samplingSeed)
 //        case Some("smote") =>
+      case Some("downsampling") => downsampleNegByKeyByDate(realPositives, realNegatives, desiredNegOverPos, sampleValSet, samplingSeed)
+      case _ => downsampleNegByKeyByDate(realPositives, realNegatives, desiredNegOverPos, sampleValSet, samplingSeed)
     }
 
   }
@@ -375,6 +377,46 @@ object TrainSetTransformation {
       case _ =>   (upSampledPos.union(nonSampledPos), upSampledNeg.union(nonSampledNeg))
     }
 
+  }
+
+  def downsampleNegByKeyByDate(
+                               realPositives: Dataset[TrainSetRecord],
+                               realNegatives: Dataset[TrainSetRecord],
+                               desiredNegOverPos: Int = 9,
+                               sampleValSet: Boolean = true,
+                               samplingSeed: Long
+                             ): Tuple2[Dataset[TrainSetRecord], Dataset[TrainSetRecord]] = {
+
+    val (positivesToResample, negativeToResample) = sampleValSet match {
+      case false => {
+        (realPositives.filter($"IsInTrainSet" === lit(true)).cache(), realNegatives.filter($"IsInTrainSet" === lit(true)).cache())
+      }
+      case _ => (realPositives, realNegatives)
+    }
+
+    val positiveDailyCount = positivesToResample
+      .withColumn("LogEntryDate", to_date($"LogEntryTime"))
+      .groupBy("DataAggValue", "LogEntryDate")
+      .count().withColumnRenamed("count", "PosDailyCount")
+    val downSampledNegatives = negativeToResample
+      .withColumn("LogEntryDate", to_date($"LogEntryTime"))
+      .withColumn("NegDailyCount",
+        count("BidRequestId").over(Window.partitionBy("DataAggValue", "LogEntryDate")))
+      .join(positiveDailyCount, Seq("DataAggValue", "LogEntryDate"), "left")
+      .withColumn("Ratio", lit(desiredNegOverPos) * $"PosDailyCount" / $"NegDailyCount")
+      .withColumn("Rand", rand(seed = samplingSeed))
+      .filter($"Rand" <= $"Ratio")
+
+    sampleValSet match {
+      case false => {
+        (
+          // positives will not be sampled
+          realPositives,
+          downSampledNegatives.selectAs[TrainSetRecord].union(realNegatives.filter($"IsInTrainSet" === lit(false)))
+        )
+      }
+      case _ => (realPositives, downSampledNegatives.selectAs[TrainSetRecord])
+    }
   }
 
   def adjustWeightForTrainset(trainset: Dataset[PreFeatureJoinRecord],desiredNegOverPos: Int ):

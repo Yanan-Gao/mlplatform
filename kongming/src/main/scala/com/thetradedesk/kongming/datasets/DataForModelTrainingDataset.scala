@@ -81,9 +81,23 @@ case class DataForModelTrainingDataset(experimentName: String = "")
   ) {
 }
 
+case class DataIncForModelTrainingDataset(experimentName: String = "")
+  extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
+    GeneratedDataSet, MLPlatformS3Root, s"kongming/${getExperimentPath(experimentName)}trainset_inc/tfrecord/v=1",
+    fileFormat = TFRecord.Example
+  ) {
+}
+
 case class DataCsvForModelTrainingDataset(experimentName: String = "")
   extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
     GeneratedDataSet, MLPlatformS3Root, s"kongming/${getExperimentPath(experimentName)}trainset/csv/v=1",
+    fileFormat = Csv.WithHeader
+  ) {
+}
+
+case class DataIncCsvForModelTrainingDataset(experimentName: String = "")
+  extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
+    GeneratedDataSet, MLPlatformS3Root, s"kongming/${getExperimentPath(experimentName)}trainset_inc/csv/v=1",
     fileFormat = Csv.WithHeader
   ) {
 }
