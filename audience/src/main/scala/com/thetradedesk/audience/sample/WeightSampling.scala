@@ -1,48 +1,63 @@
 package com.thetradedesk.audience.sample
 
+import com.thetradedesk.audience.datasets.AudienceModelPolicyRecord
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
+
 import scala.util.Random
 
 object WeightSampling {
 
-  val generatePositiveSample = udf((labels: Seq[Long], ids: Seq[Long], order_ids: Seq[Long], size: Seq[Double], upper_threshold:Double, lower_threshold:Double, smoothing_factor:Double, all_seed_size:Int) => {
+  val positiveSampleUDFGenerator =
+    (policyTable: Map[Int, AudienceModelPolicyRecord], upperThreshold: Double, lowerThreshold: Double, smoothingFactor: Double) =>
+      udf((positiveSyntheticIds: Seq[Int]) => {
 
-    val TotalPositiveSamplesMap = ids.zip(size).zip(order_ids)
-                                  .filter { case (id, _) => labels.contains(id) }
-                                  .filter {case (id, size) => if (size< lower_threshold) {false} 
-                                                                else if (size >= lower_threshold && size <= upper_threshold) {true} 
-                                                                else {
-                                                                          val randomValue = Random.nextDouble()
-                                                                          randomValue < math.pow(upper_threshold/(size), smoothing_factor)
-    }}
-    
-    val TotalPositiveSamples = TotalPositiveSamplesMap.map(_._1._1)
-    val TotalPositiveOrderIds = TotalPositiveSamplesMap.map(_._2)
-    
-    (TotalPositiveSamples, TotalPositiveOrderIds)
-  
-})
+        val totalPositiveSyntheticIds = positiveSyntheticIds
+          .map(e => (e, policyTable(e)))
+          .filter(e => {
+            if (e._2.Size < lowerThreshold) {
+              false
+            }
+            else if (e._2.Size >= lowerThreshold && e._2.Size <= upperThreshold) {
+              true
+            }
+            else {
+              val randomValue = Random.nextDouble()
+              randomValue < math.pow(upperThreshold / e._2.Size, smoothingFactor)
+            }
+          })
+          .map(e => e._1)
+        totalPositiveSyntheticIds
+      })
 
-  val generateNegativeSample = udf( (ids: Seq[Long], order_ids: Seq[Long], size: Seq[Double], adjustedSize:Seq[Double], upper_threshold:Double, lower_threshold:Double, all_seed_size:Int, neg_size:Int) => {
-      val randomValues = ids.map(_ => Random.nextDouble())
-      val adjustedWeights = size.map(value => if (value > upper_threshold) (value/all_seed_size, upper_threshold/all_seed_size) else (value/all_seed_size, value/all_seed_size))
-      val keyValues = ids.zip(size).zip(adjustedSize).zip(randomValues).zip(order_ids)
-                      .map{ case ((((id, size), adjustedSize), randomValue), order_ids) => (id, -1*math.log(randomValue)/(adjustedSize/(all_seed_size-size)), order_ids)}
-    
-      val TotalNegativeSamples = keyValues.sortBy(_._2).take(math.max(neg_size,1)).map(_._1)
-      val TotalNegativeOrderIds = keyValues.sortBy(_._2).take(math.max(neg_size,1)).map(_._3)
-      
+  val negativeSampleUDFGenerator = {
+    (aboveThresholdPolicyTable: Array[AudienceModelPolicyRecord], upperThreshold: Double, labelDatasetSize: Int) =>
+      udf((negSize: Int) => {
+        val negativeSyntheticIdsWithPolicy = aboveThresholdPolicyTable
+          .map(e => (e, Random.nextDouble()))
 
-      (TotalNegativeSamples, TotalNegativeOrderIds)
+        //        val adjustedWeights = negativeSyntheticIdsWithPolicy
+        //          .map(e => if (e._1.Size > upper_threshold) (e._1.Size / all_seed_size, upper_threshold / all_seed_size) else (e._1.Size / all_seed_size, e._1.Size / all_seed_size))
 
-})
+        val totalNegativeSyntheticIds = negativeSyntheticIdsWithPolicy
+          .map(
+            e => (e._1.SyntheticId, -1 * math.log(e._2) / (math.min(e._1.Size, upperThreshold) / (labelDatasetSize - e._1.Size)))
+          )
+          .sortBy(_._2)
+          .take(math.max(negSize, 1))
+          .map(_._1)
 
-  val getLabels = udf((ids: Seq[Int], label:Int) => Seq.fill(ids.length)(label))
+        totalNegativeSyntheticIds
+      })
+  }
 
-  val zipAndGroupUDF = udf((ids: Seq[Double], targets: Seq[Int], maxLength: Int) => {
-      ids.zip(targets).grouped(maxLength).toArray
-})
+  val getLabels = udf((ids: Seq[Int], label: Int) => Seq.fill(ids.length)(label))
+
+  val zipAndGroupUDFGenerator =
+    (maxLength: Int) =>
+      udf((ids: Seq[Int], targets: Seq[Int]) => {
+        ids.zip(targets).grouped(maxLength).toArray
+      })
 
 }
 

@@ -29,4 +29,8 @@ package object audience {
   def shouldConsiderTDID2(symbol: Symbol) = {
     symbol.isNotNullOrEmpty && symbol =!= doNotTrackTDID && substring(symbol, 9, 1) === lit("-") && userIsInSampleUDF(symbol, lit(userDownSampleBasePopulation), lit(userDownSampleHitPopulationV2))
   }
+
+  def shouldConsiderTDID3(symbol: Symbol, userDownSampleHitPopulation: Int) = {
+    symbol.isNotNullOrEmpty && symbol =!= doNotTrackTDID && substring(symbol, 9, 1) === lit("-") && userIsInSampleUDF(symbol, lit(userDownSampleBasePopulation), lit(userDownSampleHitPopulation))
+  }
 }
