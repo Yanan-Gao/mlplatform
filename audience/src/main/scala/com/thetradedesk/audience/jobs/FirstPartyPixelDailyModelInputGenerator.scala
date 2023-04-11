@@ -1,6 +1,6 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.datasets.{ConversionDataset, CrossDeviceGraphDataset, FirstPartyPixelModelInputDataset, FirstPartyPixelModelInputRecord, SampledCrossDeviceGraphDataset, SeenInBiddingV3DeviceDataSet, TargetingDataDataset, TrackingTagDataset, UniversalPixelDataset, UniversalPixelTrackingTagDataset}
+import com.thetradedesk.audience.datasets.{ConversionDataset, FirstPartyPixelModelInputDataset, FirstPartyPixelModelInputRecord, LightCrossDeviceGraphDataset, LightTrackingTagDataset, SampledCrossDeviceGraphDataset, SeenInBiddingV3DeviceDataSet, TargetingDataDataset, UniversalPixelDataset, UniversalPixelTrackingTagDataset}
 import com.thetradedesk.audience.{date, sampleHit, shouldConsiderTDID, shouldConsiderTDID2, trainSetDownSampleFactor}
 import com.thetradedesk.audience.sample.DownSample.hashSampleV2
 import com.thetradedesk.audience.transform.{FirstPartyDataTransform, ModelFeatureTransform}
@@ -189,7 +189,9 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
         'sin_minute_hour,
         'cos_minute_hour,
         'sin_minute_day,
-        'cos_minute_day
+        'cos_minute_day,
+        'CampaignId,
+        'LogEntryTime
       )
       // they saved in struct type
       .withColumn("OperatingSystemFamily", 'OperatingSystemFamily("value"))
@@ -207,8 +209,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
       .withColumn("Longitude", ('Longitude + lit(180.0))/lit(360.0)) //-180 - 180
       .withColumn("Longitude", when('Longitude.isNotNull, 'Longitude).otherwise(0))
 
-    val sampledBidsImpressionsKeys = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE), lookBack=Some(Config.bidsImpressionLookBack))
-      .withColumnRenamed("UIID", "TDID")
+    val sampledBidsImpressionsKeys = bidsImpressionsLong
       .withColumn("Date", to_date('LogEntryTime, "yyyy-MM-dd"))
       .select('BidRequestId, 'Date, 'TDID, 'CampaignId)
       .filter(samplingFunction('TDID))  // in the future, we may not have the id, good to think about how to solve
@@ -413,7 +414,7 @@ object FirstPartyPixelDailyConversionModelInputGenerator extends FirstPartyPixel
   }
 
   def getLabels(date: LocalDate): DataFrame = {
-    val trackingTagDataset = TrackingTagDataset().readPartition(date)
+    val trackingTagDataset = LightTrackingTagDataset().readPartition(date)
       .select("TrackingTagId", "TargetingDataId")
 
     val allTargetingDataIds = spark.read.parquet(Config.selectedPixelsConfigPath)
@@ -446,13 +447,13 @@ object CrossDeviceGraphSampler {
 
   def main(args: Array[String]): Unit = {
     for (i <- 0 to 6) {
-      val sourcePath = s"${CrossDeviceGraphDataset().basePath}/${date.minusDays(i).format(CrossDeviceGraphDataset().crossDeviceDateFormatter)}"
+      val sourcePath = s"${LightCrossDeviceGraphDataset().basePath}/${date.minusDays(i).format(LightCrossDeviceGraphDataset().crossDeviceDateFormatter)}"
       val destPath = Config.graphOutputPath + "/date=" + date.minusDays(i).format(DateTimeFormatter.ofPattern("yyyyMMdd"))
 
       if (FSUtils.directoryExists(sourcePath)(spark) && FSUtils.directoryExists(destPath)(spark)) {
         return
       } else if (FSUtils.directoryExists(sourcePath)(spark) && !FSUtils.directoryExists(destPath)(spark)) {
-        val graph = CrossDeviceGraphDataset().readPartition(date, lookBack=Some(6))(spark)
+        val graph = LightCrossDeviceGraphDataset().readPartition(date, lookBack=Some(6))(spark)
           .withColumnRenamed("uiid", "TDID")
           .select("personID", "TDID", "deviceType")
           .distinct

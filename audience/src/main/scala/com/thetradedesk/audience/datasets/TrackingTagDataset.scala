@@ -22,5 +22,9 @@ final case class TrackingTagRecord(AdvertiserId: String,
                                    OfflineDataProviderId: Option[String]
                                  )
 
-case class TrackingTagDataset() extends
-  ProvisioningS3DataSet[TrackingTagRecord]("trackingtag/v=1", true)
+final case class LightTrackingTagRecord(TrackingTagId: String,
+                                   TargetingDataId: BigInt
+                                  )
+
+case class LightTrackingTagDataset() extends
+  ProvisioningS3DataSet[LightTrackingTagRecord]("trackingtag/v=1", true)

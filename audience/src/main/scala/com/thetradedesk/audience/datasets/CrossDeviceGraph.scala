@@ -18,8 +18,12 @@ final case class CrossDeviceGraphRecord(householdID: String,
                                                   osFamily: Byte,
                                                   date: String)
 
-case class CrossDeviceGraphDataset() extends
-  LightReadableDataset[CrossDeviceGraphRecord] ("sxd-etl/universal/iav2graph", "s3://thetradedesk-useast-data-import/", source=Some(DatasetSource.CrossDeviceGraph))
+final case class LightCrossDeviceGraphRecord(personID: String,
+                                        uiid: String,
+                                        deviceType: Byte)
+
+case class LightCrossDeviceGraphDataset() extends
+  LightReadableDataset[LightCrossDeviceGraphRecord] ("sxd-etl/universal/iav2graph", "s3://thetradedesk-useast-data-import/", source=Some(DatasetSource.CrossDeviceGraph))
 
 final case class SampledCrossDeviceGraphRecord(
                                         personID: String,

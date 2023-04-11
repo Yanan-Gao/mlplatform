@@ -1,6 +1,6 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.{date, ttdEnv, shouldConsiderTDID2}
+import com.thetradedesk.audience.{date, shouldConsiderTDID2, ttdEnv}
 import com.thetradedesk.audience.datasets.{FirstPartyPixelModelInputRecord, S3Roots, SeenInBiddingV2DeviceDataSet}
 import com.thetradedesk.audience.transform.ModelFeatureTransform
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
@@ -10,7 +10,6 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.sql.SQLFunctions._
-
 import org.apache.spark.sql.{DataFrame, Dataset, SaveMode}
 import org.apache.spark.sql.functions._
 
