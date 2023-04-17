@@ -191,7 +191,8 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
         'sin_minute_day,
         'cos_minute_day,
         'CampaignId,
-        'LogEntryTime
+        'LogEntryTime,
+        'TDID
       )
       // they saved in struct type
       .withColumn("OperatingSystemFamily", 'OperatingSystemFamily("value"))
