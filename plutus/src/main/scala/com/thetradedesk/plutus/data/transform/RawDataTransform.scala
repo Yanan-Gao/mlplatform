@@ -199,7 +199,7 @@ object RawDataTransform extends Logger {
         // https://atlassian.thetradedesk.com/confluence/display/TSDKB/Category+Tile+-+Site+List
         // availabe at bid time (maybe)
         // https://gitlab.adsrvr.org/thetradedesk/adplatform/-/blob/master/TTD/Domain/Bidding/TTD.Domain.Bidding.Public/RTB/Bidding/Bid.cs#L51
-        col("MatchedCategory"),
+        col("MatchedCategoryList"),
         // BID: Maybe (??) https://gitlab.adsrvr.org/thetradedesk/adplatform/-/blob/master/TTD/Domain/Bidding/Bidder/TTD.Domain.Bidding.Bidder/Adapters/GoogleAdapter.cs#L1350
         col("MatchedFoldPosition"),
         col("RenderingContext.value").alias("RenderingContext"),

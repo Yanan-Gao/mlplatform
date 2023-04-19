@@ -2,6 +2,7 @@ package com.thetradedesk.plutus
 
 import com.thetradedesk.plutus.data.schema.RawLostBidData
 import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
 import job.RawInputDataProcessor.date
 import org.apache.spark.ml.linalg.{SparseVector, Vector}
@@ -62,13 +63,13 @@ package object data {
     (0 to lookBack.getOrElse(0)).map(i => f"${plutusDataPath(s3Path, ttdEnv, prefix, svName, date.minusDays(i))}")
   }
 
-  def loadParquetData[T: Encoder](s3path: String, date: LocalDate, source: Option[String] = None, lookBack: Option[Int] = None)(implicit spark: SparkSession): Dataset[T] = {
+  def loadParquetData[T: Encoder](s3path: String, date: LocalDate, source: Option[String] = None, lookBack: Option[Int] = None): Dataset[T] = {
     val paths = parquetDataPaths(s3path, date, source, lookBack)
     spark.read.parquet(paths: _*)
       .selectAs[T]
   }
 
-  def loadCsvData[T: Encoder](s3path: String, date: LocalDate, schema: StructType)(implicit spark: SparkSession): Dataset[T] = {
+  def loadCsvData[T: Encoder](s3path: String, date: LocalDate, schema: StructType): Dataset[T] = {
     spark.read.format("csv")
       .option("sep", "\t")
       .option("header", "false")
@@ -80,7 +81,7 @@ package object data {
   }
 
 
-  def loadParquetDataHourly[T: Encoder](s3path: String, date: LocalDate, hours: Seq[Int], source: Option[String] = None)(implicit spark: SparkSession): Dataset[T] = {
+  def loadParquetDataHourly[T: Encoder](s3path: String, date: LocalDate, hours: Seq[Int], source: Option[String] = None): Dataset[T] = {
     val paths = parquetHourlyDataPaths(s3path, date, source, hours)
     spark.read.parquet(paths: _*)
       .selectAs[T]

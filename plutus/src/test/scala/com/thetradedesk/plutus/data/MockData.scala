@@ -57,7 +57,7 @@ object MockData {
                                     AdWidthInPixels = 1,
                                     AdHeightInPixels = 10,
 
-                                    MatchedCategory = Some(""),
+                                    MatchedCategoryList =  Some(List("")),
                                     MatchedFoldPosition = 1,
                                     RenderingContext = Option(RenderingContextLookupRecord()),
                                     ReferrerCategories = Seq(""),

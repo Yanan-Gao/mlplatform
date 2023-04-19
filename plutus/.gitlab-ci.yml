@@ -19,9 +19,11 @@ plutus:test:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
         - "plutus/src/**/*"
+        - "plutus/build.sbt"
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
         - "plutus/src/**/*"
+        - "plutus/build.sbt"
   before_script:
     # we don't need to set up the machine for S3 in order to run tests
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
@@ -53,6 +55,7 @@ plutus:push_bits_master_snapshot:
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
         - "plutus/src/**/*"
+        - "plutus/build.sbt"
   script:
     - pushd ./plutus/
     - sbt "set test in assembly := {}" clean assembly
