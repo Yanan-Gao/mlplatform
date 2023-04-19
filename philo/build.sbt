@@ -25,7 +25,7 @@ libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest-funsuite" % "3.2.10" % Test,
  // "MrPowers" % "spark-fast-tests" % "2.2.0_0.5.0" % "test"
 
-  "com.thetradedesk" %% "geronimo" % "0.2.1-SNAPSHOT",
+  "com.thetradedesk" %% "geronimo" % "0.2.3-SNAPSHOT"
 )
 
 assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)

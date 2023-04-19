@@ -28,9 +28,11 @@ philo:test:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
         - "philo/src/**/*"
+        - "philo/build.sbt"
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
         - "philo/src/**/*"
+        - "philo/build.sbt"
   before_script:
     # we don't need to set up the machine for S3 in order to run tests
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
@@ -48,6 +50,8 @@ philo:push_bits_merge_request:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
         - "philo/src/**/*"
+        - "philo/build.sbt"
+
   script:
     - pushd ./philo/
     - sbt "set test in assembly := {}" clean assembly
@@ -63,6 +67,7 @@ philo:push_bits_master_snapshot:
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
         - "philo/src/**/*"
+        - "philo/build.sbt"
   script:
     - pushd ./philo/
     - sbt "set test in assembly := {}" clean assembly
@@ -163,6 +168,8 @@ philo:deploy_release:
       changes:
         - "philo/src/main/scala/*"
         - "philo/src/main/scala/**/*"
+        - "philo/build.sbt"
+
       when: manual
       allow_failure: false
   script:
