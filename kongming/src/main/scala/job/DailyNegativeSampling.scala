@@ -1,6 +1,5 @@
 package job
 
-import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._

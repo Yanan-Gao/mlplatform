@@ -1,8 +1,7 @@
 package com.thetradedesk.kongming.transform
 
-import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.kongming
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, BidRequestPolicyRecord, DailyBidRequestRecord, UnifiedAdGroupDataSet}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, BidsImpressionsSchema, BidRequestPolicyRecord, DailyBidRequestRecord, UnifiedAdGroupDataSet}
 import com.thetradedesk.kongming.{multiLevelJoinWithPolicy, preFilteringWithPolicy, RoundUpTimeUnit}
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
