@@ -1,6 +1,5 @@
 package com.thetradedesk.kongming.transform
 
-import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.kongming.RoundUpTimeUnit
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.{multiLevelJoinWithPolicy, preFilteringWithPolicy}
