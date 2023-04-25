@@ -5,6 +5,8 @@ import com.thetradedesk.spark.datasets.core._
 
 final case class DataForModelTrainingRecord(
                                  AdGroupId: Int,
+                                 CampaignId: Int,
+                                 AdvertiserId: Int,
                                  Weight: Double,
                                  Target: Int,
 

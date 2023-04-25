@@ -4,6 +4,9 @@ final case class TrainSetFeaturesRecord (
 
                                           AdGroupId: String,
                                           BidRequestId: String,
+                                          CampaignId: String,
+                                          AdvertiserId: String,
+
                                           Weight: Double,
                                           Target: Int,
                                           IsInTrainSet: Boolean,

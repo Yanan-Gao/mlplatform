@@ -38,6 +38,9 @@ default:
 
   before_script:
     #aws cli requires pip, which requires python, which the image does not have
+    # Debian stretch got deprecated & moved to archive
+    - echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+   
     - apt-get update
     - apt-get install python3 -y
     - apt-get install python3-pip -y

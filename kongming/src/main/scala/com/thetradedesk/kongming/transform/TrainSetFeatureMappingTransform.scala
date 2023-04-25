@@ -46,7 +46,7 @@ final case class BidsImpressionsFeatureMappingRecord(
 object TrainSetFeatureMappingTransform {
 
   val mappingModelFeatures: Array[ModelFeature] = Array(
-    ModelFeature("AdGroupId", STRING_FEATURE_TYPE, Some(500002), 0),
+    ModelFeature("AdGroupId", STRING_FEATURE_TYPE, Some(5002), 0),
     ModelFeature("SupplyVendor", STRING_FEATURE_TYPE, Some(102), 0),
     ModelFeature("SupplyVendorPublisherId", STRING_FEATURE_TYPE, Some(200002), 0),
     ModelFeature("Site", STRING_FEATURE_TYPE, Some(500002), 0),

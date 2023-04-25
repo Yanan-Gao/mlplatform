@@ -6,8 +6,12 @@ import com.thetradedesk.spark.util.TTDConfig.config
 //TODO: will need to be able to extend what Yuehan has as final result for trainingset.
 final case class DailyOfflineScoringRecord(
                                            AdGroupId: Int,
+                                           CampaignId: Int,
+                                           AdvertiserId: Int,
                                            BidRequestIdStr: String,
                                            AdGroupIdStr: String,
+                                           CampaignIdStr: String,
+                                           AdvertiserIdStr: String,
                                            SupplyVendor: Option[Int],
                                            SupplyVendorPublisherId: Option[Int],
                                            Site: Option[Int],
