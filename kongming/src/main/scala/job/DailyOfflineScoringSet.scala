@@ -18,6 +18,8 @@ object DailyOfflineScoringSet {
   val keptFields: Array[ModelFeature] = Array(
     ModelFeature("BidRequestId", STRING_FEATURE_TYPE, None, 0),
     ModelFeature("AdGroupId", STRING_FEATURE_TYPE, None, 0),
+    ModelFeature("CampaignId", STRING_FEATURE_TYPE, None, 0),
+    ModelFeature("AdvertiserId", STRING_FEATURE_TYPE, None, 0)
   )
 
   def modelKeepFeatureCols(features: Seq[ModelFeature]): Array[Column] = {

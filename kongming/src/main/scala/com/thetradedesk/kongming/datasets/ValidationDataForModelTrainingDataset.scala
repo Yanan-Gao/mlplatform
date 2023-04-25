@@ -5,7 +5,12 @@ import com.thetradedesk.spark.datasets.core._
 
 final case class ValidationDataForModelTrainingRecord(BidRequestIdStr: String,
                                                       AdGroupIdStr: String,
+                                                      CampaignIdStr: String,
+                                                      AdvertiserIdStr: String,
                                                       AdGroupId: Int,
+                                                      CampaignId: Int,
+                                                      AdvertiserId: Int,
+
                                                       Weight: Double,
                                                       Target: Int,
 

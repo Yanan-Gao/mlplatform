@@ -42,7 +42,12 @@ object GenerateTrainSet {
 
   val modelWeights: Array[ModelFeature] = Array(ModelFeature("Weight", FLOAT_FEATURE_TYPE, None, 0))
 
-  val modelDimensions: Array[ModelFeature] = Array(ModelFeature("AdGroupId", STRING_FEATURE_TYPE, Some(500002), 0))
+  val modelDimensions: Array[ModelFeature] = Array(
+    ModelFeature("AdGroupId", STRING_FEATURE_TYPE, Some(5002), 0),
+    ModelFeature("CampaignId", STRING_FEATURE_TYPE, Some(5002), 0),
+    ModelFeature("AdvertiserId", STRING_FEATURE_TYPE, Some(500002), 0)
+  )
+
   val modelFeatures: Array[ModelFeature] = Array(
 
     ModelFeature("SupplyVendor", STRING_FEATURE_TYPE, Some(102), 0),
