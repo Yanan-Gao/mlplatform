@@ -16,6 +16,8 @@ import java.time.LocalDate
 final case class BidsImpressionsFeatureMappingRecord(
                                                // original columns
                                                OriginalAdGroupId: Option[String],
+                                               OriginalCampaignId: Option[String],
+                                               OriginalAdvertiserId: Option[String],
                                                OriginalSupplyVendor: Option[String],
                                                OriginalSupplyVendorPublisherId: Option[String],
                                                OriginalSite: Option[String],
@@ -30,6 +32,8 @@ final case class BidsImpressionsFeatureMappingRecord(
 
                                                // hashed columns
                                                HashedAdGroupId: Int,
+                                               HashedCampaignId: Int,
+                                               HashedAdvertiserId: Int,
                                                HashedSupplyVendor: Option[Int],
                                                HashedSupplyVendorPublisherId: Option[Int],
                                                HashedSite: Option[Int],
@@ -47,6 +51,8 @@ object TrainSetFeatureMappingTransform {
 
   val mappingModelFeatures: Array[ModelFeature] = Array(
     ModelFeature("AdGroupId", STRING_FEATURE_TYPE, Some(5002), 0),
+    ModelFeature("CampaignId", STRING_FEATURE_TYPE, Some(5002), 0),
+    ModelFeature("AdvertiserId", STRING_FEATURE_TYPE, Some(500002), 0),
     ModelFeature("SupplyVendor", STRING_FEATURE_TYPE, Some(102), 0),
     ModelFeature("SupplyVendorPublisherId", STRING_FEATURE_TYPE, Some(200002), 0),
     ModelFeature("Site", STRING_FEATURE_TYPE, Some(500002), 0),
