@@ -22,7 +22,7 @@ object BidRequestTransform {
                     (implicit prometheus: PrometheusClient): Dataset[DailyBidRequestRecord] = {
     val window = Window.partitionBy($"DataAggValue", $"UIID").orderBy($"TruncatedLogEntryTime".desc)
 
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
     val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
     val bidsImpressionFilterByPolicy = multiLevelJoinWithPolicy[BidRequestPolicyRecord](prefilteredDS, adGroupPolicy, "inner")
 

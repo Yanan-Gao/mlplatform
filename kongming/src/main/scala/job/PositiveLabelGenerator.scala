@@ -1,16 +1,19 @@
 package job
 
 
-import com.thetradedesk.geronimo.shared.GERONIMO_DATA_SOURCE
-import com.thetradedesk.geronimo.shared.loadParquetData
+import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
-import com.thetradedesk.logging.Logger
-import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.config
-import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import com.thetradedesk.kongming.transform.BidRequestTransform
 import com.thetradedesk.kongming.transform.PositiveLabelDailyTransform
+import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.util.Testing
+import com.thetradedesk.spark.util.TTDConfig.{config, environment}
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
+
 import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
@@ -39,25 +42,25 @@ object PositiveLabelGenerator extends Logger{
     val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
 
     // read master policy
-    val adGroupPolicy = AdGroupPolicySnapshotDataset().readDataset(date).cache
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
+    val adGroupPolicy = AdGroupPolicyDataset().readDate(date).cache
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
 
     // resolve for maxLookback
     val maxPolicyLookbackInDays = adGroupPolicy.agg(max($"DataLookBack")).head.getAs[Int](0)
     val lookback = math.min(maxPolicyLookbackInDays, bidLookback) - 1 //the -1 is to account for the given date is partial
 
-    //previous multiday data
-
+    // previous multiday data
     val rawMultiDayBidRequestDS = DailyBidRequestDataset().readRange(date.minusDays(lookback+1), date)
-    //single day data
+
+    // single day data
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
     val dailyConversionDS = DailyConversionDataset().readDate(date).cache
     val sameDayPositiveBidRequestDS = PositiveLabelDailyTransform.intraDayConverterNTouchesTransform(
-      bidsImpressions
-      , adGroupPolicy
-      , dailyConversionDS
-      , adGroupDS
+      bidsImpressions,
+      adGroupPolicy,
+      dailyConversionDS,
+      adGroupDS
     )(prometheus)
 
     //join conversion and unioned dataset to get the final result
@@ -73,7 +76,23 @@ object PositiveLabelGenerator extends Logger{
 
     val positiveLabelDS = PositiveLabelDailyTransform.positiveLabelAggTransform(unionedPositiveBidRequestDS, adGroupPolicy)
 
-    val dailyPositiveBrRows = DailyPositiveBidRequestDataset().writePartition(positiveLabelDS, date, Some(100))
+    val posDataset = DailyPositiveBidRequestDataset()
+    val dailyPositiveBrRows = posDataset.writePartition(positiveLabelDS, date, Some(100))
+
+    // Hackity-hack
+    val writeEnv = environment
+    if (posDataset.readRoot != posDataset.writeRoot) {
+      environment = Testing
+    }
+
+    val rereadPos = DailyPositiveBidRequestDataset().readDate(date)
+    if (posDataset.readRoot != posDataset.writeRoot) {
+      environment = writeEnv
+    }
+
+    val positiveSummary = PositiveLabelDailyTransform.countDataAggGroupPositives(positiveLabelDS)
+
+    DailyPositiveCountSummaryDataset().writePartition(positiveSummary, date, Some(50))
 
     outputRowsWrittenGauge.labels("DailyPositiveBidRequestDataset").set(dailyPositiveBrRows)
     jobDurationGaugeTimer.setDuration()

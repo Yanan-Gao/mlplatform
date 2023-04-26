@@ -22,7 +22,7 @@ HOME_HADOOP="/mnt"
 EXTENDED_FEATURES="contextual"
 
 READENV=$ENV
-if [ $EXPERIMENT_NAME != "" ]
+if [ "$EXPERIMENT_NAME" != "" ]
 then
   READENV="test"
 elif [ $ENV == "prodTest" ]

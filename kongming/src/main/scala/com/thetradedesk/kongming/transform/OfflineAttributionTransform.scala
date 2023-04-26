@@ -85,7 +85,7 @@ object OfflineAttributionTransform {
                        modelDate: java.time.LocalDate,
                        endDate: java.time.LocalDate,
                        lookBack: Int,
-                       adgroupBaseAssociateMapping: Dataset[BaseAssociateAdGroupMappingIntRecord]
+                       adgroupBaseAssociateMapping: Dataset[AdGroupPolicyMappingRecord]
                      )(implicit prometheus:PrometheusClient):Dataset[OfflineScoreRecord] ={
 
     val adgroupIdScored = adgroupBaseAssociateMapping.select("AdGroupId").distinct().cache()

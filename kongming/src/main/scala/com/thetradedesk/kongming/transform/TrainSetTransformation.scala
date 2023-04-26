@@ -1,18 +1,21 @@
 package com.thetradedesk.kongming.transform
 
-import com.thetradedesk.geronimo.shared.shiftModUdf
-import com.thetradedesk.spark.sql.SQLFunctions._
+import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, shiftModUdf}
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
 import com.thetradedesk.kongming.{date, multiLevelJoinWithPolicy}
-import org.apache.spark.sql.Dataset
-import org.apache.spark.sql.functions._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import org.apache.spark.sql.expressions.Window
-import java.time.LocalDate
+import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import job.GenerateTrainSet.modelDimensions
+
+import org.apache.spark.sql.Dataset
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.DoubleType
+
+import java.time.LocalDate
 
 object TrainSetTransformation {
   case class UpSamplingPosFractionRecord(
@@ -89,11 +92,6 @@ object TrainSetTransformation {
                                      )
 
 
-  case class BaseAssociateAdGroupMapping(
-                                        AdGroupId: String,
-                                        ConfigValue: String,
-                                      )
-
   def getWeightsForTrackingTags(
                                  date: LocalDate,
                                  adGroupPolicy: Dataset[AdGroupPolicyRecord],
@@ -101,8 +99,8 @@ object TrainSetTransformation {
                                  normalized: Boolean=false
                                ): Dataset[TrackingTagWeightsRecord]= {
     // 1. get the latest weights per campaign and trackingtagid
-    val campaignDS = CampaignDataSet().readLatestPartitionUpTo(date)
-    val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartitionUpTo(date)
+    val campaignDS = CampaignDataSet().readLatestPartitionUpTo(date, true)
+    val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartitionUpTo(date, true)
     val ccrcWindow = Window.partitionBy($"CampaignId")
 
     val ccrcProcessed = ccrc
@@ -206,6 +204,7 @@ object TrainSetTransformation {
 
     val adGroupRangeConvDist = adGroupRangeDF
       .join(adGroupDailyConvDist, Seq("ConfigKey", "ConfigValue", "BidDiffDayInt"), "left")
+      .withColumn("PosDailyCnt", coalesce('PosDailyCnt, lit(0)))
       .withColumn("AdGroupSize", sum("PosDailyCnt").over(Window.partitionBy("ConfigKey", "ConfigValue")))
       .withColumn("PosPctInNDay", sum("PosDailyCnt").over(Window.partitionBy("ConfigKey", "ConfigValue").orderBy("BidDiffDayInt"))
         / $"AdGroupSize")
@@ -433,17 +432,6 @@ object TrainSetTransformation {
     val orgValidationset = validation.toDF()
     adjustedTrainset.union(orgValidationset).selectAs[PreFeatureJoinRecord]
   }
-
-  def getBaseAssociateAdGroupIntMappings(
-                                       adGroupPolicy: Dataset[AdGroupPolicyRecord],
-                                       adGroupDS: Dataset[AdGroupRecord]): Dataset[BaseAssociateAdGroupMappingIntRecord] = {
-    multiLevelJoinWithPolicy[BaseAssociateAdGroupMapping](adGroupDS, adGroupPolicy, "inner")
-      .withColumn("AdGroupIdInt", shiftModUdf(xxhash64(col("AdGroupId")), lit(modelDimensions(0).cardinality.getOrElse(0))))
-      .withColumnRenamed("ConfigValue", "BaseAdGroupId")
-      .withColumn("BaseAdGroupIdInt", shiftModUdf(xxhash64(col("BaseAdGroupId")), lit(modelDimensions(0).cardinality.getOrElse(0))))
-      .selectAs[BaseAssociateAdGroupMappingIntRecord]
-  }
-
 
 }
 

@@ -3,7 +3,7 @@ package job
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicySnapshotDataset, BidsImpressionsSchema, DailyBidsImpressionsDataset, UnifiedAdGroupDataSet}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, BidsImpressionsSchema, DailyBidsImpressionsDataset, UnifiedAdGroupDataSet}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -19,13 +19,13 @@ object DailyBidsImpressions {
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
-    val adGroupPolicy = AdGroupPolicySnapshotDataset().readDataset(date)
+    val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
 
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
 
     val dailyBidsImpressions = multiLevelJoinWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, joinType = "left_semi")
 
-    val dailyBidsImpressionsRows = DailyBidsImpressionsDataset().writePartition(dailyBidsImpressions, date, Some(400))
+    val dailyBidsImpressionsRows = DailyBidsImpressionsDataset().writePartition(dailyBidsImpressions, date, Some(10000))
 
     outputRowsWrittenGauge.labels("DailyBidsImpressionsDataset").set(dailyBidsImpressionsRows)
     jobDurationGaugeTimer.setDuration()

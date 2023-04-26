@@ -10,6 +10,9 @@ import org.apache.spark.sql.{Dataset, SaveMode}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 
+import java.sql.Timestamp
+import java.time.LocalDate
+
 object PositiveLabelDailyTransform {
 case class IntraDayBidRequestWithPolicyRecord(
                                                ConfigKey: String,
@@ -199,4 +202,10 @@ case class IntraDayBidRequestWithPolicyRecord(
 
   }
 
+  def countDataAggGroupPositives(
+                                positives: Dataset[DailyPositiveLabelRecord]
+                                ): Dataset[DailyPositiveCountSummaryRecord] = {
+    positives.groupBy("DataAggKey", "DataAggValue").count()
+      .selectAs[DailyPositiveCountSummaryRecord]
+  }
 }

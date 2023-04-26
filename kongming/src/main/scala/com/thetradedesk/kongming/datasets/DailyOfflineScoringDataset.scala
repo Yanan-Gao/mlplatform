@@ -47,8 +47,8 @@ final case class DailyOfflineScoringRecord(
                                            longitude: Option[Double]
                                       )
 
-case class DailyOfflineScoringDataset() extends KongMingDataset[DailyOfflineScoringRecord](
+case class DailyOfflineScoringDataset(experimentName: String = "") extends KongMingDataset[DailyOfflineScoringRecord](
   s3DatasetPath = "dailyofflinescore/v=1",
-  experimentName = config.getString("ttd.DailyOfflineScoringDataset.experimentName", ""),
+  experimentName = config.getString("ttd.DailyOfflineScoringDataset.experimentName", experimentName),
   fileFormat = TFRecord.Example
 )

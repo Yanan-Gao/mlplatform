@@ -146,7 +146,7 @@ object GenerateTrainSet {
     val experimentName = config.getString("trainSetExperimentName" , "")
 
     // test only adgroups in the policy table. since aggKey are all adgroupId, we filter by adgroup id
-    val adGroupPolicy = AdGroupPolicySnapshotDataset().readDataset(date).cache()
+    val adGroupPolicy = AdGroupPolicyDataset().readDate(date).cache()
 
     // maximum lookback from adgroup's policy
     val maxLookback = adGroupPolicy.agg(max("DataLookBack")).first.getInt(0)
@@ -203,7 +203,7 @@ object GenerateTrainSet {
     // 2. get the latest weights for trackingtags for adgroups in policytable
     val trackingTagWindow =  Window.partitionBy($"TrackingTagId", $"ConfigKey", $"ConfigValue")
       .orderBy($"ReportingColumnId")
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
     val trackingTagWithWeight = getWeightsForTrackingTags(date, adGroupPolicy, adGroupDS, normalized = true)
       .withColumn("ReportingColumnRank", dense_rank().over(trackingTagWindow))
       .filter($"ReportingColumnRank"===lit(1))
@@ -281,18 +281,14 @@ object GenerateTrainSet {
       val csvDS = if (incTrain) DataIncCsvForModelTrainingDataset(experimentName) else DataCsvForModelTrainingDataset(experimentName)
       val csvTrainRows = csvDS.writePartition(
         adjustedTrainParquet.drop(tfDropColumnNames: _*).as[DataForModelTrainingRecord],
-        date, "train", Some(200))
+        date, "train", Some(1000))
       val csvValRows = csvDS.writePartition(
         adjustedValParquet.drop(tfDropColumnNames: _*).as[DataForModelTrainingRecord],
-        date, "val", Some(100))
+        date, "val", Some(1000))
 
       outputRowsWrittenGauge.labels("DataForModelTrainingDataset/CsvTrain").set(csvTrainRows)
       outputRowsWrittenGauge.labels("DataForModelTrainingDataset/CsvVal").set(csvValRows)
     }
-
-    // 8. save the adgroupIdInt for base adgroups(configvalue) and associated adgroups
-    val adgroupBaseAssociateMapping = getBaseAssociateAdGroupIntMappings(adGroupPolicy, adGroupDS)
-    BaseAssociateAdGroupMappingIntDataset().writePartition(adgroupBaseAssociateMapping, date, Some(1))
 
     jobDurationGaugeTimer.setDuration()
     prometheus.pushMetrics()

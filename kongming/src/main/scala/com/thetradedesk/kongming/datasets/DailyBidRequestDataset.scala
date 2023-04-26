@@ -21,7 +21,7 @@ final case class DailyBidRequestRecord(UIID: String,
                                        IsImp: Boolean,
                                        RecencyRank: Int)
 
-case class DailyBidRequestDataset() extends KongMingDataset[DailyBidRequestRecord](
+case class DailyBidRequestDataset(experimentName: String = "") extends KongMingDataset[DailyBidRequestRecord](
   s3DatasetPath = "dailybidrequest/v=1",
-  experimentName = config.getString("ttd.DailyBidRequestDataset.experimentName", "")
+  experimentName = config.getString("ttd.DailyBidRequestDataset.experimentName", experimentName)
 )

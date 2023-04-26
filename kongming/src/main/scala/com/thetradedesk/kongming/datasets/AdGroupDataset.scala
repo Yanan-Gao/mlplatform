@@ -8,7 +8,8 @@ import org.apache.spark.sql.functions.{lit, row_number}
 
 final case class AdGroupRecord(AdGroupId: String,
                                AdGroupIdInteger: Int,
-                               CampaignId: String
+                               CampaignId: String,
+                               ROIGoalTypeId: Int
                               )
 
 // probably won't need this for bid request filter, layer it in during training data generation

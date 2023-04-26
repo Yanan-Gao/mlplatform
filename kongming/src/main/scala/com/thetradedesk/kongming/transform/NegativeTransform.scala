@@ -101,7 +101,7 @@ object NegativeTransform {
      */
     // todo: pre-check possible aggregation levels.
 
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
     val prefilteredDS = preFilteringWithPolicy[DailyNegativeSampledBidRequestRecord](dailyNegativeSampledBids, adGroupPolicy, adGroupDS)
 
     val filterCondition = date_add($"LogEntryTime", $"DataLookBack")>=date

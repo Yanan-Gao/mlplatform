@@ -58,7 +58,7 @@ case class BidsImpressionsSchema(
                                   ContextualCategories: Option[Seq[Long]],
                                 )
 
-case class DailyBidsImpressionsDataset() extends KongMingDataset[BidsImpressionsSchema](
+case class DailyBidsImpressionsDataset(experimentName: String = "") extends KongMingDataset[BidsImpressionsSchema](
   s3DatasetPath = "dailybidsimpressions/v=1",
-  experimentName = config.getString("ttd.DailyBidsImpressionsDataset.experimentName", "")
+  experimentName = config.getString("ttd.DailyBidsImpressionsDataset.experimentName", experimentName)
 )

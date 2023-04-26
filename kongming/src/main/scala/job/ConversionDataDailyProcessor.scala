@@ -25,15 +25,15 @@ object ConversionDataDailyProcessor extends Logger{
     val conversionDS = ConversionTrackerVerticaLoadDataSetV4(defaultCloudProvider).readDate(date)
 
     // read campaign conversion reporting column setting
-    val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartitionUpTo(date)
+    val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartitionUpTo(date, true)
 
     // read master policy
-    val adGroupPolicy = AdGroupPolicySnapshotDataset().readDataset(date)
+    val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
 
     // read adgroup table to get adgroup campaign mapping
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
     // read campaign table to get setting
-    val campaignDS = CampaignDataSet().readLatestPartitionUpTo(date)
+    val campaignDS = CampaignDataSet().readLatestPartitionUpTo(date, true)
 
     //filter down conversion data and add weights from conversion reporting column table
     //transformedConvDS is returned as cached datasets.
@@ -48,7 +48,6 @@ object ConversionDataDailyProcessor extends Logger{
     //load cross device graph
     val xdDS = CrossDeviceGraphDataset.loadGraph(date, graphThreshold)//TODO: this threshold will need to be based on policy table minimum.
     val xdSubsetDS = CrossDeviceGraphDataset.shrinkGraph(xdDS, idDS) // returned result is cached
-
 
     //add xd according to adgroupPolicy
     val transformedConvXD = transformedConvDS.filter($"CrossDeviceUsage")
@@ -72,7 +71,7 @@ object ConversionDataDailyProcessor extends Logger{
 
     val resultDS = conversionNonXD.union(conversionXD)
 
-    val dailyConversionRows = DailyConversionDataset().writePartition(resultDS, date, Some(100))
+    val dailyConversionRows = DailyConversionDataset().writePartition(resultDS, date, Some(2000))
 
     outputRowsWrittenGauge.labels("DailyConversionDataset").set(dailyConversionRows)
     jobDurationGaugeTimer.setDuration()

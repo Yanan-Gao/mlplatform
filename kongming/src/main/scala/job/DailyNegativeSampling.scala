@@ -30,9 +30,8 @@ object DailyNegativeSampling {
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
     // test only adgroups in the policy table. since aggKey are all adgroupId, we filter by adgroup id
-    val adGroupPolicy = AdGroupPolicySnapshotDataset().readDataset(date)
-
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
+    val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
     val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
     val bidsImpressionFilterByPolicy = multiLevelJoinWithPolicy[BidsImpressionsSchema](prefilteredDS, adGroupPolicy, joinType = "left_semi")
 
@@ -79,7 +78,7 @@ object DailyNegativeSampling {
       .toDF()
       .selectAs[DailyNegativeSampledBidRequestRecord]
 
-    val dailyNegRows = DailyNegativeSampledBidRequestDataSet().writePartition(downSampledBidRequestByGrain, date, Some(100))
+    val dailyNegRows = DailyNegativeSampledBidRequestDataSet().writePartition(downSampledBidRequestByGrain, date, Some(1000))
 
     outputRowsWrittenGauge.labels("DailyNegativeSampledBidRequest").set(dailyNegRows)
     jobDurationGaugeTimer.setDuration()
