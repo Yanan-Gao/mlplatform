@@ -10,7 +10,7 @@ final case class DailyConversionDataRecord( TrackingTagId: String,
                                           )
 
 
-case class DailyConversionDataset() extends KongMingDataset[DailyConversionDataRecord](
+case class DailyConversionDataset(experimentName: String = "") extends KongMingDataset[DailyConversionDataRecord](
   s3DatasetPath = "dailyconversion/v=1",
-  experimentName = config.getString("ttd.DailyConversionDataset.experimentName", "")
+  experimentName = config.getString("ttd.DailyConversionDataset.experimentName", experimentName)
 )

@@ -3,7 +3,7 @@ package job
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicySnapshotDataset, BidsImpressionsSchema, DailyBidRequestDataset}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, BidsImpressionsSchema, DailyBidRequestDataset}
 import com.thetradedesk.kongming.transform.BidRequestTransform
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -21,7 +21,7 @@ object DailyBidRequest {
 
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
-    val adGroupPolicy = AdGroupPolicySnapshotDataset().readDataset(date)
+    val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
 
     val filteredBidRequestDS = BidRequestTransform.dailyTransform(
       date,
@@ -29,7 +29,7 @@ object DailyBidRequest {
       adGroupPolicy
     )(prometheus)
 
-    val dailyBrRows = DailyBidRequestDataset().writePartition(filteredBidRequestDS, date, Some(100))
+    val dailyBrRows = DailyBidRequestDataset().writePartition(filteredBidRequestDS, date, Some(5000))
 
     outputRowsWrittenGauge.labels("DailyBidRequestDataset").set(dailyBrRows)
     jobDurationGaugeTimer.setDuration()

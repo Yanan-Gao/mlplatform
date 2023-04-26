@@ -1,6 +1,6 @@
 package job
 
-import com.thetradedesk.kongming.datasets.{AdGroupCvrForBiasTuningDataset, AdGroupPolicySnapshotDataset, BaseAssociateAdGroupMappingIntDataset, ImpressionForIsotonicRegDataset, UnifiedAdGroupDataSet}
+import com.thetradedesk.kongming.datasets.{AdGroupCvrForBiasTuningDataset, AdGroupPolicyDataset, AdGroupPolicyMappingDataset, ImpressionForIsotonicRegDataset, UnifiedAdGroupDataSet}
 import com.thetradedesk.kongming.{KongmingApplicationName, OutputRowCountGaugeName, RunTimeGaugeName, date, policyDate, samplingSeed}
 import com.thetradedesk.kongming.transform.TrainSetTransformation.{TrackingTagWeightsRecord, getWeightsForTrackingTags}
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -30,8 +30,8 @@ object OfflineScoringSetAttribution{
 
     val defaultCvr = config.getDouble(path="DefaultConversionRate", 1e-3)
 
-    val adGroupPolicy = AdGroupPolicySnapshotDataset().readDataset(date).cache()
-    val adgroupBaseAssociateMapping = BaseAssociateAdGroupMappingIntDataset().readDate(date)
+    val adGroupPolicy = AdGroupPolicyDataset().readDate(date).cache()
+    val adgroupBaseAssociateMapping = AdGroupPolicyMappingDataset().readDate(date)
     // prerequisite:
     // 1. the model used to score impressions should be the same as model in production, which has modelDate
     // modelDate can be earlier than date.
@@ -50,10 +50,10 @@ object OfflineScoringSetAttribution{
     val attributes = getAttributedEventAndResult(adGroupPolicy = adGroupPolicy, endDate = date, lookBack = offlineScoreSetLookbackFromModelDate+offlineScoreDays-1)(prometheus)
 
     // load pixel weight of adgroup and extend the pixel table to campaigns
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
 
     val pixelWeight = getWeightsForTrackingTags(date, adGroupPolicy, adGroupDS)
-    val pixelWeightForBaseAssociateAdGroup = pixelWeight.join(adgroupBaseAssociateMapping, col("ConfigValue")===col("BaseAdGroupId"))
+    val pixelWeightForBaseAssociateAdGroup = pixelWeight.join(adgroupBaseAssociateMapping, col("ConfigValue")===col("AdGroupId"))
       .withColumn("ConfigValue", $"AdGroupId").selectAs[TrackingTagWeightsRecord]
 
     // 3. attributed impressions that are in scored impressions, find the latest per conversion event

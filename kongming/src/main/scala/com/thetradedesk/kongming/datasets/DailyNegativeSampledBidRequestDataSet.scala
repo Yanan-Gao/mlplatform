@@ -11,7 +11,7 @@ final case class DailyNegativeSampledBidRequestRecord (
                                                         AdvertiserId: String
                                                       )
 
-case class DailyNegativeSampledBidRequestDataSet() extends KongMingDataset[DailyNegativeSampledBidRequestRecord](
+case class DailyNegativeSampledBidRequestDataSet(experimentName: String = "") extends KongMingDataset[DailyNegativeSampledBidRequestRecord](
   s3DatasetPath = "dailynegativesampledbidrequest/v=1",
-  experimentName = config.getString("ttd.DailyNegativeSampledBidRequestDataSet.experimentName", "")
+  experimentName = config.getString("ttd.DailyNegativeSampledBidRequestDataSet.experimentName", experimentName)
 )

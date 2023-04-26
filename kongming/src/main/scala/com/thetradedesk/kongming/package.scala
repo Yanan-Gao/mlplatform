@@ -2,16 +2,15 @@ package com.thetradedesk
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, AdGroupRecord}
+import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.TTDConfig.config
+
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.Dataset
-import org.apache.spark.sql.functions.broadcast
-import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.Encoder
-import com.thetradedesk.spark.sql.SQLFunctions._
+import org.apache.spark.sql.functions.{broadcast, col, lit, when}
 
 import java.time.LocalDate
-
 
 package object kongming {
   val MLPlatformS3Root: String = "s3://thetradedesk-mlplatform-us-east-1/data"
@@ -48,8 +47,8 @@ package object kongming {
     // TODO: will need to enrich this logic but for now assuming hierarchical structure of keys
     // Caution: there might be cases where adgroupid, campaignId, advertiserId collide. Will need to resolve that at some point.
     // for now only use adgroup and campaign to start with.
-    val fieldsToJoin = List(("AdGroupId","DataAggValue"), ("CampaignId","DataAggValue"), ("AdvertiserId","DataAggValue"))
-    val joinCondition = fieldsToJoin.map(x => col(x._1) === col(x._2)).reduce(_ || _)
+    val fieldsToJoin = Seq("AdGroupId", "CampaignId", "AdvertiserId")
+    val joinCondition = fieldsToJoin.tail.foldLeft(when(col("DataAggKey") === lit(fieldsToJoin.head), col("DataAggValue") === col(fieldsToJoin.head)))((l, r) => l.when(col("DataAggKey") === lit(r), col("DataAggValue") === col(r)))
 
     inputDataSet
       .join(broadcast(adGroupPolicy), joinCondition, joinType)
@@ -63,16 +62,8 @@ package object kongming {
                                             , filterCondition: Column
                                             , joinType: String
                                           ): Dataset[T] = {
-    // TODO: will need to enrich this logic but for now assuming hierarchical structure of keys
-    // Caution: there might be cases where adgroupid, campaignId, advertiserId collide. Will need to resolve that at some point.
-    // for now only use adgroup and campaign to start with.
-    val fieldsToJoin = List(("AdGroupId","DataAggValue"), ("CampaignId","DataAggValue"), ("AdvertiserId","DataAggValue"))
-    val joinCondition = fieldsToJoin.map(x => col(x._1) === col(x._2)).reduce(_ || _)
-
-    inputDataSet
-      .join(broadcast(adGroupPolicy), joinCondition, joinType)
+    multiLevelJoinWithPolicy[T](inputDataSet, adGroupPolicy, joinType)
       .filter(filterCondition)
-      .selectAs[T]
   }
 
   def preFilteringWithPolicy[T: Encoder](

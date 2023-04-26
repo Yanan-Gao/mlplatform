@@ -29,7 +29,7 @@ object OfflineScoringSetTransform {
                     )
                     (implicit prometheus: PrometheusClient): Dataset[DailyOfflineScoringRecord] = {
 
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
     val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
 
     val filterCondition = $"IsImp" === true

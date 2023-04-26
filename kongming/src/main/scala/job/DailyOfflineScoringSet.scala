@@ -2,7 +2,7 @@ package job
 
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, STRING_FEATURE_TYPE, intModelFeaturesCols, loadParquetData}
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicySnapshotDataset, BidsImpressionsSchema, DailyOfflineScoringDataset}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, BidsImpressionsSchema, DailyOfflineScoringDataset}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -43,7 +43,7 @@ object DailyOfflineScoringSet {
 
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
-    val adGroupPolicy = AdGroupPolicySnapshotDataset().readDataset(date)
+    val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
 
     var hashFeatures = modelDimensions ++ modelFeatures
     hashFeatures = hashFeatures.filter(x => !seqFields.contains(x))
@@ -57,7 +57,7 @@ object DailyOfflineScoringSet {
     )(prometheus)
 
     //assuming Yuehan has implemented the tfrecord write this way. has dependency on the changes she is doing.
-    val dailyOfflineScoringRows = DailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(100))
+    val dailyOfflineScoringRows = DailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(1000))
 
     outputRowsWrittenGauge.labels("DailyOfflineScoringDataset").set(dailyOfflineScoringRows)
     jobDurationGaugeTimer.setDuration()

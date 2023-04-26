@@ -92,7 +92,7 @@ object TrainSetFeatureMappingTransform {
       dailyFeatureMappings = dailyFeatureMappings.union(featureMappingTransform(bidsImpressionsMappings, f.name))
     }
     // union existing mappings with latest mappings and return distinct mappings
-    val existingFeatureMappings = TrainSetFeatureMappingDataset().readLatestPartitionUpTo(date).selectAs[TrainSetFeatureMappingRecord]
+    val existingFeatureMappings = TrainSetFeatureMappingDataset().readLatestPartitionUpTo(date, true).selectAs[TrainSetFeatureMappingRecord]
     existingFeatureMappings.union(dailyFeatureMappings).distinct()
   }
 
@@ -121,6 +121,20 @@ object TrainSetFeatureMappingTransform {
       .withColumn("FeatureName", lit(featureName))
       .withColumnRenamed(originalFeatureName, "FeatureOriginalValue" )
       .withColumnRenamed(hashedFeatureName, "FeatureHashedValue").selectAs[TrainSetFeatureMappingRecord]
+  }
+
+  def tryGetFeatureCardinality(name: String): Int = {
+    for (feature <- mappingModelFeatures) {
+      if (feature.name == name) {
+        if (feature.cardinality.isEmpty) {
+          throw new RuntimeException("Feature is not categorical: " + name)
+        }
+
+        return feature.cardinality.get
+      }
+    }
+
+    throw new RuntimeException("Feature not found in TrainSetFeatureMappingTransform.mappingModelFeatures: " + name)
   }
 
 }
