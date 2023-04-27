@@ -117,6 +117,7 @@ philo:build_push_training_container:
   services:
     - docker:dind
   before_script:
+    - echo 'deb http://archive.debian.org/debian stretch main' >> /etc/apt/sources.list
     - apt update
     - apt-get install docker.io -y
   rules:
@@ -141,6 +142,7 @@ philo:build_push_release_container:
   services:
     - docker:dind
   before_script:
+    - echo 'deb http://archive.debian.org/debian stretch main' >> /etc/apt/sources.list
     - apt update
     - apt-get install docker.io -y
   rules:
