@@ -403,6 +403,7 @@ def extract_dnn_only_models(model, task='binary', adgroup_feature_list=['AdGroup
     """
     From any model with Dual DNN towers, extract and build a new model that predicts only utilizing the DNN
     parts. Along with it, build Neo A and B model from each single DNN tower.
+    If the model provided is already DNN only, the output will be the same model plus the Neo A & B models.
     Args:
         model: model with Dual DNN tower structures
         task: ``"binary"`` for  binary logloss or  ``"regression"`` for regression loss

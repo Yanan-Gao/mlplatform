@@ -87,5 +87,5 @@ sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v /mnt/tfrecords:$
       "--region=${REGION}" \
       "--s3_output_path=${OUTPUT_PATH}" \
       "--training_verbosity=2" \
-      "--model_arch=deepfm" \
+      "--model_arch=deepfm_dual" \
       "--early_stopping_patience=5"
