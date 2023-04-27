@@ -125,6 +125,7 @@ audience:build_push_test_container:
   services:
     - docker:dind
   before_script:
+    - echo 'deb http://archive.debian.org/debian stretch main' >> /etc/apt/sources.list
     - apt update
     - apt-get install docker.io -y
     - apt-get install python3 -y
@@ -157,6 +158,7 @@ audience:build_push_release_container:
   services:
     - docker:dind
   before_script:
+    - echo 'deb http://archive.debian.org/debian stretch main' >> /etc/apt/sources.list
     - apt update
     - apt-get install docker.io -y
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
