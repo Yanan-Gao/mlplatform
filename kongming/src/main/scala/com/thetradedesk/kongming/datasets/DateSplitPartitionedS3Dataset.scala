@@ -9,6 +9,7 @@ import com.thetradedesk.spark.util.{ProdTesting, Testing}
 import com.thetradedesk.spark.util.TTDConfig.environment
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.datasets.core.PartitionedS3DataSet.buildPath
+import com.thetradedesk.spark.datasets.core.SchemaPolicy.{DefaultUseFirstFileSchema, SchemaPolicyType}
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -19,15 +20,15 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
   s3RootPath: String,
   rootFolderPath: String,
   fileFormat: FileFormat,
-  mergeSchema: Boolean = false,
+  schemaPolicy: SchemaPolicyType = DefaultUseFirstFileSchema,
 )
   extends PartitionedS3DataSet2[T, LocalDate, String, String, String](
     dataSetType, s3RootPath, rootFolderPath,
     "date" -> ColumnExistsInDataSet,
     "split" -> ColumnExistsInDataSet,
     fileFormat,
-    mergeSchema,
-    writeThroughHdfs
+    writeThroughHdfs = writeThroughHdfs,
+    schemaPolicy = schemaPolicy,
   ) {
 
   def partitionField1: (String, PartitionColumnCalculation) = "date" -> ColumnExistsInDataSet

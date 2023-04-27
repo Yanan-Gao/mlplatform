@@ -7,6 +7,7 @@ import com.thetradedesk.kongming.multiLevelJoinWithPolicy
 import com.thetradedesk.kongming.transform.TrainSetTransformation.TrackingTagWeightsRecord
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.datasets.sources.datalake.ClickTrackerDataSetV5
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.util.TTDConfig.defaultCloudProvider

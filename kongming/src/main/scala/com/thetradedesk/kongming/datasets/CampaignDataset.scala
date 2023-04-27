@@ -1,6 +1,7 @@
 package com.thetradedesk.kongming.datasets
 
 import com.thetradedesk.spark.datasets.core.ProvisioningS3DataSet
+import com.thetradedesk.spark.datasets.core.SchemaPolicy.MergeAllFilesSchema
 
 final case class CampaignRecord(CampaignId: String,
                                 AdvertiserId: String,
@@ -9,4 +10,7 @@ final case class CampaignRecord(CampaignId: String,
                                 CustomCPAViewthroughWeight: Option[BigDecimal]
                                )
 
-case class CampaignDataSet() extends ProvisioningS3DataSet[CampaignRecord]("campaign/v=1", mergeSchema = true){}
+case class CampaignDataSet() extends ProvisioningS3DataSet[CampaignRecord](
+  "campaign/v=1",
+  schemaPolicy = MergeAllFilesSchema
+)

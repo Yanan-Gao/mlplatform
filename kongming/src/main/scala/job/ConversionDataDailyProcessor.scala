@@ -6,6 +6,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.transform.ConversionDataDailyTransform
+import com.thetradedesk.spark.datasets.sources.datalake.ConversionTrackerVerticaLoadDataSetV4
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.TTDSparkContext.spark
 

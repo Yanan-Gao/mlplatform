@@ -1,6 +1,7 @@
 package com.thetradedesk.kongming.datasets
 
 import com.thetradedesk.spark.datasets.core.ProvisioningS3DataSet
+import com.thetradedesk.spark.datasets.core.SchemaPolicy.MergeAllFilesSchema
 
 final case class CampaignFlightRecord(
                                        CampaignId: String,
@@ -9,4 +10,7 @@ final case class CampaignFlightRecord(
                                        IsDeleted: Boolean
                                      )
 
-case class CampaignFlightDataSet() extends ProvisioningS3DataSet[CampaignFlightRecord]("campaignflight/v=1", mergeSchema = true){}
+case class CampaignFlightDataSet() extends ProvisioningS3DataSet[CampaignFlightRecord](
+  "campaignflight/v=1",
+  schemaPolicy = MergeAllFilesSchema
+)
