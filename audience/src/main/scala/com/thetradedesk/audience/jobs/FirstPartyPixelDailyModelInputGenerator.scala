@@ -153,6 +153,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
   def getLabels(date: LocalDate): DataFrame
 
   def getBidImpressions(date: LocalDate) = {
+    // bidimpressions look back is inclusive!
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
     val bidsImpressionsLong = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE), lookBack=Some(Config.bidsImpressionLookBack))
       .withColumnRenamed("UIID", "TDID")
@@ -244,30 +245,30 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
       // SIB
       val positivePool = bidsImpressions.join(labels, Seq("TDID"), "inner")
         .withColumn("TargetingDataId", explode('TargetingDataIds)).drop("TargetingDataIds")
-        .cache
+        .cache()
       val softNegativePool = bidsImpressions.join(labels.dropDuplicates("TDID"), Seq("TDID"), "left_anti")
         .withColumn("isPrimaryTDID", lit(1))
       (positivePool, softNegativePool)
     } else {
       // Conversion Tracker
       val candidatePool = bidsImpressions.join(labels, Seq("TDID"), "left")
-        .cache
+        .cache()
       val positivePool = candidatePool.filter('TargetingDataId.isNotNull)
-        .cache
+        .cache()
       val softNegativePool = candidatePool.filter('TargetingDataId.isNull)
         .withColumn("isPrimaryTDID", lit(1))
 
       (positivePool, softNegativePool)
     }
 
-    val positiveSample = generatePositiveSample(positivePool).cache
+    val positiveSample = generatePositiveSample(positivePool).persist()
     val negativeSample = generateSoftNegativeSample(positiveSample, softNegativePool)
     val hardNegativeSample = generateHardNegativeSample(positivePool, positiveSample, bidsImpressions)
 
     positiveSample
       .unionByName(negativeSample)
       .unionByName(hardNegativeSample)
-      .join(bidsImpressionsLong, Seq("BidRequestId"), "inner")
+      .join(bidsImpressionsLong, Seq("BidRequestId", "TDID", "CampaignId"), "inner")
   }
 
   def generatePositiveSample(positivePool: DataFrame): DataFrame = {
@@ -350,7 +351,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
     val hardNegImp = hardNegPool
       .join(distinctPosPool, Seq("CampaignId", "TDID", "IsPrimaryTDID"))
       .withColumn("rand", rand()) // for the same tdid in the same of different campaign they will have their own random number
-      .cache
+      .cache()
 
     // calculate how many positive samples and determine how many negative samples we should have
     val positiveStats = positiveSample
@@ -420,8 +421,8 @@ object FirstPartyPixelDailyConversionModelInputGenerator extends FirstPartyPixel
 
     val allTargetingDataIds = spark.read.parquet(Config.selectedPixelsConfigPath)
       .join(trackingTagDataset, Seq("TargetingDataId"), "inner")
-
-    val conversionDS = ConversionDataset(defaultCloudProvider).readRange(date.minusDays(ConversionConfig.conversionLookBack).atStartOfDay(), date.atStartOfDay())
+    // conversion data look back is exclusive! to make it has the same period as the bidimps, plus 1 day to the date
+    val conversionDS = ConversionDataset(defaultCloudProvider).readRange(date.minusDays(ConversionConfig.conversionLookBack).atStartOfDay(), date.plusDays(1).atStartOfDay())
       .select('TDID, 'TrackingTagId)
       .join(broadcast(allTargetingDataIds), Seq("TrackingTagId"), "inner")
       .select('TargetingDataId, 'TDID)
