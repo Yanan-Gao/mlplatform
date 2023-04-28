@@ -1,8 +1,10 @@
 package com.thetradedesk.kongming.datasets
 
+import com.thetradedesk.kongming.IdentityHouseholdUnmatchedToken
 import org.apache.hadoop.fs.{FileSystem, Path}
 import com.thetradedesk.spark.sql.SQLFunctions._
 import org.apache.spark.sql.functions._
+
 import java.net.URI
 import java.time.format.{DateTimeFormatter, DateTimeParseException}
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -12,6 +14,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import java.time.LocalDate
 
 final case class CrossDeviceGraphRecord(
+                                         HouseholdID:String,
                                          PersonID:String,
                                          uiid:String,
                                          score:Double
@@ -51,8 +54,9 @@ object CrossDeviceGraphDataset {
     // this function is taking in the raw adbrain graph and IDs we observe in conversion data and shrink it to a smaller size
     // personDeviceDS: <personId, uiid>
 
-    val personDS = parentGraph.join(idDS, Seq("uiid"),"inner").select($"PersonID")
-    val personDeviceDS = parentGraph.join(personDS, Seq("PersonID"),"inner").selectAs[CrossDeviceGraphRecord].cache
+    val unifiedKeyGraph = parentGraph.withColumn("JoinKey", when($"HouseholdID"=!=lit(IdentityHouseholdUnmatchedToken), $"HouseholdID").otherwise($"PersonID"))
+    val personDS = unifiedKeyGraph.join(idDS, Seq("uiid"),"inner").select($"JoinKey").distinct
+    val personDeviceDS = unifiedKeyGraph.join(personDS, Seq("JoinKey"),"inner").selectAs[CrossDeviceGraphRecord].cache
 
     personDeviceDS
   }

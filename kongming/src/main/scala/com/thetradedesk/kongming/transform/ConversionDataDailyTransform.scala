@@ -1,6 +1,7 @@
 package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.kongming.datasets._
+import com.thetradedesk.kongming.IdentityHouseholdUnmatchedToken
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -14,10 +15,11 @@ final case class DailyTransformedConversionDataRecord(TrackingTagId: String,
                                                       TDID:String,
                                                       DataAggKey: String,
                                                       DataAggValue: String,
-                                                      CrossDeviceUsage: Boolean,
+                                                      //CrossDeviceUsage: Boolean,
                                                       CrossDeviceConfidenceLevel: Option[Double],
                                                       //Weight: Double,
-                                                      ConversionTime: java.sql.Timestamp
+                                                      ConversionTime: java.sql.Timestamp,
+                                                      CrossDeviceAttributionModelId: String
                                                      )
 
 
@@ -65,19 +67,30 @@ object ConversionDataDailyTransform {
     val ccrcProcessed = ccrc
       .join(broadcast(campaignDS.select($"CampaignId", $"CustomCPATypeId")), Seq("CampaignId"), "left")
       .filter(($"CustomCPATypeId"===0 && $"ReportingColumnId"===1) || ($"CustomCPATypeId">0 && $"IncludeInCustomCPA") )
-      .select("CampaignId","TrackingTagId", "AdvertiserId")//, "Weight")
+      // will only use IAv2 and IAv2HH, other graphs will be replaced by IAv2
+      .withColumn("CrossDeviceAttributionModelId",
+        when(($"CrossDeviceAttributionModelId".isNotNull) && !($"CrossDeviceAttributionModelId".isin(List("IdentityAllianceWithHousehold", "IdentityAlliance"): _*)), lit("IdentityAlliance"))
+          .otherwise($"CrossDeviceAttributionModelId")
+      )
+      .select("CampaignId","TrackingTagId", "AdvertiserId", "CrossDeviceAttributionModelId")
 
 
 
-    val trackingTagWithWeight = adGroupPolicy
+    val trackingTagWithSettings = adGroupPolicy
       .join(broadcast(adGroupDS), adGroupPolicy("ConfigValue")===adGroupDS("AdGroupId"), "inner")
-      .select("CampaignId","DataAggKey","DataAggValue","CrossDeviceUsage","CrossDeviceConfidenceLevel")
+      .select("CampaignId","DataAggKey","DataAggValue","CrossDeviceConfidenceLevel")
       .join(ccrcProcessed, Seq("CampaignId"), "inner")
-      .select( "TrackingTagId","DataAggKey","DataAggValue","CrossDeviceUsage","CrossDeviceConfidenceLevel","AdvertiserId")//, "Weight")
+      .select( "TrackingTagId","DataAggKey","DataAggValue","CrossDeviceConfidenceLevel","AdvertiserId", "CrossDeviceAttributionModelId")//, "Weight")
       //distinct to remove possible duplicate dataAggValue in the policy table
       .distinct
 
-    val convResult = conv.join(trackingTagWithWeight, Seq("TrackingTagId", "AdvertiserId"), "inner").selectAs[DailyTransformedConversionDataRecord].cache()
+
+
+
+
+
+
+    val convResult = conv.join(trackingTagWithSettings, Seq("TrackingTagId", "AdvertiserId"), "inner").selectAs[DailyTransformedConversionDataRecord].cache()
     val distinctId = convResult.select($"TDID".as("uiid")).distinct.selectAs[IDRecord]
 
     (convResult, distinctId)
@@ -94,24 +107,33 @@ object ConversionDataDailyTransform {
                               xdDS: Dataset[CrossDeviceGraphRecord]
                             )
                             (implicit prometheus: PrometheusClient): Dataset[DailyConversionDataRecord] = {
-    val window = Window.partitionBy($"PersonId", $"TrackingTagId", $"DataAggKey", $"DataAggValue").orderBy($"conversionTime".desc)
+    //IdentityId would be personId for iav2 usage and householdId for iav2hh usage
+    val window = Window.partitionBy($"IdentityId", $"TrackingTagId", $"DataAggKey", $"DataAggValue").orderBy($"conversionTime".desc)
     val convWithPersonIdDS = transformedConvDS
       .join(xdDS, transformedConvDS("TDID")===xdDS("uiid"),"inner")
-      .drop("uiid","score")
+      .withColumn("IdentityId",
+        when($"CrossDeviceAttributionModelId"===lit("IdentityAllianceWithHousehold"), $"HouseholdID")
+        .otherwise($"PersonId")
+      )
+      .filter($"IdentityId"=!=lit(IdentityHouseholdUnmatchedToken))
+      .drop("uiid","score", "PersonId","HouseholdID")
       .withColumn("rank", rank().over(window))
       .filter($"rank"<=3)//TODO: may need to revisit to see if this is reasonable or need some modification.
       .drop("rank") //alleviate possible inflation on conversion due to multiple conversions belongs to the same person.
 
     // keep the latest conversion if there multiple on the same person
-    val convWithDeviceIdDS = convWithPersonIdDS.as("t1")
-      .join(xdDS.as("t2"), Seq("PersonId"), "left")
+    val convWithDeviceIdDS =
+      ( convWithPersonIdDS.join(xdDS, $"IdentityId"===$"PersonId", "inner")
+        .union(convWithPersonIdDS.join(xdDS, $"IdentityId"===$"HouseholdID", "inner") )
+        )
       //only include additional IDs added by cross device graph in this case. The raw conversions will be included outside this function.
-      .filter($"t1.TDID"=!=$"t2.uiid")
+      .filter($"TDID"=!=$"uiid")
       .select(
         $"TrackingTagId",
         $"DataAggKey",
         $"DataAggValue",
-        $"CrossDeviceUsage",
+        //$"CrossDeviceUsage",
+        //$"CrossDeviceAttributionModelId",
         $"CrossDeviceConfidenceLevel",
         //, $"Weight"
         $"ConversionTime",

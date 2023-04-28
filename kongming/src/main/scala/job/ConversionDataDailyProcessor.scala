@@ -51,7 +51,7 @@ object ConversionDataDailyProcessor extends Logger{
     val xdSubsetDS = CrossDeviceGraphDataset.shrinkGraph(xdDS, idDS) // returned result is cached
 
     //add xd according to adgroupPolicy
-    val transformedConvXD = transformedConvDS.filter($"CrossDeviceUsage")
+    val transformedConvXD = transformedConvDS.filter($"CrossDeviceAttributionModelId".isNotNull)
     val conversionNonXD = transformedConvDS
       //removing this following filter to include everything without cross device
       //.filter(!$"CrossDeviceUsage")
@@ -70,7 +70,8 @@ object ConversionDataDailyProcessor extends Logger{
       , xdSubsetDS
     )(prometheus)
 
-    val resultDS = conversionNonXD.union(conversionXD)
+    //add distinct to remove rare cases when there's two ids under the same person converted under the same trackingtag.
+    val resultDS = conversionNonXD.union(conversionXD).distinct()
 
     val dailyConversionRows = DailyConversionDataset().writePartition(resultDS, date, Some(2000))
 
