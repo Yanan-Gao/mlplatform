@@ -23,7 +23,7 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-mllib" % sparkVersion % "provided",
 
   "com.typesafe" % "config" % "1.3.0",
-  "com.thetradedesk" %% "geronimo" % "0.2.0-SNAPSHOT",
+  "com.thetradedesk" %% "geronimo" % "0.2.3-SNAPSHOT",
   "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
 
   "io.prometheus" % "simpleclient" % prometheusVersion,
@@ -49,3 +49,8 @@ assemblyMergeStrategy in assembly := {
 fork in Test := true
 javaOptions ++= Seq("-Xms512M", "-Xmx2048M", "-XX:+CMSClassUnloadingEnabled")
 testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oD")
+
+assembly / assemblyShadeRules := Seq(
+  ShadeRule.rename("shapeless.**" -> "new_shapeless.@1").inAll,
+  ShadeRule.rename("cats.kernel.**" -> s"new_cats.kernel.@1").inAll
+)
