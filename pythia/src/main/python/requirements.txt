@@ -1,0 +1,15 @@
+tensorflow
+tensorflow-io == 0.27.0
+collections
+datetime
+functools
+matplotlib
+numpy
+os
+pandas
+pyspark
+re
+sklearn
+sys
+tqdm
+typing

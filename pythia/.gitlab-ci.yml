@@ -1,0 +1,13 @@
+pythia:build:
+  stage: test
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "pythia/*"
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "pythia/*"
+  before_script:
+    - echo "hello world"
+  script: 
+    - echo "Just a placeholder for now" 
