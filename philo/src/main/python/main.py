@@ -14,8 +14,8 @@ from philo.features import DEFAULT_MODEL_TARGET
 from philo.models import model_builder
 from philo.utils import get_callbacks
 from philo.prometheus import Prometheus
-from philo.feature_utils import get_features_from_json
 from philo.neo import extract_dnn_only_models
+from dalgo_utils import features
 
 FLAGS = flags.FLAGS
 
@@ -24,8 +24,8 @@ OUTPUT_PATH = "/var/tmp/output/"
 MODEL_LOGS = "/var/tmp/logs/"
 META_DATA_INPUT = "/var/tmp/input"
 LATEST_MODEL = "/var/tmp/input"
-FEATURES_PATH = "features.json"
 S3_PROD = "s3://thetradedesk-mlplatform-us-east-1/models/{env}/philo/v=3/{region}/"
+FEATURES_PATH = "features.json"
 # PARAM_MODEL_OUTPUT = "models_params/"
 MODEL_OUTPUT = "models/"
 NEO_A_OUTPUT = "adgroup/"
@@ -110,8 +110,18 @@ app.parse_flags_with_usage(sys.argv)
 
 
 def main(argv):
-    model_features, adgroup_feature_list = get_features_from_json(FEATURES_PATH, FLAGS.exclude_features,
-                                                                  get_adgroup_feature=True)
+    neo_features = features.Features.from_json_path(FEATURES_PATH , FLAGS.exclude_features)
+
+    # convert model features into the same List[nameTuple] format
+    model_features = []
+    adgroup_feature_list = []
+
+    for f in neo_features.feature_definitions.ad_group:
+        adgroup_feature_list.append(f.name)
+
+    for f in neo_features.feature_definitions.flat_features():
+        model_features.append(f.as_namedtuple())
+
     model_target = DEFAULT_MODEL_TARGET
 
     # define training metrics

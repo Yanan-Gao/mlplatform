@@ -41,15 +41,13 @@ def model_builder(model_arch, model_features, **kwargs):
         if 'adgroup_feature_list' in kwargs.keys():
             model = deep_fm_dual_tower(linear_feature_columns, dnn_feature_columns, task='binary', **kwargs)
         else:
-            raise Exception("need to specify adgroup_feature_list to split features, run get_features_from_json"
-                            "with get_adgroup_feature=True to get the adgroup_feature_list")
+            raise Exception("need to specify adgroup_feature_list to split features, extract adgroup_feature_list from Features.from_json_path(FEATURES_PATH , FLAGS.exclude_features)")
     elif model_arch == 'deepfm_dual_neo':
         if 'adgroup_feature_list' in kwargs.keys():
             # NOTE: output here is a tuple of (model, model_neo_a, model_neo_b)
             model = deep_fm_dual_tower_neo(linear_feature_columns, dnn_feature_columns, task='binary', **kwargs)
         else:
-            raise Exception("need to specify adgroup_feature_list to split features, run get_features_from_json"
-                            "with get_adgroup_feature=True to get the adgroup_feature_list")
+            raise Exception("need to specify adgroup_feature_list to split features, extract adgroup_feature_list from Features.from_json_path(FEATURES_PATH , FLAGS.exclude_features)")
     elif model_arch == 'xdeepfm':
         model = xdeepfm(linear_feature_columns, dnn_feature_columns, task='binary', **kwargs)
     elif model_arch == 'dcn':

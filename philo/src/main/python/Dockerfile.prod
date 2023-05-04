@@ -16,6 +16,10 @@ COPY main.py ./
 COPY features.json ./
 COPY requirements.txt ./
 
-RUN pip3 install --quiet --no-cache-dir -r requirements.txt
+RUN --mount=type=secret,id=PYPI_READ_USERNAME \
+    --mount=type=secret,id=PYPI_READ_PASSWORD \
+    PYPI_READ_USERNAME=$(cat /run/secrets/PYPI_READ_USERNAME) \
+    PYPI_READ_PASSWORD=$(cat /run/secrets/PYPI_READ_PASSWORD) \
+    pip3 install --quiet --no-cache-dir -r requirements.txt
 
 ENTRYPOINT ["python3", "./main.py"]

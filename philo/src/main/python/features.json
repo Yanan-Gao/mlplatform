@@ -1,44 +1,46 @@
 {
-    "ModelFeatureDefinitions": [
-        {
-            "FeatureDefinitions": [
-                { "Name": "AdFormat",               "Cardinality": 102,     "Encoding": "string", "AdgroupFeature": 0 },
-                { "Name": "AdGroupId",              "Cardinality": 1002,    "Encoding": "string", "AdgroupFeature": 1 },
-                { "Name": "AdvertiserId",           "Cardinality": 5002,    "Encoding": "string", "AdgroupFeature": 1 },
-                { "Name": "AdsTxtSellerType",       "Cardinality": 7,       "Encoding": "int",    "AdgroupFeature": 0 },
-                { "Name": "PublisherType",          "Cardinality": 7,       "Encoding": "int",    "AdgroupFeature": 0 },
-                { "Name": "Country",                "Cardinality": 252,     "Encoding": "string", "AdgroupFeature": 0 },
-                { "Name": "Region",                 "Cardinality": 4002,    "Encoding": "string", "AdgroupFeature": 0 },
-                { "Name": "Metro",                  "Cardinality": 302,     "Encoding": "string", "AdgroupFeature": 0 },
-                { "Name": "City",                   "Cardinality": 75002,   "Encoding": "string", "AdgroupFeature": 0 },
-                { "Name": "Zip",                    "Cardinality": 90002,   "Encoding": "string", "AdgroupFeature": 0 },
-                { "Name": "Browser",                "Cardinality": 20,      "Encoding": "int",    "AdgroupFeature": 0 },
-                { "Name": "DeviceMake",             "Cardinality": 1002,    "Encoding": "string", "AdgroupFeature": 0 },
-                { "Name": "DeviceModel",            "Cardinality": 10002,   "Encoding": "string", "AdgroupFeature": 0 },
-                { "Name": "DeviceType",             "Cardinality": 9,       "Encoding": "int",    "AdgroupFeature": 0 },
-                { "Name": "CreativeId",             "Cardinality": 5002,    "Encoding": "string", "AdgroupFeature": 1 },
-                { "Name": "DoNotTrack",             "Cardinality": 4,       "Encoding": "int",    "AdgroupFeature": 0 },
-                { "Name": "ImpressionPlacementId",  "Cardinality": 102,     "Encoding": "string", "AdgroupFeature": 0 },
-                { "Name": "OperatingSystemFamily",  "Cardinality": 10,      "Encoding": "int",    "AdgroupFeature": 0 },
-                { "Name": "RenderingContext",       "Cardinality": 6,       "Encoding": "int",    "AdgroupFeature": 0 },
-                { "Name": "RequestLanguages",       "Cardinality": 502,     "Encoding": "string", "AdgroupFeature": 0 },
-                { "Name": "Site",                   "Cardinality": 350002,  "Encoding": "string", "AdgroupFeature": 0 },
-                { "Name": "SupplyVendor",           "Cardinality": 102,     "Encoding": "string", "AdgroupFeature": 0 },
-                { "Name": "SupplyVendorPublisherId","Cardinality": 15002,   "Encoding": "string", "AdgroupFeature": 0 },
-                { "Name": "UserHourOfWeek",         "Cardinality": 170,     "Encoding": "int",    "AdgroupFeature": 0 },
-                { "Name": "PrivateContractId",      "Cardinality": 10002,   "Encoding": "string", "AdgroupFeature": 0 },
-                { "Name": "SupplyVendorSiteId",     "Cardinality": 960002,  "Encoding": "string", "AdgroupFeature": 0 },
-                { "Name": "MatchedFoldPosition",    "Cardinality": 3,       "Encoding": "int",    "AdgroupFeature": 0 },
-                { "Name": "sin_hour_day",           "Cardinality": 0,       "Encoding": "float",  "AdgroupFeature": 0 },
-                { "Name": "cos_hour_day",           "Cardinality": 0,       "Encoding": "float",  "AdgroupFeature": 0 },
-                { "Name": "sin_hour_week",          "Cardinality": 0,       "Encoding": "float",  "AdgroupFeature": 0 },
-                { "Name": "cos_hour_week",          "Cardinality": 0,       "Encoding": "float",  "AdgroupFeature": 0 },
-                { "Name": "sin_minute_hour",        "Cardinality": 0,       "Encoding": "float",  "AdgroupFeature": 0 },
-                { "Name": "cos_minute_hour",        "Cardinality": 0,       "Encoding": "float",  "AdgroupFeature": 0 },
-                { "Name": "latitude",               "Cardinality": 0,       "Encoding": "float",  "AdgroupFeature": 0 },
-                { "Name": "longitude",              "Cardinality": 0,       "Encoding": "float",  "AdgroupFeature": 0 }
-            ],
-            "ModelVersion": 1
-        }
-    ]
-}
+    "ModelName": "Philo",
+    "FeatureDefinitions": {
+       "BidRequest": [
+            { "Name": "AdFormat",               "Cardinality": 102,     "Encoding": "string" },
+            { "Name": "AdsTxtSellerType",       "Cardinality": 7,       "Encoding": "int" },
+            { "Name": "PublisherType",          "Cardinality": 7,       "Encoding": "int" },
+            { "Name": "Country",                "Cardinality": 252,     "Encoding": "string" },
+            { "Name": "Region",                 "Cardinality": 4002,    "Encoding": "string" },
+            { "Name": "Metro",                  "Cardinality": 302,     "Encoding": "string" },
+            { "Name": "City",                   "Cardinality": 75002,   "Encoding": "string" },
+            { "Name": "Zip",                    "Cardinality": 90002,   "Encoding": "string" },
+            { "Name": "Browser",                "Cardinality": 20,      "Encoding": "int" },
+            { "Name": "DeviceMake",             "Cardinality": 1002,    "Encoding": "string" },
+            { "Name": "DeviceModel",            "Cardinality": 10002,   "Encoding": "string" },
+            { "Name": "DeviceType",             "Cardinality": 9,       "Encoding": "int" },
+            { "Name": "DoNotTrack",             "Cardinality": 4,       "Encoding": "int" },
+            { "Name": "ImpressionPlacementId",  "Cardinality": 102,     "Encoding": "string" },
+            { "Name": "OperatingSystemFamily",  "Cardinality": 10,      "Encoding": "int" },
+            { "Name": "RenderingContext",       "Cardinality": 6,       "Encoding": "int" },
+            { "Name": "RequestLanguages",       "Cardinality": 502,     "Encoding": "string" },
+            { "Name": "Site",                   "Cardinality": 350002,  "Encoding": "string" },
+            { "Name": "SupplyVendor",           "Cardinality": 102,     "Encoding": "string" },
+            { "Name": "SupplyVendorPublisherId","Cardinality": 15002,   "Encoding": "string" },
+            { "Name": "UserHourOfWeek",         "Cardinality": 170,     "Encoding": "int" },
+            { "Name": "PrivateContractId",      "Cardinality": 10002,   "Encoding": "string" },
+            { "Name": "SupplyVendorSiteId",     "Cardinality": 960002,  "Encoding": "string" },
+            { "Name": "MatchedFoldPosition",    "Cardinality": 3,       "Encoding": "int" },
+            { "Name": "sin_hour_day",           "Cardinality": 0,       "Encoding": "float" },
+            { "Name": "cos_hour_day",           "Cardinality": 0,       "Encoding": "float" },
+            { "Name": "sin_hour_week",          "Cardinality": 0,       "Encoding": "float" },
+            { "Name": "cos_hour_week",          "Cardinality": 0,       "Encoding": "float" },
+            { "Name": "sin_minute_hour",        "Cardinality": 0,       "Encoding": "float" },
+            { "Name": "cos_minute_hour",        "Cardinality": 0,       "Encoding": "float" },
+            { "Name": "latitude",               "Cardinality": 0,       "Encoding": "float" },
+            { "Name": "longitude",              "Cardinality": 0,       "Encoding": "float" }
+       ],
+       "AdGroup": [
+            { "Name": "AdGroupId",              "Cardinality": 1002,    "Encoding": "string" },
+            { "Name": "AdvertiserId",           "Cardinality": 5002,    "Encoding": "string" },
+            { "Name": "CreativeId",             "Cardinality": 5002,    "Encoding": "string" }
+       ]
+    },
+    "ModelVersion": 1,
+    "SchemaVersion": 1
+ }
