@@ -10,9 +10,9 @@ from tensorflow.keras.layers import Input, Lambda
 from philo.layers import concat_func, Linear, combined_dnn_input
 from philo.inputs import create_embedding_matrix, embedding_lookup, get_dense_input, varlen_embedding_lookup, \
     get_varlen_pooling_list, mergeDict
-from philo.feature_utils import Target
 
 SEED = 1024
+Target = namedtuple("Feature", "name, type, default_value, enabled, binary")
 DEFAULT_MODEL_TARGET = Target(name='label', type=tf.int64, default_value=0, enabled=True, binary=True)
 
 DEFAULT_GROUP_NAME = "default_group"

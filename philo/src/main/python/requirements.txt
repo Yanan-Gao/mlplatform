@@ -7,3 +7,6 @@ pandas
 tensorflow-serving-api == 2.8.0
 tensorflow_addons
 protobuf == 3.20.0
+# enabling nexus pypi repo
+--extra-index-url https://${PYPI_READ_USERNAME}:${PYPI_READ_PASSWORD}@nex.adsrvr.org/repository/pypi/simple
+dalgo_utils

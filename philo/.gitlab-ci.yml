@@ -17,6 +17,7 @@ variables:
   PHILO_MERGEREQUESTS_FEATURES_DEST: "$PHILO_LIBS_S3_LOCATION/features/mergerequests/$CI_COMMIT_REF_SLUG/"
   PHILO_MERGEREQUESTS_SCRIPTS_DEST: "$PHILO_LIBS_S3_LOCATION/scripts/mergerequests/$CI_COMMIT_REF_SLUG/"
   PYTHON_BUILD_IMAGE: "python:3.8"
+  PYTHON_BUILDX_IMAGE: "production.docker.adsrvr.org/ttd-base/mlops/mlops_infra_build:0.2.0"
   PHILO_TRAINING_IMAGE: "philo-training"
 
 philo:test:
@@ -112,10 +113,13 @@ philo:push_scripts_merge_request:
     - echo "ran push_set_scripts"
 
 philo:build_push_training_container:
-  image: "$PYTHON_BUILD_IMAGE"
+  image: "$PYTHON_BUILDX_IMAGE"
   stage: test
   services:
     - docker:dind
+  variables:
+    DOCKER_BUILDKIT: 1
+    DOCKER_CLI_EXPERIMENTAL: "enabled"
   before_script:
     - echo 'deb http://archive.debian.org/debian stretch main' >> /etc/apt/sources.list
     - apt update
@@ -130,17 +134,20 @@ philo:build_push_training_container:
     - export DOCKER_HOST=$DOCKER_PORT
     - pushd ./philo/src/main/python/
     - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
-    - docker build -f Dockerfile.prod -t ${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} .
+    - docker buildx build --secret id=PYPI_READ_USERNAME --secret id=PYPI_READ_PASSWORD -f Dockerfile.prod -t ${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} .
     - docker tag ${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
     - docker push ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
     - popd
     - echo "latest training container pushed to ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}"
 
 philo:build_push_release_container:
-  image: "$PYTHON_BUILD_IMAGE"
+  image: "$PYTHON_BUILDX_IMAGE"
   stage: deploy
   services:
     - docker:dind
+  variables:
+    DOCKER_BUILDKIT: 1
+    DOCKER_CLI_EXPERIMENTAL: "enabled"
   before_script:
     - echo 'deb http://archive.debian.org/debian stretch main' >> /etc/apt/sources.list
     - apt update
@@ -155,7 +162,7 @@ philo:build_push_release_container:
     - export DOCKER_HOST=$DOCKER_PORT
     - pushd ./philo/src/main/python/
     - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
-    - docker build -f Dockerfile.prod -t ${PHILO_TRAINING_IMAGE}:release .
+    - docker buildx build --secret id=PYPI_READ_USERNAME --secret id=PYPI_READ_PASSWORD -f Dockerfile.prod -t ${PHILO_TRAINING_IMAGE}:release .
     - docker tag ${PHILO_TRAINING_IMAGE}:release ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:release
     - docker push ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:release
     - popd
