@@ -53,7 +53,7 @@ object OfflineScoringSetAttribution{
     val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
 
     val pixelWeight = getWeightsForTrackingTags(date, adGroupPolicy, adGroupDS)
-    val pixelWeightForBaseAssociateAdGroup = pixelWeight.join(adgroupBaseAssociateMapping, col("ConfigValue")===col("AdGroupId"))
+    val pixelWeightForBaseAssociateAdGroup = pixelWeight.join(adgroupBaseAssociateMapping, Seq("ConfigValue","ConfigKey"))
       .withColumn("ConfigValue", $"AdGroupId").selectAs[TrackingTagWeightsRecord]
 
     // 3. attributed impressions that are in scored impressions, find the latest per conversion event
