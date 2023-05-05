@@ -1,9 +1,8 @@
 package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions}
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, BidsImpressionsSchema, DailyBidRequestDataset}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyBidsImpressionsDataset, DailyBidRequestDataset}
 import com.thetradedesk.kongming.transform.BidRequestTransform
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -19,13 +18,12 @@ object DailyBidRequest {
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
     val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
 
-    val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
-
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
+    val bidsImpressionFilterByPolicy = DailyBidsImpressionsDataset().readDate(date)
 
     val filteredBidRequestDS = BidRequestTransform.dailyTransform(
       date,
-      bidsImpressions,
+      bidsImpressionFilterByPolicy,
       adGroupPolicy
     )(prometheus)
 

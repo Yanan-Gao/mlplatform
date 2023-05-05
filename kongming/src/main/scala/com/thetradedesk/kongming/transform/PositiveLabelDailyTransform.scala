@@ -54,9 +54,11 @@ case class IntraDayBidRequestWithPolicyRecord(
                                        )
                     (implicit prometheus: PrometheusClient): Dataset[DailyPositiveBidRequestRecord] = {
 
-    //filtering bidImpressions based on policy
-    val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
-    val filteredBidRequest = multiLevelJoinWithPolicy[IntraDayBidRequestWithPolicyRecord](prefilteredDS, adGroupPolicy, "inner")
+    // tag bidImpressions with policy
+    val filteredBidRequest = multiLevelJoinWithPolicy[IntraDayBidRequestWithPolicyRecord](
+      bidsImpressions,
+      adGroupPolicy.select("DataAggKey", "DataAggValue", "ConfigKey", "ConfigValue", "LastTouchCount"),
+      "inner")
 
     val window = Window.partitionBy($"DataAggKey", $"DataAggValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"TruncatedLogEntryTime".desc)
 

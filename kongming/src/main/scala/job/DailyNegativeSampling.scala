@@ -27,16 +27,10 @@ object DailyNegativeSampling {
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
     val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
 
-    val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
-
-    // test only adgroups in the policy table. since aggKey are all adgroupId, we filter by adgroup id
-    val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
-    val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
-    val bidsImpressionFilterByPolicy = multiLevelJoinWithPolicy[BidsImpressionsSchema](prefilteredDS, adGroupPolicy, joinType = "left_semi")
+    val bidsImpressionFilterByPolicy = DailyBidsImpressionsDataset().readDate(date)
 
     // one day's bidrequest
-    val initialBidRequests =bidsImpressionFilterByPolicy
+    val initialBidRequests = bidsImpressionFilterByPolicy
       .withColumn("RenderingContext", $"RenderingContext.value")
       .withColumn("DeviceType", $"DeviceType.value")
       .withColumn("OperatingSystemFamily", $"OperatingSystemFamily.value")
@@ -44,7 +38,7 @@ object DailyNegativeSampling {
       .selectAs[NegativeSamplingBidRequestGrainsRecord]
 
     // policy 0: constant down sampling
-    val downSamplingConstantMod =  config.getInt("downSamlingConstantMode", 10)
+    val downSamplingConstantMod = config.getInt("downSamplingConstantMode", 10)
     val downSampledBidRequestWithConstantMod = NegativeTransform
       .samplingWithConstantMod(initialBidRequests, downSamplingConstantMod)(prometheus)
 
