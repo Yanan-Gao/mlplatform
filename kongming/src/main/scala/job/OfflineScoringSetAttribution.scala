@@ -10,7 +10,6 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.functions.{broadcast, col, lit, to_timestamp}
 import com.thetradedesk.kongming.transform.OfflineAttributionTransform._
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
-import com.thetradedesk.kongming.datasets.ClientTestAdGroupsIntIdDataset
 
 import java.time.LocalDate
 
@@ -65,12 +64,7 @@ object OfflineScoringSetAttribution{
     // 5. get inputs for isotonic regression and bias tuning
     val inputForCalibration = getInputForCalibrationAndBiasTuning(impressionLevelPerformance, defaultCvr, adGroupPolicy, IsotonicRegPositiveLabelCountThreshold, IsotonicRegNegCap, IsotonicRegNegMaxSampleRate, samplingSeed)(prometheus)
 
-    // 6.  todo: temporary in testing phase: read the client test adgroups
-    val clientTestAdGroups =  ClientTestAdGroupsIntIdDataset().readClientTestAdGroupsRecord()
-
-    ClientTestAdGroupsIntIdDataset().writePartition(clientTestAdGroups, date, Some(1))
-
-    val isotonicRegRows = ImpressionForIsotonicRegDataset().writePartition(inputForCalibration._1, date, Some(1))
+    val isotonicRegRows = ImpressionForIsotonicRegDataset().writePartition(inputForCalibration._1, date, Some(1000))
     val biasTuningRows = AdGroupCvrForBiasTuningDataset().writePartition(inputForCalibration._2, date, Some(1))
 
     outputRowsWrittenGauge.labels("ImpressionForIsotonicRegDataset").set(isotonicRegRows)
