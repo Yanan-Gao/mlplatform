@@ -1,6 +1,5 @@
 package com.thetradedesk.kongming.datasets
-
-import com.thetradedesk.spark.datasets.core.Csv
+import com.thetradedesk.spark.util.TTDConfig.config
 
 final case class ImpressionForIsotonicRegRecord(
                                                 AdGroupIdStr: String,
@@ -10,7 +9,7 @@ final case class ImpressionForIsotonicRegRecord(
                                                 ImpressionWeightForCalibrationModel: Double
                                               )
 
-case class ImpressionForIsotonicRegDataset() extends KongMingDataset[ImpressionForIsotonicRegRecord](
+case class ImpressionForIsotonicRegDataset(experimentName: String = "") extends KongMingDataset[ImpressionForIsotonicRegRecord](
   s3DatasetPath = "impressionforisotonicregression/v=1",
-  fileFormat = Csv.WithHeader
+  experimentName = config.getString("ttd.ImpressionForIsotonicRegDataset.experimentName", experimentName)
 )

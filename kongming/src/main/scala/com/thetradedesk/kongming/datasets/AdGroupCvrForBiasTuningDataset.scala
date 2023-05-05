@@ -1,6 +1,6 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.spark.datasets.core.Csv
+import com.thetradedesk.spark.util.TTDConfig.config
 
 final case class AdGroupCvrForBiasTuningRecord(
                                                  AdGroupIdStr: String,
@@ -8,7 +8,7 @@ final case class AdGroupCvrForBiasTuningRecord(
                                                  AdGroupId: Int
                                               )
 
-case class AdGroupCvrForBiasTuningDataset() extends KongMingDataset[AdGroupCvrForBiasTuningRecord](
+case class AdGroupCvrForBiasTuningDataset(experimentName: String = "") extends KongMingDataset[AdGroupCvrForBiasTuningRecord](
   s3DatasetPath = "adgroupcvrforbiastuning/v=1",
-  fileFormat = Csv.WithHeader
+  experimentName = config.getString("ttd.AdGroupCvrForBiasTuningDataset.experimentName", experimentName)
 )
