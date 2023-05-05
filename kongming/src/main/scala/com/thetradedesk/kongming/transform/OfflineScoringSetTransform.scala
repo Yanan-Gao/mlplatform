@@ -24,18 +24,10 @@ object OfflineScoringSetTransform {
    */
   def dailyTransform(date: LocalDate,
                      bidsImpressions: Dataset[BidsImpressionsSchema],
-                     adGroupPolicy: Dataset[AdGroupPolicyRecord],
                      selectionTabular: Array[Column]
                     )
                     (implicit prometheus: PrometheusClient): Dataset[DailyOfflineScoringRecord] = {
-
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
-    val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
-
-    val filterCondition = $"IsImp" === true
-    val bidsImpressionsFilterByPolicy = multiLevelJoinWithPolicy[BidsImpressionsSchema](prefilteredDS, adGroupPolicy, filterCondition, joinType = "left_semi")
-
-    val bidsImp = bidsImpressionsFilterByPolicy
+    val bidsImp = bidsImpressions.filter('IsImp)
       //Assuming ConfigKey will always be adgroupId.
       .withColumn("AdFormat",concat(col("AdWidthInPixels"),lit('x'), col("AdHeightInPixels")))
       .withColumn("RenderingContext", $"RenderingContext.value")

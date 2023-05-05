@@ -2,7 +2,7 @@ package job
 
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, STRING_FEATURE_TYPE, intModelFeaturesCols, loadParquetData}
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, BidsImpressionsSchema, DailyOfflineScoringDataset}
+import com.thetradedesk.kongming.datasets.{DailyBidsImpressionsDataset, DailyOfflineScoringDataset}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -41,9 +41,7 @@ object DailyOfflineScoringSet {
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
     val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
 
-    val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
-
-    val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
+    val bidsImpressionFilterByPolicy = DailyBidsImpressionsDataset().readDate(date)
 
     var hashFeatures = modelDimensions ++ modelFeatures
     hashFeatures = hashFeatures.filter(x => !seqFields.contains(x))
@@ -51,8 +49,7 @@ object DailyOfflineScoringSet {
 
     val scoringFeatureDS = OfflineScoringSetTransform.dailyTransform(
       date,
-      bidsImpressions,
-      adGroupPolicy,
+      bidsImpressionFilterByPolicy,
       selectionTabular
     )(prometheus)
 

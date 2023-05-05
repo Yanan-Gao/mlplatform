@@ -53,11 +53,10 @@ object PositiveLabelGenerator extends Logger{
     val rawMultiDayBidRequestDS = DailyBidRequestDataset().readRange(date.minusDays(lookback+1), date)
 
     // single day data
-    val bidsImpressions = loadParquetData[BidsImpressionsSchema](BidsImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
-
+    val bidsImpressionFilterByPolicy = DailyBidsImpressionsDataset().readDate(date)
     val dailyConversionDS = DailyConversionDataset().readDate(date).cache
     val sameDayPositiveBidRequestDS = PositiveLabelDailyTransform.intraDayConverterNTouchesTransform(
-      bidsImpressions,
+      bidsImpressionFilterByPolicy,
       adGroupPolicy,
       dailyConversionDS,
       adGroupDS
@@ -90,7 +89,7 @@ object PositiveLabelGenerator extends Logger{
       environment = writeEnv
     }
 
-    val positiveSummary = PositiveLabelDailyTransform.countDataAggGroupPositives(positiveLabelDS)
+    val positiveSummary = PositiveLabelDailyTransform.countDataAggGroupPositives(rereadPos)
 
     DailyPositiveCountSummaryDataset().writePartition(positiveSummary, date, Some(50))
 

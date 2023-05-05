@@ -22,9 +22,10 @@ object BidRequestTransform {
                     (implicit prometheus: PrometheusClient): Dataset[DailyBidRequestRecord] = {
     val window = Window.partitionBy($"DataAggValue", $"UIID").orderBy($"TruncatedLogEntryTime".desc)
 
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
-    val prefilteredDS = preFilteringWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, adGroupDS)
-    val bidsImpressionFilterByPolicy = multiLevelJoinWithPolicy[BidRequestPolicyRecord](prefilteredDS, adGroupPolicy, "inner")
+    val bidsImpressionFilterByPolicy = multiLevelJoinWithPolicy[BidRequestPolicyRecord](
+      bidsImpressions,
+      adGroupPolicy.select("ConfigKey", "ConfigValue", "DataAggKey", "DataAggValue", "LastTouchCount"),
+      "inner")
 
     bidsImpressionFilterByPolicy
       //TODO: need to revisit this later, since it has assumption on the policy grain has only adgroupid.

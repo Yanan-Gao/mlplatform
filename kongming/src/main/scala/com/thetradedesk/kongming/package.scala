@@ -42,24 +42,23 @@ package object kongming {
   //TODO: may add some indicator on the list of fields to join based on policy.
   def multiLevelJoinWithPolicy[T: Encoder](
                                             inputDataSet: Dataset[_]
-                                            , adGroupPolicy: Dataset[AdGroupPolicyRecord]
+                                            , adGroupPolicy: Dataset[_]
                                             , joinType: String
                                           ): Dataset[T] = {
     // TODO: will need to enrich this logic but for now assuming hierarchical structure of keys
     // Caution: there might be cases where adgroupid, campaignId, advertiserId collide. Will need to resolve that at some point.
     // for now only use adgroup and campaign to start with.
-    val fieldsToJoin = Seq("AdGroupId", "CampaignId", "AdvertiserId")
-    val joinCondition = fieldsToJoin.tail.foldLeft(when(col("DataAggKey") === lit(fieldsToJoin.head), col("DataAggValue") === col(fieldsToJoin.head)))((l, r) => l.when(col("DataAggKey") === lit(r), col("DataAggValue") === col(r)))
-
-    inputDataSet
-      .join(broadcast(adGroupPolicy), joinCondition, joinType)
-      .selectAs[T]
+    inputDataSet.join(broadcast(adGroupPolicy.filter(col("DataAggKey") === lit("AdGroupId"))), col("DataAggValue") === col("AdGroupId"), joinType).union(
+      inputDataSet.join(broadcast(adGroupPolicy.filter(col("DataAggKey") === lit("CampaignId"))), col("DataAggValue") === col("CampaignId"), joinType)
+    ).union(
+      inputDataSet.join(broadcast(adGroupPolicy.filter(col("DataAggKey") === lit("AdvertiserId"))), col("DataAggValue") === col("AdvertiserId"), joinType)
+    ).selectAs[T]
   }
 
 
   def multiLevelJoinWithPolicy[T: Encoder](
                                             inputDataSet: Dataset[_]
-                                            , adGroupPolicy: Dataset[AdGroupPolicyRecord]
+                                            , adGroupPolicy: Dataset[_]
                                             , filterCondition: Column
                                             , joinType: String
                                           ): Dataset[T] = {

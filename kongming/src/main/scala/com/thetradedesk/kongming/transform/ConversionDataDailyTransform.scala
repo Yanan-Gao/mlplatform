@@ -74,23 +74,15 @@ object ConversionDataDailyTransform {
       )
       .select("CampaignId","TrackingTagId", "AdvertiserId", "CrossDeviceAttributionModelId")
 
-
-
     val trackingTagWithSettings = adGroupPolicy
       .join(broadcast(adGroupDS), adGroupPolicy("ConfigValue")===adGroupDS("AdGroupId"), "inner")
       .select("CampaignId","DataAggKey","DataAggValue","CrossDeviceConfidenceLevel")
-      .join(ccrcProcessed, Seq("CampaignId"), "inner")
+      .join(broadcast(ccrcProcessed), Seq("CampaignId"), "inner")
       .select( "TrackingTagId","DataAggKey","DataAggValue","CrossDeviceConfidenceLevel","AdvertiserId", "CrossDeviceAttributionModelId")//, "Weight")
       //distinct to remove possible duplicate dataAggValue in the policy table
       .distinct
 
-
-
-
-
-
-
-    val convResult = conv.join(trackingTagWithSettings, Seq("TrackingTagId", "AdvertiserId"), "inner").selectAs[DailyTransformedConversionDataRecord].cache()
+    val convResult = conv.join(broadcast(trackingTagWithSettings), Seq("TrackingTagId", "AdvertiserId"), "inner").selectAs[DailyTransformedConversionDataRecord].cache()
     val distinctId = convResult.select($"TDID".as("uiid")).distinct.selectAs[IDRecord]
 
     (convResult, distinctId)
