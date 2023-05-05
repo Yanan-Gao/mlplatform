@@ -84,7 +84,7 @@ flags.DEFINE_integer('num_epochs', default=10, help='Number of epochs for traini
                                                     'trunk*epochs', lower_bound=1)
 flags.DEFINE_integer('data_trunks', default=3, help='number of epochs to run one whole data', lower_bound=1)
 
-flags.DEFINE_integer('training_verbosity', default=1, help='Verbose levels for training (0, 1, 2)')
+flags.DEFINE_integer('training_verbosity', default=2, help='Verbose levels for training (0, 1, 2)')
 
 # Eval params
 flags.DEFINE_integer('eval_batch_size', default=None, help='Batch size for evaluation')
@@ -338,8 +338,8 @@ def main(argv):
     val_loss_gauge.labels(region=FLAGS.region, model="neo").set(history_3.history['val_loss'][-1])
 
     print("##########################evaluating model on TEST########################")
-    evals_1 = model_1.evaluate(datasets[TEST], verbose=1)
-    evals_3 = model_2.evaluate(datasets[TEST], verbose=1)
+    evals_1 = model_1.evaluate(datasets[TEST], verbose=2)
+    evals_3 = model_2.evaluate(datasets[TEST], verbose=2)
     eval_philo_gauge.labels(region=FLAGS.region, model="philo").set(evals_1[2])
     eval_philo_gauge.labels(region=FLAGS.region, model="neo").set(evals_3[2])
 

@@ -1,6 +1,8 @@
 import os
 from typing import List
 from datetime import timedelta
+import random
+import warnings
 
 import tensorflow as tf
 from pathlib import Path
@@ -108,8 +110,8 @@ def get_steps_epochs_emr(path, batch_size, trunks, multiplier=5):
     Returns: steps_per_epoch, epochs
 
     """
-    if trunks == 1:
-        return None, multiplier
+    # if trunks == 1:
+    #     return None, multiplier
     files = get_meta_files_emr(path)
     metadata = read_metadata(files)
     steps_per_epoch, epochs = get_steps_epochs(metadata=metadata, batch_size=batch_size,
@@ -200,8 +202,10 @@ def create_datasets(files_dict, batch_size, model_features,
 
     """
     ds = {}
+    # create train, validate and test datasets
     for split, files in files_dict.items():
         if split == TRAIN:
+            # create train dataset
             ds[split] = tfrecord_dataset(files=files,
                                          batch_size=batch_size,
                                          map_fn=map_function,
@@ -210,6 +214,7 @@ def create_datasets(files_dict, batch_size, model_features,
                                          )
         elif split == TEST:
             if offline_test:
+                # if offline test, we need to generate bidRequestId for further analysis
                 map_test_func = get_map_function_test(model_features, model_target, "BidRequestId")
                 ds[split] = tfrecord_dataset(files=files,
                                              batch_size=test_batch_size if test_batch_size is not None else batch_size,
@@ -217,6 +222,7 @@ def create_datasets(files_dict, batch_size, model_features,
                                              compression_type=compression_type
                                              )
             else:
+                # if online test, we do not need to generate bidRequestId
                 ds[split] = tfrecord_dataset(files=files,
                                              batch_size=eval_batch_size if eval_batch_size is not None else batch_size,
                                              map_fn=map_function,
@@ -261,12 +267,15 @@ def generate_random_pandas(model_features, model_target, num_examples=1000):
 def prepare_dummy_data(model_features, model_target, batch_size):
     """
     Used for testing. This creates a dummy dataset from random data.
+    Args:
+        model_features: list of model features
+        model_target: model target
+        batch_size: batch size
     """
 
     def generate_tensor_slices(num):
         x, y = generate_random_pandas(model_features, model_target, num)
         return dict(x), y
-
 
     options = tf.data.Options()
     options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.OFF
@@ -301,7 +310,8 @@ def prepare_real_data(model_features, model_target, input_path,
     """
     # print(input_path)
     files = list_tfrecord_files(input_path)
-    # print(files)
+    # validate files and generate files dictionary if VAL or TEST is not in files
+    files = validate_and_generate_files_dict(files)
     if weight_name is not None and weight_value is not None:
         map_func = get_map_function_weighted(model_features, model_target, weight_name, weight_value)
     elif weight_name is None and weight_value is None:
@@ -312,6 +322,43 @@ def prepare_real_data(model_features, model_target, input_path,
                            model_target=model_target, map_function=map_func, compression_type="GZIP",
                            eval_batch_size=eval_batch_size, prefetch_num=prefetch_num, offline_test=offline_test,
                            repeat=repeat)
+
+
+def validate_and_generate_files_dict(files_dict):
+    """
+    validate the files dict
+    if length is 0, raise exception, if length is 1, print only one file and output the key of the item
+    if length is 2, if TRAIN not in the key, raise exception, if TRAIN in the key,
+    find out the key of the other item, shuffle the file list and split the data into TEST and VAL, then return the new dict
+    if length is 3, return the original dict
+    Args:
+        files_dict: dictionary of files
+    returns:
+        new dictionary of files if length is 2, otherwise return the original dictionary if length is 3, otherwise
+        raise exception if length is 0 or 1
+    """
+    empty_removed = dict(filter(lambda pair: True if pair[1] else False, files_dict.items()))
+    if len(empty_removed) == 0:
+        raise Exception('No files found in the input path')
+    elif len(empty_removed) == 1:
+        raise Exception(f'Only {list(files_dict.keys())[0]} found in the input path')
+    elif len(empty_removed) == 2:
+        if TRAIN not in empty_removed.keys():
+            raise Exception('No training data found in the input path')
+        else:
+            key = list(set(empty_removed.keys()) - {TRAIN})[0]
+            # copy files_dict[key] to test_val to avoid changing the original list
+            # create a warning message stating that only key is found, will split it to VAL and TEST evenly
+            warnings.warn(f'Only {key} found in the input path, will split it to VAL and TEST evenly')
+            test_val = empty_removed[key][:]
+            random.shuffle(test_val)
+            new_file_dict = {TRAIN: empty_removed[TRAIN], VAL: test_val[:len(test_val) // 2],
+                             TEST: test_val[len(test_val) // 2:]}
+            return new_file_dict
+    elif len(empty_removed) == 3:
+        return files_dict
+    else:
+        raise Exception('More than 3 files found in the input path')
 
 
 def generate_random_grpc_query(model_features, model_name, version=None):
