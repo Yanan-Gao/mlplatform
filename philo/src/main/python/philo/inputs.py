@@ -95,7 +95,7 @@ def embedding_lookup(sparse_embedding_dict, sparse_input_dict, sparse_feature_co
                     sparse_input_dict[feature_name])
             else:
                 lookup_idx = sparse_input_dict[feature_name]
-
+            # pass input feature through embedding layer
             group_embedding_dict[fc.group_name].append(sparse_embedding_dict[embedding_name](lookup_idx))
     if to_list:
         return list(chain.from_iterable(group_embedding_dict.values()))
