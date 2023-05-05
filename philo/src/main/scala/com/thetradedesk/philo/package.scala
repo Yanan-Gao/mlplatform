@@ -8,7 +8,7 @@ import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
 
-package object philo {
+package object philo { 
 
   /** shift hashed value to positive and reserve 0 for null values
    * copied from plutus
