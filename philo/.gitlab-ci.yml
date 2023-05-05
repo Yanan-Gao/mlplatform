@@ -157,7 +157,6 @@ philo:build_push_release_container:
       changes:
         - "philo/src/main/python/*"
         - "philo/src/main/python/**/*"
-      when: manual
   script:
     - export DOCKER_HOST=$DOCKER_PORT
     - pushd ./philo/src/main/python/
@@ -179,7 +178,6 @@ philo:deploy_release:
         - "philo/src/main/scala/**/*"
         - "philo/build.sbt"
 
-      when: manual
       allow_failure: false
   script:
     - pushd ./philo/
