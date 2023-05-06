@@ -259,6 +259,7 @@ object TrainSetTransformation {
                      realPositives: Dataset[TrainSetRecord],
                      realNegatives: Dataset[TrainSetRecord],
                      desiredNegOverPos:Int = 9,
+                     maxPositiveCount: Int = 500000,
                      maxNegativeCount: Int = 500000,
                      balanceMethod: Option[String] = None,
                      sampleValSet: Boolean = true,
@@ -271,8 +272,8 @@ object TrainSetTransformation {
     balanceMethod match {
       case Some("upsampling") => upSamplingBySamplyByKey(realPositives, realNegatives, desiredNegOverPos, maxNegativeCount, sampleValSet, samplingSeed)
 //        case Some("smote") =>
-      case Some("downsampling") => downsampleNegByKeyByDate(realPositives, realNegatives, desiredNegOverPos, sampleValSet, samplingSeed)
-      case _ => downsampleNegByKeyByDate(realPositives, realNegatives, desiredNegOverPos, sampleValSet, samplingSeed)
+      case Some("downsampling") => downsampleByKeyByDate(realPositives, realNegatives, desiredNegOverPos, maxPositiveCount, sampleValSet, samplingSeed)
+      case _ => downsampleByKeyByDate(realPositives, realNegatives, desiredNegOverPos, maxPositiveCount, sampleValSet, samplingSeed)
     }
 
   }
@@ -378,10 +379,11 @@ object TrainSetTransformation {
 
   }
 
-  def downsampleNegByKeyByDate(
+  def downsampleByKeyByDate(
                                realPositives: Dataset[TrainSetRecord],
                                realNegatives: Dataset[TrainSetRecord],
                                desiredNegOverPos: Int = 9,
+                               maxPositiveCount: Int = 500000,
                                sampleValSet: Boolean = true,
                                samplingSeed: Long
                              ): Tuple2[Dataset[TrainSetRecord], Dataset[TrainSetRecord]] = {
@@ -397,6 +399,10 @@ object TrainSetTransformation {
       .withColumn("LogEntryDate", to_date($"LogEntryTime"))
       .groupBy("DataAggValue", "LogEntryDate")
       .count().withColumnRenamed("count", "PosDailyCount")
+      .withColumn("Ratio", lit(maxPositiveCount) / $"PosDailyCount")
+      .withColumn("Rand", rand(seed = samplingSeed))
+      .filter($"Rand" <= $"Ratio")
+      .drop("Rand", "Ratio")
     val downSampledNegatives = negativeToResample
       .withColumn("LogEntryDate", to_date($"LogEntryTime"))
       .withColumn("NegDailyCount",
