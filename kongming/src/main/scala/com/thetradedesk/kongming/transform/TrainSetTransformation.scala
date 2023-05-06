@@ -399,10 +399,11 @@ object TrainSetTransformation {
       .withColumn("LogEntryDate", to_date($"LogEntryTime"))
       .groupBy("DataAggValue", "LogEntryDate")
       .count().withColumnRenamed("count", "PosDailyCount")
-      .withColumn("Ratio", lit(maxPositiveCount) / $"PosDailyCount")
+      .withColumn("PositiveCount", sum("PosDailyCount").over(Window.partitionBy("DataAggValue")))
+      .withColumn("Ratio", lit(maxPositiveCount) / $"PositiveCount")
       .withColumn("Rand", rand(seed = samplingSeed))
       .filter($"Rand" <= $"Ratio")
-      .drop("Rand", "Ratio")
+      .drop("Rand", "Ratio", "PositiveCount")
     val downSampledNegatives = negativeToResample
       .withColumn("LogEntryDate", to_date($"LogEntryTime"))
       .withColumn("NegDailyCount",
