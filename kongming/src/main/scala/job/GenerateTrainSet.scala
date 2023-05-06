@@ -123,6 +123,7 @@ object GenerateTrainSet {
     val incTrain = config.getBoolean("incTrain", false)
     val trainRatio = config.getDouble("trainRatio", 0.8)
     val desiredNegOverPos = config.getInt(path="desiredPosOverNeg", 9)
+    val maxPositiveCount = config.getInt(path="maxPositiveCount", 500000)
     val maxNegativeCount = config.getInt(path="maxNegativeCount", 500000)
     val balanceMethod = config.getString(path="balanceMethod", "downsampling")
     val sampleValSet = config.getBoolean(path = "sampleValSet", true)
@@ -174,6 +175,7 @@ object GenerateTrainSet {
       aggregatedPositiveSet.withColumn("Weight", lit(1)).selectAs[TrainSetRecord],
       negativeExcludePos.selectAs[TrainSetRecord],
       desiredNegOverPos,
+      maxPositiveCount,
       maxNegativeCount,
       balanceMethod = Some(balanceMethod),
       sampleValSet = sampleValSet,
