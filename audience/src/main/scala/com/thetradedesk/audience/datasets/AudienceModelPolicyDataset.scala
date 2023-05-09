@@ -1,5 +1,5 @@
 package com.thetradedesk.audience.datasets
-
+import com.thetradedesk.audience.ttdEnv
 import com.thetradedesk.audience.datasets.Model.Model
 
 // https://atlassian.thetradedesk.com/confluence/display/EN/RSM+-+Policy+Table
@@ -35,11 +35,17 @@ final case class AudienceModelPolicyRecord(TargetingDataId: Long,
                                            // A tag indicate if we need to include the seed in incremental training
                                            // step based on model performance or other signal from previous date.
                                            // e.g. Underperform, New, Small, etc
-                                           Tag: Int
+                                           Tag: Int,
+                                           // Show how many days the sourceId is inactive
+                                           // devault value is 0  
+                                           ExpiredDays: Int,
                                           )
 
-case class AudienceModelPolicyDataset(model: Model) extends
-  LightReadableDataset[AudienceModelPolicyRecord](s"Data_Science/Hunter/audience_extension/data/RSM/audienceModelPolicy/${model}/v=1", "s3a://thetradedesk-useast-hadoop/")
+case class AudienceModelPolicyWritableDataset(model: Model) extends
+  LightReadableDataset[AudienceModelPolicyRecord](s"configdata/${ttdEnv}/audience/policyTable/${model}/v=1", "s3a://thetradedesk-mlplatform-us-east-1/")
+
+case class AudienceModelPolicyReadableDataset(model: Model) extends
+  LightWritableDataset[AudienceModelPolicyRecord](s"configdata/${ttdEnv}/audience/policyTable/${model}/v=1", "s3a://thetradedesk-mlplatform-us-east-1/", 8)
 
 object Model extends Enumeration {
   type Model = Value
@@ -63,5 +69,5 @@ object CrossDeviceVendor extends Enumeration {
 
 object Tag extends Enumeration {
   type Tag = Value
-  val UnderPerform, New, Small = Value
+  val None, UnderPerform, New, Small, Existing = Value
 }

@@ -4,7 +4,8 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.HashingUtils.userIsInSample
 import com.thetradedesk.spark.util.TTDConfig.config
-
+import com.amazonaws.regions.Regions
+import com.amazonaws.services.s3.AmazonS3ClientBuilder
 import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
@@ -14,6 +15,7 @@ package object audience {
   var ttdEnv = config.getString("ttd.env" , "dev")
   val trainSetDownSampleFactor = config.getInt("trainSetDownSampleFactor", default = 2)
   val sampleHit = config.getString("sampleHit", "0")
+  val s3Client = AmazonS3ClientBuilder.standard.withRegion(Regions.US_EAST_1).build
 
   val userDownSampleBasePopulation = config.getInt("userDownSampleBasePopulation", default = 1000000)
   val userDownSampleHitPopulation = config.getInt("userDownSampleHitPopulation", default = 10000)
