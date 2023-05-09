@@ -3,6 +3,7 @@ package com.thetradedesk.audience.jobs
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.sample.WeightSampling.{getLabels, negativeSampleUDFGenerator, positiveSampleUDFGenerator, zipAndGroupUDFGenerator}
 import com.thetradedesk.audience.transform.ModelFeatureTransform
+import com.thetradedesk.audience.utils.SeedUtils
 import com.thetradedesk.audience.{date, shouldConsiderTDID3}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
@@ -111,7 +112,7 @@ object AudienceModelInputGeneratorJob {
   }
 
   def clusterTargetingData(): Map[(DataSource.DataSource, CrossDeviceVendor.CrossDeviceVendor), Array[AudienceModelPolicyRecord]] = {
-    val policyTable = AudienceModelPolicyDataset(Config.model)
+    val policyTable = AudienceModelPolicyWritableDataset(Config.model)
       .readPartition(date)(spark)
       .where('IsActive)
       .where('Source.isin(Config.supportedDataSources: _*))
@@ -146,10 +147,9 @@ abstract class AudienceModelInputGenerator(name: String) {
     val seenInBiddingLookBack = config.getInt("seenInBiddingLookBack", 0)
 
     // detect recent seed raw data path in airflow and pass to spark job
-    val seedRawDataPath = config.getString("seedRawDataPath", "")
-
-    // detect recent seed metadata path in airflow and pass to spark job
-    val seedMetadataPath = config.getString("seedMetadataPath", "")
+    val seedRawDataRecentVersion = config.getString("seedRawDataRecentVersion", null)
+    val seedRawDataS3Bucket = config.getString("seedRawDataS3Bucket", "ttd-datprd-us-east-1")
+    val seedRawDataS3Path = config.getString("seedRawDataS3Path", "/prod/data/Seed/v=1/SeedId=")
 
     // last n bid impressions we care about
     val lastTouchNumberInBR = config.getInt("lastTouchNumberInBR", 3)
@@ -172,6 +172,8 @@ abstract class AudienceModelInputGenerator(name: String) {
     val labelMaxLength = config.getInt("labelMaxLength", default = 50)
 
     val recordIntermediateResult = config.getBoolean("recordIntermediateResult", default = false)
+
+    val conversionRepartition = config.getInt("conversionRepartition", 2048)
   }
 
   /**
@@ -385,9 +387,10 @@ object AEMConversionInputGenerator extends AudienceModelInputGenerator("AEMConve
         mappingSchema))
 
     ConversionDataset(defaultCloudProvider)
-      .readRange(date.minusDays(Config.conversionLookBack).atStartOfDay(), date.atStartOfDay())
+      .readRange(date.minusDays(Config.conversionLookBack).atStartOfDay(), date.plusDays(1).atStartOfDay())
       .select('TDID, 'TrackingTagId)
       .filter(samplingFunction('TDID))
+      .repartition(Config.conversionRepartition, 'TDID)
       .join(mappingDataset, "TrackingTagId")
       .groupBy('TDID)
       .agg(collect_set('SyntheticId) as "PositiveSyntheticIds")
@@ -427,16 +430,16 @@ object RSMSeedInputGenerator extends AudienceModelInputGenerator("RSMSeed") {
          *
          * @return
          */
-        val seedDataPath = Config.seedRawDataPath + "/" + record.SourceId
+        val seedDataPath = Config.seedRawDataS3Path + record.SourceId
+        val seedDataFullPath = "s3a://" + Config.seedRawDataS3Bucket + seedDataPath
         // todo solve the problem when the current seed is not updated in s3
-        val recentVersionBeforeDate = spark
-          .sparkContext
-          .textFile(seedDataPath + "/_CURRENT")
-          .collect()
-          .apply(0)
-          .trim
+        val recentVersion =
+          if (Config.seedRawDataRecentVersion != null) Config.seedRawDataRecentVersion
+          else SeedUtils.queryCurrentDataVersion(Config.seedRawDataS3Bucket, seedDataPath)
 
-        spark.read.parquet(seedDataPath + "/" + recentVersionBeforeDate)
+        spark.read.parquet(seedDataFullPath + "/" + recentVersion)
+          .select('UserId)
+          .withColumnRenamed("UserId", "TDID")
           .filter(samplingFunction('TDID))
           .withColumn("SyntheticId", lit(record.SyntheticId))
           .select('TDID, 'SyntheticId)
