@@ -55,6 +55,24 @@ object TrainSetTransformation {
                              IsInTrainSet: Boolean
                            )
 
+  case class TrainSetRecordVerbose(
+                                     ConfigKey: String,
+                                     ConfigValue: String,
+                                     DataAggKey: String,
+                                     DataAggValue: String,
+                                     BidRequestId: String,
+                                     TrackingTagId: String,
+
+                                     Weight: Double,
+                                     ConversionTime: java.sql.Timestamp,
+                                     LogEntryTime: java.sql.Timestamp,
+                                     IsInTrainSet: Boolean,
+
+                                     IsClickWindowGreater: Boolean,
+                                     IsInClickAttributionWindow: Boolean,
+                                     IsInViewAttributionWindow: Boolean
+                                  )
+
   case class TrackingTagWeightsRecord(
                                        TrackingTagId: String,
                                        ReportingColumnId: Int,
@@ -256,7 +274,7 @@ object TrainSetTransformation {
   }
 
   def balancePosNeg(
-                     realPositives: Dataset[TrainSetRecord],
+                     realPositives: Dataset[TrainSetRecordVerbose],
                      realNegatives: Dataset[TrainSetRecord],
                      desiredNegOverPos:Int = 9,
                      maxPositiveCount: Int = 500000,
@@ -264,7 +282,7 @@ object TrainSetTransformation {
                      balanceMethod: Option[String] = None,
                      sampleValSet: Boolean = true,
                      samplingSeed: Long
-                   )(implicit prometheus:PrometheusClient): Tuple2[Dataset[TrainSetRecord], Dataset[TrainSetRecord]] = {
+                   )(implicit prometheus:PrometheusClient): Tuple2[Dataset[TrainSetRecordVerbose], Dataset[TrainSetRecord]] = {
 /*
 1. upsampling vs. class weight https://datascience.stackexchange.com/questions/44755/why-doesnt-class-weight-resolve-the-imbalanced-classification-problem/44760#44760
 2. smote: https://github.com/mjuez/approx-smote
@@ -287,13 +305,13 @@ object TrainSetTransformation {
    * @return
    */
   def upSamplingBySamplyByKey(
-                                realPositives: Dataset[TrainSetRecord],
-                                realNegatives: Dataset[TrainSetRecord],
-                                desiredNegOverPos:Int = 9,
-                                maxNegativeCount: Int = 500000,
-                                upSamplingValSet: Boolean = false,
-                                samplingSeed: Long
-                             ): Tuple2[Dataset[TrainSetRecord], Dataset[TrainSetRecord]] ={
+                               realPositives: Dataset[TrainSetRecordVerbose],
+                               realNegatives: Dataset[TrainSetRecord],
+                               desiredNegOverPos:Int = 9,
+                               maxNegativeCount: Int = 500000,
+                               upSamplingValSet: Boolean = false,
+                               samplingSeed: Long
+                             ): Tuple2[Dataset[TrainSetRecordVerbose], Dataset[TrainSetRecord]] ={
 
     // 1. randomly throw out negatives if it's more than maxNegativeCount
     /*
@@ -346,7 +364,7 @@ object TrainSetTransformation {
       .rdd.keyBy(x => ( x.ConfigValue, x.ConfigKey)).sampleByKey(true, posUpSamplingFraction, seed=samplingSeed)
       .map(x=> x._2)
       .toDF()
-      .selectAs[TrainSetRecord]
+      .selectAs[TrainSetRecordVerbose]
 
     val upSampledNeg = negativeToResample
       .join(upSamplingFraction.filter($"UpSamplingNegFraction".isNotNull), Seq("ConfigValue", "ConfigKey"),"leftsemi").selectAs[TrainSetRecord]
@@ -357,7 +375,7 @@ object TrainSetTransformation {
 
     // 5. get non sampled pos and neg
     val nonSampledPos = positivesToResample.join( upSamplingFraction.filter($"UpSamplingPosFraction".isNull), Seq("ConfigValue", "ConfigKey"), "leftsemi")
-      .selectAs[TrainSetRecord]
+      .selectAs[TrainSetRecordVerbose]
 
     val nonSampledNeg = negativeToResample.join( upSamplingFraction.filter($"UpSamplingNegFraction".isNull), Seq( "ConfigValue", "ConfigKey"), "leftsemi")
       .selectAs[TrainSetRecord]
@@ -368,7 +386,7 @@ object TrainSetTransformation {
           //remove config values that are abandoned due to absence of pos or neg by joining with upSamplingFraction
           upSampledPos
             .union(nonSampledPos)
-            .union(realPositives.filter($"IsInTrainSet"===lit(false)).join( upSamplingFraction, Seq("ConfigValue", "ConfigKey"), "leftsemi").selectAs[TrainSetRecord] ),
+            .union(realPositives.filter($"IsInTrainSet"===lit(false)).join( upSamplingFraction, Seq("ConfigValue", "ConfigKey"), "leftsemi").selectAs[TrainSetRecordVerbose] ),
           upSampledNeg
             .union(nonSampledNeg)
             .union(downSampledNegatives.filter($"IsInTrainSet"===lit(false)).join( upSamplingFraction, Seq("ConfigValue", "ConfigKey"), "leftsemi").selectAs[TrainSetRecord])
@@ -380,13 +398,13 @@ object TrainSetTransformation {
   }
 
   def downsampleByKeyByDate(
-                               realPositives: Dataset[TrainSetRecord],
-                               realNegatives: Dataset[TrainSetRecord],
-                               desiredNegOverPos: Int = 9,
-                               maxPositiveCount: Int = 500000,
-                               sampleValSet: Boolean = true,
-                               samplingSeed: Long
-                             ): Tuple2[Dataset[TrainSetRecord], Dataset[TrainSetRecord]] = {
+                             realPositives: Dataset[TrainSetRecordVerbose],
+                             realNegatives: Dataset[TrainSetRecord],
+                             desiredNegOverPos: Int = 9,
+                             maxPositiveCount: Int = 500000,
+                             sampleValSet: Boolean = true,
+                             samplingSeed: Long
+                             ): Tuple2[Dataset[TrainSetRecordVerbose], Dataset[TrainSetRecord]] = {
 
     val (positivesToResample, negativeToResample) = sampleValSet match {
       case false => {
@@ -395,20 +413,24 @@ object TrainSetTransformation {
       case _ => (realPositives, realNegatives)
     }
 
-    val positiveDailyCount = positivesToResample
-      .withColumn("LogEntryDate", to_date($"LogEntryTime"))
-      .groupBy("DataAggValue", "LogEntryDate")
-      .count().withColumnRenamed("count", "PosDailyCount")
-      .withColumn("PositiveCount", sum("PosDailyCount").over(Window.partitionBy("DataAggValue")))
+    val downSampledPositives = positivesToResample
+      .withColumn("PositiveCount", count("BidRequestId").over(Window.partitionBy("DataAggValue")))
       .withColumn("Ratio", lit(maxPositiveCount) / $"PositiveCount")
       .withColumn("Rand", rand(seed = samplingSeed))
       .filter($"Rand" <= $"Ratio")
       .drop("Rand", "Ratio", "PositiveCount")
+
+    val positiveDailyCount = downSampledPositives
+      .withColumn("LogEntryDate", to_date($"LogEntryTime"))
+      .groupBy("DataAggValue", "LogEntryDate")
+      .count()
+      .withColumnRenamed("count", "PosDailyCount")
+
     val downSampledNegatives = negativeToResample
       .withColumn("LogEntryDate", to_date($"LogEntryTime"))
       .withColumn("NegDailyCount",
         count("BidRequestId").over(Window.partitionBy("DataAggValue", "LogEntryDate")))
-      .join(positiveDailyCount, Seq("DataAggValue", "LogEntryDate"), "left")
+      .join(broadcast(positiveDailyCount), Seq("DataAggValue", "LogEntryDate"), "left")
       .withColumn("Ratio", lit(desiredNegOverPos) * $"PosDailyCount" / $"NegDailyCount")
       .withColumn("Rand", rand(seed = samplingSeed))
       .filter($"Rand" <= $"Ratio")
@@ -416,12 +438,12 @@ object TrainSetTransformation {
     sampleValSet match {
       case false => {
         (
-          // positives will not be sampled
-          realPositives,
+          // positives is down sampled also
+          downSampledPositives.selectAs[TrainSetRecordVerbose].union(realPositives.filter($"IsInTrainSet" === lit(false))),
           downSampledNegatives.selectAs[TrainSetRecord].union(realNegatives.filter($"IsInTrainSet" === lit(false)))
         )
       }
-      case _ => (realPositives, downSampledNegatives.selectAs[TrainSetRecord])
+      case _ => (downSampledPositives.selectAs[TrainSetRecordVerbose], downSampledNegatives.selectAs[TrainSetRecord])
     }
   }
 
