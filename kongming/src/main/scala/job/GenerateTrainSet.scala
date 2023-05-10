@@ -172,10 +172,11 @@ object GenerateTrainSet {
       .join(aggregatedPositiveSetHist, Seq("ConfigValue", "ConfigKey", "BidRequestId"), "left_anti")
 
     val balancedTrainset = balancePosNeg(
-      aggregatedPositiveSet.withColumn("Weight", lit(1)).selectAs[TrainSetRecord],
+      aggregatedPositiveSet.withColumn("Weight", lit(1)).selectAs[TrainSetRecordVerbose],
       negativeExcludePos.selectAs[TrainSetRecord],
       desiredNegOverPos,
       maxPositiveCount,
+//      if (incTrain) maxPositiveCount/maxLookback else maxPositiveCount,
       maxNegativeCount,
       balanceMethod = Some(balanceMethod),
       sampleValSet = sampleValSet,
@@ -198,7 +199,7 @@ object GenerateTrainSet {
         "inner"
       ).cache()
 
-    val validPositives = aggregatedPositiveSet.join(dataHaveBothTrainVal, Seq("ConfigValue","ConfigKey" ), "left_semi" )
+    val validPositives = balancedPositives.join(dataHaveBothTrainVal, Seq("ConfigValue","ConfigKey" ), "left_semi" )
     val validNegatives = balancedNegatives.join(dataHaveBothTrainVal, Seq("ConfigValue","ConfigKey"), "left_semi" ).selectAs[TrainSetRecord].cache()
 
 
