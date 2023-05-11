@@ -301,7 +301,7 @@ def main(argv):
     # this serves as the bias term added to the product of Neo outputs, which altogether will feed to the sigmoid
     # function for the final prediction of probability
     bias_term = model_2.layers[-1].get_weights()[0][0]
-    bias_tag = f"{FLAGS.output_path}model/step_3/bias/{FLAGS.model_arch}_{FLAGS.num_epochs}_{FLAGS.dnn_dropout}_{FLAGS.dnn_use_bn}.csv"
+    bias_tag = f"{FLAGS.output_path}model/step_3/bias/bias.csv"
     os.makedirs(os.path.dirname(bias_tag), exist_ok=True)
     with open(bias_tag, 'w') as f:
         f.write(str(bias_term))
@@ -322,11 +322,11 @@ def main(argv):
     path_neo_b = f"{base_s3_path}{NEO_B_OUTPUT}{FLAGS.model_creation_date}"
     path_bias = f"{base_s3_path}{BIAS_OUTPUT}{FLAGS.model_creation_date}"
     print(f"Writing Philo model to {path_philo}...")
-    s3_copy(f"{FLAGS.output_path}model/step_1", path_philo)
+    s3_copy(f"{model_tag_1}", path_philo)
     print(f"Writing Neo AdGroup model to {path_neo_a}...")
-    s3_copy(f"{FLAGS.output_path}model/step_3/neo_a", path_neo_a)
+    s3_copy(f"{model_tag_3_neo_a}", path_neo_a)
     print(f"Writing Neo BidRequest model to {path_neo_b}...")
-    s3_copy(f"{FLAGS.output_path}model/step_3/neo_b", path_neo_b)
+    s3_copy(f"{model_tag_3_neo_b}", path_neo_b)
     print(f"Writing bias term to {path_bias}...")
     s3_copy(f"{FLAGS.output_path}model/step_3/bias", path_bias)
 
