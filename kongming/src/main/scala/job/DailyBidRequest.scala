@@ -26,6 +26,7 @@ object DailyBidRequest {
       bidsImpressionFilterByPolicy,
       adGroupPolicy
     )(prometheus)
+      .dropDuplicates("BidRequestId")
 
     val dailyBrRows = DailyBidRequestDataset().writePartition(filteredBidRequestDS, date, Some(5000))
 
