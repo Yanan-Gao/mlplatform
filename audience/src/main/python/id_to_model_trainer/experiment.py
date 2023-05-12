@@ -48,7 +48,7 @@ class AudienceModelExperiment:
         self.test_as_val = False
 
         # model params initialize
-        self.search_embedding_size = 64
+        self.neo_embedding_size = 64
         self.batch_size = 10240
         self.num_epochs = 12
         self.buffer_size = 1000000
@@ -292,7 +292,7 @@ class AudienceModelExperiment:
         model = models.init_model(
             features.model_features,
             features.model_dim_group,
-            self.search_embedding_size,
+            self.neo_embedding_size,
             self.feature_dim_factor,
             self.num_decision_steps,
             self.relaxation_factor,
@@ -452,7 +452,7 @@ class AudienceModelExperiment:
             # log extra params and metrics
             mlflow.log_params(
                 {
-                    "search_embedding_size": self.search_embedding_size,
+                    "neo_embedding_size": self.neo_embedding_size,
                     "train_batch_size": self.batch_size,
                     "num_epochs": self.num_epochs,
                     "buffer_size": self.buffer_size,

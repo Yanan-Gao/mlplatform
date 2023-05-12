@@ -431,7 +431,7 @@ class TabNet(tf.keras.Model):
 def init_model(
         model_features,
         model_dim_group,
-        search_emb_size,
+        neo_emb_size,
         feature_dim_factor,
         num_decision_steps,
         relaxation_factor=1.5,
@@ -467,6 +467,12 @@ def init_model(
     model_input_layers = layers.concatenate(
         model_input_layers, name="bidimpression_concat_embedding"
     )
+    # to make the output of the bidimpression tensor as long as the neo embedding size
+    model_input_layers = layers.Dense(
+        neo_emb_size,
+        kernel_initializer=tf.keras.initializers.HeNormal(seed=seed),
+        name='bidimpression_neo_embedding',
+    )(model_input_layers)
 
     # model_input_dim = list_to_embedding(model_dim_group[0].name, model_dim_group[0].cardinality, search_emb_size) # model_input_layers.shape[1])
     model_input_dim = list_to_embedding(
@@ -500,10 +506,9 @@ def init_model(
     # residual2 = layers.Lambda(multiply_lambda)([tab, input_layer_dim])
     # residual2 = tf.math.multiply(tf.expand_dims(tab,1), input_layer_dim)
     # output = residual2 * tf.constant(tabnet_factor) + residual1 * embedding_factor
-    output = tf.math.multiply(
-        tf.expand_dims(tab, 1) * tabnet_factor + tf.expand_dims(model_input_layers, 1) * embedding_factor,
-        input_layer_dim,
-    )
+    bidimp = layers.Add(name='bidimpression_result')([tf.expand_dims(tab, 1) * tabnet_factor, tf.expand_dims(model_input_layers, 1) * embedding_factor])
+    output = tf.math.multiply(bidimp, input_layer_dim)
+
     if sum_residual_dropout:
         dr = layers.Dropout(
             seed=seed, rate=sum_residual_dropout_rate, name="layer_sum_residual_dropout"
@@ -519,6 +524,7 @@ def init_model(
     output = layers.Dense(
         1,
         kernel_initializer=tf.keras.initializers.HeNormal(seed=seed),
+        name='predictions_dense_layer'
     )(output)
     output = layers.Activation("sigmoid", dtype="float32", name="predictions")(output)
     output = layers.Flatten(name="Output")(output)
