@@ -14,7 +14,7 @@ import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.transform.TrainSetTransformation._
 import org.apache.spark.sql.types.DoubleType
-import job.DailyOfflineScoringSet.{keptFields, modelKeepFeatureCols, modelKeepFeatureColNames}
+import job.DailyOfflineScoringSet.{BidRequestIdModelFeature, keptFields, modelKeepFeatureColAlias, modelKeepFeatureColNames, modelKeepFeatureCols}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.storage.StorageLevel
 
@@ -115,7 +115,7 @@ object GenerateTrainSet {
 
 
   def main(args: Array[String]): Unit = {
-    val prometheus = new PrometheusClient(KongmingApplicationName, "GenerateTrainSet")
+    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("GenerateTrainSet"))
     val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
     val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
@@ -143,6 +143,7 @@ object GenerateTrainSet {
     val saveParquetData = config.getBoolean("saveParquetData", false)
     val saveTrainingDataAsTFRecord = config.getBoolean("saveTrainingDataAsTFRecord", false)
     val saveTrainingDataAsCSV = config.getBoolean("saveTrainingDataAsCSV", true)
+    val addBidRequestId = config.getBoolean("addBidRequestId", false)
 
     val experimentName = config.getString("trainSetExperimentName" , "")
 
@@ -265,7 +266,12 @@ object GenerateTrainSet {
       outputRowsWrittenGauge.labels("ValidationDataForModelTrainingDataset/ParquetVal").set(parquetValRows)
     }
 
-    val tfDropColumnNames = modelKeepFeatureColNames(keptFields) ++ seqModelFeaturesColNames(seqFields)
+    var tfDropColumnNames = modelKeepFeatureColNames(keptFields) ++ seqModelFeaturesColNames(seqFields)
+    // remove BidRequestId from tfDropColumnNames if we want to add it to trainset
+    if(addBidRequestId) {
+      val bidRequestIdModelFeatureIndex = tfDropColumnNames.indexOf(modelKeepFeatureColAlias(BidRequestIdModelFeature))
+      tfDropColumnNames = tfDropColumnNames.drop(bidRequestIdModelFeatureIndex + 1);
+    }
 
     if (saveTrainingDataAsTFRecord) {
       val tfDS = if (incTrain) DataIncForModelTrainingDataset(experimentName) else DataForModelTrainingDataset(experimentName)

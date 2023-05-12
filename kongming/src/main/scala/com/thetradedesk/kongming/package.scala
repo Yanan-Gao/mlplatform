@@ -27,6 +27,11 @@ package object kongming {
   val policyDate = config.getDate("policydate" , LocalDate.parse("2022-03-15"))
   val samplingSeed = config.getLong(path = "samplingSeed", 42)
   val IdentityHouseholdUnmatchedToken = "unmatched"
+  val JobExperimentName = config.getString("jobExperimentName", "")
+
+  def getJobNameWithExperimentName(jobName: String): String = {
+    if (JobExperimentName == "") jobName else s"Experiment=$JobExperimentName-$jobName"
+  }
 
   def getExperimentPath(experimentName: String): String = {
     var result:String = ""
@@ -38,6 +43,7 @@ package object kongming {
 
     result
   }
+
 
   //TODO: may add some indicator on the list of fields to join based on policy.
   def multiLevelJoinWithPolicy[T: Encoder](

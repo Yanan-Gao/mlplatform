@@ -17,7 +17,7 @@ object ConversionDataDailyProcessor extends Logger{
   val graphThreshold = config.getDouble("graphThreshold", default = 0.01)//TODO: verify what's a good value here.
 
   def main(args: Array[String]): Unit = {
-    val prometheus = new PrometheusClient(KongmingApplicationName, "DailyConversion")
+    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("DailyConversion"))
     val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
     val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")

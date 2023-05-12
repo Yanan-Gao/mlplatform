@@ -1,7 +1,7 @@
 package job
 
 import com.thetradedesk.kongming.datasets.{AdGroupCvrForBiasTuningDataset, AdGroupPolicyDataset, AdGroupPolicyMappingDataset, ImpressionForIsotonicRegDataset, UnifiedAdGroupDataSet}
-import com.thetradedesk.kongming.{KongmingApplicationName, OutputRowCountGaugeName, RunTimeGaugeName, date, policyDate, samplingSeed}
+import com.thetradedesk.kongming.{KongmingApplicationName, OutputRowCountGaugeName, RunTimeGaugeName, date, getJobNameWithExperimentName, policyDate, samplingSeed}
 import com.thetradedesk.kongming.transform.TrainSetTransformation.{TrackingTagWeightsRecord, getWeightsForTrackingTags}
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -18,7 +18,7 @@ object OfflineScoringSetAttribution{
 
   def main(args: Array[String]): Unit = {
 
-    val prometheus = new PrometheusClient(KongmingApplicationName, "OfflineScoringSetAttribution")
+    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("OfflineScoringSetAttribution"))
     val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
     val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")

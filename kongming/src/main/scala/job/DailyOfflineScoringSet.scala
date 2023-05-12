@@ -15,15 +15,19 @@ import job.GenerateTrainSet.{modelDimensions, modelFeatures, seqFields}
 
 object DailyOfflineScoringSet {
 
-  val keptFields: Array[ModelFeature] = Array(
-    ModelFeature("BidRequestId", STRING_FEATURE_TYPE, None, 0),
+  val BidRequestIdModelFeature = ModelFeature("BidRequestId", STRING_FEATURE_TYPE, None, 0)
+  val NonBidRequestIdModelFeatures = Array(
     ModelFeature("AdGroupId", STRING_FEATURE_TYPE, None, 0),
     ModelFeature("CampaignId", STRING_FEATURE_TYPE, None, 0),
     ModelFeature("AdvertiserId", STRING_FEATURE_TYPE, None, 0)
   )
+  val keptFields = Array(BidRequestIdModelFeature) ++ NonBidRequestIdModelFeatures
 
   def modelKeepFeatureCols(features: Seq[ModelFeature]): Array[Column] = {
-    features.map(f => col(f.name).alias(f.name+"Str")).toArray
+    features.map(f => col(f.name).alias(modelKeepFeatureColAlias(f))).toArray
+  }
+  def modelKeepFeatureColAlias(f: ModelFeature): String = {
+    f.name + "Str"
   }
 
   def modelKeepFeatureColNames(features: Seq[ModelFeature]): Array[String] = {
@@ -36,7 +40,7 @@ object DailyOfflineScoringSet {
 
   def main(args: Array[String]): Unit = {
 
-    val prometheus = new PrometheusClient(KongmingApplicationName, "DailyOfflineScoringSet")
+    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("DailyOfflineScoringSet"))
     val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
     val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
