@@ -36,7 +36,7 @@ object PositiveLabelGenerator extends Logger{
     //indicating long vs short window and use weight to differenciate them.
 
     //load config datasets
-    val prometheus = new PrometheusClient(KongmingApplicationName, "PositiveLabeling")
+    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("PositiveLabeling"))
     val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
     val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")

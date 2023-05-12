@@ -158,7 +158,7 @@ object AdGroupPolicyGenerator {
 
   def main(args: Array[String]): Unit = {
 
-    val prometheus = new PrometheusClient(KongmingApplicationName, "GenerateAdGroupPolicy")
+    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("GenerateAdGroupPolicy"))
     val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
     val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")

@@ -15,7 +15,7 @@ import java.time.LocalDate
 object GenerateTrainSetFeatureMapping {
   val fixedDateParquet = LocalDate.of(2022, 11,15)
   def main(args: Array[String]): Unit = {
-    val prometheus = new PrometheusClient(KongmingApplicationName, "GenerateTrainSetFeatureMapping")
+    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("GenerateTrainSetFeatureMapping"))
     val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
     val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
