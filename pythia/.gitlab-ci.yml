@@ -1,13 +1,212 @@
-pythia:build:
-  stage: test
+variables:
+  SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+  PYTHIA_JAR_NAME: "pythia.jar"
+  FEATURES_JSON: "features.json"
+  PYTHIA_LIBS_S3_LOCATION: "s3://thetradedesk-mlplatform-us-east-1/libs/pythia"
+  PYTHIA_MERGEREQUESTS_JAR_FOLDER: "$PYTHIA_LIBS_S3_LOCATION/jars/mergerequests"
+  PYTHIA_SNAPSHOTS_JAR_FOLDER: "$PYTHIA_LIBS_S3_LOCATION/jars/snapshots"
+  PYTHIA_PROD_JAR_FOLDER: "$PYTHIA_LIBS_S3_LOCATION/jars/prod"
+  PYTHIA_ASSEMBLY_OUT: "$CI_PROJECT_DIR/pythia/target/scala-2.12/pythia.jar"
+  PYTHIA_SCRIPTS_SOURCE: "src/main/python"
+  PYTHIA_MODEL_RUN_SCRIPT: "modelrun.sh"
+  PYTHIA_DATA_SYNC_SCRIPT: "datasync.sh"
+  PYTHIA_SETUP_SCRIPT: "clustersetup.sh"
+  PYTHIA_SCRIPTS_DEST: "$PYTHIA_LIBS_S3_LOCATION/scripts/"
+  PYTHIA_FEATURES_DEST: "$PYTHIA_LIBS_S3_LOCATION/features/"
+  PYTHIA_MERGEREQUESTS_FEATURES_DEST: "$PYTHIA_LIBS_S3_LOCATION/features/mergerequests/$CI_COMMIT_REF_SLUG/"
+  PYTHIA_MERGEREQUESTS_SCRIPTS_DEST: "$PYTHIA_LIBS_S3_LOCATION/scripts/mergerequests/$CI_COMMIT_REF_SLUG/"
+  PYTHON_BUILD_IMAGE: "python:3.8"
+  PYTHON_BUILDX_IMAGE: "production.docker.adsrvr.org/ttd-base/mlops/mlops_infra_build:0.2.0"
+  PYTHIA_TRAINING_IMAGE: "pythia-training"
+
+
+# this section will run scala tests.
+# uncomment when scala tests exist.
+
+#pythia:test:
+#  image: "$SCALA_BUILD_IMAGE_2_13_0"
+#  stage: test
+#  cache:
+#    policy: pull
+#  rules:
+#    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+#      changes:
+#        - "pythia/src/**/*"
+#        - "pythia/build.sbt"
+#    - if: '$CI_COMMIT_BRANCH == "master"'
+#      changes:
+#        - "pythia/src/**/*"
+#        - "pythia/build.sbt"
+#  before_script:
+#    # we don't need to set up the machine for S3 in order to run tests
+#    - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
+#  script:
+#    - pushd ./pythia/
+#    - sbt test
+#    - popd
+#    - echo "ran pythia_test"
+
+
+# this section will push "bits" aka the .jar file
+# namespaced for a specific merge request. This makes testing easier.
+
+pythia:push_bits_merge_request:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: assembly_upload
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
-        - "pythia/*"
+        - "pythia/src/**/*"
+        - "pythia/build.sbt"
+  script:
+    - pushd ./pythia/
+    - sbt "set test in assembly := {}" clean assembly
+    - DEST=${PYTHIA_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - aws s3 cp ${PYTHIA_ASSEMBLY_OUT} ${DEST}/${PYTHIA_JAR_NAME}
+    - popd
+    - echo "ran PYTHIA_push_bits_merge_request"
+
+# this section will push "bits" aka the .jar file to the prod location.
+
+pythia:push_bits_master_snapshot:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: assembly_upload
+  rules:
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
-        - "pythia/*"
+        - "pythia/src/**/*"
+        - "pythia/build.sbt"
+  script:
+    - pushd ./pythia/
+    - sbt "set test in assembly := {}" clean assembly
+    - DEST=${PYTHIA_SNAPSHOTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - aws s3 cp ${PYTHIA_ASSEMBLY_OUT} ${DEST}/${PYTHIA_JAR_NAME}
+    - popd
+    - echo "ran PYTHIA_push_bits_master_snapshot"
+
+
+# this step will push cluster automation scripts to s3.
+# uncomment when those scripts or equivalent are present
+
+#pythia:push_scripts:
+#  image: "$PYTHON_BUILD_IMAGE"
+#  stage: assembly_upload
+#  rules:
+#    - if: '$CI_COMMIT_BRANCH == "master"'
+#      changes:
+#        - "pythia/src/main/python/modelrun.sh"
+#        - "pythia/src/main/python/clustersetup.sh"
+#        - "pythia/src/main/python/datasync.sh"
+#        - "pythia/src/main/python/features.json"
+#  script:
+#    - pushd ./pythia/
+#    - aws s3 cp ${PYTHIA_SCRIPTS_SOURCE}/${PYTHIA_SETUP_SCRIPT} ${PYTHIA_SCRIPTS_DEST}
+#    - aws s3 cp ${PYTHIA_SCRIPTS_SOURCE}/${PYTHIA_MODEL_RUN_SCRIPT} ${PYTHIA_SCRIPTS_DEST}
+#    - aws s3 cp ${PYTHIA_SCRIPTS_SOURCE}/${PYTHIA_DATA_SYNC_SCRIPT} ${PYTHIA_SCRIPTS_DEST}
+#    - aws s3 cp ${PYTHIA_SCRIPTS_SOURCE}/${FEATURES_JSON} ${PYTHIA_FEATURES_DEST}
+#    - popd
+#    - echo "ran push_set_scripts"
+
+# this will also push cluster automation scripts,
+# but namespace them for a specific merge request to enable pre-merge testing.
+# uncomment when the scripts exist
+
+#pythia:push_scripts_merge_request:
+#  image: "$PYTHON_BUILD_IMAGE"
+#  stage: assembly_upload
+#  rules:
+#    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+#      changes:
+#        - "pythia/**/*"
+#  script:
+#    - pushd ./pythia/
+#    - aws s3 cp ${PYTHIA_SCRIPTS_SOURCE}/${PYTHIA_SETUP_SCRIPT} ${PYTHIA_MERGEREQUESTS_SCRIPTS_DEST}
+#    - aws s3 cp ${PYTHIA_SCRIPTS_SOURCE}/${PYTHIA_MODEL_RUN_SCRIPT} ${PYTHIA_MERGEREQUESTS_SCRIPTS_DEST}
+#    - aws s3 cp ${PYTHIA_SCRIPTS_SOURCE}/${PYTHIA_DATA_SYNC_SCRIPT} ${PYTHIA_MERGEREQUESTS_SCRIPTS_DEST}
+#    - aws s3 cp ${PYTHIA_SCRIPTS_SOURCE}/${FEATURES_JSON} ${PYTHIA_MERGEREQUESTS_FEATURES_DEST}
+#    - popd
+#    - echo "ran push_set_scripts"
+
+# this step builds and pushes the docker container for training.
+# it wraps all the python code inside the container, builds, and pushes it to nexus.!reference:
+# on EMR, we just need to pull down the container and run it.
+# this step specifically will namespace the training image for your branch.
+# e.g. pythia-training:mem-datperf-2098-testing-thing
+
+pythia:build_push_training_container:
+  image: "$PYTHON_BUILDX_IMAGE"
+  stage: test
+  services:
+    - docker:dind
+  variables:
+    DOCKER_BUILDKIT: 1
+    DOCKER_CLI_EXPERIMENTAL: "enabled"
   before_script:
-    - echo "hello world"
-  script: 
-    - echo "Just a placeholder for now" 
+    - echo 'deb http://archive.debian.org/debian stretch main' >> /etc/apt/sources.list
+    - apt update
+    - apt-get install docker.io -y
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "pythia/src/main/python/*"
+        - "pythia/src/main/python/**/*"
+      when: manual
+  script:
+    - export DOCKER_HOST=$DOCKER_PORT
+    - pushd ./pythia/src/main/python/
+    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
+    - docker buildx build --secret id=PYPI_READ_USERNAME --secret id=PYPI_READ_PASSWORD -f Dockerfile.prod -t ${PYTHIA_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} .
+    - docker tag ${PYTHIA_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} ${DOCKER_INTERNAL_REGISTRY}/${PYTHIA_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
+    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PYTHIA_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
+    - popd
+    - echo "latest training container pushed to ${DOCKER_INTERNAL_REGISTRY}/${PYTHIA_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}"
+
+# same as the above, but this one will push the release training container.!reference:
+# the release container will be tagged like pythia-training:release.
+
+pythia:build_push_release_container:
+  image: "$PYTHON_BUILDX_IMAGE"
+  stage: deploy
+  services:
+    - docker:dind
+  variables:
+    DOCKER_BUILDKIT: 1
+    DOCKER_CLI_EXPERIMENTAL: "enabled"
+  before_script:
+    - echo 'deb http://archive.debian.org/debian stretch main' >> /etc/apt/sources.list
+    - apt update
+    - apt-get install docker.io -y
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "pythia/src/main/python/*"
+        - "pythia/src/main/python/**/*"
+  script:
+    - export DOCKER_HOST=$DOCKER_PORT
+    - pushd ./pythia/src/main/python/
+    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
+    - docker buildx build --secret id=PYPI_READ_USERNAME --secret id=PYPI_READ_PASSWORD -f Dockerfile.prod -t ${PYTHIA_TRAINING_IMAGE}:release .
+    - docker tag ${PYTHIA_TRAINING_IMAGE}:release ${DOCKER_INTERNAL_REGISTRY}/${PYTHIA_TRAINING_IMAGE}:release
+    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PYTHIA_TRAINING_IMAGE}:release
+    - popd
+    - echo "latest training container pushed"
+
+# this step will build the jar and copy it to the release location on s3.
+
+pythia:deploy_release:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "pythia/src/main/scala/*"
+        - "pythia/src/main/scala/**/*"
+        - "pythia/build.sbt"
+
+      allow_failure: false
+  script:
+    - pushd ./pythia/
+    - sbt "set test in assembly := {}" clean assembly
+    - aws s3 cp ${PYTHIA_ASSEMBLY_OUT} ${PYTHIA_PROD_JAR_FOLDER}/${PYTHIA_JAR_NAME}
+    - popd
+    - echo "ran pythia_deploy_release"
