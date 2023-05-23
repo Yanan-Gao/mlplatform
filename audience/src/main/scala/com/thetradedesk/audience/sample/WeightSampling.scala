@@ -2,9 +2,8 @@ package com.thetradedesk.audience.sample
 
 import com.thetradedesk.audience.datasets.AudienceModelPolicyRecord
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types._
 
-import scala.util.Random
+import java.util.concurrent.ThreadLocalRandom
 
 object WeightSampling {
 
@@ -22,7 +21,7 @@ object WeightSampling {
               true
             }
             else {
-              val randomValue = Random.nextDouble()
+              val randomValue = ThreadLocalRandom.current().nextDouble()
               randomValue < math.pow(upperThreshold / e._2.Size, smoothingFactor)
             }
           })
@@ -31,10 +30,10 @@ object WeightSampling {
       })
 
   val negativeSampleUDFGenerator = {
-    (aboveThresholdPolicyTable: Array[AudienceModelPolicyRecord], upperThreshold: Double, labelDatasetSize: Int) =>
+    (aboveThresholdPolicyTable: Array[AudienceModelPolicyRecord], upperThreshold: Double, labelDatasetSize: Long) =>
       udf((negSize: Int) => {
         val negativeSyntheticIdsWithPolicy = aboveThresholdPolicyTable
-          .map(e => (e, Random.nextDouble()))
+          .map(e => (e, ThreadLocalRandom.current().nextDouble()))
 
         //        val adjustedWeights = negativeSyntheticIdsWithPolicy
         //          .map(e => if (e._1.Size > upper_threshold) (e._1.Size / all_seed_size, upper_threshold / all_seed_size) else (e._1.Size / all_seed_size, e._1.Size / all_seed_size))
@@ -51,11 +50,11 @@ object WeightSampling {
       })
   }
 
-  val getLabels = udf((ids: Seq[Int], label: Int) => Seq.fill(ids.length)(label))
+  val getLabels = (label: Float) => udf((ids: Seq[Int]) => Seq.fill(ids.length)(label))
 
   val zipAndGroupUDFGenerator =
     (maxLength: Int) =>
-      udf((ids: Seq[Int], targets: Seq[Int]) => {
+      udf((ids: Seq[Int], targets: Seq[Float]) => {
         ids.zip(targets).grouped(maxLength).toArray
       })
 

@@ -1,6 +1,6 @@
 package com.thetradedesk.audience.datasets
 
-import com.thetradedesk.audience.ttdEnv
+import com.thetradedesk.audience.{audienceResultCoalesce, audienceVersionDateFormat, ttdEnv}
 import com.thetradedesk.audience.transform.FeatureDesc
 
 import java.sql.Timestamp
@@ -55,8 +55,8 @@ final case class AudienceModelInputRecord(
                                                   Latitude: Double,
                                                   Longitude: Double,
 
-                                                  Labels: Seq[Int],
-                                                  Targets: Seq[Int],
+                                                  SyntheticIds: Seq[Int],
+                                                  Targets: Seq[Float],
                                                   TDID: String,
                                                   BidRequestId: String,
                                                   AdvertiserId: String,
@@ -65,4 +65,4 @@ final case class AudienceModelInputRecord(
                                                 )
 
 case class AudienceModelInputDataset(model: String, tag: String, version: Int = 1) extends
-  LightWritableDataset[AudienceModelInputRecord](s"/${ttdEnv}/audience/${model}/${tag}/v=${version}", S3Roots.ML_PLATFORM_ROOT, 100)
+  LightWritableDataset[AudienceModelInputRecord](s"/${ttdEnv}/audience/${model}/${tag}/v=${version}", S3Roots.ML_PLATFORM_ROOT, audienceResultCoalesce, dateFormat = audienceVersionDateFormat)

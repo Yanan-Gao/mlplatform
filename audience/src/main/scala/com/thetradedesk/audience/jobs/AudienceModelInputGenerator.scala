@@ -3,8 +3,8 @@ package com.thetradedesk.audience.jobs
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.sample.WeightSampling.{getLabels, negativeSampleUDFGenerator, positiveSampleUDFGenerator, zipAndGroupUDFGenerator}
 import com.thetradedesk.audience.transform.ModelFeatureTransform
-import com.thetradedesk.audience.utils.SeedUtils
-import com.thetradedesk.audience.{date, shouldConsiderTDID3}
+import com.thetradedesk.audience.utils.S3Utils
+import com.thetradedesk.audience.{dateTime, shouldConsiderTDID3, ttdEnv}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -26,7 +26,7 @@ object AudienceModelInputGeneratorJob {
     val supportedDataSources = config.getStringRequired("supportedDataSources").split(',')
       .map(dataSource => DataSource.withName(dataSource).id)
 
-    val seedToSplitDataset = config.getStringRequired("seedToSplitDataset")
+    val saltToSplitDataset = config.getStringRequired("saltToSplitDataset")
 
     val validateDatasetSplitModule = config.getInt("validateDatasetSplitModule", default = 5)
 
@@ -46,6 +46,7 @@ object AudienceModelInputGeneratorJob {
 
   def runETLPipeline(): Unit = {
     val policyTable = clusterTargetingData()
+    val date = dateTime.toLocalDate
 
     policyTable.foreach(typePolicyTable => {
       val dataset = {
@@ -69,17 +70,17 @@ object AudienceModelInputGeneratorJob {
       }
 
       val resultSet = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](dataset)
-        .withColumn("SplitRemainder", hash(concat('TDID, lit(Config.seedToSplitDataset))) % Config.validateDatasetSplitModule)
+        .withColumn("SplitRemainder", hash(concat('TDID, lit(Config.saltToSplitDataset))) % Config.validateDatasetSplitModule)
         .withColumn("SubFolder",
-          when('SplitRemainder === lit(SubFolder.Val.id), SubFolder.Val.toString)
-            .when('SplitRemainder === lit(SubFolder.Holdout.id), SubFolder.Holdout.toString)
-            .otherwise(SubFolder.Train.toString))
+          when('SplitRemainder === lit(SubFolder.Val.id), SubFolder.Val.id)
+            .when('SplitRemainder === lit(SubFolder.Holdout.id), SubFolder.Holdout.id)
+            .otherwise(SubFolder.Train.id))
 
       resultSet.cache()
 
       AudienceModelInputDataset(Config.model.toString, s"${typePolicyTable._1._1}_${typePolicyTable._1._2}").writePartition(
         resultSet.filter('SubFolder === lit(SubFolder.Val.id)).as[AudienceModelInputRecord],
-        date,
+        dateTime,
         subFolderKey = Some(Config.subFolder),
         subFolderValue = Some(SubFolder.Val.toString),
         format = Some("tfrecord"),
@@ -89,7 +90,7 @@ object AudienceModelInputGeneratorJob {
       if (Config.persistHoldoutSet) {
         AudienceModelInputDataset(Config.model.toString, s"${typePolicyTable._1._1}_${typePolicyTable._1._2}").writePartition(
           resultSet.filter('SubFolder === lit(SubFolder.Holdout.id)).as[AudienceModelInputRecord],
-          date,
+          dateTime,
           subFolderKey = Some(Config.subFolder),
           subFolderValue = Some(SubFolder.Holdout.toString),
           format = Some("tfrecord"),
@@ -99,7 +100,7 @@ object AudienceModelInputGeneratorJob {
 
       AudienceModelInputDataset(Config.model.toString, s"${typePolicyTable._1._1}_${typePolicyTable._1._2}").writePartition(
         resultSet.filter('SubFolder === lit(SubFolder.Train.id)).as[AudienceModelInputRecord],
-        date,
+        dateTime,
         subFolderKey = Some(Config.subFolder),
         subFolderValue = Some(SubFolder.Train.toString),
         format = Some("tfrecord"),
@@ -112,8 +113,8 @@ object AudienceModelInputGeneratorJob {
   }
 
   def clusterTargetingData(): Map[(DataSource.DataSource, CrossDeviceVendor.CrossDeviceVendor), Array[AudienceModelPolicyRecord]] = {
-    val policyTable = AudienceModelPolicyWritableDataset(Config.model)
-      .readPartition(date)(spark)
+    val policyTable = AudienceModelPolicyReadableDataset(Config.model)
+      .readSinglePartition(dateTime)(spark)
       .where('IsActive)
       .where('Source.isin(Config.supportedDataSources: _*))
       .collect()
@@ -129,12 +130,14 @@ object AudienceModelInputGeneratorJob {
  */
 abstract class AudienceModelInputGenerator(name: String) {
 
-  val samplingFunction = shouldConsiderTDID3(_, config.getInt(s"userDownSampleHitPopulation${name}", default = 1000000))
+  val samplingFunction = shouldConsiderTDID3(config.getInt(s"userDownSampleHitPopulation${name}", default = 1000000), config.getStringRequired(s"saltToSampleUser${name}"))(_)
   val prometheus = new PrometheusClient("AudienceModel", name)
   val mappingFunctionGenerator =
     (dictionary: Map[Any, Int]) =>
       udf((values: Array[Any]) =>
         values.filter(dictionary.contains).map(dictionary.getOrElse(_, -1)))
+
+  val stringEqUdf = udf((l: String, r: String) => l == r)
 
   /**
    * Common configurations could be put here
@@ -148,8 +151,8 @@ abstract class AudienceModelInputGenerator(name: String) {
 
     // detect recent seed raw data path in airflow and pass to spark job
     val seedRawDataRecentVersion = config.getString("seedRawDataRecentVersion", null)
-    val seedRawDataS3Bucket = config.getString("seedRawDataS3Bucket", "ttd-datprd-us-east-1")
-    val seedRawDataS3Path = config.getString("seedRawDataS3Path", "/prod/data/Seed/v=1/SeedId=")
+    val seedRawDataS3Bucket = S3Utils.refinePath(config.getString("seedRawDataS3Bucket", "ttd-datprd-us-east-1"))
+    val seedRawDataS3Path = S3Utils.refinePath(config.getString("seedRawDataS3Path", "prod/data/Seed/v=1/SeedId="))
 
     // last n bid impressions we care about
     val lastTouchNumberInBR = config.getInt("lastTouchNumberInBR", 3)
@@ -173,7 +176,9 @@ abstract class AudienceModelInputGenerator(name: String) {
 
     val recordIntermediateResult = config.getBoolean("recordIntermediateResult", default = false)
 
-    val conversionRepartition = config.getInt("conversionRepartition", 2048)
+    val bidImpressionRepartitionNumAfterFilter = config.getInt("bidImpressionRepartitionNumAfterFilter", 8192)
+
+    val seedCoalesceAfterFilter = config.getInt("seedCoalesceAfterFilter", 3)
   }
 
   /**
@@ -188,18 +193,19 @@ abstract class AudienceModelInputGenerator(name: String) {
     val filteredLabels = rawLabels.join(uniqueTDIDs, Seq("TDID"), "inner")
 
     if (Config.recordIntermediateResult) {
-      filteredLabels.write.parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/dev/audience/firstPartyPixel/uniEtlTestIntermediate/${name}/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
+      filteredLabels.write.parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
     }
 
     val refinedLabels = sampleLabels(filteredLabels, policyTable)
 
     val roughResult = bidsImpressionsLong
-      .drop("TDID", "CampaignId", "LogEntryTime")
+      .drop("CampaignId", "LogEntryTime")
       .join(
         refinedLabels
           .join(
             sampledBidsImpressionsKeys, Seq("TDID"), "inner"),
-        Seq("BidRequestId"), "inner")
+        Seq("TDID", "BidRequestId"), "inner")
+//      .where(stringEqUdf('BidRequestId, 'BidRequestId2))
 
     refineResult(roughResult)
   }
@@ -271,6 +277,7 @@ abstract class AudienceModelInputGenerator(name: String) {
       .withColumn("Latitude", when('Latitude.isNotNull, 'Latitude).otherwise(0))
       .withColumn("Longitude", ('Longitude + lit(180.0)) / lit(360.0)) //-180 - 180
       .withColumn("Longitude", when('Longitude.isNotNull, 'Longitude).otherwise(0))
+      .repartition(Config.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .cache()
 
     val sampledBidsImpressionsKeys = ApplyNLastTouchOnSameTdid(
@@ -289,7 +296,7 @@ abstract class AudienceModelInputGenerator(name: String) {
       .filter('row <= Config.lastTouchNumberInBR)
       .drop('LogEntryTime)
       .drop('row)
-      .cache()
+//      .withColumnRenamed("BidRequestId", "BidRequestId2")
   }
 
   /** https://atlassian.thetradedesk.com/confluence/display/EN/ETL+and+model+training+pipline+based+on+SIB+dataset
@@ -313,7 +320,7 @@ abstract class AudienceModelInputGenerator(name: String) {
       Config.positiveSampleLowerThreshold,
       Config.positiveSampleSmoothingFactor)
 
-    val labelDatasetSize = labels.count().toInt
+    val labelDatasetSize = labels.count()
 
     val aboveThresholdPolicyTable = policyTable
       .filter(e => e.Size >= Config.positiveSampleLowerThreshold)
@@ -328,15 +335,15 @@ abstract class AudienceModelInputGenerator(name: String) {
       .withColumn("PositiveSamples", positiveSampleUDF('PositiveSyntheticIds))
       .withColumn("NegativeSamples", negativeSampleUDF(lit(Config.negativeSampleRatio) * size(col("PositiveSamples"))))
       .withColumn("NegativeSamples", array_except(col("NegativeSamples"), 'PositiveSyntheticIds))
-      .withColumn("PositiveTargets", getLabels($"PositiveSamples", lit(1)))
-      .withColumn("NegativeTargets", getLabels($"NegativeSamples", lit(0)))
-      .withColumn("Labels", concat($"PositiveSamples", $"NegativeSamples"))
+      .withColumn("PositiveTargets", getLabels(1f)($"PositiveSamples"))
+      .withColumn("NegativeTargets", getLabels(0f)($"NegativeSamples"))
+      .withColumn("SyntheticIds", concat($"PositiveSamples", $"NegativeSamples"))
       .withColumn("Targets", concat($"PositiveTargets", $"NegativeTargets"))
-      .select('TDID, 'Labels, 'Targets)
+      .select('TDID, 'SyntheticIds, 'Targets)
       // partialy explode the result to keep the target array within the max length
-      .withColumn("ZippedTargets", zipAndGroupUDFGenerator(Config.labelMaxLength)('Labels, 'Targets))
+      .withColumn("ZippedTargets", zipAndGroupUDFGenerator(Config.labelMaxLength)('SyntheticIds, 'Targets))
       .select(col("TDID"), explode(col("ZippedTargets")).as("ZippedTargets"))
-      .select(col("TDID"), col("ZippedTargets").getField("_1").as("Labels"), col("ZippedTargets").getField("_2").as("Targets"))
+      .select(col("TDID"), col("ZippedTargets").getField("_1").as("SyntheticIds"), col("ZippedTargets").getField("_2").as("Targets"))
 
     labelResult
   }
@@ -390,7 +397,7 @@ object AEMConversionInputGenerator extends AudienceModelInputGenerator("AEMConve
       .readRange(date.minusDays(Config.conversionLookBack).atStartOfDay(), date.plusDays(1).atStartOfDay())
       .select('TDID, 'TrackingTagId)
       .filter(samplingFunction('TDID))
-      .repartition(Config.conversionRepartition, 'TDID)
+      .repartition(Config.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .join(mappingDataset, "TrackingTagId")
       .groupBy('TDID)
       .agg(collect_set('SyntheticId) as "PositiveSyntheticIds")
@@ -413,7 +420,7 @@ object RSMSeedInputGenerator extends AudienceModelInputGenerator("RSMSeed") {
    * @return
    */
   override def generateLabels(date: LocalDate, policyTable: Array[AudienceModelPolicyRecord]): DataFrame = {
-    policyTable.map(
+    policyTable.par.map(
       record => {
         /**
          * seed data is stored in the following format, we want to use the recent date to process
@@ -431,20 +438,22 @@ object RSMSeedInputGenerator extends AudienceModelInputGenerator("RSMSeed") {
          * @return
          */
         val seedDataPath = Config.seedRawDataS3Path + record.SourceId
-        val seedDataFullPath = "s3a://" + Config.seedRawDataS3Bucket + seedDataPath
+        val seedDataFullPath = "s3a://" + Config.seedRawDataS3Bucket + "/" + seedDataPath
         // todo solve the problem when the current seed is not updated in s3
         val recentVersion =
           if (Config.seedRawDataRecentVersion != null) Config.seedRawDataRecentVersion
-          else SeedUtils.queryCurrentDataVersion(Config.seedRawDataS3Bucket, seedDataPath)
+          else S3Utils.queryCurrentDataVersion(Config.seedRawDataS3Bucket, seedDataPath)
 
         spark.read.parquet(seedDataFullPath + "/" + recentVersion)
           .select('UserId)
           .withColumnRenamed("UserId", "TDID")
           .filter(samplingFunction('TDID))
+          .coalesce(Config.seedCoalesceAfterFilter)
           .withColumn("SyntheticId", lit(record.SyntheticId))
           .select('TDID, 'SyntheticId)
       }
-    ).reduce(_ unionAll _)
+    ).seq.reduce(_ unionAll _)
+      .repartition(Config.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .groupBy('TDID)
       .agg(collect_list('SyntheticId) as "PositiveSyntheticIds")
       .cache()

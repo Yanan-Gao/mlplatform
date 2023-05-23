@@ -4,10 +4,9 @@ import com.thetradedesk.geronimo.shared.{loadParquetData, loadParquetDataHourly,
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.io.FSUtils
-
 import org.apache.spark.sql.{Dataset, SaveMode, SparkSession}
 
-import java.time.LocalDate
+import java.time.{LocalDate, LocalDateTime}
 import java.time.format.DateTimeFormatter
 import scala.reflect.runtime.universe._
 
@@ -25,13 +24,21 @@ abstract class LightDataset(dataSetPath: String,
   lazy val crossDeviceDateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
   def DatePartitionedPath(
-                           date: Option[LocalDate] = None,
+                           partition: Option[Any] = None,
                            subFolderKey: Option[String] = None,
                            subFolderValue: Option[String] = None): String = {
-    date match {
-      case Some(date) => subFolderKey match {
-        case Some(subFolderKey) => s"$basePath/date=${date.format(dateFormatter)}/$subFolderKey=${subFolderValue.getOrElse("")}"
-        case _ => s"$basePath/date=${date.format(dateFormatter)}"
+    partition match {
+      case Some(localDate: LocalDate) => subFolderKey match {
+        case Some(subFolderKey) => s"$basePath/date=${localDate.format(dateFormatter)}/$subFolderKey=${subFolderValue.getOrElse("")}"
+        case _ => s"$basePath/date=${localDate.format(dateFormatter)}"
+      }
+      case Some(localDateTime: LocalDateTime) => subFolderKey match {
+        case Some(subFolderKey) => s"$basePath/${localDateTime.format(dateFormatter)}/$subFolderKey=${subFolderValue.getOrElse("")}"
+        case _ => s"$basePath/${localDateTime.format(dateFormatter)}"
+      }
+      case Some(value: String) => subFolderKey match {
+        case Some(subFolderKey) => s"$basePath/$value/$subFolderKey=${subFolderValue.getOrElse("")}"
+        case _ => s"$basePath/$value"
       }
       case _ => subFolderKey match {
         case Some(subFolderKey) => s"$basePath/$subFolderKey=${subFolderValue.getOrElse("")}"
@@ -49,12 +56,7 @@ object LightDataset {
 
   // remove slash letter with head and tail
   private def TrimPath(path: String): String = {
-    path match {
-      case x if x.startsWith("/") && x.endsWith("/") => x.substring(1, x.length - 1)
-      case x if x.endsWith("/") => x.substring(0, x.length - 1)
-      case x if x.startsWith("/") => x.substring(1, x.length)
-      case _ => path
-    }
+    path.stripPrefix("/").stripSuffix("/")
   }
 }
 
@@ -65,38 +67,38 @@ abstract class LightWritableDataset[T <: Product : Manifest](
                                                               dateFormat: String = "yyyyMMdd"
                                                             ) extends LightDataset(dataSetPath, rootPath, dateFormat) {
 
-
   def writePartition(dataset: Dataset[T],
-                     date: LocalDate,
+                     partition: Any = null,
                      numPartitions: Option[Int] = None,
                      subFolderKey: Option[String] = None,
                      subFolderValue: Option[String] = None,
-                     format: Option[String] = None,
+                     format: Option[String] = Some("parquet"),
                      saveMode: SaveMode = SaveMode.ErrorIfExists
                     ): Unit = {
 
-    val partitionedPath: String = DatePartitionedPath(Some(date), subFolderKey, subFolderValue)
+    val partitionedPath: String = DatePartitionedPath(Option.apply(partition), subFolderKey, subFolderValue)
 
     format match {
 
       case Some("tfrecord") => dataset
-        .repartition(numPartitions.getOrElse(defaultNumPartitions))
+        .coalesce(numPartitions.getOrElse(defaultNumPartitions))
         .write.mode(saveMode)
         .format("tfrecord")
         .option("recordType", "Example")
         .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
         .save(partitionedPath)
 
-      case  Some("csv") => dataset
-        .repartition(numPartitions.getOrElse(defaultNumPartitions))
+      case Some("csv") => dataset
+        .coalesce(numPartitions.getOrElse(defaultNumPartitions))
         .write.mode(saveMode)
         .option("header", value = true)
         .csv(partitionedPath)
 
-      case _ => dataset
-        .repartition(numPartitions.getOrElse(defaultNumPartitions))
+      case Some("parquet") => dataset
+        .coalesce(numPartitions.getOrElse(defaultNumPartitions))
         .write.mode(saveMode)
         .parquet(partitionedPath)
+      case _ => throw new UnsupportedOperationException(s"format ${format} is not supported")
     }
   }
 }
@@ -108,7 +110,7 @@ abstract class LightReadableDataset[T <: Product : Manifest](
                                                               source: Option[String] = None
                                                             ) extends LightDataset(dataSetPath, rootPath, dateFormat) {
   def readPartition(date: LocalDate,
-                    format: Option[String] = None,
+                    format: Option[String] = Some("parquet"),
                     lookBack: Option[Int] = None,
                     dateSeparator: Option[String] = None)(implicit spark: SparkSession): Dataset[T] = {
     val paths = (source match {
@@ -133,18 +135,19 @@ abstract class LightReadableDataset[T <: Product : Manifest](
         .load(paths.flatMap(x => FSUtils.listFiles(x, true)(spark).map(y => x + "/" + y)): _*)
         .toDF(typeOf[T].members.sorted.collect { case m: MethodSymbol if m.isCaseAccessor => m.name.toString }: _*)
         .selectAs[T]
-      case _ => {
+      case Some("parquet") => {
         source match {
           case Some(DatasetSource.CrossDeviceGraph) => spark.read.parquet(paths: _*).selectAs[T]
           case _ => loadParquetData[T](basePath, date, source, lookBack, dateSeparator)
         }
       }
+      case _ => throw new UnsupportedOperationException(s"format ${format} is not supported")
     }
   }
 
   def readPartitionHourly(date: LocalDate,
                           hours: Seq[Int],
-                          format: Option[String] = None)(implicit spark: SparkSession): Dataset[T] = {
+                          format: Option[String] = Some("parquet"))(implicit spark: SparkSession): Dataset[T] = {
     val paths = source match {
       case Some(DatasetSource.Logs) => hours.map(h => "%s/%s/%02d".format(basePath, date.format(logsDateFormatter), h))
       case _ => parquetHourlyDataPaths(basePath, date, source, hours)
@@ -164,7 +167,36 @@ abstract class LightReadableDataset[T <: Product : Manifest](
         .option("header", "true")
         .load(paths.flatMap(x => FSUtils.listFiles(x, true)(spark).map(y => x + "/" + y)): _*)
         .selectAs[T]
-      case _ => loadParquetDataHourly[T](basePath, date, hours, source)
+      case Some("parquet") => loadParquetDataHourly[T](basePath, date, hours, source)
+      case _ => throw new UnsupportedOperationException(s"format ${format} is not supported")
+    }
+  }
+
+  def readSinglePartition(date: LocalDateTime,
+                          format: Option[String] = Some("parquet"))(implicit spark: SparkSession): Dataset[T] = {
+    val path = s"$basePath/${date.format(dateFormatter)}"
+
+    format match {
+      case Some("tfrecord") => spark
+        .read
+        .format("tfrecord")
+        .option("recordType", "Example")
+        .load(path)
+        .selectAs[T]
+      case Some("tsv") => spark
+        .read
+        .format("com.databricks.spark.csv")
+        .option("delimiter", "\t")
+        .option("header", "true")
+        .option("inferSchema", "true")
+        .load(path)
+        .toDF(typeOf[T].members.sorted.collect { case m: MethodSymbol if m.isCaseAccessor => m.name.toString }: _*)
+        .selectAs[T]
+      case Some("parquet") => spark
+        .read
+        .parquet(path)
+        .selectAs[T]
+      case _ => throw new UnsupportedOperationException(s"format ${format} is not supported")
     }
   }
 }
