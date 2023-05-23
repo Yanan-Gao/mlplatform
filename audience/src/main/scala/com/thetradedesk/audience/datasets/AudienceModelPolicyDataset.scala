@@ -1,5 +1,5 @@
 package com.thetradedesk.audience.datasets
-import com.thetradedesk.audience.ttdEnv
+import com.thetradedesk.audience.{audienceVersionDateFormat, policyTableResultCoalesce, ttdEnv}
 import com.thetradedesk.audience.datasets.Model.Model
 
 // https://atlassian.thetradedesk.com/confluence/display/EN/RSM+-+Policy+Table
@@ -42,10 +42,10 @@ final case class AudienceModelPolicyRecord(TargetingDataId: Long,
                                           )
 
 case class AudienceModelPolicyWritableDataset(model: Model) extends
-  LightReadableDataset[AudienceModelPolicyRecord](s"configdata/${ttdEnv}/audience/policyTable/${model}/v=1", "s3a://thetradedesk-mlplatform-us-east-1/")
+  LightWritableDataset[AudienceModelPolicyRecord](s"configdata/${ttdEnv}/audience/policyTable/${model}/v=1", "s3a://thetradedesk-mlplatform-us-east-1/", policyTableResultCoalesce, dateFormat = audienceVersionDateFormat)
 
 case class AudienceModelPolicyReadableDataset(model: Model) extends
-  LightWritableDataset[AudienceModelPolicyRecord](s"configdata/${ttdEnv}/audience/policyTable/${model}/v=1", "s3a://thetradedesk-mlplatform-us-east-1/", 8)
+  LightReadableDataset[AudienceModelPolicyRecord](s"configdata/${ttdEnv}/audience/policyTable/${model}/v=1", "s3a://thetradedesk-mlplatform-us-east-1/", dateFormat = audienceVersionDateFormat)
 
 object Model extends Enumeration {
   type Model = Value
@@ -69,5 +69,5 @@ object CrossDeviceVendor extends Enumeration {
 
 object Tag extends Enumeration {
   type Tag = Value
-  val None, UnderPerform, New, Small, Existing = Value
+  val None, UnderPerform, New, Small, Existing, Retention, Recall = Value
 }

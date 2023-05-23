@@ -8,10 +8,11 @@ import com.amazonaws.regions.Regions
 import com.amazonaws.services.s3.AmazonS3ClientBuilder
 import org.apache.spark.sql.functions._
 
-import java.time.LocalDate
+import java.time.{LocalDate, LocalDateTime}
 
 package object audience {
   var date = config.getDate("date" , LocalDate.now())
+  var dateTime = config.getDateTime("dateTime" , date.atStartOfDay())
   var ttdEnv = config.getString("ttd.env" , "dev")
   val trainSetDownSampleFactor = config.getInt("trainSetDownSampleFactor", default = 2)
   val sampleHit = config.getString("sampleHit", "0")
@@ -20,6 +21,11 @@ package object audience {
   val userDownSampleBasePopulation = config.getInt("userDownSampleBasePopulation", default = 1000000)
   val userDownSampleHitPopulation = config.getInt("userDownSampleHitPopulation", default = 10000)
   val userDownSampleHitPopulationV2 = config.getInt("userDownSampleHitPopulationV2", default = 100000)
+
+  val audienceResultCoalesce = config.getInt("audienceResultCoalesce", 256)
+  val policyTableResultCoalesce = config.getInt("policyTableResultCoalesce", 8)
+
+  val audienceVersionDateFormat = "yyyyMMddHHmmss"
 
   private val userIsInSampleUDF = udf[Boolean, String, Long, Long](userIsInSample)
   private val doNotTrackTDID = lit("00000000-0000-0000-0000-000000000000")
@@ -32,7 +38,7 @@ package object audience {
     symbol.isNotNullOrEmpty && symbol =!= doNotTrackTDID && substring(symbol, 9, 1) === lit("-") && userIsInSampleUDF(symbol, lit(userDownSampleBasePopulation), lit(userDownSampleHitPopulationV2))
   }
 
-  def shouldConsiderTDID3(symbol: Symbol, userDownSampleHitPopulation: Int) = {
-    symbol.isNotNullOrEmpty && symbol =!= doNotTrackTDID && substring(symbol, 9, 1) === lit("-") && userIsInSampleUDF(symbol, lit(userDownSampleBasePopulation), lit(userDownSampleHitPopulation))
+  def shouldConsiderTDID3(userDownSampleHitPopulation: Int, salt: String)(symbol: Symbol) = {
+    symbol.isNotNullOrEmpty && symbol =!= doNotTrackTDID && substring(symbol, 9, 1) === lit("-") && (abs(hash(concat(symbol, lit(salt)))) % lit(userDownSampleBasePopulation) < lit(userDownSampleHitPopulation))
   }
 }
