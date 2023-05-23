@@ -18,7 +18,7 @@ import com.thetradedesk.pythia.interestModel.schema.{interestLabelTaxonomyRecord
 import com.thetradedesk.pythia.interestModel.transform.ModelInputTransform
 import com.thetradedesk.pythia.writeData
 
-object ModelInput {
+object interestModelInput {
   val date = config.getDate("date", LocalDate.now().withDayOfMonth(1)) // default to first day of the current month
 
   val outputPath = config.getString("outputPath", "s3://thetradedesk-mlplatform-us-east-1/features/data/pythia/interests/v=1/")
