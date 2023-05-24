@@ -168,7 +168,7 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM) {
       .select('SeedId, 'TargetingDataId, 'Count)
       .where('Count > 0)
       .groupBy('SeedId, 'TargetingDataId)
-      .agg(max('Count.alias("Count")))
+      .agg(max('Count).alias("Count"))
       .withColumn("TargetingDataId", coalesce('TargetingDataId, lit(-1)))
       .withColumnRenamed("SeedId", "SourceId")
       .withColumn("Size", 'Count.cast(IntegerType))
