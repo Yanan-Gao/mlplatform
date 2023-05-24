@@ -2,12 +2,12 @@ from collections import namedtuple
 
 import tensorflow as tf
 
-TargetingDataIdList = 'TargetingDataId'
-Target = "Target"
+TargetingDataIdList = 'SyntheticIds'
+Target = "Targets"
 
 # commented features may be used later, currently not available in bidImp
 DEFAULT_CARDINALITIES = {
-    "TargetingDataId": 2000003,
+    "SyntheticIds": 2000003,
     "SupplyVendor": 102,
     # "DealId": 20002,
     "SupplyVendorPublisherId": 200002,
