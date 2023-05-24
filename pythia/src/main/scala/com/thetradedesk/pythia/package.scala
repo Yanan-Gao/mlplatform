@@ -25,7 +25,7 @@ package object pythia {
       .mode(SaveMode.Overwrite)
 
     if (isTFRecord) {
-      func.format("tfrecords")
+      func.format("tfrecord")
         .option("recordType", "Example")
         .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
         .save(s"$outputPath/$ttdEnv/$outputPrefix/${explicitDatePart(date)}")
