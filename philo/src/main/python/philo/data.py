@@ -1,14 +1,14 @@
 import os
 from typing import List
-from datetime import timedelta
+from datetime import timedelta, datetime
 import random
 import warnings
-
 import tensorflow as tf
 from pathlib import Path
 import math
 import pandas as pd
 import numpy as np
+import itertools
 from tensorflow_serving.apis import predict_pb2
 
 from philo.features import get_map_function, get_map_function_test, get_map_function_weighted
@@ -120,9 +120,9 @@ def get_steps_epochs_emr(path, batch_size, trunks, multiplier=5):
 
 
 def list_tfrecord_files(path, data_format="GZIP"):
-    """create a dictionary with each key represents a list of corresponding
+    """
+    create a dictionary with each key represents a list of corresponding
        tfrecord files
-
     Args:
         path (string): path to the tfrecord files
         data_format (str): gzip or not zipped
@@ -145,7 +145,7 @@ def list_tfrecord_files(path, data_format="GZIP"):
     return files_dir
 
 
-def tfrecord_dataset(files, batch_size, map_fn, compression_type="GZIP", prefetch_num=10, repeat=False):
+def tfrecord_dataset(files, batch_size, map_fn, compression_type="GZIP", prefetch_num=10, repeat=False, drop_remainder = False):
     """
     create tf data pipeline
     Args:
@@ -158,6 +158,7 @@ def tfrecord_dataset(files, batch_size, map_fn, compression_type="GZIP", prefetc
         prefetch_num: prefetch batches
         repeat: whether repeat dataset or not, useful if run through data set in multiple epochs, need to set the
                 steps_per_epochs if repeat is true
+        drop_remainder: if batch_size does not evenly divide dataset, whether to drop the remainder or not
 
     Returns: tf data pipeline
 
@@ -168,7 +169,7 @@ def tfrecord_dataset(files, batch_size, map_fn, compression_type="GZIP", prefetc
 
     return data.batch(
         batch_size=batch_size,
-        drop_remainder=True
+        drop_remainder=drop_remainder
     ).map(
         map_func=map_fn,
         num_parallel_calls=tf.data.AUTOTUNE,
@@ -176,6 +177,175 @@ def tfrecord_dataset(files, batch_size, map_fn, compression_type="GZIP", prefetc
     ).prefetch(
         prefetch_num
     )
+
+def lookback_csv_dataset_generator(
+                                   path_prefix,
+                                   batch_size,
+                                   selected_cols,
+                                   label_name="label",
+                                   glob_pattern='/*.csv',
+                                   hvd_rank=None,
+                                   hvd_size=None,
+                                   shuffle=False,
+                                   seed=42,
+                                   ):
+    """
+    create csv data pipeline
+    Args:
+        path_prefix: path prefix to load data from -- expects files to be in form path_prefix/train/glob_pattern
+        batch_size: batch size for train
+        selected_cols: list of features
+        label_name: name of model target
+        glob_pattern: file format glob pattern
+        hvd_rank: splits dataset with hvd_rank
+        hvd_size: splits dataset into hvd_size
+        shuffle: randomly shuffle the data
+        seed: seed to use for random shuffle
+    Returns: csv dataloader
+
+    """
+
+    def _generator(csv_file, batch_size, drop_remainder=False):
+        """
+        create generator for csv dataset
+        Args:
+            csv_file: path to csv file
+            batch_size: batch size for train
+            drop_remainder: if batch_size does not evenly divide dataset, whether to drop the remainder or not
+
+        Returns: generator function for reading csv
+
+        """
+        with pd.read_csv(csv_file.decode(),
+                         chunksize=batch_size,
+                         usecols=[k for k, v in selected_cols.items()],
+                         ) as csv_chunks:
+            for csv_chunk in csv_chunks:
+
+                # skip is not full batch
+                if drop_remainder & (csv_chunk.shape[0] != batch_size): continue
+
+                # TODO: should really remove NA upstream
+                csv_chunk.fillna(0, inplace=True)
+                label = csv_chunk.pop(label_name)
+                yield (dict(csv_chunk), label.values)
+
+
+    def _generator_dataset(file, batch_size, selected_cols):
+        """
+        create dataset from generator
+        Args:
+            file: path to csv file
+            batch_size: batch size for train
+            selected_cols: list of columns to use for dataset
+
+        Returns: tensorflow dataset
+
+        """
+        return tf.data.Dataset.from_generator(
+            _generator,
+            output_signature=(
+                {k: tf.TensorSpec(shape=(None,), dtype=v) for k, v in selected_cols.items() if k != label_name},
+                tf.TensorSpec(shape=(None,), dtype=tf.float32)
+            ),
+            args=(file, batch_size,)
+        )
+
+    def _interleaved_generator_dataset(files):
+        """
+        interleaves multiple tf generator datasets for parallel data loading
+        Args:
+            files: list of paths to csv files
+        Returns: tensorflow dataset
+
+        """
+        options = tf.data.Options()
+        options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.OFF
+
+        return tf.data.Dataset.from_tensor_slices(files) \
+            .with_options(options) \
+            .interleave(
+            #map_function
+            lambda x: _generator_dataset(x, batch_size, selected_cols),
+            num_parallel_calls=tf.data.AUTOTUNE,
+            deterministic=False
+        )
+
+    def _date_range(start_date, end_date):
+        """
+        creates range of dates
+        Args:
+            start_date: first date in range
+            end_date: last date in range
+        Returns: date range
+
+        """
+        for n in range(int((end_date - start_date).days)):
+            yield start_date + timedelta(n)
+
+    def _get_files(paths,  shuffle=False, split=None, rank=None):
+        """
+        gets list of files from list of path prefixes
+        Args:
+            paths: list of path prefixes
+            shuffle: shuffles the paths
+            split: size of data split
+            rank: rank of data split
+        Returns: list of file paths for training, validation, and test
+
+        """
+        tr, val, ts = [], [], []
+
+        paths = [paths] if not isinstance(paths, list) else paths
+
+        for path in paths:
+            tr.append(
+                [file.as_posix() for file in
+                 Path(f"{path}train/").glob(glob_pattern)]
+            )
+            val.append(
+                       [file.as_posix() for file in
+                        Path(f"{path}validation/").glob(glob_pattern)]
+                   )
+            ts.append(
+                            [file.as_posix() for file in
+                             Path(f"{path}test/").glob(glob_pattern)]
+                        )
+
+        def _round_robin_shuffle_split(files_list, shuffle=False, split=None, rank=None):
+            """
+            shuffles and splits files
+            Args:
+                files_list: list of files
+                shuffle: whether or not to shuffle the files
+                split: size of data split
+                rank: rank of data split
+            Returns: list of file paths for training, validation, and test
+
+            """
+            files = list(itertools.chain(*zip(*files_list)))
+            if shuffle:
+                np.random.shuffle(files)
+
+            if split:
+                return np.array_split(files, split)[rank]
+            else:
+                return files
+
+        tr_files = _round_robin_shuffle_split(files_list=tr, shuffle=shuffle, split=split, rank=rank)
+        val_files = _round_robin_shuffle_split(files_list=val, shuffle=shuffle, split=split, rank=rank)
+        ts_files = _round_robin_shuffle_split(files_list=ts, shuffle=shuffle, split=split, rank=rank)
+        return tr_files, val_files, ts_files
+
+
+
+    tr_files, val_files, ts_files = _get_files(path_prefix, shuffle,
+                                               hvd_size, hvd_rank)
+
+    return _interleaved_generator_dataset(tr_files), \
+           _interleaved_generator_dataset(val_files), \
+           _interleaved_generator_dataset(ts_files)
+
 
 
 def create_datasets(files_dict, batch_size, model_features,
@@ -290,7 +460,7 @@ def prepare_dummy_data(model_features, model_target, batch_size):
 def prepare_real_data(model_features, model_target, input_path,
                       batch_size, eval_batch_size, prefetch_num=10,
                       offline_test=False, repeat=False, weight_name=None,
-                      weight_value=None):
+                      weight_value=None, data_format = "csv"):
     """
     create real dataset
     Args:
@@ -304,24 +474,40 @@ def prepare_real_data(model_features, model_target, input_path,
         repeat: if data is split into trunks, need to set it to True
         weight_name: name for the weight column
         weight_value: weight value
+        data_format: csv or tfrecord fileformat
 
     Returns: dictionary of dataset
 
     """
     # print(input_path)
-    files = list_tfrecord_files(input_path)
-    # validate files and generate files dictionary if VAL or TEST is not in files
-    files = validate_and_generate_files_dict(files)
+    if data_format != "csv":
+        files = list_tfrecord_files(input_path)
+        # validate files and generate files dictionary if VAL or TEST is not in files
+        files = validate_and_generate_files_dict(files)
     if weight_name is not None and weight_value is not None:
         map_func = get_map_function_weighted(model_features, model_target, weight_name, weight_value)
     elif weight_name is None and weight_value is None:
         map_func = get_map_function(model_features, model_target)
     else:
         raise Exception('weight_name and weight have to be both not None to use the sample_weight')
-    return create_datasets(files_dict=files, batch_size=batch_size, model_features=model_features,
-                           model_target=model_target, map_function=map_func, compression_type="GZIP",
-                           eval_batch_size=eval_batch_size, prefetch_num=prefetch_num, offline_test=offline_test,
-                           repeat=repeat)
+
+    if data_format == "csv":
+        selected_cols = {f.name: f.type for f in model_features}
+        selected_cols["label"] = tf.int64
+        ds_tr, ds_val, ds_ts = lookback_csv_dataset_generator(
+              path_prefix=[input_path],
+              batch_size= batch_size,
+              selected_cols=selected_cols,
+              glob_pattern = "*.csv"
+          )
+        ds = {TRAIN: ds_tr, VAL: ds_val, TEST: ds_ts}
+    else:
+        ds = create_datasets(files_dict=files, batch_size=batch_size, model_features=model_features,
+                                        model_target=model_target, map_function=map_func, compression_type="GZIP",
+                                        eval_batch_size=eval_batch_size, prefetch_num=prefetch_num, offline_test=offline_test,
+                                        repeat=repeat)
+
+    return ds
 
 
 def validate_and_generate_files_dict(files_dict):
