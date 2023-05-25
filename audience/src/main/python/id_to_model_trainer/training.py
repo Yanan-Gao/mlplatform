@@ -11,6 +11,7 @@ import random
 import numpy as np
 import os
 import pathlib
+import pandas as pd
 
 if tf.test.is_gpu_available():
     models.GPU_setting()
@@ -345,14 +346,35 @@ def main(argv):
             epochs=1,
         )
 
+    # split trained model into two parts -> weighted seed embedding (seed embeeding result * final dense layer weights)
+    # and the model for embedding the bidimpressions -> both will be used for neo calculation
+    seed_emb = model.get_layer(f"embedding_{features.TargetingDataIdList}").get_weights()[0]
+    linear = model.get_layer("predictions_dense_layer").variables
+    weights, bias = tf.reshape(linear[0], (FLAGS.neo_embedding_size,)).numpy(), linear[1].numpy()
+    br_model = tf.keras.models.Model(inputs=[model.get_layer(f.name).input for f in features.model_features], outputs=model.get_layer("bidimpression_result").output, name="bidimp_calculation")
+    weighted_seed_emb = weights * seed_emb
+
+    output = pd.DataFrame(list(range(features.DEFAULT_CARDINALITIES[features.TargetingDataIdList])), columns=['SyntheticId'])
+    output['Embedding'] = weighted_seed_emb.tolist()
+    # syntheticid = -1 means that the row is for bias, the input of this part is in this format: [bias,0,0,0,...,0]
+    output = pd.concat([output, pd.DataFrame([{'SyntheticId': -1, 'Embedding': [bias[0]] + [0.0] * (FLAGS.neo_embedding_size - 1)}])], ignore_index=True)
+    output['Embedding'] = output['Embedding'].apply(np.float32)
+
+    embedding_path = FLAGS.model_path + f'{FLAGS.model_type}/embedding/{version}/'
+    pathlib.Path(embedding_path).mkdir(parents=True, exist_ok=True)
+    output.to_parquet(f'{embedding_path}embedding.parquet.gzip', compression='gzip', index=False)
+
     # local path for the trained model
-    model_path = FLAGS.model_path + f'{FLAGS.model_type}/{version}/'
+    model_path = FLAGS.model_path + f'{FLAGS.model_type}/bidimpression_model/{version}/'
     pathlib.Path(model_path).mkdir(parents=True, exist_ok=True)
-    model.save(model_path)
+    br_model.save(model_path)
     if FLAGS.model_output_path:
         # cp local model to s3
-        model_output_path = f'{FLAGS.model_output_path}{FLAGS.model_type}/{version}/'
+        model_output_path = f'{FLAGS.model_output_path}{FLAGS.model_type}/bidimpression_model/{version}/'
         utils.s3_copy(model_path, model_output_path)
+        # cp seed embedding to s3
+        embedding_output_path = f'{FLAGS.model_output_path}{FLAGS.model_type}/embedding/{version}/'
+        utils.s3_copy(embedding_path, embedding_output_path)
 
 
 if __name__ == "__main__":
