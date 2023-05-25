@@ -9,7 +9,7 @@ LOOKBACK=9
 
 # parse -e flag for environment
 # parse -d flag for input data start date
-while getopts "e:d:p:m:r:l:" opt; do
+while getopts "e:d:p:m:r:l:f:" opt; do
   case "$opt" in
     e)
       ENV="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
@@ -39,6 +39,11 @@ while getopts "e:d:p:m:r:l:" opt; do
     l)
       LATEST_MODEL_PATH="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
       echo "Setting latest model path to $OPTARG" >&1
+      ;;
+
+    f)
+      FORMAT="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
+      echo "Setting file format to $OPTARG" >&1
       ;;
 
     *)
@@ -82,6 +87,12 @@ then
    echo "No latest model path set. Falling back to $LATEST_MODEL_PATH" >&1
 fi
 
+if [ -z "$FORMAT" ]
+then
+   FORMAT="tfrecords"
+   echo "No file format set. Falling back to $FORMAT" >&1
+fi
+
 MNT="../../../../../../mnt/"
 
 # filtered data locations
@@ -92,12 +103,20 @@ SYNC_DEST="tfrecords/"
 META_SOURCE="${BASE_DATA_S3_PATH}/${ENV}/${META_PREFIX}"
 META_DEST="metadata/"
 
+# file format suffix
+if [[ "$FORMAT" != "csv" ]]
+  then
+    SUFFIX=".gz"
+  else
+    SUFFIX=".csv"
+fi
+
 # latest trained model
 MODEL_DEST="latest_model/"
 
 cd ${MNT}
 
-echo "starting s3 sync for params: prefix=${PREFIX}, meta_prefix=${META_PREFIX}, env=${ENV}, date=${START_DATE} \n"
+echo "starting s3 sync for params: prefix=${PREFIX}, meta_prefix=${META_PREFIX}, env=${ENV}, date=${START_DATE}, format=${FORMAT}, suffix=${SUFFIX} \n"
 
 ##not bash doesnt support variable exapnsion here, so hardcoded '9'
 for i in {1..9}; do
@@ -109,13 +128,13 @@ for i in {1..9}; do
     S3_META_SOURCE="${META_SOURCE}/year=${YEAR}/month=${MONTH}/day=${DAY}/"
     if ((i == 1))
       then echo "syncing from ${S3_SOURCE}  to "${SYNC_DEST}/test""
-      aws s3 cp ${S3_SOURCE} "${SYNC_DEST}/test/" --recursive --exclude "*" --include "*.gz" --quiet
+      aws s3 cp ${S3_SOURCE} "${SYNC_DEST}/test/" --recursive --exclude "*" --include "*${SUFFIX}" --quiet
     elif ((i == 2))
       then echo "syncing from ${S3_SOURCE}  to "${SYNC_DEST}/validation""
-      aws s3 cp ${S3_SOURCE} "${SYNC_DEST}/validation/" --recursive --exclude "*" --include "*.gz" --quiet
+      aws s3 cp ${S3_SOURCE} "${SYNC_DEST}/validation/" --recursive --exclude "*" --include "*${SUFFIX}" --quiet
     else
       echo "copying from ${S3_SOURCE} to "${SYNC_DEST}/train""
-      aws s3 cp ${S3_SOURCE} "${SYNC_DEST}/train/" --recursive --exclude "*" --include "*.gz" --quiet
+      aws s3 cp ${S3_SOURCE} "${SYNC_DEST}/train/" --recursive --exclude "*" --include "*${SUFFIX}" --quiet
       echo "syncing meta data form ${S3_META_SOURCE} to ${META_DEST}"
       aws s3 cp ${S3_META_SOURCE} "${META_DEST}/" --recursive --exclude "*" --include "*.csv" --quiet
      fi

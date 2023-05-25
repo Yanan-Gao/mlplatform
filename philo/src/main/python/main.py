@@ -34,6 +34,7 @@ BIAS_OUTPUT = "bias/"
 MODEL_REGION = "namer"
 EVAL_OUTPUT = "eval_metrics/"
 S3_MODEL_LOGS = "model_logs/"
+DATA_FORMAT = "tfrecords"
 
 # TRAIN = "train"
 # VAL = "validation"
@@ -56,6 +57,8 @@ flags.DEFINE_boolean('dnn_use_bn', default=False, help='Apply batch normalizatio
 # Paths
 flags.DEFINE_string('input_path', default=INPUT_PATH,
                     help=f'Location of input files (TFRecord). Default {INPUT_PATH}')
+flags.DEFINE_string('format', default=DATA_FORMAT,
+                    help=f'Format of input files. Default {DATA_FORMAT}')
 flags.DEFINE_string('meta_data_path', default=META_DATA_INPUT,
                     help=f'Location of meta data. Default {META_DATA_INPUT}')
 flags.DEFINE_string('latest_model_path', default=LATEST_MODEL,
@@ -131,11 +134,20 @@ def main(argv):
     val_loss_gauge = prom.define_gauge('val_loss', 'validation loss', ['region', 'model'])
     eval_philo_gauge = prom.define_gauge('eval', 'evaluation', ['region', 'model'])
 
+    #########################################################
+
+
+
+    mirrored_strategy = tf.distribute.MultiWorkerMirroredStrategy()
+    num_gpus = mirrored_strategy.num_replicas_in_sync
+    print("##########################checking gpu devices#############################")
+    print('Number of devices: {}'.format(num_gpus))
+
     # if the training process need to go through the whole dataset in more than 1 epoch
     # we need to repeat the data and get the steps_per_epochs so that tf knows how the
     # data could be digested
     repeat = True if FLAGS.data_trunks > 1 else False
-    steps_per_epoch, epochs = get_steps_epochs_emr(FLAGS.meta_data_path, FLAGS.batch_size, FLAGS.data_trunks,
+    steps_per_epoch, epochs = get_steps_epochs_emr(FLAGS.meta_data_path, FLAGS.batch_size * num_gpus, FLAGS.data_trunks,
                                                    FLAGS.num_epochs)
     #########################################################
     print("##########################steps_per_epoch, epochs##########################")
@@ -146,19 +158,15 @@ def main(argv):
         print(f"{k} contains {len(f)} files")
     if FLAGS.dummy:
         print("this is dummy file")
-    #########################################################
 
+
+    # since batch size is distributed equally across gpus, set equal to batch_size*num_gpus
     datasets = prepare_dummy_data(
         model_features, model_target, 32
     ) if FLAGS.dummy else prepare_real_data(
         model_features=model_features, model_target=model_target, input_path=FLAGS.input_path,
-        batch_size=FLAGS.batch_size, eval_batch_size=FLAGS.eval_batch_size, prefetch_num=tf.data.AUTOTUNE,
-        repeat=repeat)
-
-    mirrored_strategy = tf.distribute.MultiWorkerMirroredStrategy()
-    num_gpus = mirrored_strategy.num_replicas_in_sync
-    print("##########################checking gpu devices#############################")
-    print('Number of devices: {}'.format(num_gpus))
+        batch_size=FLAGS.batch_size * num_gpus, eval_batch_size=FLAGS.eval_batch_size, prefetch_num=tf.data.AUTOTUNE,
+        repeat=repeat, data_format = FLAGS.format)
 
     # Tensorflow has a bad exist because it creats a threadpool that it doesn't ever close
     # (https://github.com/tensorflow/tensorflow/issues/50487#issuecomment-997304668)
@@ -168,33 +176,25 @@ def main(argv):
 
     # # Register the `_cross_device_ops._pool` and `_host_cross_device_ops._pool`s `.close()` function to run when
     # # Python exists
-    # atexit.register(mirrored_strategy._extended._cross_device_ops._pool.close)
-    # atexit.register(mirrored_strategy._extended._host_cross_device_ops._pool.close)
-    # with mirrored_strategy.scope():
-    #     # currently not using the latest model, but can be used in the future
-    #     # try:
-    #     #     model = tf.keras.models.load_model(FLAGS.latest_model_path, custom_objects=custom_objects)
-    #     # except OSError as error:
-    #     # if no model file, create a new model from scratch
-    #     # print(error)
-    #     kwargs = {"dnn_hidden_units": tuple(FLAGS.dnn_hidden_units), "l2_reg_linear": FLAGS.l2_reg_linear,
-    #               "l2_reg_embedding": FLAGS.l2_reg_embedding, "l2_reg_dnn": FLAGS.l2_reg_dnn,
-    #               "dnn_dropout": FLAGS.dnn_dropout, "dnn_activation": FLAGS.dnn_activation,
-    #               "dnn_use_bn": FLAGS.dnn_use_bn, "adgroup_feature_list": adgroup_feature_list}
-    #     print('Number of devices: %d' % mirrored_strategy.num_replicas_in_sync)
-    #     model_1 = model_builder(FLAGS.model_arch, model_features, **kwargs)
-    #
-    #     auc = tf.keras.metrics.AUC()
-    # TODO: include later with multi gpu training
+    atexit.register(mirrored_strategy._extended._cross_device_ops._pool.close)
+    atexit.register(mirrored_strategy._extended._host_cross_device_ops._pool.close)
+    with mirrored_strategy.scope():
+        # currently not using the latest model, but can be used in the future
+        # try:
+        #     model = tf.keras.models.load_model(FLAGS.latest_model_path, custom_objects=custom_objects)
+        # except OSError as error:
+        # if no model file, create a new model from scratch
+        # print(error)
+        kwargs = {"dnn_hidden_units": tuple(FLAGS.dnn_hidden_units), "l2_reg_linear": FLAGS.l2_reg_linear,
+                  "l2_reg_embedding": FLAGS.l2_reg_embedding, "l2_reg_dnn": FLAGS.l2_reg_dnn,
+                  "dnn_dropout": FLAGS.dnn_dropout, "dnn_activation": FLAGS.dnn_activation,
+                  "dnn_use_bn": FLAGS.dnn_use_bn, "adgroup_feature_list": adgroup_feature_list}
+        print('Number of devices: %d' % mirrored_strategy.num_replicas_in_sync)
+        model_1 = model_builder(FLAGS.model_arch, model_features, **kwargs)
 
-    kwargs = {"dnn_hidden_units": tuple(FLAGS.dnn_hidden_units), "l2_reg_linear": FLAGS.l2_reg_linear,
-              "l2_reg_embedding": FLAGS.l2_reg_embedding, "l2_reg_dnn": FLAGS.l2_reg_dnn,
-              "dnn_dropout": FLAGS.dnn_dropout, "dnn_activation": FLAGS.dnn_activation,
-              "dnn_use_bn": FLAGS.dnn_use_bn, "adgroup_feature_list": adgroup_feature_list}
-    print('Number of devices: %d' % mirrored_strategy.num_replicas_in_sync)
-    model_1 = model_builder(FLAGS.model_arch, model_features, **kwargs)
+        auc = tf.keras.metrics.AUC()
+   # TODO: include later with multi gpu training
 
-    auc = tf.keras.metrics.AUC()
 
     # step 1: train a deepfm_dual model, which has the dual DNN tower structure
     # this step is the same as the original philo alpha
@@ -223,15 +223,15 @@ def main(argv):
 
     print("##########################step 1: saving model#####################################")
     model_1.save(model_tag_1)
+    with mirrored_strategy.scope():
+        # step 2: freezing the embeddings trained, retrain the model with only dual DNN towers
+        # this step ensures that the DNN part will learn the embeddings to predict, unfreezing the whole model will lead to
+        # the model struggling ~ 0.5 AUC
+        model_2, model_neo_a, model_neo_b = extract_dnn_only_models(model_1)
 
-    # step 2: freezing the embeddings trained, retrain the model with only dual DNN towers
-    # this step ensures that the DNN part will learn the embeddings to predict, unfreezing the whole model will lead to
-    # the model struggling ~ 0.5 AUC
-    model_2, model_neo_a, model_neo_b = extract_dnn_only_models(model_1)
-
-    # freeze embedding layers
-    for layer in list(filter(lambda x: isinstance(x, Embedding), model_2.layers)):
-        layer.trainable = False
+        # freeze embedding layers
+        for layer in list(filter(lambda x: isinstance(x, Embedding), model_2.layers)):
+            layer.trainable = False
 
     print("##########################step 2: model summary###################################")
     model_2.summary()
@@ -260,8 +260,7 @@ def main(argv):
     model_2.save(model_tag_2)
 
     # step 3: unfreezing the DNN only model trained, fine tune the model to improve performance
-    # in this step, a smaller learning rate of 1/10 of the origincal will be used
-
+    # in this step, a smaller learning rate of 1/10 of the original will be used
     # unfreeze the DNN only model
     model_2.trainable = True
 
