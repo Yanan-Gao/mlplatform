@@ -43,7 +43,7 @@ flags.DEFINE_string(
     "model_path", default='./saved_model/', help="local address for saving the model"
 )
 flags.DEFINE_string(
-    "model_output_path", default=None, help="the s3 for saving the cp of the local model; kind \
+    "model_output_path", default=None, help="the s3 for saving the copy of the local model; kind \
     like s3://{self.bucket_name}/{partition_prefix} "
 )
 
