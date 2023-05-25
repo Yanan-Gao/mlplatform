@@ -73,13 +73,13 @@ fi
 
 if [ -z "$BATCH_SIZE" ]
 then
-   BATCH_SIZE = "16384"
+   BATCH_SIZE="16384"
    echo "No batch size set. Falling back to $BATCH_SIZE" >&1
 fi
 
 if [ -z "$LEARNING_RATE" ]
 then
-   LEARNING_RATE = "0.0008"
+   LEARNING_RATE="0.0008"
    echo "No learning rate set. Falling back to $LEARNING_RATE" >&1
 fi
 
