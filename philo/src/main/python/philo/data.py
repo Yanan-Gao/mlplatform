@@ -52,6 +52,22 @@ def s3_copy(src_path, dest_path, quiet=True):
     os.system(cp_command)
     return cp_command
 
+def s3_write_success_file(dest_path, quiet=True):
+    """
+    writes _SUCCESS file to destination path, need awscli
+    Args:
+        dest_path: destination path
+        quiet: print out copy message or not
+
+    Returns:command for copying
+
+    """
+    cp_command = f"echo -n | aws s3 cp - {dest_path}/_SUCCESS"
+    if quiet:
+        cp_command = cp_command + " --quiet"
+    os.system(cp_command)
+    return cp_command
+
 
 def read_metadata(file_names):
     """
