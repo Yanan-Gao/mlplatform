@@ -7,7 +7,7 @@ import atexit
 from absl import app, flags
 from tensorflow.keras.layers import Embedding
 
-from philo.data import prepare_dummy_data, prepare_real_data, s3_copy, get_steps_epochs_emr, TRAIN, VAL, TEST
+from philo.data import prepare_dummy_data, prepare_real_data, s3_copy, s3_write_success_file, get_steps_epochs_emr, TRAIN, VAL, TEST
 from philo.data import list_tfrecord_files
 from philo.layers import custom_objects
 from philo.features import DEFAULT_MODEL_TARGET
@@ -328,6 +328,12 @@ def main(argv):
     s3_copy(f"{model_tag_3_neo_b}", path_neo_b)
     print(f"Writing bias term to {path_bias}...")
     s3_copy(f"{FLAGS.output_path}model/step_3/bias", path_bias)
+    print("Writing _SUCCESS files")
+    s3_write_success_file(path_philo)
+    s3_write_success_file(path_neo_a)
+    s3_write_success_file(path_neo_b)
+
+
 
     print("##########################logging model metrics########################")
     epoch_gauge.labels(region=FLAGS.region).set(epochs)
