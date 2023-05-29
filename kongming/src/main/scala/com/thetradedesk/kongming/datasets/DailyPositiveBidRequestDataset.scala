@@ -24,8 +24,9 @@ case class DailyPositiveBidRequestDataset(experimentName: String = "") extends K
 )
 
 final case class DailyPositiveCountSummaryRecord(
-                                                  DataAggKey: String,
-                                                  DataAggValue: String,
+                                                  AdGroupId: String,
+                                                  CampaignId: String,
+                                                  AdvertiserId: String,
                                                   Count: BigInt,
                                                 )
 
