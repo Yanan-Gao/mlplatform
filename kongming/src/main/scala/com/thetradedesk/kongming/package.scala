@@ -6,7 +6,7 @@ import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.TTDConfig.config
 
 import org.apache.spark.sql.Column
-import org.apache.spark.sql.Dataset
+import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.Encoder
 import org.apache.spark.sql.functions.{broadcast, col, lit, when}
 
@@ -44,20 +44,18 @@ package object kongming {
     result
   }
 
-
   //TODO: may add some indicator on the list of fields to join based on policy.
   def multiLevelJoinWithPolicy[T: Encoder](
-                                            inputDataSet: Dataset[_]
-                                            , adGroupPolicy: Dataset[_]
-                                            , joinType: String
+                                            inputDataSet: Dataset[_],
+                                            adGroupPolicy: Dataset[_],
+                                            joinType: String,
+                                            joinKeyName: String = "DataAggKey",
+                                            joinValueName: String = "DataAggValue"
                                           ): Dataset[T] = {
-    // TODO: will need to enrich this logic but for now assuming hierarchical structure of keys
-    // Caution: there might be cases where adgroupid, campaignId, advertiserId collide. Will need to resolve that at some point.
-    // for now only use adgroup and campaign to start with.
-    inputDataSet.join(broadcast(adGroupPolicy.filter(col("DataAggKey") === lit("AdGroupId"))), col("DataAggValue") === col("AdGroupId"), joinType).union(
-      inputDataSet.join(broadcast(adGroupPolicy.filter(col("DataAggKey") === lit("CampaignId"))), col("DataAggValue") === col("CampaignId"), joinType)
+    inputDataSet.join(broadcast(adGroupPolicy.filter(col(joinKeyName) === lit("AdGroupId"))), col(joinValueName) === col("AdGroupId"), joinType).union(
+      inputDataSet.join(broadcast(adGroupPolicy.filter(col(joinKeyName) === lit("CampaignId"))), col(joinValueName) === col("CampaignId"), joinType)
     ).union(
-      inputDataSet.join(broadcast(adGroupPolicy.filter(col("DataAggKey") === lit("AdvertiserId"))), col("DataAggValue") === col("AdvertiserId"), joinType)
+      inputDataSet.join(broadcast(adGroupPolicy.filter(col(joinKeyName) === lit("AdvertiserId"))), col(joinValueName) === col("AdvertiserId"), joinType)
     ).selectAs[T]
   }
 

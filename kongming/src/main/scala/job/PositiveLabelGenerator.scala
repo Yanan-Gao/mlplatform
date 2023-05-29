@@ -15,6 +15,7 @@ import com.thetradedesk.spark.util.TTDConfig.{config, environment}
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
 import org.apache.spark.sql.functions._
+import org.apache.spark.storage.StorageLevel
 
 import java.time.LocalDate
 
@@ -74,22 +75,11 @@ object PositiveLabelGenerator extends Logger{
     val unionedPositiveBidRequestDS = sameDayPositiveBidRequestDS.union(multiDayPositiveBidRequestDS)
 
     val positiveLabelDS = PositiveLabelDailyTransform.positiveLabelAggTransform(unionedPositiveBidRequestDS, adGroupPolicy)
+      .persist(StorageLevel.DISK_ONLY)
 
-    val posDataset = DailyPositiveBidRequestDataset()
-    val dailyPositiveBrRows = posDataset.writePartition(positiveLabelDS, date, Some(100))
+    val dailyPositiveBrRows = DailyPositiveBidRequestDataset().writePartition(positiveLabelDS, date, Some(100))
 
-    // Hackity-hack
-    val writeEnv = environment
-    if (posDataset.readRoot != posDataset.writeRoot) {
-      environment = Testing
-    }
-
-    val rereadPos = DailyPositiveBidRequestDataset().readDate(date)
-    if (posDataset.readRoot != posDataset.writeRoot) {
-      environment = writeEnv
-    }
-
-    val positiveSummary = PositiveLabelDailyTransform.countDataAggGroupPositives(rereadPos)
+    val positiveSummary = PositiveLabelDailyTransform.countDataAggGroupPositives(positiveLabelDS, adGroupDS)
 
     DailyPositiveCountSummaryDataset().writePartition(positiveSummary, date, Some(50))
 
