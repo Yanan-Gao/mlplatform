@@ -10,7 +10,8 @@ variables:
   KONGMING_MERGEREQUESTS_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/scripts/mergerequests"
   KONGMING_PROD_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/scripts/prod/"
   PYTHON_BUILD_IMAGE: "python:3.8"
-
+  KONGMING_FEATURE_JSON_SOURCE: "kongming/resources/feature.json"
+  KONGMING_FEATURE_JSON_DEST: "s3://thetradedesk-mlplatform-us-east-1/features/data/kongming/v=1/prod/features/feature.json"
 kongming:test:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
   stage: test
@@ -116,3 +117,14 @@ kongming:push_prod_scripts:
     - popd
     - echo "ran push_prod_scripts"
 
+kongming:push_feature_json:
+  image: "$PYTHON_BUILD_IMAGE"
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "kongming/resources/feature.json"
+  script:
+    - pip3 install awscli
+    - aws s3 cp ${KONGMING_FEATURE_JSON_SOURCE} ${KONGMING_FEATURE_JSON_DEST}
+    - echo "pushed feature.json to s3"
