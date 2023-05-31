@@ -27,12 +27,15 @@ LATEST_MODEL = "/var/tmp/input"
 S3_PROD = "s3://thetradedesk-mlplatform-us-east-1/models/{env}/philo/v=3/{region}/"
 FEATURES_PATH = "features.json"
 # PARAM_MODEL_OUTPUT = "models_params/"
-MODEL_OUTPUT = "models/"
+MODEL_OUTPUT_STEP_1 = "models/"
+MODEL_OUTPUT_STEP_2 = "step_2/"
+MODEL_OUTPUT_STEP_3 = "combined/"
 NEO_A_OUTPUT = "adgroup/"
 NEO_B_OUTPUT = "bidrequest/"
-BIAS_OUTPUT = "bias/"
+# BIAS_OUTPUT = "bias/"
 MODEL_REGION = "namer"
 EVAL_OUTPUT = "eval_metrics/"
+S3_MODEL_FILES = "model_files/"
 S3_MODEL_LOGS = "model_logs/"
 DATA_FORMAT = "tfrecords"
 
@@ -113,7 +116,7 @@ app.parse_flags_with_usage(sys.argv)
 
 
 def main(argv):
-    neo_features = features.Features.from_json_path(FEATURES_PATH , FLAGS.exclude_features)
+    neo_features = features.Features.from_json_path(FEATURES_PATH, FLAGS.exclude_features)
 
     # convert model features into the same List[nameTuple] format
     model_features = []
@@ -212,7 +215,7 @@ def main(argv):
                             epochs=epochs,
                             steps_per_epoch=steps_per_epoch,
                             verbose=FLAGS.training_verbosity,
-                            callbacks=get_callbacks(f"{FLAGS.log_path}step_1/", FLAGS.profile_batches,
+                            callbacks=get_callbacks(f"{FLAGS.log_path}{MODEL_OUTPUT_STEP_1}", FLAGS.profile_batches,
                                                     FLAGS.early_stopping_patience, checkpoint_base_path_1),
                             validation_data=datasets[VAL],
                             validation_steps=None,
@@ -248,7 +251,7 @@ def main(argv):
                     epochs=epochs,
                     steps_per_epoch=steps_per_epoch,
                     verbose=FLAGS.training_verbosity,
-                    callbacks=get_callbacks(f"{FLAGS.log_path}step_2/", FLAGS.profile_batches,
+                    callbacks=get_callbacks(f"{FLAGS.log_path}{MODEL_OUTPUT_STEP_2}", FLAGS.profile_batches,
                                             FLAGS.early_stopping_patience, checkpoint_base_path_2),
                     validation_data=datasets[VAL],
                     validation_steps=None,
@@ -281,7 +284,7 @@ def main(argv):
                             epochs=epochs,
                             steps_per_epoch=steps_per_epoch,
                             verbose=FLAGS.training_verbosity,
-                            callbacks=get_callbacks(f"{FLAGS.log_path}step_3/", FLAGS.profile_batches,
+                            callbacks=get_callbacks(f"{FLAGS.log_path}{MODEL_OUTPUT_STEP_3}", FLAGS.profile_batches,
                                                     FLAGS.early_stopping_patience, checkpoint_base_path_3),
                             validation_data=datasets[VAL],
                             validation_steps=None,
@@ -310,26 +313,42 @@ def main(argv):
 
     # push logs if needed
     if FLAGS.push_training_logs:
-        path = f"{base_s3_path}{S3_MODEL_LOGS}{FLAGS.model_creation_date}"
-        print(f"##########################writing logs to {path}...#######################")
-        s3_copy(FLAGS.log_path, path)
+        path_log_1 = f"{base_s3_path}{MODEL_OUTPUT_STEP_1}{S3_MODEL_LOGS}{FLAGS.model_creation_date}"
+        path_log_2 = f"{base_s3_path}{MODEL_OUTPUT_STEP_2}{S3_MODEL_LOGS}{FLAGS.model_creation_date}"
+        path_log_3 = f"{base_s3_path}{MODEL_OUTPUT_STEP_3}{S3_MODEL_LOGS}{FLAGS.model_creation_date}"
+        print(f"##########################writing logs to {base_s3_path}...#######################")
+        s3_copy(f"{FLAGS.log_path}{MODEL_OUTPUT_STEP_3}", path_log_1)
+        s3_copy(f"{FLAGS.log_path}{MODEL_OUTPUT_STEP_2}", path_log_2)
+        s3_copy(f"{FLAGS.log_path}{MODEL_OUTPUT_STEP_3}", path_log_3)
 
     # copy model outputs to final location
     print(f"##########################writing models to {base_s3_path}...######################")
-    path_philo = f"{base_s3_path}{MODEL_OUTPUT}{FLAGS.model_creation_date}"
-    path_neo_a = f"{base_s3_path}{NEO_A_OUTPUT}{FLAGS.model_creation_date}"
-    path_neo_b = f"{base_s3_path}{NEO_B_OUTPUT}{FLAGS.model_creation_date}"
-    path_bias = f"{base_s3_path}{BIAS_OUTPUT}{FLAGS.model_creation_date}"
-    print(f"Writing Philo model to {path_philo}...")
-    s3_copy(f"{model_tag_1}", path_philo)
+
+    path_combined_1 = f"{base_s3_path}{MODEL_OUTPUT_STEP_1}{S3_MODEL_FILES}{FLAGS.model_creation_date}"
+    path_combined_2 = f"{base_s3_path}{MODEL_OUTPUT_STEP_2}{S3_MODEL_FILES}{FLAGS.model_creation_date}"
+    path_combined_3 = f"{base_s3_path}{MODEL_OUTPUT_STEP_3}{S3_MODEL_FILES}{FLAGS.model_creation_date}"
+    path_neo_a = f"{base_s3_path}{NEO_A_OUTPUT}{S3_MODEL_FILES}{FLAGS.model_creation_date}"
+    path_neo_b = f"{base_s3_path}{NEO_B_OUTPUT}{S3_MODEL_FILES}{FLAGS.model_creation_date}"
+
+    print(f"Writing step 1 combined model to {path_combined_1}...")
+    s3_copy(f"{model_tag_1}", path_combined_1)
+    # TODO: delete following line after switching completely to V3, this keeps V1 deployment functional for now
+    s3_copy(f"{model_tag_1}", f"{base_s3_path}{MODEL_OUTPUT_STEP_1}{FLAGS.model_creation_date}")
+    print(f"Writing step 2 combined model to {path_combined_2}...")
+    s3_copy(f"{model_tag_2}", path_combined_2)
+    print(f"Writing step 3 combined model to {path_combined_3}...")
+    s3_copy(f"{model_tag_3_full}", path_combined_3)
     print(f"Writing Neo AdGroup model to {path_neo_a}...")
     s3_copy(f"{model_tag_3_neo_a}", path_neo_a)
     print(f"Writing Neo BidRequest model to {path_neo_b}...")
     s3_copy(f"{model_tag_3_neo_b}", path_neo_b)
-    print(f"Writing bias term to {path_bias}...")
-    s3_copy(f"{FLAGS.output_path}model/step_3/bias", path_bias)
+    # the bias file should go in the model_files for the adgroup model instead of in a different bias folder
+    print(f"Writing bias term to {path_neo_a}...")
+    s3_copy(f"{FLAGS.output_path}model/step_3/bias", path_neo_a)
     print("Writing _SUCCESS files")
-    s3_write_success_file(path_philo)
+    s3_write_success_file(path_combined_1)
+    s3_write_success_file(path_combined_2)
+    s3_write_success_file(path_combined_3)
     s3_write_success_file(path_neo_a)
     s3_write_success_file(path_neo_b)
 
