@@ -166,7 +166,7 @@ object AdGroupPolicyGenerator {
 
   def addAggregationLevel(policy: Dataset[PolicyTableWithDailyCounts]): Dataset[PolicyTableWithAggregationLevel] = {
     policy
-      .withColumn("DataAggKey", when('established && 'DailyCampaignCount < lit(Config.AggregateOnAdvertiserThreshold), lit("AdvertiserId")).otherwise('CampaignId))
+      .withColumn("DataAggKey", when('established && 'DailyCampaignCount < lit(Config.AggregateOnAdvertiserThreshold), lit("AdvertiserId")).otherwise("CampaignId"))
       .withColumn("DataAggValue", new ConditionalSetting(
         new CategoricalRule[String]('DataAggKey, "CampaignId", 'CampaignId),
         new CategoricalRule[String]('DataAggKey, "AdGroupId", 'AdGroupId),
