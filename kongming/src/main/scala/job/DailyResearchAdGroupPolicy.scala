@@ -21,17 +21,13 @@ object DailyResearchAdGroupPolicy {
 
     // default dataset for adgroup policy table which will be updated on a monthly basis
     val defaultPolicyDate = LocalDate.of(2022, 3,15)
-    val historyAdGroupPolicy = AdGroupPolicyDataset().readDate(defaultPolicyDate)
-    //load advertiser dataset for attribution window and campaign data for aux
-    val advertiserDS = AdvertiserDataSet().readLatestPartitionUpTo(date)
-    // read campaign table to get setting, need to remove duplicated rows vs advertiser settings
-    val campaignDS = CampaignDataSet().readLatestPartitionUpTo(date).selectAs[CampaignRecord]
-    // read adgroup table to get adgroup campaign mapping
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date)
+    val historyAdGroupPolicy = AdGroupPolicyDataset(JobExperimentName).readDate(defaultPolicyDate).select($"ConfigKey", $"ConfigValue")
 
-    val adGroupPolicy = getSettings(historyAdGroupPolicy, adGroupDS, campaignDS, advertiserDS)
+    val latestAdGroupPolicy = AdGroupPolicyDataset().readLatestPartitionUpTo(date)
 
-    val adGroupPolicyRows = AdGroupPolicyDataset().writePartition(adGroupPolicy, date, Some(1))
+    val adGroupPolicy = historyAdGroupPolicy.join(latestAdGroupPolicy, Seq("ConfigKey", "ConfigValue"), "inner").selectAs[AdGroupPolicyRecord]
+
+    val adGroupPolicyRows = AdGroupPolicyDataset(JobExperimentName).writePartition(adGroupPolicy, date, Some(1))
 
     outputRowsWrittenGauge.labels("DailyResearchAdGroupPolicy").set(adGroupPolicyRows)
     jobDurationGaugeTimer.setDuration()
