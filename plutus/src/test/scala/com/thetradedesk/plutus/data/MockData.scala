@@ -51,6 +51,7 @@ object MockData {
 
                                     SupplyVendor = Some(""),
                                     SupplyVendorPublisherId = Some(""),
+                                    AliasedSupplyPublisherId = Some(1),
                                     SupplyVendorSiteId = Some(""),
                                     Site = Some(""),
                                     ImpressionPlacementId = Some(""),

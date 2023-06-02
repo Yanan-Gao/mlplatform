@@ -2,7 +2,8 @@ package com.thetradedesk.plutus.data.schema
 
 final case class CleanInputData(supplyVendor: String, // ImpressionContext.BiddingRequest.SupplyVendorName
                                 dealId: String, //Bid.MatchedPrivateContract?.SupplyVendorDealCode
-                                supplyVendorPublisherId: String, //ImpressionContext.BiddingRequest.SupplyVendorPublisherId
+                                supplyVendorPublisherId: String, //ImpressionContext.BiddingRequest.SupplyVendorPublisherId                                
+                                aspSvpId: String,
                                 supplyVendorSiteId: String, //ImpressionContext.BiddingRequest.SupplyVendorSiteId
                                 site: String, //ImpressionContext.Site
                                 adFormat: String, //Bid.MatchedAdFormat
@@ -18,6 +19,7 @@ final case class CleanInputData(supplyVendor: String, // ImpressionContext.Biddi
                                 deviceModel: String, //ImpressionContext.BiddingRequest.DeviceModel
                                 requestLanguages: String, //ImpressionContext.BiddingRequest.Languages
 
+                                aliasedSupplyPublisherId: Int,
                                 renderingContext: Int, //ImpressionContext.BiddingRequest.RenderingContext
                                 // matchedFoldPosition: Int, not in impression context / adinfo
                                 // volumeControlPriority: Int, not in impression context / adinfo

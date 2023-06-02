@@ -143,6 +143,14 @@ object RawDataTransform extends Logger {
         )
       )
 
+      // added a coalesced AliasedSupplyPublisherId and SupplyVendorPublisherId
+      .withColumn("AspSvpId",
+        coalesce(
+          when(col("AliasedSupplyPublisherId").isNotNull, concat(lit("asp_"), col("AliasedSupplyPublisherId"))),
+          when(col("SupplyVendorPublisherId").isNotNull, concat(lit("svp_"), col("SupplyVendorPublisherId")))
+        )
+      )
+
       .withColumn("RealMediaCostInUSD", 'MediaCostCPMInUSD / 'DiscrepancyAdjustmentMultiplier)
       .withColumn("RealMediaCost", round('RealMediaCostInUSD, ROUNDING_PRECISION))
       .withColumn("i_RealBidPriceInUSD", 'SubmittedBidAmountInUSD * 1000 * 'imp_adjuster)
@@ -193,6 +201,8 @@ object RawDataTransform extends Logger {
         // Contextual
         col("SupplyVendor"),
         col("SupplyVendorPublisherId"),
+        col("AliasedSupplyPublisherId"),
+        col("AspSvpId"),
         col("SupplyVendorSiteId"),
         col("Site"),
         col("ImpressionPlacementId"),
