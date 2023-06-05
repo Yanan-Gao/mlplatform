@@ -33,6 +33,11 @@ object AudienceModelInputGeneratorJob {
     var subFolder = config.getString("subFolder", "split")
 
     var persistHoldoutSet = config.getBoolean("persistHoldoutSet", default = false)
+
+    var seedSizeLowerScaleThreshold = config.getInt("seedSizeLowerScaleThreshold", default = 1)
+
+    var seedSizeUpperScaleThreshold = config.getInt("seedSizeUpperScaleThreshold", default = 12)
+
   }
 
   object SubFolder extends Enumeration {
@@ -115,6 +120,8 @@ object AudienceModelInputGeneratorJob {
   def clusterTargetingData(): Map[(DataSource.DataSource, CrossDeviceVendor.CrossDeviceVendor), Array[AudienceModelPolicyRecord]] = {
     val policyTable = AudienceModelPolicyReadableDataset(Config.model)
       .readSinglePartition(dateTime)(spark)
+      .where((length('Size)>=Config.seedSizeLowerScaleThreshold) && (length('Size)<Config.seedSizeUpperScaleThreshold))
+      // .where('SourceId==="1ufp35u0")
       .where('IsActive)
       .where('Source.isin(Config.supportedDataSources: _*))
       .collect()
@@ -193,7 +200,9 @@ abstract class AudienceModelInputGenerator(name: String) {
     val filteredLabels = rawLabels.join(uniqueTDIDs, Seq("TDID"), "inner")
 
     if (Config.recordIntermediateResult) {
-      filteredLabels.write.parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
+      filteredLabels.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/filteredLabels/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
+      rawLabels.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/rawLabels/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
+    
     }
 
     val refinedLabels = sampleLabels(filteredLabels, policyTable)
@@ -310,6 +319,9 @@ abstract class AudienceModelInputGenerator(name: String) {
     //      .getInt(0)
     //      .toDouble
 
+    val labelDatasetSize = labels.count()
+    val downSampleFactor = config.getInt(s"userDownSampleHitPopulation${name}", default = 1000000)/1000000.0
+
     val syntheticIdToPolicy = policyTable
       .map(e => (e.SyntheticId, e))
       .toMap
@@ -318,17 +330,21 @@ abstract class AudienceModelInputGenerator(name: String) {
       syntheticIdToPolicy,
       Config.positiveSampleUpperThreshold,
       Config.positiveSampleLowerThreshold,
-      Config.positiveSampleSmoothingFactor)
+      Config.positiveSampleSmoothingFactor,
+      downSampleFactor
+      )
 
-    val labelDatasetSize = labels.count()
-
+    // val labelDatasetSize = (labels.count()*(1000000.0/config.getInt(s"userDownSampleHitPopulation${name}", default = 1000000))).toLong
+ 
     val aboveThresholdPolicyTable = policyTable
       .filter(e => e.Size >= Config.positiveSampleLowerThreshold)
 
     val negativeSampleUDF = negativeSampleUDFGenerator(
       aboveThresholdPolicyTable,
       Config.positiveSampleUpperThreshold,
-      labelDatasetSize)
+      labelDatasetSize,
+      downSampleFactor
+      )
 
     // downsample positive labels to keep # of positive labels among targets balanced
     val labelResult = labels
@@ -352,6 +368,7 @@ abstract class AudienceModelInputGenerator(name: String) {
 /**
  * This class is used to generate model training samples for first party pixel model
  * using seenInBidding dataset
+ 
  */
 object AEMSIBInputGenerator extends AudienceModelInputGenerator("AEMSIB") {
 
@@ -444,15 +461,22 @@ object RSMSeedInputGenerator extends AudienceModelInputGenerator("RSMSeed") {
           if (Config.seedRawDataRecentVersion != null) Config.seedRawDataRecentVersion
           else S3Utils.queryCurrentDataVersion(Config.seedRawDataS3Bucket, seedDataPath)
 
-        spark.read.parquet(seedDataFullPath + "/" + recentVersion)
+        try {
+          Some(spark.read.parquet(seedDataFullPath + "/" + recentVersion)
           .select('UserId)
           .withColumnRenamed("UserId", "TDID")
           .filter(samplingFunction('TDID))
           .coalesce(Config.seedCoalesceAfterFilter)
           .withColumn("SyntheticId", lit(record.SyntheticId))
-          .select('TDID, 'SyntheticId)
+          .select('TDID, 'SyntheticId))
+        } catch {
+          case e: Exception => 
+          println(s"Caught exception of type ${e.getClass} on seed ${record.SourceId}")
+          None
+        }
+        
       }
-    ).seq.reduce(_ unionAll _)
+    ).toArray.flatten.reduce(_ unionAll _)
       .repartition(Config.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .groupBy('TDID)
       .agg(collect_list('SyntheticId) as "PositiveSyntheticIds")
