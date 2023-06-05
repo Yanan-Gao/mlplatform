@@ -8,21 +8,21 @@ import java.util.concurrent.ThreadLocalRandom
 object WeightSampling {
 
   val positiveSampleUDFGenerator =
-    (policyTable: Map[Int, AudienceModelPolicyRecord], upperThreshold: Double, lowerThreshold: Double, smoothingFactor: Double) =>
+    (policyTable: Map[Int, AudienceModelPolicyRecord], upperThreshold: Double, lowerThreshold: Double, smoothingFactor: Double, downSampleFactor: Double) =>
       udf((positiveSyntheticIds: Seq[Int]) => {
 
         val totalPositiveSyntheticIds = positiveSyntheticIds
           .map(e => (e, policyTable(e)))
           .filter(e => {
-            if (e._2.Size < lowerThreshold) {
+            if (e._2.Size*downSampleFactor < lowerThreshold) {
               false
             }
-            else if (e._2.Size >= lowerThreshold && e._2.Size <= upperThreshold) {
+            else if (e._2.Size*downSampleFactor >= lowerThreshold && e._2.Size*downSampleFactor <= upperThreshold) {
               true
             }
             else {
               val randomValue = ThreadLocalRandom.current().nextDouble()
-              randomValue < math.pow(upperThreshold / e._2.Size, smoothingFactor)
+              randomValue < math.pow(upperThreshold / (e._2.Size*downSampleFactor), smoothingFactor)
             }
           })
           .map(e => e._1)
@@ -30,7 +30,7 @@ object WeightSampling {
       })
 
   val negativeSampleUDFGenerator = {
-    (aboveThresholdPolicyTable: Array[AudienceModelPolicyRecord], upperThreshold: Double, labelDatasetSize: Long) =>
+    (aboveThresholdPolicyTable: Array[AudienceModelPolicyRecord], upperThreshold: Double, labelDatasetSize: Long, downSampleFactor: Double) =>
       udf((negSize: Int) => {
         val negativeSyntheticIdsWithPolicy = aboveThresholdPolicyTable
           .map(e => (e, ThreadLocalRandom.current().nextDouble()))
@@ -40,7 +40,7 @@ object WeightSampling {
 
         val totalNegativeSyntheticIds = negativeSyntheticIdsWithPolicy
           .map(
-            e => (e._1.SyntheticId, -1 * math.log(e._2) / (math.min(e._1.Size, upperThreshold) / (labelDatasetSize - e._1.Size)))
+            e => (e._1.SyntheticId, -1 * math.log(e._2) / (math.min(e._1.Size*downSampleFactor, upperThreshold) / (labelDatasetSize - e._1.Size*downSampleFactor)))
           )
           .sortBy(_._2)
           .take(math.max(negSize, 1))
