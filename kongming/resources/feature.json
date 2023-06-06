@@ -5,7 +5,7 @@
          {
             "Name": "AdFormat",
             "Cardinality": 202,
-            "Encoding": "int64",
+            "Encoding": "string",
             "TFType": "int64",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
@@ -31,7 +31,7 @@
          {
             "Name": "City",
             "Cardinality": 150002,
-            "Encoding": "int64",
+            "Encoding": "string",
             "TFType": "int64",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
@@ -44,7 +44,7 @@
          {
             "Name": "Country",
             "Cardinality": 252,
-            "Encoding": "int64",
+            "Encoding": "string",
             "TFType": "int64",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
@@ -57,7 +57,7 @@
          {
             "Name": "DeviceMake",
             "Cardinality": 6002,
-            "Encoding": "int64",
+            "Encoding": "string",
             "TFType": "int64",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
@@ -70,7 +70,7 @@
          {
             "Name": "DeviceModel",
             "Cardinality": 40002,
-            "Encoding": "int64",
+            "Encoding": "string",
             "TFType": "int64",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
@@ -135,7 +135,7 @@
          {
             "Name": "Region",
             "Cardinality": 4002,
-            "Encoding": "int64",
+            "Encoding": "string",
             "TFType": "int64",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
@@ -161,7 +161,7 @@
          {
             "Name": "RequestLanguages",
             "Cardinality": 5002,
-            "Encoding": "int64",
+            "Encoding": "string",
             "TFType": "int64",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
@@ -174,7 +174,7 @@
          {
             "Name": "Site",
             "Cardinality": 500002,
-            "Encoding": "int64",
+            "Encoding": "string",
             "TFType": "int64",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
@@ -187,7 +187,7 @@
          {
             "Name": "SupplyVendor",
             "Cardinality": 102,
-            "Encoding": "int64",
+            "Encoding": "string",
             "TFType": "int64",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
@@ -200,7 +200,7 @@
          {
             "Name": "SupplyVendorPublisherId",
             "Cardinality": 200002,
-            "Encoding": "int64",
+            "Encoding": "string",
             "TFType": "int64",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
@@ -213,7 +213,7 @@
          {
             "Name": "Zip",
             "Cardinality": 90002,
-            "Encoding": "int64",
+            "Encoding": "string",
             "TFType": "int64",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
@@ -356,8 +356,8 @@
                   {
             "Name": "ContextualCategoriesTier1",
             "Cardinality": 31,
-            "Encoding": "int64",
-            "TFType": "variant",
+            "Encoding": "array_int",
+            "TFType": "int64",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
             "Shape": {
@@ -371,7 +371,7 @@
          {
             "Name": "AdGroupId",
             "Cardinality": 5002,
-            "Encoding": "int64",
+            "Encoding": "string",
             "TFType": "int64",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
@@ -384,7 +384,7 @@
          {
             "Name": "CampaignId",
             "Cardinality": 5002,
-            "Encoding": "int64",
+            "Encoding": "string",
             "TFType": "int64",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
@@ -397,7 +397,7 @@
          {
             "Name": "AdvertiserId",
             "Cardinality": 500002,
-            "Encoding": "int64",
+            "Encoding": "string",
             "TFType": "int64",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
