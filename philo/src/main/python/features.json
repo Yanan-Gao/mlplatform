@@ -8,20 +8,20 @@
             { "Name": "Country",                "Cardinality": 252,     "Encoding": "string" },
             { "Name": "Region",                 "Cardinality": 4002,    "Encoding": "string" },
             { "Name": "Metro",                  "Cardinality": 302,     "Encoding": "string" },
-            { "Name": "City",                   "Cardinality": 75002,   "Encoding": "string" },
+            { "Name": "City",                   "Cardinality": 150002,  "Encoding": "string" },
             { "Name": "Zip",                    "Cardinality": 90002,   "Encoding": "string" },
             { "Name": "Browser",                "Cardinality": 20,      "Encoding": "int" },
-            { "Name": "DeviceMake",             "Cardinality": 1002,    "Encoding": "string" },
-            { "Name": "DeviceModel",            "Cardinality": 10002,   "Encoding": "string" },
+            { "Name": "DeviceMake",             "Cardinality": 6002,    "Encoding": "string" },
+            { "Name": "DeviceModel",            "Cardinality": 40002,   "Encoding": "string" },
             { "Name": "DeviceType",             "Cardinality": 9,       "Encoding": "int" },
             { "Name": "DoNotTrack",             "Cardinality": 4,       "Encoding": "int" },
             { "Name": "ImpressionPlacementId",  "Cardinality": 102,     "Encoding": "string" },
             { "Name": "OperatingSystemFamily",  "Cardinality": 10,      "Encoding": "int" },
             { "Name": "RenderingContext",       "Cardinality": 6,       "Encoding": "int" },
-            { "Name": "RequestLanguages",       "Cardinality": 502,     "Encoding": "string" },
-            { "Name": "Site",                   "Cardinality": 350002,  "Encoding": "string" },
+            { "Name": "RequestLanguages",       "Cardinality": 5002,    "Encoding": "string" },
+            { "Name": "Site",                   "Cardinality": 500002,  "Encoding": "string" },
             { "Name": "SupplyVendor",           "Cardinality": 102,     "Encoding": "string" },
-            { "Name": "SupplyVendorPublisherId","Cardinality": 15002,   "Encoding": "string" },
+            { "Name": "SupplyVendorPublisherId","Cardinality": 200002,  "Encoding": "string" },
             { "Name": "UserHourOfWeek",         "Cardinality": 170,     "Encoding": "int" },
             { "Name": "PrivateContractId",      "Cardinality": 10002,   "Encoding": "string" },
             { "Name": "SupplyVendorSiteId",     "Cardinality": 960002,  "Encoding": "string" },
@@ -36,9 +36,8 @@
             { "Name": "longitude",              "Cardinality": 0,       "Encoding": "float" }
        ],
        "AdGroup": [
-            { "Name": "AdGroupId",              "Cardinality": 1002,    "Encoding": "string" },
-            { "Name": "AdvertiserId",           "Cardinality": 5002,    "Encoding": "string" },
-            { "Name": "CreativeId",             "Cardinality": 5002,    "Encoding": "string" }
+            { "Name": "AdGroupId",              "Cardinality": 380002,  "Encoding": "string" },
+            { "Name": "AdvertiserId",           "Cardinality": 5002,    "Encoding": "string" }
        ]
     },
     "ModelVersion": 1,
