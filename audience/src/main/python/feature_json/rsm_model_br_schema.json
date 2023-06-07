@@ -1,0 +1,197 @@
+{
+  "ModelFeatureDefinitions": [
+    {
+      "FeatureDefinitions": [
+        {
+          "Cardinality": 102,
+          "Name": "SupplyVendor",
+          "Shape": {
+            "Dimensions": [
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 200002,
+          "Name": "SupplyVendorPublisherId",
+          "Shape": {
+            "Dimensions": [
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 500002,
+          "Name": "Site",
+          "Shape": {
+            "Dimensions": [
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 252,
+          "Name": "Country",
+          "Shape": {
+            "Dimensions": [
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 4002,
+          "Name": "Region",
+          "Shape": {
+            "Dimensions": [
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 150002,
+          "Name": "City",
+          "Shape": {
+            "Dimensions": [
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 90002,
+          "Name": "Zip",
+          "Shape": {
+            "Dimensions": [
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 6002,
+          "Name": "DeviceMake",
+          "Shape": {
+            "Dimensions": [
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 40002,
+          "Name": "DeviceModel",
+          "Shape": {
+            "Dimensions": [
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 5002,
+          "Name": "RequestLanguages",
+          "Shape": {
+            "Dimensions": [
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 6,
+          "Name": "RenderingContext",
+          "Shape": {
+            "Dimensions": [
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 9,
+          "Name": "DeviceType",
+          "Shape": {
+            "Dimensions": [
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 8,
+          "Name": "OperatingSystemFamily",
+          "Shape": {
+            "Dimensions": [
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 16,
+          "Name": "Browser",
+          "Shape": {
+            "Dimensions": [
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 0,
+          "Name": "sin_hour_day",
+          "Shape": {
+            "Dimensions": [
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 0,
+          "Name": "cos_hour_day",
+          "Shape": {
+            "Dimensions": [
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 0,
+          "Name": "sin_hour_week",
+          "Shape": {
+            "Dimensions": [
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 0,
+          "Name": "cos_hour_week",
+          "Shape": {
+            "Dimensions": [
+              1,
+              1
+            ]
+          }
+        },
+        {
+          "Cardinality": 0,
+          "Name": "Latitude",
+          "Shape": {
+            "Dimensions": [
+              1,
+              1
+            ]
+          },
+          "FeatureSet": "NormLatitude"
+        },
+        {
+          "Cardinality": 0,
+          "Name": "Longitude",
+          "Shape": {
+            "Dimensions": [
+              1,
+              1
+            ]
+          },
+          "FeatureSet": "NormLongitude"
+        }
+      ],
+      "ModelVersion": 20230529
+    }
+  ]
+}
