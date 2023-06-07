@@ -28,7 +28,7 @@ object ModelInput {
   val filteredPartitions = config.getInt("filteredPartitions", 200)
   val filterFilePath = config.getString("filterFilePath", "")
   val filterBy = config.getString("filterBy", "AdGroupId")
-  val featuresJson = config.getString("featuresJson", default="s3://thetradedesk-mlplatform-us-east-1/libs/philo/features/features.json")
+  val featuresJson = config.getString("featuresJson", default="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/schemas/features.json")
 
   def main(args: Array[String]): Unit = {
     val readEnv = if (ttdEnv == "prodTest") "prod" else ttdEnv

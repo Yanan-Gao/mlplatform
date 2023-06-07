@@ -13,7 +13,7 @@ variables:
   PHILO_DATA_SYNC_SCRIPT: "datasync.sh"
   PHILO_SETUP_SCRIPT: "clustersetup.sh"
   PHILO_SCRIPTS_DEST: "$PHILO_LIBS_S3_LOCATION/scripts/"
-  PHILO_FEATURES_DEST: "$PHILO_LIBS_S3_LOCATION/features/"
+  PHILO_FEATURES_DEST: "s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/schemas/"
   PHILO_MERGEREQUESTS_FEATURES_DEST: "$PHILO_LIBS_S3_LOCATION/features/mergerequests/$CI_COMMIT_REF_SLUG/"
   PHILO_MERGEREQUESTS_SCRIPTS_DEST: "$PHILO_LIBS_S3_LOCATION/scripts/mergerequests/$CI_COMMIT_REF_SLUG/"
   PYTHON_BUILD_IMAGE: "python:3.8"
