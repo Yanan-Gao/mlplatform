@@ -38,6 +38,11 @@ flags.DEFINE_string(
 flags.DEFINE_string(
     "val_prefix", default="split=Val", help="training data folder"
 )
+flags.DEFINE_string(
+    "policy_table_path",
+    default=None,
+    help="Path to the policy table. Used to refine the output embedding table",
+)
 # output path
 flags.DEFINE_string(
     "model_path", default='./saved_model/', help="local address for saving the model"
@@ -154,6 +159,9 @@ flags.DEFINE_bool(
 flags.DEFINE_string(
     "initializer", default="he_normal", help="initializer to use in the MLP"
 )
+flags.DEFINE_bool(
+    "control_random", default=False, help="whether to make sure that model output is same on every same input"
+)
 
 # Call back
 # flags.DEFINE_boolean(
@@ -163,7 +171,7 @@ flags.DEFINE_string(
 # )
 flags.DEFINE_integer(
     "early_stopping_patience",
-    default=5,
+    default=3,
     help="patience for early stopping",
     lower_bound=2,
 )
@@ -180,6 +188,7 @@ def set_seed(seed=13):
     np.random.seed(seed)
     tf.random.set_seed(seed)
     tf.experimental.numpy.random.seed(seed)
+    tf.keras.utils.set_random_seed(seed)
     # When running on the CuDNN backend, two further options must be set
     os.environ["TF_CUDNN_DETERMINISTIC"] = "1"
     os.environ["TF_DETERMINISTIC_OPS"] = "1"
@@ -191,6 +200,8 @@ def set_seed(seed=13):
 def get_data(parser, train_path, batch_size, eval_batch_size, buffer_size=100000, seed=13, train_prefix="split=Train/", val_prefix="split=Val/",):
     train_files = data.get_tfrecord_files([train_path + train_prefix])
     val_files = data.get_tfrecord_files([train_path + val_prefix])
+    print(f'training path: {train_path + train_prefix}')
+    print(f'validation path: {train_path + val_prefix}')
 
     if len(train_files) == 0 or len(val_files) == 0:
         raise Exception("No training or validation files")
@@ -233,9 +244,9 @@ def get_loss(loss, label_smoothing, poly_epsilon=1.0):
         raise Exception("Loss not supported.")
 
 
-def get_callbacks(board_path, type='RSM', early_stopping_patience=5):
+def get_callbacks(board_path, early_stopping_patience=5):
     tb_callback = tf.keras.callbacks.TensorBoard(
-        log_dir=f"{board_path}{type}_{datetime.now().strftime('%Y-%m-%d-%H-%M')}",
+        log_dir=f"{board_path}{datetime.now().strftime('%Y-%m-%d-%H-%M')}",
         write_graph=True,
         profile_batch=[100, 200],
     )
@@ -252,15 +263,13 @@ def get_callbacks(board_path, type='RSM', early_stopping_patience=5):
 
 
 def main(argv):
-    set_seed(FLAGS.seed)
+    # currently, stop using this setting, cuz TF_DETERMINISTIC_OPS will degrade 2 tims of training speed by slowing down tf.data.map
+    if FLAGS.control_random:
+        set_seed(FLAGS.seed)
     # whether turn on mixed training mode
     if FLAGS.mixed_training:
         policy = tf.keras.mixed_precision.Policy('mixed_float16')
         tf.keras.mixed_precision.set_global_policy(policy)
-
-    # parse model version information
-    version = FLAGS.train_path[:-1] # remove the last '/'
-    version = version.split('/')[-1] # the output is like: date=20230515000000
 
     tf_parser = data.feature_parser(
         features.model_features + features.model_dim_group,
@@ -306,6 +315,8 @@ def main(argv):
             FLAGS.sum_residual_dropout,
             FLAGS.sum_residual_dropout_rate,
             FLAGS.ignore_index,
+            FLAGS.model_type,
+            FLAGS.initializer,
         )
 
     model.compile(
@@ -319,12 +330,13 @@ def main(argv):
         models.FGM_wrapper(model, FLAGS.fgm_layer, FLAGS.fgm_epsilon)
 
     class_weight = eval(FLAGS.class_weight)
+
     # training the model
     model.fit(
         train,
         epochs=FLAGS.num_epochs,
         validation_data=val,
-        callbacks=get_callbacks(FLAGS.board_path, FLAGS.model_type, FLAGS.early_stopping_patience),
+        callbacks=get_callbacks(FLAGS.board_path, FLAGS.early_stopping_patience),
         class_weight=class_weight,
         verbose=True,
         # validation_freq=3,
@@ -351,29 +363,39 @@ def main(argv):
     seed_emb = model.get_layer(f"embedding_{features.TargetingDataIdList}").get_weights()[0]
     linear = model.get_layer("predictions_dense_layer").variables
     weights, bias = tf.reshape(linear[0], (FLAGS.neo_embedding_size,)).numpy(), linear[1].numpy()
-    br_model = tf.keras.models.Model(inputs=[model.get_layer(f.name).input for f in features.model_features], outputs=model.get_layer("bidimpression_result").output, name="bidimp_calculation")
     weighted_seed_emb = weights * seed_emb
+    br_model = tf.keras.models.Model(inputs=[model.get_layer(f.name).input for f in features.model_features if f != features.TargetingDataIdList],
+                                     outputs=model.get_layer("bidimpression_result").output, name="bidimp_calculation")
 
     output = pd.DataFrame(list(range(features.DEFAULT_CARDINALITIES[features.TargetingDataIdList])), columns=['SyntheticId'])
     output['Embedding'] = weighted_seed_emb.tolist()
+    if FLAGS.policy_table_path:
+        policy_table = pd.read_parquet(FLAGS.policy_table_path)
+        print(f'policy table size {policy_table.shape[0]}')
+        if policy_table.shape[0] > 0:
+            active_syntheticId = policy_table[policy_table.IsActive]['SyntheticId'].unique()
+            output = output[output.SyntheticId.isin(active_syntheticId)]
+        else:
+            print("Not found the policy table")
     # syntheticid = -1 means that the row is for bias, the input of this part is in this format: [bias,0,0,0,...,0]
     output = pd.concat([output, pd.DataFrame([{'SyntheticId': -1, 'Embedding': [bias[0]] + [0.0] * (FLAGS.neo_embedding_size - 1)}])], ignore_index=True)
     output['Embedding'] = output['Embedding'].apply(np.float32)
+    print(f'embedding table size {output.shape[0]}')
 
-    embedding_path = FLAGS.model_path + f'{FLAGS.model_type}/embedding/{version}/'
+    embedding_path = FLAGS.model_path + f'{FLAGS.model_type}/embedding/'
     pathlib.Path(embedding_path).mkdir(parents=True, exist_ok=True)
-    output.to_parquet(f'{embedding_path}embedding.parquet.gzip', compression='gzip', index=False)
+    output.to_parquet(f'{embedding_path}embedding.parquet', index=False)
 
     # local path for the trained model
-    model_path = FLAGS.model_path + f'{FLAGS.model_type}/bidimpression_model/{version}/'
+    model_path = FLAGS.model_path + f'{FLAGS.model_type}/bidimpression_model/'
     pathlib.Path(model_path).mkdir(parents=True, exist_ok=True)
     br_model.save(model_path)
     if FLAGS.model_output_path:
         # cp local model to s3
-        model_output_path = f'{FLAGS.model_output_path}{FLAGS.model_type}/bidimpression_model/{version}/'
+        model_output_path = f'{FLAGS.model_output_path}bidimpression_model/'
         utils.s3_copy(model_path, model_output_path)
         # cp seed embedding to s3
-        embedding_output_path = f'{FLAGS.model_output_path}{FLAGS.model_type}/embedding/{version}/'
+        embedding_output_path = f'{FLAGS.model_output_path}embedding/'
         utils.s3_copy(embedding_path, embedding_output_path)
 
 

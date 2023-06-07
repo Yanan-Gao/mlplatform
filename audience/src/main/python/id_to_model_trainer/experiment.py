@@ -84,6 +84,8 @@ class AudienceModelExperiment:
         self.loss = 'binary'
         self.poly_epsilon = 1
         self.mixed_training = False
+        # if true, then use seed to control randomness
+        self.dev = True
 
         # callback
         self.save_best = True
@@ -99,6 +101,7 @@ class AudienceModelExperiment:
         np.random.seed(self.seed)
         tf.random.set_seed(self.seed)
         tf.experimental.numpy.random.seed(self.seed)
+        tf.keras.utils.set_random_seed(self.seed)
         # When running on the CuDNN backend, two further options must be set
         os.environ["TF_CUDNN_DETERMINISTIC"] = "1"
         os.environ["TF_DETERMINISTIC_OPS"] = "1"
@@ -395,7 +398,10 @@ class AudienceModelExperiment:
             self.update_metadata(**kwargs)
 
             # reset seed every time update metadata
-            self.set_seed()
+            # if using set_seed, it will significant slow down training speed
+            # cuz TF_DETERMINISTIC_OPS will degrade x tims of training speed by slowing down tf.data.map
+            if self.dev:
+                self.set_seed()
 
             train, val, test = self.get_data()
 

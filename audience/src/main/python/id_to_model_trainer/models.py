@@ -128,18 +128,19 @@ def get_initialiser(initializer="he_normal", seed=13):
     if initializer == "he_normal":
         return tf.keras.initializers.HeNormal(seed)
     else:
-        raise Exception("Initializer not found.")
+        print('Currently not support other initializer. Use GlorotNormal instead')
+        return tf.keras.initializers.GlorotNormal(seed)
 
 
 def embedding(
-        name, vocab_size=10000, emb_dim=40, dtype=tf.int32, dropout_rate=0.2, seed=13
+        name, vocab_size=10000, emb_dim=40, dtype=tf.int32, dropout_rate=0.2, seed=13, initializer='he_normal'
 ):
     i = keras.Input(shape=(1,), dtype=dtype, name=f"{name}")
     em = layers.Embedding(
         input_dim=vocab_size,
         output_dim=emb_dim,
         name=f"embedding_{name}",
-        embeddings_initializer=get_initialiser(seed=seed),
+        embeddings_initializer=get_initialiser(initializer, seed=seed),
         # mask_zero=True,
     )  # output shape: (None,1,emb_dim)
     f = layers.Flatten(name=f"flatten_{name}")  # flatten output shape: (None,1*emb_dim)
@@ -147,13 +148,13 @@ def embedding(
     return i, dr(f(em(i)))
 
 
-def list_to_embedding(name, vocab_size, em_size, dropout_rate=0.2, seed=13):
+def list_to_embedding(name, vocab_size, em_size, dropout_rate=0.2, seed=13, initializer='he_normal'):
     i = keras.Input(shape=(1, None), dtype=tf.int32, name=f"{name}")
     em = layers.Embedding(
         input_dim=vocab_size,
         output_dim=em_size,
         name=f"embedding_{name}",
-        embeddings_initializer=get_initialiser(seed=seed),
+        embeddings_initializer=get_initialiser(initializer, seed=seed),
         # mask_zero=True,
     )
     # use for the vary length matrix
@@ -443,6 +444,7 @@ def init_model(
         sum_residual_dropout_rate=0.4,
         ignore_index=None,
         model_name="Audience_Extension",
+        initializer="he_normal",
 ):
     model_input_features_tuple = [
         embedding(
@@ -451,6 +453,7 @@ def init_model(
             emb_dim=f.embedding_dim,
             dtype=f.type,
             seed=seed,
+            initializer=initializer,
         )
         if f.type == tf.int32
         else value_feature(f.name)
@@ -481,6 +484,7 @@ def init_model(
         em_size=model_input_layers.shape[1],
         dropout_rate=dropout_rate,
         seed=seed,
+        initializer=initializer,
     )
     model_inputs_dim = model_input_dim[0]
     input_layer_dim = model_input_dim[1]

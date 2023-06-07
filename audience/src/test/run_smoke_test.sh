@@ -11,6 +11,7 @@ ETL_BRANCH_NAME="master"
 
 TRAINING_DATA_SOURCE="${BASE_S3_PATH}/${ETL_BRANCH_NAME}/split=train_tfrecord"
 VALIDATION_DATA_SOURCE="${BASE_S3_PATH}/${ETL_BRANCH_NAME}/split=val_tfrecord"
+POLICY_TABLE="${BASE_S3_PATH}/${ETL_BRANCH_NAME}/policy_table"
 
 DOCKER_IMAGE_NAME="audience/training-gpu"
 DOCKER_IMAGE=${DOCKER_IMAGE_NAME}:${DOCKER_IMAGE_VERSION}
@@ -26,4 +27,5 @@ bash `dirname $0`/../main/bash/rsm_model.sh \
   --training_data_source $TRAINING_DATA_SOURCE \
   --validation_data_source $VALIDATION_DATA_SOURCE \
   --input_dest $INPUT_DEST \
+  --policy_table $POLICY_TABLE \
   --extra_flags num_epochs=1 "$@"

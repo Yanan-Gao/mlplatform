@@ -21,7 +21,7 @@ import os
 #     )
 
 
-def s3_copy(src_path, dest_path, quiet=True):
+def s3_copy(src_path, dest_path, quiet=False):
     sync_command = f"aws s3 cp {src_path} {dest_path} --recursive"
     if (quiet):
         sync_command = sync_command + " --quiet"
@@ -29,7 +29,7 @@ def s3_copy(src_path, dest_path, quiet=True):
     return sync_command
 
 
-def s3_move(src_path, dest_path, quiet=True):
+def s3_move(src_path, dest_path, quiet=False):
     sync_command = f"aws s3 mv --recursive {src_path} {dest_path}"
     if (quiet):
         sync_command = sync_command + " --quiet"

@@ -69,14 +69,14 @@ model_features = [
   Feature("OperatingSystemFamily", tf.int32, DEFAULT_CARDINALITIES["OperatingSystemFamily"], 0, emb_sz_rule(DEFAULT_CARDINALITIES["OperatingSystemFamily"])),
   Feature("Browser", tf.int32, DEFAULT_CARDINALITIES["Browser"], 0, emb_sz_rule(DEFAULT_CARDINALITIES["Browser"]))
 ] + [
-  Feature("AdWidthInPixels", tf.float32, 1, 0.0, None),
-  Feature("AdHeightInPixels", tf.float32, 1, 0.0, None),
+  # Feature("AdWidthInPixels", tf.float32, 1, 0.0, None),
+  # Feature("AdHeightInPixels", tf.float32, 1, 0.0, None),
   Feature("sin_hour_day", tf.float32, 1, 0.0, None),
   Feature("cos_hour_day", tf.float32, 1, 0.0, None),
   Feature("sin_hour_week", tf.float32, 1, 0.0, None),
   Feature("cos_hour_week", tf.float32, 1, 0.0, None),
   Feature("Latitude", tf.float32, 1, 0.0, None),
-  Feature("Longitude", tf.float32, 1, 0.0, None)
+  Feature("Longitude", tf.float32, 1, 0.0, None),
 ]
 
 # These are internal types for tracking special tensor objects such as variables and datasets:
