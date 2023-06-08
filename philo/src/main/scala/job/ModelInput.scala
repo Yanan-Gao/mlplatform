@@ -1,7 +1,7 @@
 package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{loadModelFeatures, loadParquetData}
+import com.thetradedesk.geronimo.shared.{loadModelFeaturesSplit, loadParquetData}
 import com.thetradedesk.philo.schema.{AdGroupPerformanceModelValueDataset, AdGroupPerformanceModelValueRecord, ClickTrackerDataset, ClickTrackerRecord}
 import com.thetradedesk.philo.transform.ModelInputTransform
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -40,7 +40,9 @@ object ModelInput {
     val clicks = loadParquetData[ClickTrackerRecord](ClickTrackerDataset.CLICKSS3, date)
     val performanceModelValues = loadParquetData[AdGroupPerformanceModelValueRecord](AdGroupPerformanceModelValueDataset.AGPMVS3, date);
 
-    val modelFeatures = loadModelFeatures(featuresJson)
+    val modelFeaturesSplit = loadModelFeaturesSplit(featuresJson)
+
+    val modelFeatures = modelFeaturesSplit.bidRequest ++ modelFeaturesSplit.adGroup
 
     if (filterResults) {
       var filterByData : DataFrame = null;
