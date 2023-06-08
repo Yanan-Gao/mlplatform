@@ -227,7 +227,7 @@ object AdGroupPolicyGenerator {
       val adGroupPosSummary = DailyPositiveCountSummaryDataset().readRange(date.minusDays(Config.GlobalDataLookBack - 1), date, true)
         .groupBy("AdGroupId", "CampaignId", "AdvertiserId").agg((sum('Count) / Config.GlobalDataLookBack).as("DailyAdGroupCount"))
 
-      policy.join(multiLevelJoinWithPolicy[StaticPolicyTable](policy, preWarmUpPolicy, "left_semi").select("AdGroupId").withColumn("established", lit(true)), Seq("AdGroupId"), "left")
+      policy.join(multiLevelJoinWithPolicy[StaticPolicyTable](policy, preWarmUpPolicy, "left_semi").select("AdGroupId").withColumn("established", lit(true)).distinct(), Seq("AdGroupId"), "left")
         .withColumn("established", coalesce('established, lit(false)))
         .join(adGroupPosSummary, Seq("AdGroupId", "CampaignId", "AdvertiserId"), "left")
         .join(adGroupPosSummary.groupBy("CampaignId").agg(sum('DailyAdGroupCount).as("DailyCampaignCount")), Seq("CampaignId"), "left")
