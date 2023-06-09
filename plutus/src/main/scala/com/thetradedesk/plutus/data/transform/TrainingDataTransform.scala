@@ -1,7 +1,7 @@
 package com.thetradedesk.plutus.data.transform
 
 import job.ModelInputProcessor.{numCsvPartitions, onlyWriteSingleDay, outputPath, prometheus}
-import com.thetradedesk.geronimo.shared.intModelFeaturesCols
+import com.thetradedesk.geronimo.shared.{intModelFeaturesCols, loadModelFeatures}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
@@ -17,45 +17,7 @@ object TrainingDataTransform {
   val STRING_FEATURE_TYPE = "string"
   val INT_FEATURE_TYPE = "int"
   val FLOAT_FEATURE_TYPE = "float"
-
-  val modelFeatures: Array[ModelFeature] = Array(
-    ModelFeature("SupplyVendor", STRING_FEATURE_TYPE, Some(102), 0),
-    ModelFeature("DealId", STRING_FEATURE_TYPE, Some(5002), 0),
-    ModelFeature("SupplyVendorPublisherId", STRING_FEATURE_TYPE, Some(15002), 0),    
-    ModelFeature("AspSvpId", STRING_FEATURE_TYPE, Some(15002), 0),
-    ModelFeature("SupplyVendorSiteId", STRING_FEATURE_TYPE, Some(102), 0),
-    ModelFeature("Site", STRING_FEATURE_TYPE, Some(350002), 0),
-    ModelFeature("AdFormat", STRING_FEATURE_TYPE, Some(102), 0),
-    ModelFeature("ImpressionPlacementId", STRING_FEATURE_TYPE, Some(102), 0),
-    ModelFeature("Country", STRING_FEATURE_TYPE, Some(252), 0),
-    ModelFeature("Region", STRING_FEATURE_TYPE, Some(4002), 0),
-    ModelFeature("Metro", STRING_FEATURE_TYPE, Some(302), 0),
-    ModelFeature("City", STRING_FEATURE_TYPE, Some(75002), 0),
-    ModelFeature("Zip", STRING_FEATURE_TYPE, Some(90002), 0),
-    ModelFeature("DeviceMake", STRING_FEATURE_TYPE, Some(1002), 0),
-    ModelFeature("DeviceModel", STRING_FEATURE_TYPE, Some(10002), 0),
-    ModelFeature("RequestLanguages", STRING_FEATURE_TYPE, Some(502), 0),
-
-    // these are already integers
-    ModelFeature("AliasedSupplyPublisherId", INT_FEATURE_TYPE, Some(15002), 0),
-    ModelFeature("RenderingContext", INT_FEATURE_TYPE, Some(6), 0),
-    ModelFeature("UserHourOfWeek", INT_FEATURE_TYPE, Some(24 * 7 + 2), 0),
-    ModelFeature("AdsTxtSellerType", INT_FEATURE_TYPE, Some(7), 0),
-    ModelFeature("PublisherType", INT_FEATURE_TYPE, Some(7), 0),
-    ModelFeature("DeviceType", INT_FEATURE_TYPE, Some(9), 0),
-    ModelFeature("OperatingSystemFamily", INT_FEATURE_TYPE, Some(10), 0),
-    ModelFeature("Browser", INT_FEATURE_TYPE, Some(20), 0),
-
-    ModelFeature("sin_hour_day", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("cos_hour_day", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("sin_minute_hour", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("cos_minute_hour", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("sin_hour_week", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("cos_hour_week", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("latitude", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("longitude", FLOAT_FEATURE_TYPE, None, 0)
-  )
-
+  
   val modelTargets = Vector(
     ModelTarget("is_imp", "float", nullable = false),
     ModelTarget("AuctionBidPrice", "float", nullable = false),
@@ -89,11 +51,12 @@ object TrainingDataTransform {
   val validationCount = prometheus.createGauge("validation_row_count", "rows of validation data", labelNames = "ssp")
   val testCount = prometheus.createGauge("test_row_count", "ros of test data", labelNames = "ssp")
 
-
-  def transform(s3Path: String, ttdEnv: String, inputS3Prefix: String, outputS3Prefix: String, svName: Option[String], endDate: LocalDate, lookBack: Option[Int] = None, formats: Seq[String]): Unit = {
+  def transform(s3Path: String, ttdEnv: String, inputS3Prefix: String, outputS3Prefix: String, svName: Option[String], endDate: LocalDate, lookBack: Option[Int] = None, formats: Seq[String], featuresJson: String): Unit = {
 
     // load input data
     val paths = inputDataPaths(s3Path = s3Path, s3Prefix = inputS3Prefix, ttdEnv = ttdEnv, svName = svName, endDate = endDate, lookBack = lookBack)
+
+    val modelFeatures = loadModelFeatures(featuresJson)
 
   /*  metaData.write.option("header", "true")
       .option("delimiter","\t")

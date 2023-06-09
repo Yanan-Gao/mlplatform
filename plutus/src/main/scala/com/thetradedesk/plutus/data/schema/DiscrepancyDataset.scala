@@ -6,6 +6,8 @@ final case class Pda(SupplyVendorName: String, PartnerId: String, DiscrepancyAdj
 
 final case class Deals(SupplyVendorId: String, SupplyVendorDealCode: String, IsVariablePrice: Boolean)
 
+final case class EmpiricalDiscrepancy(PartnerId: String, SupplyVendor: String, DealId: String, AdFormat: String, EmpiricalDiscrepancy: BigDecimal)
+
 object DiscrepancyDataset {
 
   val SBVS3 = "s3://thetradedesk-useast-qubole/warehouse.external/thetradedesk.db/provisioning/supplyvendorbidding/v=1/"

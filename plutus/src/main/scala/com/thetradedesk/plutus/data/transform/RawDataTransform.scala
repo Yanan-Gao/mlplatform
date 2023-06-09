@@ -2,7 +2,7 @@ package com.thetradedesk.plutus.data.transform
 
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
-import com.thetradedesk.geronimo.shared.schemas.EmpiricalDiscrepancy
+import com.thetradedesk.plutus.data.schema.EmpiricalDiscrepancy
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.plutus.data.schema._
 import com.thetradedesk.plutus.data.explicitDatePart
