@@ -1,6 +1,7 @@
 package job
 
 
+import com.thetradedesk.geronimo.shared.loadModelFeatures
 import com.thetradedesk.plutus.data.transform.TrainingDataTransform
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -31,12 +32,16 @@ object ModelInputProcessor extends Logger {
   val numCsvPartitions = config.getInt("numCsvPartitions", 20)
   val onlyWriteSingleDay = config.getBoolean("onlyWriteSingleDay", false)
 
+  // Features json S3 location
+  val featuresJson = config.getString("featuresJson", "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/dev/schemas/features.json")
+
   implicit val prometheus = new PrometheusClient("Plutus", "TrainingDataEtl")
   val jobDurationTimer = prometheus.createGauge("training_model_input_runtime", "Time to process 1 day of clean data in to model input data").startTimer()
 
 
 
   def main(args: Array[String]): Unit = {
+
     svNames.foreach { svName =>
       TrainingDataTransform.transform(
         s3Path = inputPath,
@@ -46,7 +51,8 @@ object ModelInputProcessor extends Logger {
         svName = Some(svName),
         endDate = date,
         lookBack = Some(daysOfDat),
-        formats = formats
+        formats = formats,
+        featuresJson = featuresJson
       )
     }
 

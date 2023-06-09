@@ -1,6 +1,5 @@
 package com.thetradedesk.plutus.data.plutus.transform
 
-import com.thetradedesk.geronimo.shared.intModelFeaturesCols
 import org.scalatest._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers._
@@ -53,11 +52,6 @@ class TrainingDataTransformTest extends AnyFlatSpec {
     println(tsV)
     (tr == expectedTrain ) && (tsV == expectedValTest)
 
-  }
-
-  "intModelFeaturesCols" should "create a list of columns with hashing for string features" in {
-    val output = intModelFeaturesCols(TrainingDataTransform.modelFeatures)
-    println(output.mkString("Array(", ", ", ")"))
   }
 
   "modelTargetCols" should "create a list of columns for target cols" in {

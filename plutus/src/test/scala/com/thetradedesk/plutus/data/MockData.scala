@@ -3,6 +3,7 @@ package com.thetradedesk.plutus.data
 import com.thetradedesk.geronimo.bidsimpression.schema._
 import com.thetradedesk.geronimo.shared.schemas._
 import com.thetradedesk.plutus.data.schema._
+import com.thetradedesk.streaming.records.rtb._
 
 import java.sql.Timestamp
 import java.time.Instant
@@ -86,7 +87,7 @@ object MockData {
                                     OperatingSystem = Option(OSLookupRecord()),
                                     OperatingSystemFamily = Option(OSFamilyLookupRecord()),
                                     Browser = Option(BrowserLookupRecord()),
-                                    InternetConnectionType = Option(InternetConnectionRecord()),
+                                    InternetConnectionType = Option(InternetConnectionTypeLookupRecord()),
 
 
                                     UserHourOfWeek = Some(0),
