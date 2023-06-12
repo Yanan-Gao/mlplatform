@@ -20,7 +20,7 @@ case class CountryFilterRecord(Country: String)
 
 object ModelInput {
   val date = config.getDate("date", LocalDate.now())
-  val outputPath = config.getString("outputPath", "s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/")
+  val outputPath = config.getString("outputPath", "s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=3/")
   val outputPrefix = config.getStringRequired("outputPrefix")
   val ttdEnv = config.getString("ttd.env", "dev")
   val partitions = config.getInt("partitions", 2000)
@@ -62,23 +62,15 @@ object ModelInput {
         case "Country" => ModelInputTransform.transform(clicks, bidsImpressions, performanceModelValues, None, Some(filterByData.as[CountryFilterRecord]), true, modelFeatures)
         case _ => throw new Exception(f"Cannot filter by property ${filterBy}")
       }
-      //write to csv to dev for production job
-      if (writeEnv != "dev") {
-        writeData(filteredData, outputPath, "dev", outputPrefix, date, filteredPartitions, false)
-        writeData(labelCounts, outputPath, "dev", outputPrefix + "metadata", date, 1, false)
-      }
-      writeData(filteredData, outputPath, writeEnv, outputPrefix, date, filteredPartitions)
+
+      writeData(filteredData, outputPath, writeEnv, outputPrefix, date, filteredPartitions, false)
       writeData(labelCounts, outputPath, writeEnv, outputPrefix + "metadata", date, 1, false)
     }
 
     if (!filterResults) {
       val (trainingData, labelCounts) = ModelInputTransform.transform(clicks, bidsImpressions,performanceModelValues, None, None, false, modelFeatures)
       //write to csv to dev for production job
-      if (writeEnv != "dev") {
-        writeData(trainingData, outputPath, "dev", outputPrefix, date, partitions, false)
-        writeData(labelCounts, outputPath, "dev", "metadata", date, 1, false)
-      }
-      writeData(trainingData, outputPath, writeEnv, outputPrefix, date, partitions)
+      writeData(trainingData, outputPath, writeEnv, outputPrefix, date, partitions, false)
       writeData(labelCounts, outputPath, writeEnv, "metadata", date, 1, false)
     }
   }
