@@ -4,6 +4,8 @@ import com.thetradedesk.audience.datasets.Model.Model
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.utils.S3Utils
 import com.thetradedesk.audience.{dateTime, audienceVersionDateFormat, shouldConsiderTDID3, ttdEnv}
+import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
@@ -41,11 +43,17 @@ object AudiencePolicyTableGeneratorJob {
 
 abstract class AudiencePolicyTableGenerator(model: Model) {
 
+  val samplingFunction = shouldConsiderTDID3(config.getInt(s"userDownSampleHitPopulation${model}", default = 1000000), config.getStringRequired(s"saltToSampleUser${model}"))(_)
+  
   object Config {
     // detect recent seed metadata path in airflow and pass to spark job
     val seedMetaDataRecentVersion = config.getString("seedMetaDataRecentVersion", null)
     val seedMetadataS3Bucket = S3Utils.refinePath(config.getString("seedMetadataS3Bucket", "ttd-datprd-us-east-1"))
     val seedMetadataS3Path = S3Utils.refinePath(config.getString("seedMetadataS3Path", "prod/data/SeedDetail/v=1/"))
+    val seedRawDataS3Bucket = S3Utils.refinePath(config.getString("seedRawDataS3Bucket", "ttd-datprd-us-east-1"))
+    val seedRawDataS3Path = S3Utils.refinePath(config.getString("seedRawDataS3Path", "prod/data/Seed/v=1/SeedId="))
+    val seedRawDataRecentVersion = config.getString("seedRawDataRecentVersion", null)
+    val policyTableResetSyntheticId= config.getBoolean("policyTableResetSyntheticId", false)
     // conversion data look back days
     val conversionLookBack = config.getInt("conversionLookBack", 1)
     val expiredDays = config.getInt("expiredDays", default = 7)
@@ -53,6 +61,10 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
     val policyS3Bucket = S3Utils.refinePath(config.getString("policyS3Bucket", "thetradedesk-mlplatform-us-east-1"))
     val policyS3Path =S3Utils.refinePath(config.getString("policyS3Path", s"configdata/${ttdEnv}/audience/policyTable/${model}/v=1"))
     val maxVersionsToKeep = config.getInt("maxVersionsToKeep", 30)
+    val bidImpressionRepartitionNum = config.getInt("bidImpressionRepartitionNum", 8192)
+    val seedRepartitionNum = config.getInt("seedRepartitionNum", 500)
+    
+
   }
 
   private val policyTableDateFormatter = DateTimeFormatter.ofPattern(audienceVersionDateFormat)
@@ -77,6 +89,20 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
     updatePolicyCurrentVersion(dateTime)
   }
 
+  def getBidImpUniqueTDIDs(date: LocalDate) = {
+    val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
+
+    val uniqueTDIDs = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date.minusDays(1), source = Some(GERONIMO_DATA_SOURCE))
+      .withColumnRenamed("UIID", "TDID")
+      // .filter(samplingFunction('TDID))
+      .select('TDID)
+      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .distinct()
+      .cache()
+
+    uniqueTDIDs
+  } 
+
   private def updatePolicyCurrentVersion(dateTime: LocalDateTime) = {
     val versionContent = (availablePolicyTableVersions :+ dateTime)
       .distinct
@@ -91,9 +117,9 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
 
   private def updateSyntheticId(date: LocalDate, policyTable: DataFrame, previousPolicyTable: Dataset[AudienceModelPolicyRecord], previousPolicyTableDate: LocalDate): DataFrame = {
     // use current date's seed id as active id, should be replaced with other table later
-    val activeIds = policyTable.select('SourceId, 'Source, 'CrossDeviceVendorId).distinct()
+    val activeIds = policyTable.select('SourceId, 'Source, 'CrossDeviceVendorId).distinct().cache
     // get retired sourceId
-    val policyTableDayChange = ChronoUnit.DAYS.between(date, previousPolicyTableDate).toInt
+    val policyTableDayChange = ChronoUnit.DAYS.between(previousPolicyTableDate, date).toInt
 
     val inActiveIds = previousPolicyTable
       .join(activeIds, Seq("SourceId", "Source", "CrossDeviceVendorId"), "left_anti")
@@ -121,9 +147,10 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
       .withColumn("ExpiredDays", lit(0))
       .withColumn("IsActive", lit(true))
       .withColumn("Tag", lit(Tag.New.id))
-      .withColumn("SampleWeight", lit(1.0))
+      .withColumn("SampleWeight", lit(1.0)).cache()
 
-    val currentActiveIds = previousPolicyTable.join(activeIds, Seq("SourceId", "Source", "CrossDeviceVendorId"), "inner")
+    val currentActiveIds = policyTable
+      .join(previousPolicyTable.select('SourceId, 'Source, 'CrossDeviceVendorId, 'SyntheticId, 'IsActive), Seq("SourceId", "Source", "CrossDeviceVendorId"), "inner")
       .withColumn("ExpiredDays", lit(0))
       .withColumn("Tag", when('IsActive, lit(Tag.Existing.id)).otherwise(lit(Tag.Recall.id)))
       .withColumn("IsActive", lit(true))
@@ -137,12 +164,10 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
   def retrieveSourceData(date: LocalDate): DataFrame
 
   private def allocateSyntheticId(dateTime: LocalDateTime, policyTable: DataFrame): DataFrame = {
-    val recentVersionOption = availablePolicyTableVersions.find(_.isBefore(dateTime))
-    if (recentVersionOption.isDefined) {
-      val previousPolicyTable = AudienceModelPolicyReadableDataset(model)
-        .readSinglePartition(recentVersionOption.get)(spark)
-      updateSyntheticId(dateTime.toLocalDate, policyTable, previousPolicyTable, recentVersionOption.get.toLocalDate)
-    } else {
+    val recentVersionOption = if(Config.seedMetaDataRecentVersion != null) Some(LocalDateTime.parse(Config.seedMetaDataRecentVersion, DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSS") ).toLocalDate.atStartOfDay()) 
+                              else availablePolicyTableVersions.find(_.isBefore(dateTime))
+
+    if (!(recentVersionOption.isDefined) || Config.policyTableResetSyntheticId)  {
       val updatedPolicyTable = policyTable
         .withColumn("SyntheticId", row_number().over(Window.orderBy(rand())))
         .withColumn("SampleWeight", lit(1.0))
@@ -150,7 +175,11 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
         // TODO: update tag info from other signal tables (offline/online monitor, etc)
         .withColumn("Tag", lit(Tag.New.id))
         .withColumn("ExpiredDays", lit(0))
-      updatedPolicyTable
+      updatedPolicyTable 
+    } else {
+      val previousPolicyTable = AudienceModelPolicyReadableDataset(model)
+        .readSinglePartition(recentVersionOption.get)(spark)
+      updateSyntheticId(dateTime.toLocalDate, policyTable, previousPolicyTable, recentVersionOption.get.toLocalDate)
     }
   }
 }
@@ -164,18 +193,54 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM) {
 
     val seedDataFullPath = "s3a://" + Config.seedMetadataS3Bucket + "/" + Config.seedMetadataS3Path + "/" + recentVersion
 
-    val policyTable = spark.read.parquet(seedDataFullPath)
+    val uniqueTDIDs = getBidImpUniqueTDIDs(date)
+
+    val policyMetaTable = spark.read.parquet(seedDataFullPath)
       .select('SeedId, 'TargetingDataId, 'Count)
+      .withColumn("TargetingDataId", coalesce('TargetingDataId, lit(-1)))
       .where('Count > 0)
       .groupBy('SeedId, 'TargetingDataId)
       .agg(max('Count).alias("Count"))
-      .withColumn("TargetingDataId", coalesce('TargetingDataId, lit(-1)))
-      .withColumnRenamed("SeedId", "SourceId")
-      .withColumn("Size", 'Count.cast(IntegerType))
-      .drop("Count", "SeedId")
-      .withColumn("Source", lit(DataSource.Seed.id))
-      .withColumn("GoalType", lit(GoalType.Relevance.id))
-      .withColumn("CrossDeviceVendorId", lit(CrossDeviceVendor.None.id))
+      .select('SeedId, 'TargetingDataId, 'Count)
+      .collect()
+
+    val policyTable = policyMetaTable.par.map (
+      record => { 
+        val seedDataPath = Config.seedRawDataS3Path + record.getAs[String]("SeedId")
+        val seedDataFullPath = "s3a://" + Config.seedRawDataS3Bucket + "/" + seedDataPath
+        val recentVersion = if (Config.seedRawDataRecentVersion != null) Config.seedRawDataRecentVersion
+          else S3Utils.queryCurrentDataVersion(Config.seedRawDataS3Bucket, seedDataPath)
+        
+        try {
+          Some(spark.read.parquet(seedDataFullPath + "/" + recentVersion)
+          .select('UserId)
+          .withColumnRenamed("UserId", "TDID")
+          // .filter(samplingFunction('TDID))
+          .join(uniqueTDIDs, Seq("TDID"), "inner")
+          .withColumn("SeedId", lit(record.getAs[String]("SeedId")))
+          .groupBy('SeedId)
+          .count()
+          .withColumnRenamed("count", "ActiveSize")
+          .withColumn("Size", lit(record.getAs[Long]("Count")))
+          .withColumn("TargetingDataId", lit(record.getAs[Long]("TargetingDataId")))
+          .select('SeedId, 'TargetingDataId, 'Size, 'ActiveSize))
+        } catch {
+          case e: Exception => {
+            println(s"Caught exception of type ${e.getClass} on seed ${record.getAs[String]("SeedId")}")
+            None
+          }
+          
+        }
+      }
+    ).toArray.flatten.reduce(_ unionAll _)
+          .withColumnRenamed("SeedId", "SourceId")
+          .repartition(Config.seedRepartitionNum, 'SourceId)
+          .withColumn("ActiveSize", 'ActiveSize.cast(LongType))
+          .withColumn("Source", lit(DataSource.Seed.id))
+          .withColumn("GoalType", lit(GoalType.Relevance.id))
+          .withColumn("CrossDeviceVendorId", lit(CrossDeviceVendor.None.id))
+          .cache()
+
     policyTable
   }
 }
