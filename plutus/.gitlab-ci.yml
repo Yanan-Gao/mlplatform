@@ -18,11 +18,11 @@ plutus:test:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
-        - "plutus/src/**/*"
+        - "plutus/**/*"
         - "plutus/build.sbt"
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
-        - "plutus/src/**/*"
+        - "plutus/**/*"
         - "plutus/build.sbt"
   before_script:
     # we don't need to set up the machine for S3 in order to run tests
@@ -71,7 +71,6 @@ plutus:deploy_release:
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
         - "plutus/src/**/*"
-      when: manual
       allow_failure: false
   script:
     - pushd ./plutus/
