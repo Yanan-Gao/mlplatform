@@ -129,7 +129,14 @@ object MockData {
                                     ContextualCategories = Some(Seq(1L)),
 
                                     // seeninbidding columns
-                                    ThirdPartyTargetingDataIds = Option(Array(1L))
+                                    ThirdPartyTargetingDataIds = Option(Array(1L)),
+                                    GroupThirdPartyTargetingDataIds = Option(Array(1L)),
+
+                                    // adgroupkoaoptimizationsettings
+                                    IsAdFormatOptimizationEnabled = Option(false),
+                                    IsGeoSegmentOptimizationEnabled = Option(false),
+                                    KoaCanBidUpEnabled = Option(false), // assist only with performance
+                                    IsEnabled = Option(false) //koa always on or always off
 
   )
 
