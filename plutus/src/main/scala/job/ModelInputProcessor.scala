@@ -1,7 +1,6 @@
 package job
 
 
-import com.thetradedesk.geronimo.shared.loadModelFeatures
 import com.thetradedesk.plutus.data.transform.TrainingDataTransform
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark

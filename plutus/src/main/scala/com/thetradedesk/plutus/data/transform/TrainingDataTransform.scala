@@ -1,7 +1,7 @@
 package com.thetradedesk.plutus.data.transform
 
 import job.ModelInputProcessor.{numCsvPartitions, onlyWriteSingleDay, outputPath, prometheus}
-import com.thetradedesk.geronimo.shared.{intModelFeaturesCols, loadModelFeatures}
+import com.thetradedesk.geronimo.shared.{intModelFeaturesCols, loadModelFeaturesSplit}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
@@ -56,7 +56,9 @@ object TrainingDataTransform {
     // load input data
     val paths = inputDataPaths(s3Path = s3Path, s3Prefix = inputS3Prefix, ttdEnv = ttdEnv, svName = svName, endDate = endDate, lookBack = lookBack)
 
-    val modelFeatures = loadModelFeatures(featuresJson)
+    val modelFeatureLists = loadModelFeaturesSplit(featuresJson)
+
+    val modelFeatures = modelFeatureLists.bidRequest ++ modelFeatureLists.adGroup
 
   /*  metaData.write.option("header", "true")
       .option("delimiter","\t")
