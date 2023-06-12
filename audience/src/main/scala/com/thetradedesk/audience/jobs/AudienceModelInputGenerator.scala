@@ -120,7 +120,7 @@ object AudienceModelInputGeneratorJob {
   def clusterTargetingData(): Map[(DataSource.DataSource, CrossDeviceVendor.CrossDeviceVendor), Array[AudienceModelPolicyRecord]] = {
     val policyTable = AudienceModelPolicyReadableDataset(Config.model)
       .readSinglePartition(dateTime)(spark)
-      .where((length('Size)>=Config.seedSizeLowerScaleThreshold) && (length('Size)<Config.seedSizeUpperScaleThreshold))
+      .where((length('ActiveSize)>=Config.seedSizeLowerScaleThreshold) && (length('ActiveSize)<Config.seedSizeUpperScaleThreshold))
       // .where('SourceId==="1ufp35u0")
       .where('IsActive)
       .where('Source.isin(Config.supportedDataSources: _*))
@@ -152,9 +152,9 @@ abstract class AudienceModelInputGenerator(name: String) {
   object Config {
     val numTDID = config.getInt("numTDID", 100)
 
-    val bidImpressionLookBack = config.getInt("bidImpressionLookBack", 0)
+    val bidImpressionLookBack = config.getInt("bidImpressionLookBack", 1)
 
-    val seenInBiddingLookBack = config.getInt("seenInBiddingLookBack", 0)
+    val seenInBiddingLookBack = config.getInt("seenInBiddingLookBack", 1)
 
     // detect recent seed raw data path in airflow and pass to spark job
     val seedRawDataRecentVersion = config.getString("seedRawDataRecentVersion", null)
@@ -231,7 +231,7 @@ abstract class AudienceModelInputGenerator(name: String) {
   def getBidImpressions(date: LocalDate) = {
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
-    val bidsImpressionsLong = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date.minusDays(Config.bidImpressionLookBack), source = Some(GERONIMO_DATA_SOURCE))
+    val bidsImpressionsLong = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack=Some(Config.bidImpressionLookBack), source = Some(GERONIMO_DATA_SOURCE))
       .withColumnRenamed("UIID", "TDID")
       .filter(samplingFunction('TDID))
       .select('BidRequestId, // use to connect with bidrequest, to get more features
@@ -337,7 +337,7 @@ abstract class AudienceModelInputGenerator(name: String) {
     // val labelDatasetSize = (labels.count()*(1000000.0/config.getInt(s"userDownSampleHitPopulation${name}", default = 1000000))).toLong
  
     val aboveThresholdPolicyTable = policyTable
-      .filter(e => e.Size >= Config.positiveSampleLowerThreshold)
+      .filter(e => e.ActiveSize >= Config.positiveSampleLowerThreshold)
 
     val negativeSampleUDF = negativeSampleUDFGenerator(
       aboveThresholdPolicyTable,

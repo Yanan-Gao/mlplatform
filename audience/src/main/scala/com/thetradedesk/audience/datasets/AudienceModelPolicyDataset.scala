@@ -15,7 +15,10 @@ final case class AudienceModelPolicyRecord(TargetingDataId: Long,
                                            GoalType: Int,
 
                                            // seed size
-                                           Size: Int,
+                                           Size: Long,
+
+                                           // seed size of active users (seen in past day bidimpression)
+                                           ActiveSize: Long,
 
                                            // sample weight is used for weighted downsampling
                                            // we use it to control samples for each targeting data

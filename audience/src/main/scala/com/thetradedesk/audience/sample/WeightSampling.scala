@@ -14,15 +14,15 @@ object WeightSampling {
         val totalPositiveSyntheticIds = positiveSyntheticIds
           .map(e => (e, policyTable(e)))
           .filter(e => {
-            if (e._2.Size*downSampleFactor < lowerThreshold) {
+            if (e._2.ActiveSize*downSampleFactor < lowerThreshold) {
               false
             }
-            else if (e._2.Size*downSampleFactor >= lowerThreshold && e._2.Size*downSampleFactor <= upperThreshold) {
+            else if (e._2.ActiveSize*downSampleFactor >= lowerThreshold && e._2.ActiveSize*downSampleFactor <= upperThreshold) {
               true
             }
             else {
               val randomValue = ThreadLocalRandom.current().nextDouble()
-              randomValue < math.pow(upperThreshold / (e._2.Size*downSampleFactor), smoothingFactor)
+              randomValue < math.pow(upperThreshold / (e._2.ActiveSize*downSampleFactor), smoothingFactor)
             }
           })
           .map(e => e._1)
@@ -40,7 +40,7 @@ object WeightSampling {
 
         val totalNegativeSyntheticIds = negativeSyntheticIdsWithPolicy
           .map(
-            e => (e._1.SyntheticId, -1 * math.log(e._2) / (math.min(e._1.Size*downSampleFactor, upperThreshold) / (labelDatasetSize - e._1.Size*downSampleFactor)))
+            e => (e._1.SyntheticId, -1 * math.log(e._2) / (math.min(e._1.ActiveSize*downSampleFactor, upperThreshold) / (labelDatasetSize - e._1.ActiveSize*downSampleFactor)))
           )
           .sortBy(_._2)
           .take(math.max(negSize, 1))
