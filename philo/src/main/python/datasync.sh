@@ -2,7 +2,7 @@
 
 # sync model input files for the given date range to the local machine from s3
 
-BASE_DATA_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1"
+BASE_DATA_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=3"
 #BASE_MODEL_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/models"
 
 LOOKBACK=9
@@ -118,7 +118,7 @@ cd ${MNT}
 
 echo "starting s3 sync for params: prefix=${PREFIX}, meta_prefix=${META_PREFIX}, env=${ENV}, date=${START_DATE}, format=${FORMAT}, suffix=${SUFFIX} \n"
 
-##not bash doesnt support variable exapnsion here, so hardcoded '9'
+##not bash doesnt support variable expansion here, so hardcoded '9'
 for i in {1..9}; do
 
     YEAR=$(date -d "$START_DATE -$i days" +"%Y")
