@@ -1,7 +1,7 @@
 package com.thetradedesk.plutus.data.transform
 
 import job.ModelInputProcessor.{numCsvPartitions, onlyWriteSingleDay, outputPath, prometheus}
-import com.thetradedesk.geronimo.shared.{intModelFeaturesCols, loadModelFeaturesSplit}
+import com.thetradedesk.geronimo.shared.{intModelFeaturesCols, loadModelFeatures}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
@@ -17,7 +17,7 @@ object TrainingDataTransform {
   val STRING_FEATURE_TYPE = "string"
   val INT_FEATURE_TYPE = "int"
   val FLOAT_FEATURE_TYPE = "float"
-  
+
   val modelTargets = Vector(
     ModelTarget("is_imp", "float", nullable = false),
     ModelTarget("AuctionBidPrice", "float", nullable = false),
@@ -33,9 +33,7 @@ object TrainingDataTransform {
   val TFRECORD_FORMAT = "tfrecord"
   val PARQUET_FORMAT = "parquet"
 
-
   val DEFAULT_NUM_PARTITIONS = 100
-
 
   val NUM_OUTPUT_PARTITIONS = Map(
     TRAIN -> 100,
@@ -56,9 +54,7 @@ object TrainingDataTransform {
     // load input data
     val paths = inputDataPaths(s3Path = s3Path, s3Prefix = inputS3Prefix, ttdEnv = ttdEnv, svName = svName, endDate = endDate, lookBack = lookBack)
 
-    val modelFeatureLists = loadModelFeaturesSplit(featuresJson)
-
-    val modelFeatures = modelFeatureLists.bidRequest ++ modelFeatureLists.adGroup
+    val modelFeatures = loadModelFeatures(featuresJson)
 
   /*  metaData.write.option("header", "true")
       .option("delimiter","\t")

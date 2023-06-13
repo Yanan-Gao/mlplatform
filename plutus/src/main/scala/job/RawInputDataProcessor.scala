@@ -19,7 +19,7 @@ import org.apache.spark.sql.functions.col
 object RawInputDataProcessor extends Logger {
 
   val date = config.getDate("date", LocalDate.now())
-  val outputPath = config.getString("outputPath", "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc/")
+  val outputPath = config.getString("outputPath", "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/")
   val outputPrefix = config.getString("outputPrefix", "raw")
   val svNames = config.getStringSeq("svNames", Seq("google", "rubicon", "pubmatic"))
   val ttdEnv = config.getString("ttd.env", "dev")

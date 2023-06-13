@@ -17,10 +17,10 @@ object ModelInputProcessor extends Logger {
   val date = config.getDate("date" , LocalDate.now())
   val daysOfDat = config.getInt("daysOfDat" , 1)
   val svNames = config.getStringSeq("svNames", Seq("google", "rubicon", "pubmatic"))
-  val inputPath = config.getString("inputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc")
+  val inputPath = config.getString("inputPath" , "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1")
   val inputPrefix = config.getString("inputPrefix" , "clean")
 
-  val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc")
+  val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1")
   val outputPrefix = config.getString("outputPrefix" , "modelinput")
 
   val tfRecordPath = config.getString("tfRecordPath" , "tfrecord")

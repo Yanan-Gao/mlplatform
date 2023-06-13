@@ -2,16 +2,14 @@ package com.thetradedesk.plutus.data.transform
 
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
-import com.thetradedesk.plutus.data.schema.EmpiricalDiscrepancy
 import com.thetradedesk.logging.Logger
-import com.thetradedesk.plutus.data.schema._
 import com.thetradedesk.plutus.data.explicitDatePart
+import com.thetradedesk.plutus.data.schema._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.parquet.format.IntType
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.{DoubleType, IntegerType}
+import org.apache.spark.sql.types.{DoubleType, IntegerType, StringType}
 import org.apache.spark.sql.{DataFrame, Dataset, SaveMode}
 
 import java.time.LocalDate
@@ -21,9 +19,13 @@ object RawDataTransform extends Logger {
   val ROUNDING_PRECISION = 3
   val EMPIRICAL_DISCREPANCY_ROUNDING_PRECISION = 2
 
+  @deprecated
   def transform(date: LocalDate, svNames: Seq[String], bidsImpressions: Dataset[BidsImpressionsSchema], rawLostBidData: Dataset[RawLostBidData], discrepancy: (Dataset[Svb], Dataset[Pda], Dataset[Deals]), partitions: Int)(implicit prometheus: PrometheusClient): DataFrame = {
 
-    val mb2wData = minimumBidToWinData(rawLostBidData, svNames).repartition(partitions)
+    // The downstream consumers of this data are expecting mb2w -- will be depricated in v2
+    val mb2wData = minimumBidToWinData(rawLostBidData, svNames)
+      .withColumnRenamed("mbtw", "mb2w")
+      .repartition(partitions)
 
     log.info("lost bid data " + mb2wData.cache.count())
 
@@ -50,11 +52,11 @@ object RawDataTransform extends Logger {
   }
 
   def writeOutput(rawData: DataFrame, outputPath: String, ttdEnv: String, outputPrefix: String, svName: String, date: LocalDate): Unit = {
-      // note the date part is year=yyyy/month=m/day=d/
-      rawData
-        .write
-        .mode(SaveMode.Overwrite)
-        .parquet(s"$outputPath/$ttdEnv/$outputPrefix/$svName/${explicitDatePart(date)}")
+    // note the date part is year=yyyy/month=m/day=d/
+    rawData
+      .write
+      .mode(SaveMode.Overwrite)
+      .parquet(s"$outputPath/$ttdEnv/$outputPrefix/$svName/${explicitDatePart(date)}")
   }
 
   def minimumBidToWinData(rawLostBidData: Dataset[RawLostBidData], svNames: Seq[String]): Dataset[MinimumBidToWinData] = {
@@ -62,44 +64,38 @@ object RawDataTransform extends Logger {
       .filter(col("SupplyVendor").isin(svNames: _*))
       // https://gitlab.adsrvr.org/thetradedesk/adplatform/-/blob/master/TTD/DB/Provisioning/TTD.DB.Provisioning.Primitives/LossReason.cs
       .filter((col("LossReason") === "-1") || (col("LossReason") === "102"))
-      .filter(col("WinCPM") =!= 0.0 || col("mb2w") =!= 0.0)
+      .filter(col("WinCPM") =!= 0.0 || col("mbtw") =!= 0.0)
       .select(
-        col("BidRequestId").cast("String"),
-        col("SupplyVendorLossReason").cast("Integer"),
-        col("LossReason").cast("Integer"),
-        col("WinCPM").cast("Double"),
-        col("mb2w").cast("Double")
+        col("BidRequestId").cast(StringType),
+        col("SupplyVendorLossReason").cast(IntegerType),
+        col("LossReason").cast(IntegerType),
+        col("WinCPM").cast(DoubleType),
+        col("mbtw").cast(DoubleType)
       ).as[MinimumBidToWinData]
   }
 
   def dealData(svb: Dataset[Svb], deals: Dataset[Deals]): DataFrame = {
-
-    val dealDf = deals
+    deals
       .join(svb.alias("svb"), "SupplyVendorId")
       .withColumn("SupplyVendor", col("svb.RequestName"))
       .select(col("SupplyVendor"), col("SupplyVendorDealCode").alias("DealId"), col("IsVariablePrice"))
-
-    dealDf
   }
 
   def empiricalImpressions(bidsImpressions: Dataset[BidsImpressionsSchema]): Dataset[EmpiricalDiscrepancy] = {
-    val impressions = bidsImpressions
+    bidsImpressions
       .filter(col("AuctionType") === "FirstPrice" && col("IsImp"))
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
-
-    val empiricalDiscrepancyDf = impressions.alias("bf")
+      .alias("bf")
       .select(
         col("PartnerId"),
         col("SupplyVendor"),
         col("DealId"),
         col("AdFormat"),
-        coalesce(col("DiscrepancyAdjustmentMultiplier"), lit(1)).alias("DiscrepancyAdjustmentMultiplier")
+        coalesce(col("DiscrepancyAdjustmentMultiplier").cast(DoubleType), lit(1.0)).alias("DiscrepancyAdjustmentMultiplier")
       )
       .groupBy("PartnerId", "SupplyVendor", "DealId", "AdFormat")
-      .agg(round(avg("DiscrepancyAdjustmentMultiplier"), EMPIRICAL_DISCREPANCY_ROUNDING_PRECISION).as("EmpiricalDiscrepancy"))
-
-    empiricalDiscrepancyDf.selectAs[EmpiricalDiscrepancy]
-
+      .agg(round(avg("DiscrepancyAdjustmentMultiplier").cast(DoubleType), EMPIRICAL_DISCREPANCY_ROUNDING_PRECISION).cast(DoubleType).as("EmpiricalDiscrepancy")
+      ).selectAs[EmpiricalDiscrepancy]
   }
 
 
@@ -120,11 +116,11 @@ object RawDataTransform extends Logger {
       // determining how much the bid was adjusted by to back out real bid price
       .withColumn("bid_adjuster",
         coalesce('BidsFirstPriceAdjustment,
-          lit(1) / coalesce(
-            col("EmpiricalDiscrepancy"),
-            col("pda.DiscrepancyAdjustment"),
-            col("svb.DiscrepancyAdjustment"),
-            lit(1)
+          lit(1.0) / coalesce(
+            col("EmpiricalDiscrepancy").cast(DoubleType),
+            col("pda.DiscrepancyAdjustment").cast(DoubleType),
+            col("svb.DiscrepancyAdjustment").cast(DoubleType),
+            lit(1.0)
           )
         )
       )
@@ -133,12 +129,12 @@ object RawDataTransform extends Logger {
       .withColumn("imp_adjuster",
         coalesce(
           'ImpressionsFirstPriceAdjustment / 'DiscrepancyAdjustmentMultiplier,
-          lit(1) / coalesce(
-            col("DiscrepancyAdjustmentMultiplier"),
-            col("EmpiricalDiscrepancy"),
-            col("pda.DiscrepancyAdjustment"),
-            col("svb.DiscrepancyAdjustment"),
-            lit(1)
+          lit(1.0) / coalesce(
+            col("DiscrepancyAdjustmentMultiplier").cast(DoubleType),
+            col("EmpiricalDiscrepancy").cast(DoubleType),
+            col("pda.DiscrepancyAdjustment").cast(DoubleType),
+            col("svb.DiscrepancyAdjustment").cast(DoubleType),
+            lit(1.0)
           )
         )
       )
@@ -153,10 +149,10 @@ object RawDataTransform extends Logger {
 
       .withColumn("RealMediaCostInUSD", 'MediaCostCPMInUSD / 'DiscrepancyAdjustmentMultiplier)
       .withColumn("RealMediaCost", round('RealMediaCostInUSD, ROUNDING_PRECISION))
-      .withColumn("i_RealBidPriceInUSD", 'SubmittedBidAmountInUSD * 1000 * 'imp_adjuster)
+      .withColumn("i_RealBidPriceInUSD", col("SubmittedBidAmountInUSD").cast(DoubleType) * 1000 * col("imp_adjuster"))
       .withColumn("i_RealBidPrice", round('i_RealBidPriceInUSD, ROUNDING_PRECISION))
 
-      .withColumn("b_RealBidPriceInUSD", 'AdjustedBidCPMInUSD * 'bid_adjuster)
+      .withColumn("b_RealBidPriceInUSD", col("AdjustedBidCPMInUSD").cast(DoubleType) * col("bid_adjuster"))
       .withColumn("b_RealBidPrice", round('b_RealBidPriceInUSD, ROUNDING_PRECISION))
       // .withColumn("PredictiveClearingRandomControl", when(col("PredictiveClearingRandomControl"), 1).otherwise(0))
 
@@ -175,20 +171,20 @@ object RawDataTransform extends Logger {
         col("RealMediaCost").cast(DoubleType).alias("RealMediaCost"),
         col("DiscrepancyAdjustmentMultiplier").cast(DoubleType).alias("DiscrepancyAdjustmentMultiplier"),
 
-        col("i_RealBidPrice"),
+        col("i_RealBidPrice").cast(DoubleType),
         (col("SubmittedBidAmountInUSD") * 1000).cast(DoubleType).alias("ImpressionsOriginalBidPrice"),
-        col("ImpressionsFirstPriceAdjustment"),
-        col("imp_adjuster"),
+        col("ImpressionsFirstPriceAdjustment").cast(DoubleType).alias("ImpressionsFirstPriceAdjustment"),
+        col("imp_adjuster").cast(DoubleType),
 
-        col("AdjustedBidCPMInUSD").cast("double").alias("AdjustedBidCPMInUSD"),
-        col("BidsFirstPriceAdjustment"),
-        col("FloorPriceInUSD").cast("double").alias("FloorPriceInUSD"),
+        col("AdjustedBidCPMInUSD").cast(DoubleType).alias("AdjustedBidCPMInUSD"),
+        col("BidsFirstPriceAdjustment").cast(DoubleType),
+        col("FloorPriceInUSD").cast(DoubleType).alias("FloorPriceInUSD"),
 
 
         // calculated values
-        col("b_RealBidPriceInUSD").cast("double").alias("b_RealBidPriceInUSD"),
-        col("b_RealBidPrice").cast("double").alias("b_RealBidPrice"),
-        col("bid_adjuster").cast("double").alias("bid_adjuster"),
+        col("b_RealBidPriceInUSD").cast(DoubleType).alias("b_RealBidPriceInUSD"),
+        col("b_RealBidPrice").cast(DoubleType).alias("b_RealBidPrice"),
+        col("bid_adjuster").cast(DoubleType).alias("bid_adjuster"),
 
 
         // Identifiers
