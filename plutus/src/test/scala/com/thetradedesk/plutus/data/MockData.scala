@@ -30,8 +30,8 @@ object MockData {
                         WinCPM: Double = 1.0d,
                         SupplyVendor: String = "",
                         BidRequestTime: String = "",
-                        mb2w: Double = 1.0d                      ) =
-    RawLostBidData(LogEntryTime, BidRequestId, CreativeId, AdGroupId, CampaignId, PrivateContractId, PartnerId, AdvertiserId, CampaignFlightId, SupplyVendorLossReason, LossReason, WinCPM, SupplyVendor, BidRequestTime, mb2w)
+                        mbtw: Double = 1.0d                      ) =
+    RawLostBidData(LogEntryTime, BidRequestId, CreativeId, AdGroupId, CampaignId, PrivateContractId, PartnerId, AdvertiserId, CampaignFlightId, SupplyVendorLossReason, LossReason, WinCPM, SupplyVendor, BidRequestTime, mbtw)
 
 
   val bidsImpressionsMock = BidsImpressionsSchema(

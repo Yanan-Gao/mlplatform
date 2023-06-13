@@ -18,12 +18,12 @@ class RawDataTransformTest extends TTDSparkTest {
 
     val bidsImps = Seq(bidsImpressionsMock.copy()).toDS().as[BidsImpressionsSchema]
 
-    val mbw = Seq(createMbToWinRow(BidRequestId = "1", WinCPM =1.0d, mb2w = 0.8d)).toDS().as[RawLostBidData]
+    val rawLostBidData = Seq(createMbToWinRow(BidRequestId = "1", WinCPM =1.0d, mbtw = 0.8d)).toDS().as[RawLostBidData]
 
     val discrep = (Seq(supplyVendorBidding).toDS().as[Svb],
       Seq(partnerSupplyVendorDiscrepancyAdj).toDS().as[Pda],
     Seq(supplyVendorDealRecord).toDS().as[Deals])
 
-    RawDataTransform.transform(date: LocalDate, Seq("Google"), bidsImps, mbw, discrep, 1)(new PrometheusClient("test", "not real"))
+    RawDataTransform.transform(date: LocalDate, Seq("Google"), bidsImps, rawLostBidData, discrep, 1)(new PrometheusClient("test", "not real"))
     }
 }

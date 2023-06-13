@@ -6,11 +6,9 @@ import com.thetradedesk.plutus.data.{explicitDatePart, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import io.prometheus.client.Gauge
-import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{Column, DataFrame, SaveMode}
 import org.apache.spark.sql.types.DoubleType
+import org.apache.spark.sql.{DataFrame, SaveMode}
 
 import java.time.LocalDate
 

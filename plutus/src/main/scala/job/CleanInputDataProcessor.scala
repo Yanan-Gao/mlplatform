@@ -13,8 +13,8 @@ object CleanInputDataProcessor {
   val date = config.getDate("date" , LocalDate.now()) //TODO: note this can cause bad things. Date should be required and not linked ot current date.
   val lookBack = config.getInt("daysOfDat" , 1)
 
-  val inputPath = config.getString("inputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc")
-  val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/users/nick.noone/pc")
+  val inputPath = config.getString("inputPath" , "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/")
+  val outputPath = config.getString("outputPath" , "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/")
   val inputPrefix = config.getString("inputPrefix" , "raw")
   val outputPrefix = config.getString("outputPrefix" , "clean")
   val svNames = config.getStringSeq("svName", Seq("google", "rubicon", "pubmatic"))

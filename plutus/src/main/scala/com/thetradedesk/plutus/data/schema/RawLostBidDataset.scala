@@ -6,7 +6,7 @@ final case class MinimumBidToWinData(BidRequestId: String,
                                      SupplyVendorLossReason: Int,
                                      LossReason: Int,
                                      WinCPM: Double,
-                                     mb2w: Double)
+                                     mbtw: Double)
 
 final case class RawLostBidData(
                                  LogEntryTime: String,
@@ -23,7 +23,7 @@ final case class RawLostBidData(
                                  WinCPM: Double,
                                  SupplyVendor: String,
                                  BidRequestTime: String,
-                                 mb2w: Double
+                                 mbtw: Double
                                )
 
 trait RawLostBidSchema {
@@ -42,7 +42,7 @@ trait RawLostBidSchema {
     .add("WinCPM", DoubleType, true) // 11
     .add("SupplyVendor", StringType, true) // 12
     .add("BidRequestTime", StringType, true) // 13
-    .add("mb2w", DoubleType, true) // 14
+    .add("mbtw", DoubleType, true) // 14
 }
 
 object RawLostBidDataset extends RawLostBidSchema {

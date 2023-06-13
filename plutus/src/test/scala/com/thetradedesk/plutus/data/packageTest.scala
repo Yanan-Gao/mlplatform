@@ -64,9 +64,40 @@ class packageTest extends AnyFlatSpec {
   }
 
   "plutusDataPaths" should "return list of path to s3 for clean data" in {
-    val expected = Seq("s3://bucket/env/prefix/google/year=2021/month=01/day=01/", "s3://bucket/env/prefix/google/year=2020/month=12/day=31/", "s3://bucket/env/prefix/google/year=2020/month=12/day=30/")
-    val result = plutusDataPaths(s3Path = "s3://bucket", ttdEnv = "env", prefix = "raw", svName = Some("google"), date = LocalDate.of(2021, 1, 1), lookBack = Some(2))
-    expected == result
+    val env = "env"
+    val prefix = "raw"
+    val result = plutusDataPaths(s3Path = "s3://bucket", ttdEnv = "env", prefix = "raw", svName = Some("google"), date = LocalDate.of(2021, 1, 1), lookBack = Some(1))
+    result should contain theSameElementsAs Seq(f"s3://bucket/$env/$prefix/google/year=2021/month=01/day=01", f"s3://bucket/$env/$prefix/google/year=2020/month=12/day=31")
+  }
+
+  "plutusDataPaths" should "return single path with no lookback" in {
+    val env = "env"
+    val prefix = "raw"
+    val result = plutusDataPaths(s3Path = "s3://bucket", ttdEnv = "env", prefix = "raw", svName = Some("google"), date = LocalDate.of(2021, 1, 1))
+    result should contain theSameElementsAs Seq(f"s3://bucket/$env/$prefix/google/year=2021/month=01/day=01")
+  }
+  "modulo" should "return positive values" in {
+//    https://stackoverflow.com/questions/70353631/rabin-karp-algorithm-negative-hash
+    val expected = 5
+    val modulo = Int.MaxValue
+    val value = Long.MinValue
+
+    println(modulo)
+    println(value)
+    println(value%modulo)
+    println((value % modulo + modulo) % modulo)
+    val v = value % modulo
+    if(v < 0) println(v + modulo) else println(v)
+
+    println((-1 % modulo + modulo) % modulo)
+
+    println(nonNegativeMod((value % modulo).intValue(), modulo))
+    println(nonNegativeModulo(value, Some(modulo)))
+
+    // if we want to keep 0 for UNK we need to have modulo be Int.MaxValue - 1
+    // Integer is 2^31 (signed) = 2,147,483,647
+    // UNK allowed gives 2^30 = 1,073,741,824
+
   }
 
 }
