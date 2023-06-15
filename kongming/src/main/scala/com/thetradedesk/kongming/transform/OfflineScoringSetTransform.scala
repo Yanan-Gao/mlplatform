@@ -7,7 +7,7 @@ import com.thetradedesk.kongming.{multiLevelJoinWithPolicy, preFilteringWithPoli
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.{Column, Dataset}
-import org.apache.spark.sql.functions.{col, concat, lit}
+import org.apache.spark.sql.functions.{col, concat, lit, substring, when}
 
 import java.time.LocalDate
 
@@ -35,6 +35,8 @@ object OfflineScoringSetTransform {
       .withColumn("OperatingSystem", $"OperatingSystem.value")
       .withColumn("Browser", $"Browser.value")
       .withColumn("InternetConnectionType", $"InternetConnectionType.value")
+      .withColumn("IsTracked", when($"UIID".isNotNullOrEmpty && $"UIID" =!= lit("00000000-0000-0000-0000-000000000000"), lit(1)).otherwise(0))
+      .withColumn("IsUID2", when(substring($"UIID", 9, 1) =!= lit("-"), lit(1)).otherwise(0))
 
     val bidsImpContextual = ContextualTransform.generateContextualFeatureTier1(
       bidsImp.select("BidRequestId","ContextualCategories")
