@@ -18,6 +18,8 @@
 .idea/aws.xml
 *.iml
 .idea
+*.swp
+tags
 
 .bsp/
 

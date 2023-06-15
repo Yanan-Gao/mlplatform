@@ -22,7 +22,6 @@ object DailyBidsImpressions {
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
 
     val dailyBidsImpressions = multiLevelJoinWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, joinType = "left_semi")
-      .dropDuplicates("BidRequestId")
 
     val dailyBidsImpressionsRows = DailyBidsImpressionsDataset().writePartition(dailyBidsImpressions, date, Some(10000))
 

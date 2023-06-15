@@ -10,6 +10,8 @@ final case class TrainSetFeaturesRecord (
                                           Weight: Double,
                                           Target: Int,
                                           IsInTrainSet: Boolean,
+                                          IsTracked: Int,
+                                          IsUID2: Int,
 
                                           SupplyVendor: Option[String],
                                           SupplyVendorPublisherId: Option[String],

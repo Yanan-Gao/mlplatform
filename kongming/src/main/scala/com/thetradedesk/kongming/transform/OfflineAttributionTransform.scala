@@ -4,22 +4,20 @@ import com.thetradedesk.geronimo.shared.{loadParquetData, shiftModUdf}
 import com.thetradedesk.geronimo.shared.schemas.{BidFeedbackDataset, BidFeedbackRecord}
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.multiLevelJoinWithPolicy
-import com.thetradedesk.kongming.transform.TrainSetTransformation.TrackingTagWeightsRecord
+import com.thetradedesk.kongming.transform.TrainSetTransformation.{TrackingTagWeightsRecord, modelDimensions}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.datalake.ClickTrackerDataSetV5
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.util.TTDConfig.defaultCloudProvider
-import job.GenerateTrainSet.modelDimensions
+
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{FloatType, IntegerType}
 
 import java.time.format.DateTimeFormatter
-
-
 
 object OfflineAttributionTransform {
 

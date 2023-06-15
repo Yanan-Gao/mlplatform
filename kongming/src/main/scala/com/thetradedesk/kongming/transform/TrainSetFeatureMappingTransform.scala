@@ -1,13 +1,13 @@
 package com.thetradedesk.kongming.transform
 
-import com.thetradedesk.geronimo.shared.intModelFeaturesCols
+import com.thetradedesk.geronimo.shared.{STRING_FEATURE_TYPE, intModelFeaturesCols}
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import com.thetradedesk.kongming.datasets.{BidsImpressionsSchema, TrainSetFeatureMappingDataset, TrainSetFeatureMappingRecord}
 import com.thetradedesk.spark.TTDSparkContext.spark
-import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import job.GenerateTrainSet.STRING_FEATURE_TYPE
+
 import org.apache.spark.sql.{Column, Dataset}
 import org.apache.spark.sql.functions.{col, lit}
 

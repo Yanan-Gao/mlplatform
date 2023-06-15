@@ -12,6 +12,9 @@ final case class DailyOfflineScoringRecord(
                                            AdGroupIdStr: String,
                                            CampaignIdStr: String,
                                            AdvertiserIdStr: String,
+                                           IsTracked: Int,
+                                           IsUID2: Int,
+
                                            SupplyVendor: Option[Int],
                                            SupplyVendorPublisherId: Option[Int],
                                            Site: Option[Int],

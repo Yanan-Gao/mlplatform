@@ -1,42 +1,20 @@
 package job
 
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, STRING_FEATURE_TYPE, intModelFeaturesCols, loadParquetData}
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, intModelFeaturesCols, loadParquetData}
+import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets.{DailyBidsImpressionsDataset, DailyOfflineScoringDataset}
+import com.thetradedesk.kongming.transform.OfflineScoringSetTransform
+import com.thetradedesk.kongming.transform.TrainSetTransformation.{aliasedModelFeatureCols, keptFields, modelDimensions, modelFeatures, rawModelFeatureCols, seqFields}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import com.thetradedesk.geronimo.shared.schemas.ModelFeature
-import com.thetradedesk.kongming.transform.OfflineScoringSetTransform
 import com.thetradedesk.spark.util.TTDConfig.config
-import org.apache.spark.sql.functions.col
+
 import org.apache.spark.sql.Column
-import job.GenerateTrainSet.{modelDimensions, modelFeatures, seqFields}
+import org.apache.spark.sql.functions.col
 
 object DailyOfflineScoringSet {
-
-  val BidRequestIdModelFeature = ModelFeature("BidRequestId", STRING_FEATURE_TYPE, None, 0)
-  val NonBidRequestIdModelFeatures = Array(
-    ModelFeature("AdGroupId", STRING_FEATURE_TYPE, None, 0),
-    ModelFeature("CampaignId", STRING_FEATURE_TYPE, None, 0),
-    ModelFeature("AdvertiserId", STRING_FEATURE_TYPE, None, 0)
-  )
-  val keptFields = Array(BidRequestIdModelFeature) ++ NonBidRequestIdModelFeatures
-
-  def modelKeepFeatureCols(features: Seq[ModelFeature]): Array[Column] = {
-    features.map(f => col(f.name).alias(modelKeepFeatureColAlias(f))).toArray
-  }
-  def modelKeepFeatureColAlias(f: ModelFeature): String = {
-    f.name + "Str"
-  }
-
-  def modelKeepFeatureColNames(features: Seq[ModelFeature]): Array[String] = {
-    features.map(f => f.name+"Str").toArray
-  }
-
-  def intactFeatureCols(features: Seq[ModelFeature]): Array[Column] = {
-    features.map(f => col(f.name)).toArray
-  }
 
   def main(args: Array[String]): Unit = {
 
@@ -49,7 +27,7 @@ object DailyOfflineScoringSet {
 
     var hashFeatures = modelDimensions ++ modelFeatures
     hashFeatures = hashFeatures.filter(x => !seqFields.contains(x))
-    val selectionTabular = intModelFeaturesCols(hashFeatures) ++ intactFeatureCols(seqFields) ++ modelKeepFeatureCols(keptFields)
+    val selectionTabular = intModelFeaturesCols(hashFeatures) ++ rawModelFeatureCols(seqFields) ++ aliasedModelFeatureCols(keptFields)
 
     val scoringFeatureDS = OfflineScoringSetTransform.dailyTransform(
       date,

@@ -10,6 +10,8 @@ final case class ValidationDataForModelTrainingRecord(BidRequestIdStr: String,
                                                       AdGroupId: Int,
                                                       CampaignId: Int,
                                                       AdvertiserId: Int,
+                                                      IsTracked: Int,
+                                                      IsUID2: Int,
 
                                                       Weight: Double,
                                                       Target: Int,
