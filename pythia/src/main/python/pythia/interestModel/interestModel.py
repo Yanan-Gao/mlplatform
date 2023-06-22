@@ -64,8 +64,8 @@ class interestModel():
         date_train      = datetime.date(train_year, train_month, train_day)
         date_validation = date_train + datetime.timedelta(days=1)
   
-        train_dir = ["{}/year={}/month={:02d}/day={:02d}/hourPart={}".format(data_path, date_train.year, date_train.month, date_train.day, i) for i in {0,3,6,9,12,15,18,21}]
-        val_dir   = ["{}/year={}/month={:02d}/day={:02d}/hourPart={}".format(data_path, date_validation.year, date_validation.month, date_validation.day, i) for i in {0,3,6,9,12,15,18,21}]
+        train_dir = ["{}/year={}/month={:02d}/day={:02d}".format(data_path, date_train.year, date_train.month, date_train.day)]
+        val_dir   = ["{}/year={}/month={:02d}/day={:02d}".format(data_path, date_validation.year, date_validation.month, date_validation.day)]
 
         # Formatting output directories
         model_path_parent = "{}/{}-{:02d}-{:02d}_{}".format(output_path, date_train.year, date_train.month, date_train.day, model_name)

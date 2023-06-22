@@ -133,63 +133,67 @@ pythia:push_bits_master_snapshot:
 # this step specifically will namespace the training image for your branch.
 # e.g. pythia-training:mem-datperf-2098-testing-thing
 
-pythia:build_push_training_container:
-  image: "$PYTHON_BUILDX_IMAGE"
-  stage: test
-  services:
-    - docker:dind
-  variables:
-    DOCKER_BUILDKIT: 1
-    DOCKER_CLI_EXPERIMENTAL: "enabled"
-  before_script:
-    - echo 'deb http://archive.debian.org/debian stretch main' >> /etc/apt/sources.list
-    - apt update
-    - apt-get install docker.io -y
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      changes:
-        - "pythia/src/main/python/*"
-        - "pythia/src/main/python/**/*"
-      when: manual
-  script:
-    - export DOCKER_HOST=$DOCKER_PORT
-    - pushd ./pythia/src/main/python/
-    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
-    - docker buildx build --secret id=PYPI_READ_USERNAME --secret id=PYPI_READ_PASSWORD -f Dockerfile.prod -t ${PYTHIA_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} .
-    - docker tag ${PYTHIA_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} ${DOCKER_INTERNAL_REGISTRY}/${PYTHIA_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
-    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PYTHIA_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
-    - popd
-    - echo "latest training container pushed to ${DOCKER_INTERNAL_REGISTRY}/${PYTHIA_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}"
+# uncommend this pipeline step when we have a main.py file
+
+#pythia:build_push_training_container:
+#  image: "$PYTHON_BUILDX_IMAGE"
+#  stage: test
+#  services:
+#    - docker:dind
+#  variables:
+#    DOCKER_BUILDKIT: 1
+#    DOCKER_CLI_EXPERIMENTAL: "enabled"
+#  before_script:
+#    - echo 'deb http://archive.debian.org/debian stretch main' >> /etc/apt/sources.list
+#    - apt update
+#    - apt-get install docker.io -y
+#  rules:
+#    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+#      changes:
+#        - "pythia/src/main/python/*"
+#        - "pythia/src/main/python/**/*"
+#      when: manual
+#  script:
+#    - export DOCKER_HOST=$DOCKER_PORT
+#    - pushd ./pythia/src/main/python/
+#    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
+#    - docker buildx build --secret id=PYPI_READ_USERNAME --secret id=PYPI_READ_PASSWORD -f Dockerfile.prod -t ${PYTHIA_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} .
+#    - docker tag ${PYTHIA_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} ${DOCKER_INTERNAL_REGISTRY}/${PYTHIA_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
+#    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PYTHIA_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
+#    - popd
+#    - echo "latest training container pushed to ${DOCKER_INTERNAL_REGISTRY}/${PYTHIA_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}"
 
 # same as the above, but this one will push the release training container.!reference:
 # the release container will be tagged like pythia-training:release.
 
-pythia:build_push_release_container:
-  image: "$PYTHON_BUILDX_IMAGE"
-  stage: deploy
-  services:
-    - docker:dind
-  variables:
-    DOCKER_BUILDKIT: 1
-    DOCKER_CLI_EXPERIMENTAL: "enabled"
-  before_script:
-    - echo 'deb http://archive.debian.org/debian stretch main' >> /etc/apt/sources.list
-    - apt update
-    - apt-get install docker.io -y
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
-      changes:
-        - "pythia/src/main/python/*"
-        - "pythia/src/main/python/**/*"
-  script:
-    - export DOCKER_HOST=$DOCKER_PORT
-    - pushd ./pythia/src/main/python/
-    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
-    - docker buildx build --secret id=PYPI_READ_USERNAME --secret id=PYPI_READ_PASSWORD -f Dockerfile.prod -t ${PYTHIA_TRAINING_IMAGE}:release .
-    - docker tag ${PYTHIA_TRAINING_IMAGE}:release ${DOCKER_INTERNAL_REGISTRY}/${PYTHIA_TRAINING_IMAGE}:release
-    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PYTHIA_TRAINING_IMAGE}:release
-    - popd
-    - echo "latest training container pushed"
+# uncomment this when we have a working training container
+
+#pythia:build_push_release_container:
+#  image: "$PYTHON_BUILDX_IMAGE"
+#  stage: deploy
+#  services:
+#    - docker:dind
+#  variables:
+#    DOCKER_BUILDKIT: 1
+#    DOCKER_CLI_EXPERIMENTAL: "enabled"
+#  before_script:
+#    - echo 'deb http://archive.debian.org/debian stretch main' >> /etc/apt/sources.list
+#    - apt update
+#    - apt-get install docker.io -y
+#  rules:
+#    - if: '$CI_COMMIT_BRANCH == "master"'
+#      changes:
+#        - "pythia/src/main/python/*"
+#        - "pythia/src/main/python/**/*"
+#  script:
+#    - export DOCKER_HOST=$DOCKER_PORT
+#    - pushd ./pythia/src/main/python/
+#    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
+#    - docker buildx build --secret id=PYPI_READ_USERNAME --secret id=PYPI_READ_PASSWORD -f Dockerfile.prod -t ${PYTHIA_TRAINING_IMAGE}:release .
+#    - docker tag ${PYTHIA_TRAINING_IMAGE}:release ${DOCKER_INTERNAL_REGISTRY}/${PYTHIA_TRAINING_IMAGE}:release
+#    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PYTHIA_TRAINING_IMAGE}:release
+#    - popd
+#    - echo "latest training container pushed"
 
 # this step will build the jar and copy it to the release location on s3.
 
