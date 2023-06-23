@@ -35,7 +35,7 @@ def s3_sync(src_path, dst_path, quiet=True):
     return sync_command
 
 
-def s3_copy(src_path, dest_path, quiet=True):
+def s3_copy(src_path, dest_path, quiet=True, recursive=True):
     """
     Copy data from source path to destination path, need awscli
     Args:
@@ -46,7 +46,9 @@ def s3_copy(src_path, dest_path, quiet=True):
     Returns:command for copying
 
     """
-    cp_command = f"aws s3 cp {src_path} {dest_path} --recursive"
+    cp_command = f"aws s3 cp {src_path} {dest_path}"
+    if recursive:
+        cp_command = cp_command + " --recursive"
     if quiet:
         cp_command = cp_command + " --quiet"
     os.system(cp_command)
