@@ -329,6 +329,8 @@ def main(argv):
     path_combined_3 = f"{base_s3_path}{MODEL_OUTPUT_STEP_3}{S3_MODEL_FILES}{FLAGS.model_creation_date}"
     path_neo_a = f"{base_s3_path}{NEO_A_OUTPUT}{S3_MODEL_FILES}{FLAGS.model_creation_date}"
     path_neo_b = f"{base_s3_path}{NEO_B_OUTPUT}{S3_MODEL_FILES}{FLAGS.model_creation_date}"
+    path_featuresjson_a = f"{path_neo_a}/features.json"
+    path_featuresjson_b = f"{path_neo_b}/features.json"
 
     print(f"Writing step 1 combined model to {path_combined_1}...")
     s3_copy(f"{model_tag_1}", path_combined_1)
@@ -345,6 +347,11 @@ def main(argv):
     # the bias file should go in the model_files for the adgroup model instead of in a different bias folder
     print(f"Writing bias term to {path_neo_a}...")
     s3_copy(f"{FLAGS.output_path}model/step_3/bias", path_neo_a)
+    # features.json should go to both adgroup and bidrequest models
+    print(f"Writing features.json to {path_featuresjson_a}")
+    s3_copy(f"{FEATURES_PATH}", path_featuresjson_a, recursive=False)
+    print(f"Writing features.json to {path_featuresjson_b}")
+    s3_copy(f"{FEATURES_PATH}", path_featuresjson_b, recursive=False)
     print("Writing _SUCCESS files")
     s3_write_success_file(path_combined_1)
     s3_write_success_file(path_combined_2)
