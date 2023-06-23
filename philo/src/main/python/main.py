@@ -18,6 +18,8 @@ from philo.neo import extract_dnn_only_models
 from dalgo_utils import features
 
 FLAGS = flags.FLAGS
+# will be later packed into json or yaml file
+BIDDER_PREDICTION_LAYER = 'prediction_layer'
 
 INPUT_PATH = "/var/tmp/input/"
 OUTPUT_PATH = "/var/tmp/output/"
@@ -27,7 +29,7 @@ LATEST_MODEL = "/var/tmp/input"
 S3_PROD = "s3://thetradedesk-mlplatform-us-east-1/models/{env}/philo/v=3/{region}/"
 FEATURES_PATH = "features.json"
 # PARAM_MODEL_OUTPUT = "models_params/"
-MODEL_OUTPUT_STEP_1 = "models/"
+MODEL_OUTPUT_STEP_1 = "step_1/"
 MODEL_OUTPUT_STEP_2 = "step_2/"
 MODEL_OUTPUT_STEP_3 = "combined/"
 NEO_A_OUTPUT = "adgroup/"
@@ -37,7 +39,7 @@ MODEL_REGION = "namer"
 EVAL_OUTPUT = "eval_metrics/"
 S3_MODEL_FILES = "model_files/"
 S3_MODEL_LOGS = "model_logs/"
-DATA_FORMAT = "tfrecords"
+DATA_FORMAT = "csv"
 
 # TRAIN = "train"
 # VAL = "validation"
@@ -182,7 +184,7 @@ def main(argv):
     atexit.register(mirrored_strategy._extended._cross_device_ops._pool.close)
     atexit.register(mirrored_strategy._extended._host_cross_device_ops._pool.close)
     with mirrored_strategy.scope():
-        # currently not using the latest model, but can be used in the future
+        # currently, not using the latest model, but can be used in the future
         # try:
         #     model = tf.keras.models.load_model(FLAGS.latest_model_path, custom_objects=custom_objects)
         # except OSError as error:
@@ -191,7 +193,8 @@ def main(argv):
         kwargs = {"dnn_hidden_units": tuple(FLAGS.dnn_hidden_units), "l2_reg_linear": FLAGS.l2_reg_linear,
                   "l2_reg_embedding": FLAGS.l2_reg_embedding, "l2_reg_dnn": FLAGS.l2_reg_dnn,
                   "dnn_dropout": FLAGS.dnn_dropout, "dnn_activation": FLAGS.dnn_activation,
-                  "dnn_use_bn": FLAGS.dnn_use_bn, "adgroup_feature_list": adgroup_feature_list}
+                  "dnn_use_bn": FLAGS.dnn_use_bn, "adgroup_feature_list": adgroup_feature_list,
+                  'step': 1}
         print('Number of devices: %d' % mirrored_strategy.num_replicas_in_sync)
         model_1 = model_builder(FLAGS.model_arch, model_features, **kwargs)
 
@@ -230,7 +233,11 @@ def main(argv):
         # step 2: freezing the embeddings trained, retrain the model with only dual DNN towers
         # this step ensures that the DNN part will learn the embeddings to predict, unfreezing the whole model will lead to
         # the model struggling ~ 0.5 AUC
-        model_2, model_neo_a, model_neo_b = extract_dnn_only_models(model_1)
+        model_2, model_neo_a, model_neo_b = extract_dnn_only_models(model_1, task='binary',
+                                                                    adgroup_feature_list=['AdGroupId', 'AdvertiserId',
+                                                                                          'CreativeId'],
+                                                                    step=-1,
+                                                                    prediction_layer_name=BIDDER_PREDICTION_LAYER)
 
         # freeze embedding layers
         for layer in list(filter(lambda x: isinstance(x, Embedding), model_2.layers)):
@@ -332,8 +339,6 @@ def main(argv):
 
     print(f"Writing step 1 combined model to {path_combined_1}...")
     s3_copy(f"{model_tag_1}", path_combined_1)
-    # TODO: delete following line after switching completely to V3, this keeps V1 deployment functional for now
-    s3_copy(f"{model_tag_1}", f"{base_s3_path}{MODEL_OUTPUT_STEP_1}{FLAGS.model_creation_date}")
     print(f"Writing step 2 combined model to {path_combined_2}...")
     s3_copy(f"{model_tag_2}", path_combined_2)
     print(f"Writing step 3 combined model to {path_combined_3}...")

@@ -399,12 +399,15 @@ def create_combined_encoder(group_embedding_dict, dense_value_list, adgroup_feat
     return tf.reduce_sum(dnn_output_adgroup * dnn_output_bid, axis=1, keepdims=True), dnn_output_adgroup, dnn_output_bid
 
 
-def extract_dnn_only_models(model, task='binary', adgroup_feature_list=['AdGroupId', 'AdvertiserId', 'CreativeId']):
+def extract_dnn_only_models(model, task='binary', adgroup_feature_list=['AdGroupId', 'AdvertiserId', 'CreativeId'],
+                            step=-1, prediction_layer_name='prediction_layer'):
     """
     From any model with Dual DNN towers, extract and build a new model that predicts only utilizing the DNN
     parts. Along with it, build Neo A and B model from each single DNN tower.
     If the model provided is already DNN only, the output will be the same model plus the Neo A & B models.
     Args:
+        prediction_layer_name: predciton layer name used in bidder
+        step: if -1, then last step, use prediction_layer as the last layer name
         model: model with Dual DNN tower structures
         task: ``"binary"`` for  binary logloss or  ``"regression"`` for regression loss
         adgroup_feature_list: adgroup feature list
@@ -425,7 +428,10 @@ def extract_dnn_only_models(model, task='binary', adgroup_feature_list=['AdGroup
 
     dual_combined_output = tf.reduce_sum(a_dnn_layer.output * b_dnn_layer.output, axis=1, keepdims=True)
     new_final_logit = add_func([dual_combined_output])
-    new_output = PredictionLayer(task)(new_final_logit)
+    if step == -1:
+        new_output = PredictionLayer(task, name=prediction_layer_name)(new_final_logit)
+    else:
+        new_output = PredictionLayer(task, name=f'prediction_layer_{step}')(new_final_logit)
 
     model_deepfm_dnn = Model(inputs=[i.output for i in input_layers], outputs=new_output)
     model_neo_dnn_a = Model(inputs=[i.output for i in input_layers_a], outputs=a_dnn_layer.output)
