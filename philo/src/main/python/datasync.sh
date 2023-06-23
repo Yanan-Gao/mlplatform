@@ -83,7 +83,7 @@ fi
 
 if [ -z "$LATEST_MODEL_PATH" ]
 then
-   LATEST_MODEL_PATH="${BASE_MODEL_S3_PATH}/${ENV}/philo/v=1/${REGION}/models/"
+   LATEST_MODEL_PATH="${BASE_MODEL_S3_PATH}/${ENV}/philo/v=3/${REGION}/models/"
    echo "No latest model path set. Falling back to $LATEST_MODEL_PATH" >&1
 fi
 

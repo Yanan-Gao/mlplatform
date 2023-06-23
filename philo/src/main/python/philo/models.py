@@ -62,7 +62,8 @@ def model_builder(model_arch, model_features, **kwargs):
 def deep_fm_dual_tower(linear_feature_columns, dnn_feature_columns, adgroup_feature_list, fm_group=[DEFAULT_GROUP_NAME],
                        dnn_hidden_units=[[64, 64], [128, 64]], l2_reg_linear=0.00001, l2_reg_embedding=0.00001,
                        l2_reg_dnn=0, seed=SEED, dnn_dropout=0,
-                       dnn_activation='relu', dnn_use_bn=False, task='binary'):
+                       dnn_activation='relu', dnn_use_bn=False, task='binary',
+                       step=1, prediction_layer_name=None):
     """Instantiates the DeepFM Network architecture with adgroup and bidrequest feature splitted in mlp part
 
     :param linear_feature_columns: An iterable containing all the features used by linear part of the model.
@@ -79,13 +80,17 @@ def deep_fm_dual_tower(linear_feature_columns, dnn_feature_columns, adgroup_feat
     :param dnn_activation: Activation function to use in DNN
     :param dnn_use_bn: bool. Whether use BatchNormalization before activation or not in DNN
     :param task: str, ``"binary"`` for  binary logloss or  ``"regression"`` for regression loss
+    :param step: if -1 (like 'last' in a python list), this will be the last step, therefore, the last layer
+                 have to be prediction_layer_name (normally prediction_layer) to avoid bidder error,
+                 otherwise, if not -1, the final layers name will be prediction_layer_{step}
+    :param prediction_layer_name: if None, then nothing, but if step=-1, it cannot be None
     :return: A Keras model instance.
 
     Args:
+        prediction_layer_name:
         adgroup_feature_list:
         adgroup_feature_list:
     """
-
     features = build_input_features(
         linear_feature_columns + dnn_feature_columns)
 
@@ -113,8 +118,12 @@ def deep_fm_dual_tower(linear_feature_columns, dnn_feature_columns, adgroup_feat
         dual_combined_output = Dense(1, use_bias=False, kernel_initializer=glorot_normal(seed=seed))(dnn_input)
 
     final_logit = add_func([linear_logit, fm_logit, dual_combined_output])
-
-    output = PredictionLayer(task)(final_logit)
+    if step != -1:
+        output = PredictionLayer(task, name=f'prediction_layer_{step}')(final_logit)
+    else:
+        if prediction_layer_name is None:
+            raise ValueError('prediction_layer_name cannot be None if it is the last step (-1)')
+        output = PredictionLayer(task, name=prediction_layer_name)(final_logit)
     model = Model(inputs=inputs_list, outputs=output)
     return model
 

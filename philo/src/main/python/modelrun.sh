@@ -55,7 +55,7 @@ fi
 
 if [ -z "$OUTPUT_PATH" ]
 then
-   OUTPUT_PATH="s3://thetradedesk-mlplatform-us-east-1/models/{env}/philo/v=1/{region}/"
+   OUTPUT_PATH="s3://thetradedesk-mlplatform-us-east-1/models/{env}/philo/v=3/{region}/"
    echo "No output path set. Falling back to $OUTPUT_PATH" >&1
 fi
 
