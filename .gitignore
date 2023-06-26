@@ -157,3 +157,6 @@ output
 # ignore DS_Store
 .DS_Store
 **/.DS_Store
+
+#ignore ds-sync meta files
+**/.meta

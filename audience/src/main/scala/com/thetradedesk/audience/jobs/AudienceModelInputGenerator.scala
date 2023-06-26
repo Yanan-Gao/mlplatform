@@ -199,11 +199,6 @@ abstract class AudienceModelInputGenerator(name: String) {
 
     val filteredLabels = rawLabels.join(uniqueTDIDs, Seq("TDID"), "inner")
 
-    if (Config.recordIntermediateResult) {
-      filteredLabels.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/filteredLabels/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
-      rawLabels.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/rawLabels/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
-    
-    }
 
     val refinedLabels = sampleLabels(filteredLabels, policyTable)
 
@@ -215,6 +210,14 @@ abstract class AudienceModelInputGenerator(name: String) {
             sampledBidsImpressionsKeys, Seq("TDID"), "inner"),
         Seq("TDID", "BidRequestId"), "inner")
 //      .where(stringEqUdf('BidRequestId, 'BidRequestId2))
+
+    if (Config.recordIntermediateResult) {
+      filteredLabels.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/filteredLabels/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
+      rawLabels.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/rawLabels/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
+      refinedLabels.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/refinedLabels/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
+      roughResult.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/roughResult/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
+    
+    }
 
     refineResult(roughResult)
   }

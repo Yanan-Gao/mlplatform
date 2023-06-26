@@ -63,6 +63,7 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
     val maxVersionsToKeep = config.getInt("maxVersionsToKeep", 30)
     val bidImpressionRepartitionNum = config.getInt("bidImpressionRepartitionNum", 8192)
     val seedRepartitionNum = config.getInt("seedRepartitionNum", 500)
+    val bidImpressionLookBack = config.getInt("bidImpressionLookBack", 1)
     
 
   }
@@ -92,7 +93,7 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
   def getBidImpUniqueTDIDs(date: LocalDate) = {
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
-    val uniqueTDIDs = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date.minusDays(1), source = Some(GERONIMO_DATA_SOURCE))
+    val uniqueTDIDs = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack=Some(Config.bidImpressionLookBack), source = Some(GERONIMO_DATA_SOURCE))
       .withColumnRenamed("UIID", "TDID")
       // .filter(samplingFunction('TDID))
       .select('TDID)
