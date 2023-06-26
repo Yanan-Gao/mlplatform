@@ -17,6 +17,7 @@ while true; do
   --model_pretrained_path) MODEL_PRETRAINED_PATH="--model_pretrained_path $2" ;;
   --model_output_path) MODEL_OUTPUT_PATH="--model_output_path $2" ;;
   --policy_table) POLICY_TABLE="$2" ;;
+  --embedding_output_path) EMBEDDING_OUTPUT_PATH="--embedding_output_path $2" ;;
   --extra_flags)
     for extra_flag in $(echo $2 | tr ";" "\n"); do
       EXTRA_FLAGS="$EXTRA_FLAGS --$extra_flag"
@@ -69,6 +70,7 @@ docker run \
       "--flagfile=/opt/application/input/resources/rsm_model_params.cfg" \
       $MODEL_PRETRAINED_PATH \
       $MODEL_OUTPUT_PATH \
+      $EMBEDDING_OUTPUT_PATH \
       $POLICY_TABLE \
       $EXTRA_FLAGS
 

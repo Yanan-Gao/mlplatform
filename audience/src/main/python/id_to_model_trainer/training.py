@@ -17,27 +17,18 @@ if tf.test.is_gpu_available():
     models.GPU_setting()
 # setting up training configuration
 FLAGS = flags.FLAGS
-TRAIN_PATH = './input/'
-# MODEL_OUTPUT_PATH = "./output/"
-BOARD_PATH = './tensorboard/'
+TRAIN_PATH = "./input/"
+BOARD_PATH = "./tensorboard/"
 
 # todo: log and measurement part
 
 
-flags.DEFINE_string(
-    "model_type", default="RSM", help="Model Type."
-)
+flags.DEFINE_string("model_type", default="RSM", help="Model Type.")
 
 # input path
-flags.DEFINE_string(
-    "train_path", default=TRAIN_PATH, help="training data path"
-)
-flags.DEFINE_string(
-    "train_prefix", default="split=Train", help="training data folder"
-)
-flags.DEFINE_string(
-    "val_prefix", default="split=Val", help="training data folder"
-)
+flags.DEFINE_string("train_path", default=TRAIN_PATH, help="training data path")
+flags.DEFINE_string("train_prefix", default="split=Train", help="training data folder")
+flags.DEFINE_string("val_prefix", default="split=Val", help="training data folder")
 flags.DEFINE_string(
     "policy_table_path",
     default=None,
@@ -45,11 +36,21 @@ flags.DEFINE_string(
 )
 # output path
 flags.DEFINE_string(
-    "model_path", default='./saved_model/', help="local address for saving the model"
+    "model_path",
+    default="./saved_model/",
+    help="local address for saving the model and embedding",
 )
 flags.DEFINE_string(
-    "model_output_path", default=None, help="the s3 for saving the copy of the local model; kind \
-    like s3://{self.bucket_name}/{partition_prefix} "
+    "model_output_path",
+    default=None,
+    help="the s3 for saving the copy of the local bidimpression model; kind \
+    like s3://{self.bucket_name}/{partition_prefix} ",
+)
+flags.DEFINE_string(
+    "embedding_output_path",
+    default=None,
+    help="the s3 for saving the copy of the local seed embedding; kind \
+    like s3://{self.bucket_name}/{partition_prefix} ",
 )
 
 # pretrain model path -- for incremental training
@@ -62,7 +63,8 @@ flags.DEFINE_string(
 
 # Train params
 flags.DEFINE_integer(
-    "neo_embedding_size", default=64,
+    "neo_embedding_size",
+    default=64,
     help="Set the emebdding length for the NEO input",
 )
 flags.DEFINE_integer(
@@ -74,93 +76,80 @@ flags.DEFINE_integer(
 flags.DEFINE_integer(
     "buffer_size", default=1000000, help="Buffer size for training", lower_bound=1
 )
-flags.DEFINE_integer(
-    "eval_batch_size", default=20480, help="Batch size for evaluation"
-)
+flags.DEFINE_integer("eval_batch_size", default=20480, help="Batch size for evaluation")
 flags.DEFINE_integer(
     "num_decision_steps", default=3, help="Number decision step for the tabnet"
 )
 flags.DEFINE_float(
-    "feature_dim_factor", default=1.3, help="Intermidiate layer size factor for the tabnet"
+    "feature_dim_factor",
+    default=1.3,
+    help="Intermidiate layer size factor for the tabnet",
 )
 flags.DEFINE_float(
-    "learning_rate", default=0.01, help="learning rate; Lion suggest 3e-4 to start, however, the lower value will have a higher \
-        chance of overfitting"
+    "learning_rate",
+    default=0.01,
+    help="learning rate; Lion suggest 3e-4 to start, however, the lower value will have a higher \
+        chance of overfitting",
 )
-flags.DEFINE_float(
-    "beta_1", default=0.9, help="optimizer parameter for lion"
-)
-flags.DEFINE_float(
-    "beta_2", default=0.99, help="optimizer parameter for lion"
-)
-flags.DEFINE_float(
-    "wd", default=0.01, help="weight decay for lion"
-)
-flags.DEFINE_float(
-    "relaxation_factor", default=3.5, help="parameter for tabnet"
-)
+flags.DEFINE_float("beta_1", default=0.9, help="optimizer parameter for lion")
+flags.DEFINE_float("beta_2", default=0.99, help="optimizer parameter for lion")
+flags.DEFINE_float("wd", default=0.01, help="weight decay for lion")
+flags.DEFINE_float("relaxation_factor", default=3.5, help="parameter for tabnet")
 flags.DEFINE_string(
     "optimizer", default="lion", help="available options: lion, nadam and adam"
 )
-flags.DEFINE_float(
-    "label_smoothing", default=0.01, help="label smoothing setting"
-)
-flags.DEFINE_float(
-    "tabnet_factor", default=0.18, help="facotr for the tabnet output"
-)
+flags.DEFINE_float("label_smoothing", default=0.01, help="label smoothing setting")
+flags.DEFINE_float("tabnet_factor", default=0.18, help="facotr for the tabnet output")
 flags.DEFINE_float(
     "embedding_factor", default=0.95, help="facotr for the bidimpression output"
 )
-flags.DEFINE_float(
-    "dropout_rate", default=0.27, help="dropout ratio"
-)
-flags.DEFINE_string(
-    "class_weight", default="{0: 1, 1: 2.52}", help="class weight"
-)
-flags.DEFINE_integer(
-    "seed", default=13, help="random seed"
-)
+flags.DEFINE_float("dropout_rate", default=0.27, help="dropout ratio")
+flags.DEFINE_string("class_weight", default="{0: 1, 1: 2.52}", help="class weight")
+flags.DEFINE_integer("seed", default=13, help="random seed")
 flags.DEFINE_bool(
-    "fgm", default=False, help="whether to turn on fast gradient method -> add noisy to the training process which may improve the generalization capability"
+    "fgm",
+    default=False,
+    help="whether to turn on fast gradient method -> add noisy to the training process which may improve the generalization capability",
 )
 flags.DEFINE_string(
     "fgm_layer", default=None, help="the name of layer that is going to be add noise"
 )
-flags.DEFINE_float(
-    "fgm_epsilon", default=0.08, help="fgm epsilon"
-)
+flags.DEFINE_float("fgm_epsilon", default=0.08, help="fgm epsilon")
 flags.DEFINE_bool(
-    "sum_residual_dropout", default=False, help="whether to add one more dropout layer after multiply layer"
+    "sum_residual_dropout",
+    default=False,
+    help="whether to add one more dropout layer after multiply layer",
 )
 flags.DEFINE_float(
-    "sum_residual_dropout_rate", default=0.4, help="drop out ratio for sum_residual_dropout"
+    "sum_residual_dropout_rate",
+    default=0.4,
+    help="drop out ratio for sum_residual_dropout",
 )
-flags.DEFINE_integer(
-    "ignore_index", default=None, help="ignore index"
-)
+flags.DEFINE_integer("ignore_index", default=None, help="ignore index")
 flags.DEFINE_bool(
-    "swa", default=False, help="whether to turn on Stochastic Weight Averaging -> anohter method for improving the generalization capability"
+    "swa",
+    default=False,
+    help="whether to turn on Stochastic Weight Averaging -> anohter method for improving the generalization capability",
 )
-flags.DEFINE_integer(
-    "swa_start_averaging", default=500, help="swa starting steps"
-)
+flags.DEFINE_integer("swa_start_averaging", default=500, help="swa starting steps")
 flags.DEFINE_integer(
     "swa_start_period", default=15, help="every swa_start_period steps run the swa"
 )
 flags.DEFINE_string(
-    "loss", default='binary', help="loss function; currently support binary cross entropy and poly loss"
+    "loss",
+    default="binary",
+    help="loss function; currently support binary cross entropy and poly loss",
 )
-flags.DEFINE_float(
-    "poly_epsilon", default=1.0, help="epsilon for poly loss"
+flags.DEFINE_float("poly_epsilon", default=1.0, help="epsilon for poly loss")
+flags.DEFINE_bool(
+    "mixed_training",
+    default=False,
+    help="whether to turn on mix precision training mode",
 )
 flags.DEFINE_bool(
-    "mixed_training", default=False, help="whether to turn on mix precision training mode"
-)
-flags.DEFINE_string(
-    "initializer", default="he_normal", help="initializer to use in the MLP"
-)
-flags.DEFINE_bool(
-    "control_random", default=False, help="whether to make sure that model output is same on every same input"
+    "control_random",
+    default=False,
+    help="whether to make sure that model output is same on every same input",
 )
 
 # Call back
@@ -197,11 +186,20 @@ def set_seed(seed=13):
     print(f"Random seed set as {seed}")
 
 
-def get_data(parser, train_path, batch_size, eval_batch_size, buffer_size=100000, seed=13, train_prefix="split=Train/", val_prefix="split=Val/",):
+def get_data(
+    parser,
+    train_path,
+    batch_size,
+    eval_batch_size,
+    buffer_size=100000,
+    seed=13,
+    train_prefix="split=Train/",
+    val_prefix="split=Val/",
+):
     train_files = data.get_tfrecord_files([train_path + train_prefix])
     val_files = data.get_tfrecord_files([train_path + val_prefix])
-    print(f'training path: {train_path + train_prefix}')
-    print(f'validation path: {train_path + val_prefix}')
+    print(f"training path: {train_path + train_prefix}")
+    print(f"validation path: {train_path + val_prefix}")
 
     if len(train_files) == 0 or len(val_files) == 0:
         raise Exception("No training or validation files")
@@ -215,19 +213,25 @@ def get_data(parser, train_path, batch_size, eval_batch_size, buffer_size=100000
         seed=seed,
     )
     val = data.tfrecord_dataset(
-        val_files, eval_batch_size, parser.parser(), train=False, seed=seed,
+        val_files,
+        eval_batch_size,
+        parser.parser(),
+        train=False,
+        seed=seed,
     )
 
     return train, val
 
 
-def get_optimizer(learning_rate, optimizer='lion', beta_1=0.9, beta_2=0.99, wd=0.01):
+def get_optimizer(learning_rate, optimizer="lion", beta_1=0.9, beta_2=0.99, wd=0.01):
     if optimizer == "nadam":
         return tf.keras.optimizers.Nadam(learning_rate=learning_rate)
     elif optimizer == "adam":
         return tf.keras.optimizers.Adam(learning_rate=learning_rate)
-    elif optimizer == 'lion':
-        return lion_optimizer.Lion(learning_rate=learning_rate, beta_1=beta_1, beta_2=beta_2, wd=wd)
+    elif optimizer == "lion":
+        return lion_optimizer.Lion(
+            learning_rate=learning_rate, beta_1=beta_1, beta_2=beta_2, wd=wd
+        )
     else:
         raise Exception("Optimizer not supported.")
 
@@ -235,8 +239,7 @@ def get_optimizer(learning_rate, optimizer='lion', beta_1=0.9, beta_2=0.99, wd=0
 def get_loss(loss, label_smoothing, poly_epsilon=1.0):
     if loss == "binary":
         return tf.keras.losses.BinaryCrossentropy(
-            from_logits=False,
-            label_smoothing=label_smoothing
+            from_logits=False, label_smoothing=label_smoothing
         )
     elif loss == "poly":
         return models.poly1_cross_entropy(label_smoothing, poly_epsilon)
@@ -268,7 +271,7 @@ def main(argv):
         set_seed(FLAGS.seed)
     # whether turn on mixed training mode
     if FLAGS.mixed_training:
-        policy = tf.keras.mixed_precision.Policy('mixed_float16')
+        policy = tf.keras.mixed_precision.Policy("mixed_float16")
         tf.keras.mixed_precision.set_global_policy(policy)
 
     tf_parser = data.feature_parser(
@@ -279,7 +282,16 @@ def main(argv):
         exp_var=True,
     )
 
-    train, val = get_data(tf_parser, FLAGS.train_path, FLAGS.batch_size, FLAGS.eval_batch_size, FLAGS.buffer_size, FLAGS.seed, FLAGS.train_prefix, FLAGS.val_prefix)
+    train, val = get_data(
+        tf_parser,
+        FLAGS.train_path,
+        FLAGS.batch_size,
+        FLAGS.eval_batch_size,
+        FLAGS.buffer_size,
+        FLAGS.seed,
+        FLAGS.train_prefix,
+        FLAGS.val_prefix,
+    )
 
     # currently, the tfa package is going to merge into other keras packages and tensorflow, thus, comment this part
     # and wait for the further stable implementation
@@ -290,13 +302,18 @@ def main(argv):
     # else:
     #     op = get_optimizer(FLAGS.learning_rate,FLAGS.optimizer, FLAGS.beta_1, FLAGS.beta_2, FLAGS.wd)
 
-    op = get_optimizer(FLAGS.learning_rate, FLAGS.optimizer, FLAGS.beta_1, FLAGS.beta_2, FLAGS.wd)
+    op = get_optimizer(
+        FLAGS.learning_rate, FLAGS.optimizer, FLAGS.beta_1, FLAGS.beta_2, FLAGS.wd
+    )
 
     if FLAGS.model_pretrained_path is not None:
         # for incremental training -> we just load the model directly without train from scratch
-        if FLAGS.optimizer == 'lion':
+        if FLAGS.optimizer == "lion":
             # currently, the lion optimizer is implemented for the tf version <= 2.9, for the latest version, we need to change father class name
-            model = tf.keras.models.load_model(FLAGS.model_pretrained_path, custom_objects={'Lion': lion_optimizer.Lion})
+            model = tf.keras.models.load_model(
+                FLAGS.model_pretrained_path,
+                custom_objects={"Lion": lion_optimizer.Lion},
+            )
         else:
             model = tf.keras.models.load_model(FLAGS.model_pretrained_path)
 
@@ -316,13 +333,16 @@ def main(argv):
             FLAGS.sum_residual_dropout_rate,
             FLAGS.ignore_index,
             FLAGS.model_type,
-            FLAGS.initializer,
         )
 
     model.compile(
         optimizer=op,
         loss=get_loss(FLAGS.loss, FLAGS.label_smoothing, FLAGS.poly_epsilon),
-        metrics=[tf.keras.metrics.AUC(), tf.keras.metrics.Recall(), tf.keras.metrics.Precision()],
+        metrics=[
+            tf.keras.metrics.AUC(),
+            tf.keras.metrics.Recall(),
+            tf.keras.metrics.Precision(),
+        ],
     )
 
     # trun on fgm or not
@@ -346,11 +366,15 @@ def main(argv):
     if FLAGS.swa:
         op.assign_average_vars(model.trainable_variables)
         # to handle the batchnormalization, we need to use 1 epoch forward pass to update the weights of bn
-        print('Extra epoch run for the Normalization weights update with SWA')
+        print("Extra epoch run for the Normalization weights update with SWA")
         model.compile(
             optimizer=get_optimizer(0),
             loss=get_loss(FLAGS.loss, FLAGS.label_smoothing),
-            metrics=[tf.keras.metrics.AUC(), tf.keras.metrics.Recall(), tf.keras.metrics.Precision()],
+            metrics=[
+                tf.keras.metrics.AUC(),
+                tf.keras.metrics.Recall(),
+                tf.keras.metrics.Precision(),
+            ],
         )
         model.fit(
             train,
@@ -360,43 +384,78 @@ def main(argv):
 
     # split trained model into two parts -> weighted seed embedding (seed embeeding result * final dense layer weights)
     # and the model for embedding the bidimpressions -> both will be used for neo calculation
-    seed_emb = model.get_layer(f"embedding_{features.TargetingDataIdList}").get_weights()[0]
+    seed_emb = model.get_layer(
+        f"embedding_{features.TargetingDataIdList}"
+    ).get_weights()[0]
     linear = model.get_layer("predictions_dense_layer").variables
-    weights, bias = tf.reshape(linear[0], (FLAGS.neo_embedding_size,)).numpy(), linear[1].numpy()
+    weights, bias = (
+        tf.reshape(linear[0], (FLAGS.neo_embedding_size,)).numpy(),
+        linear[1].numpy(),
+    )
     weighted_seed_emb = weights * seed_emb
-    br_model = tf.keras.models.Model(inputs=[model.get_layer(f.name).input for f in features.model_features if f != features.TargetingDataIdList],
-                                     outputs=model.get_layer("bidimpression_result").output, name="bidimp_calculation")
+    br_model = tf.keras.models.Model(
+        inputs=[
+            model.get_layer(f.name).input
+            for f in features.model_features
+            if f != features.TargetingDataIdList
+        ],
+        outputs=model.get_layer("bidimpression_result").output,
+        name="bidimp_calculation",
+    )
 
-    output = pd.DataFrame(list(range(features.DEFAULT_CARDINALITIES[features.TargetingDataIdList])), columns=['SyntheticId'])
-    output['Embedding'] = weighted_seed_emb.tolist()
+    output = pd.DataFrame(
+        list(range(features.DEFAULT_CARDINALITIES[features.TargetingDataIdList])),
+        columns=["SyntheticId"],
+    )
+    output["Embedding"] = weighted_seed_emb.tolist()
     if FLAGS.policy_table_path:
         policy_table = pd.read_parquet(FLAGS.policy_table_path)
-        print(f'policy table size {policy_table.shape[0]}')
+        print(f"policy table size {policy_table.shape[0]}")
         if policy_table.shape[0] > 0:
-            active_syntheticId = policy_table[policy_table.IsActive]['SyntheticId'].unique()
+            active_syntheticId = policy_table[policy_table.IsActive][
+                "SyntheticId"
+            ].unique()
             output = output[output.SyntheticId.isin(active_syntheticId)]
         else:
             print("Not found the policy table")
     # syntheticid = -1 means that the row is for bias, the input of this part is in this format: [bias,0,0,0,...,0]
-    output = pd.concat([output, pd.DataFrame([{'SyntheticId': -1, 'Embedding': [bias[0]] + [0.0] * (FLAGS.neo_embedding_size - 1)}])], ignore_index=True)
-    output['Embedding'] = output['Embedding'].apply(np.float32)
-    print(f'embedding table size {output.shape[0]}')
+    output = pd.concat(
+        [
+            output,
+            pd.DataFrame(
+                [
+                    {
+                        "SyntheticId": -1,
+                        "Embedding": [bias[0]] + [0.0] * (FLAGS.neo_embedding_size - 1),
+                    }
+                ]
+            ),
+        ],
+        ignore_index=True,
+    )
+    output["Embedding"] = output["Embedding"].apply(np.float32)
+    print(f"embedding table size {output.shape[0]}")
 
-    embedding_path = FLAGS.model_path + f'{FLAGS.model_type}/embedding/'
+    embedding_path = FLAGS.model_path + f"{FLAGS.model_type}/embedding/"
     pathlib.Path(embedding_path).mkdir(parents=True, exist_ok=True)
-    output.to_parquet(f'{embedding_path}embedding.parquet', index=False)
+    output.to_parquet(f"{embedding_path}embedding.parquet", index=False)
 
     # local path for the trained model
-    model_path = FLAGS.model_path + f'{FLAGS.model_type}/bidimpression_model/'
+    model_path = FLAGS.model_path + f"{FLAGS.model_type}/bidimpression_model/"
     pathlib.Path(model_path).mkdir(parents=True, exist_ok=True)
     br_model.save(model_path)
+    full_model_path = FLAGS.model_path + f"{FLAGS.model_type}/full_model/"
+    model.save(full_model_path)
+    if FLAGS.embedding_output_path:
+        # cp seed embedding to s3
+        embedding_output_path = f"{FLAGS.embedding_output_path}"
+        utils.s3_copy(embedding_path, embedding_output_path)
     if FLAGS.model_output_path:
         # cp local model to s3
-        model_output_path = f'{FLAGS.model_output_path}bidimpression_model/'
+        model_output_path = f"{FLAGS.model_output_path}"
         utils.s3_copy(model_path, model_output_path)
-        # cp seed embedding to s3
-        embedding_output_path = f'{FLAGS.model_output_path}embedding/'
-        utils.s3_copy(embedding_path, embedding_output_path)
+        full_model_output_path = f"{FLAGS.model_output_path}full_model/"
+        utils.s3_copy(full_model_path, full_model_output_path)
 
 
 if __name__ == "__main__":

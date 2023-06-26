@@ -28,7 +28,8 @@ fi
 
 if [ "$UPLOAD_MODEL" == "true" ]
 then
-  UPLOAD_MODEL_FLAG="--model_output_path s3://thetradedesk-mlplatform-us-east-1/models/${ENV}/audience/${MODEL_TYPE}/${SOURCE_TYPE}/v=1/${DATE}/"
+  UPLOAD_MODEL_FLAG="--model_output_path s3://thetradedesk-mlplatform-us-east-1/models/${ENV}/${MODEL_TYPE}/v=1/${DATE}/"
+  UPLOAD_EMBEDDING_FLAG="--embedding_output_path s3://thetradedesk-mlplatform-us-east-1/configdata/${ENV}/audience/embedding/${MODEL_TYPE}/v=1/${DATE}/"
 fi
 
 # check whether provide the information for policy table
@@ -63,5 +64,6 @@ sudo bash rsm_model.sh \
   $PRETRAINED_MODEL_FLAG \
   $UPLOAD_MODEL_FLAG \
   $POLICY_TABLE_FLAG \
+  $UPLOAD_EMBEDDING_FLAG \
   --input_dest $INPUT_DEST \
   --gpus all 

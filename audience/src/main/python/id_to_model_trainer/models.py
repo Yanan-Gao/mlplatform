@@ -52,7 +52,7 @@ def FGM(model, name, epsilon=0.5, exclude=None):
         )
         # calculate permutation
         delta = (
-            epsilon * target_layer_weights_gradients / (tf.math.sqrt(tf.reduce_sum(target_layer_weights_gradients ** 2)) + 1e-8)
+            epsilon * target_layer_weights_gradients / (tf.math.sqrt(tf.reduce_sum(target_layer_weights_gradients**2)) + 1e-8)
         )
 
         target_layer_weights[0].assign_add(delta)
@@ -102,8 +102,8 @@ def GPU_setting():
 
 
 class poly1_cross_entropy(tf.keras.losses.Loss):
-    def __init__(self, label_smoothing=0, epsilon=1):
-        super().__init__()
+    def __init__(self, label_smoothing=0, epsilon=1, **kwargs):
+        super().__init__(**kwargs)
         self.label_smoothing = label_smoothing
         self.epsilon = epsilon
 
@@ -124,48 +124,47 @@ def value_feature(name, dtype=tf.float32):
     return i, i
 
 
+# to do: need to explore more initializer option, currently he_normal is not good for rsm multi-label
 def get_initialiser(initializer="he_normal", seed=13):
     if initializer == "he_normal":
         return tf.keras.initializers.HeNormal(seed)
     else:
-        print('Currently not support other initializer. Use GlorotNormal instead')
+        print("Currently not support other initializer. Use GlorotNormal instead")
         return tf.keras.initializers.GlorotNormal(seed)
 
 
 def embedding(
-        name, vocab_size=10000, emb_dim=40, dtype=tf.int32, dropout_rate=0.2, seed=13, initializer='he_normal'
+    name, vocab_size=10000, emb_dim=40, dtype=tf.int32, dropout_rate=0.2, seed=13
 ):
     i = keras.Input(shape=(1,), dtype=dtype, name=f"{name}")
     em = layers.Embedding(
         input_dim=vocab_size,
         output_dim=emb_dim,
         name=f"embedding_{name}",
-        embeddings_initializer=get_initialiser(initializer, seed=seed),
-        # mask_zero=True,
     )  # output shape: (None,1,emb_dim)
     f = layers.Flatten(name=f"flatten_{name}")  # flatten output shape: (None,1*emb_dim)
     dr = layers.Dropout(seed=seed, rate=dropout_rate, name=f"layer_{name}_dropout")
     return i, dr(f(em(i)))
 
 
-def list_to_embedding(name, vocab_size, em_size, dropout_rate=0.2, seed=13, initializer='he_normal'):
+def list_to_embedding(name, vocab_size, em_size, dropout_rate=0.2, seed=13):
     i = keras.Input(shape=(1, None), dtype=tf.int32, name=f"{name}")
     em = layers.Embedding(
         input_dim=vocab_size,
         output_dim=em_size,
         name=f"embedding_{name}",
-        embeddings_initializer=get_initialiser(initializer, seed=seed),
-        # mask_zero=True,
+        mask_zero=True,
     )
     # use for the vary length matrix
     re = layers.Reshape(target_shape=(-1, em_size), name=f"reshape_{name}")
     dr = layers.Dropout(seed=seed, rate=dropout_rate, name=f"layer_{name}_dropout")
-    return i, dr(re(em(i)))
+    # compute_mask output shape is [None, 1, None]
+    return i, dr(re(em(i))), tf.squeeze(em.compute_mask(i), axis=1)
 
 
 class TransformBlock(tf.keras.Model):
     def __init__(
-            self, features, momentum=0.9, virtual_batch_size=None, block_name="", **kwargs
+        self, features, momentum=0.9, virtual_batch_size=None, block_name="", **kwargs
     ):
         super(TransformBlock, self).__init__(**kwargs)
 
@@ -193,16 +192,16 @@ class TransformBlock(tf.keras.Model):
 
 class TabNet(tf.keras.Model):
     def __init__(
-            self,
-            num_features,
-            feature_dim=64,
-            output_dim=64,
-            num_decision_steps=5,
-            relaxation_factor=1.5,
-            batch_momentum=0.98,
-            virtual_batch_size=None,
-            epsilon=1e-5,
-            **kwargs,
+        self,
+        num_features,
+        feature_dim=64,
+        output_dim=64,
+        num_decision_steps=5,
+        relaxation_factor=1.5,
+        batch_momentum=0.98,
+        virtual_batch_size=None,
+        epsilon=1e-5,
+        **kwargs,
     ):
         """
         a few general principles on hyperparameter
@@ -429,22 +428,38 @@ class TabNet(tf.keras.Model):
         return self._step_aggregate_feature_selection_mask
 
 
+class MaskedDense(tf.keras.layers.Layer):
+    def __init__(self, units, name, **kwargs):
+        super(MaskedDense, self).__init__(name=name, **kwargs)
+        self.units = units
+        self.dense_layer = tf.keras.layers.Dense(units)
+
+    def call(self, inputs, mask=None):
+        masked_inputs = inputs * tf.expand_dims(tf.cast(mask, "float32"), -1)
+        masked_outputs = self.dense_layer(masked_inputs)
+        return masked_outputs
+
+    def get_config(self):
+        config = super().get_config()
+        config.update({"units": self.units})
+        return config
+
+
 def init_model(
-        model_features,
-        model_dim_group,
-        neo_emb_size,
-        feature_dim_factor,
-        num_decision_steps,
-        relaxation_factor=1.5,
-        tabnet_factor=0.15,
-        embedding_factor=1,
-        dropout_rate=0.2,
-        seed=13,
-        sum_residual_dropout=False,
-        sum_residual_dropout_rate=0.4,
-        ignore_index=None,
-        model_name="Audience_Extension",
-        initializer="he_normal",
+    model_features,
+    model_dim_group,
+    neo_emb_size,
+    feature_dim_factor,
+    num_decision_steps,
+    relaxation_factor=1.5,
+    tabnet_factor=0.15,
+    embedding_factor=1,
+    dropout_rate=0.2,
+    seed=13,
+    sum_residual_dropout=False,
+    sum_residual_dropout_rate=0.4,
+    ignore_index=None,
+    model_name="Audience_Extension",
 ):
     model_input_features_tuple = [
         embedding(
@@ -453,7 +468,6 @@ def init_model(
             emb_dim=f.embedding_dim,
             dtype=f.type,
             seed=seed,
-            initializer=initializer,
         )
         if f.type == tf.int32
         else value_feature(f.name)
@@ -470,33 +484,31 @@ def init_model(
     model_input_layers = layers.concatenate(
         model_input_layers, name="bidimpression_concat_embedding"
     )
+    layer_norm1 = tf.keras.layers.LayerNormalization(axis=-1)
+    model_input_layers = layer_norm1(model_input_layers)
     # to make the output of the bidimpression tensor as long as the neo embedding size
+    # to do: check whether use active function here and which one to use
     model_input_layers = layers.Dense(
         neo_emb_size,
         kernel_initializer=tf.keras.initializers.HeNormal(seed=seed),
-        name='bidimpression_neo_embedding',
+        name="bidimpression_neo_embedding",
+        # activation='relu',
     )(model_input_layers)
+    layer_norm2 = tf.keras.layers.LayerNormalization(axis=-1)
+    model_input_layers = layer_norm2(model_input_layers)
 
-    # model_input_dim = list_to_embedding(model_dim_group[0].name, model_dim_group[0].cardinality, search_emb_size) # model_input_layers.shape[1])
     model_input_dim = list_to_embedding(
         name=model_dim_group[0].name,
         vocab_size=model_dim_group[0].cardinality,
         em_size=model_input_layers.shape[1],
         dropout_rate=dropout_rate,
         seed=seed,
-        initializer=initializer,
     )
     model_inputs_dim = model_input_dim[0]
     input_layer_dim = model_input_dim[1]
+    mask = model_input_dim[2]
 
     model_input = model_input_features + [model_inputs_dim]
-
-    # add one more dense here to make sure the impression site and pixel site's embedding size are correct
-    # model_input_layers = layers.Dense(search_emb_size, activation=None, kernel_initializer=tf.keras.initializers.HeNormal(), name=f"embedding{search_emb_size}_imp")(model_input_layers)
-
-    #     multiply_lambda = lambda array: tf.keras.layers.multiply([array[0], array[1]])
-    #     residual1 = layers.Lambda(multiply_lambda)([model_input_layers, input_layer_dim])
-    # residual1 = tf.math.multiply(tf.expand_dims(model_input_layers,1),input_layer_dim)
 
     tabnet = TabNet(
         num_features=model_input_layers.shape[-1],
@@ -510,7 +522,12 @@ def init_model(
     # residual2 = layers.Lambda(multiply_lambda)([tab, input_layer_dim])
     # residual2 = tf.math.multiply(tf.expand_dims(tab,1), input_layer_dim)
     # output = residual2 * tf.constant(tabnet_factor) + residual1 * embedding_factor
-    bidimp = layers.Add(name='bidimpression_result')([tf.expand_dims(tab, 1) * tabnet_factor, tf.expand_dims(model_input_layers, 1) * embedding_factor])
+    bidimp = layers.Add(name="bidimpression_result")(
+        [
+            tf.expand_dims(tab, 1) * tabnet_factor,
+            tf.expand_dims(model_input_layers, 1) * embedding_factor,
+        ]
+    )
     output = tf.math.multiply(bidimp, input_layer_dim)
 
     if sum_residual_dropout:
@@ -518,18 +535,8 @@ def init_model(
             seed=seed, rate=sum_residual_dropout_rate, name="layer_sum_residual_dropout"
         )
         output = dr(output)
-    #     output = layers.Flatten(name="Output")(
-    #         layers.Dense(
-    #             1,
-    #             activation="sigmoid",
-    #             kernel_initializer=tf.keras.initializers.HeNormal(seed=seed),
-    #         )(output)
-    #     )
-    output = layers.Dense(
-        1,
-        kernel_initializer=tf.keras.initializers.HeNormal(seed=seed),
-        name='predictions_dense_layer'
-    )(output)
+
+    output = MaskedDense(1, name="predictions_dense_layer")(output, mask)
     output = layers.Activation("sigmoid", dtype="float32", name="predictions")(output)
     output = layers.Flatten(name="Output")(output)
 

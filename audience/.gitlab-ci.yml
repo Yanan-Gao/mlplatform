@@ -46,7 +46,7 @@ audience:lint:
     - pip3 install flake8
   script:
     - pushd ./audience/src/main/python/
-    - flake8
+    - flake8 --ignore=C901
     - popd
     - echo "ran lint for audience"
 
