@@ -200,12 +200,21 @@ class interestModel():
   
         model_path_0 = "{}/{}-{:02d}-{:02d}_{}".format(model_path_parent, date_train.year, date_train.month, date_train.day, model_name)
         model_path = "{}/model".format(model_path_0)
+
+        if labels_path[0:4] != "/mnt":
+            print("'labels_path' must start with '/mnt' (NOT /dbfs!) for loading with spark.read.")
+            labels_path = re.sub("/dbfs", "", labels_path)
+            print("Stripping 'labels_path' of '/dbfs' (if present).")
+            if labels_path[0:4] != "/mnt":
+                print("'labels_path' must start with '/mnt' for loading with spark.read.")
+                sys.exit(1)
+
         if data_path[0:4] != "/mnt":
             print("'data_path' must start with '/mnt' (NOT /dbfs!) for loading tfrecords.")
             data_path = re.sub("/dbfs", "", data_path)
             print("Stripping 'data_path' of '/dbfs' (if present).")
             if data_path[0:4] != "/mnt":
-                print("'data_path' must start with '/mnt' (NOT /dbfs!) for loading tfrecords.")
+                print("'data_path' must start with '/mnt' for loading tfrecords.")
                 sys.exit(1)
         if not data_type in ["test", "validation"]:
             print("'data_type' must be either 'validation' or 'test'.")
