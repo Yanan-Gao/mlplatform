@@ -1,6 +1,6 @@
 package com.thetradedesk.kongming.transform
 
-import com.thetradedesk.geronimo.shared.{STRING_FEATURE_TYPE, intModelFeaturesCols}
+import com.thetradedesk.geronimo.shared.{intModelFeaturesCols, STRING_FEATURE_TYPE}
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import com.thetradedesk.kongming.datasets.{BidsImpressionsSchema, TrainSetFeatureMappingDataset, TrainSetFeatureMappingRecord}
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -49,6 +49,7 @@ final case class BidsImpressionsFeatureMappingRecord(
 
 object TrainSetFeatureMappingTransform {
 
+  // TODO: hard coded features may conflict with features.json. Need file validation or some other method of verifying
   val mappingModelFeatures: Array[ModelFeature] = Array(
     ModelFeature("AdGroupId", STRING_FEATURE_TYPE, Some(5002), 0),
     ModelFeature("CampaignId", STRING_FEATURE_TYPE, Some(5002), 0),

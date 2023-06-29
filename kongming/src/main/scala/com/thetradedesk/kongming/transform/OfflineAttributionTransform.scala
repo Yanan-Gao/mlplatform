@@ -1,10 +1,12 @@
 package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.geronimo.shared.{loadParquetData, shiftModUdf}
-import com.thetradedesk.geronimo.shared.schemas.{BidFeedbackDataset, BidFeedbackRecord}
+import com.thetradedesk.streaming.records.rtb.bidfeedback.BidFeedbackRecord
+import com.thetradedesk.geronimo.shared.schemas.BidFeedbackDataset
+import com.thetradedesk.kongming.features.Features.modelDimensions
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.multiLevelJoinWithPolicy
-import com.thetradedesk.kongming.transform.TrainSetTransformation.{TrackingTagWeightsRecord, modelDimensions}
+import com.thetradedesk.kongming.transform.TrainSetTransformation.TrackingTagWeightsRecord
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.datalake.ClickTrackerDataSetV5
@@ -200,7 +202,7 @@ object OfflineAttributionTransform {
       .withColumn("ImpressionWeightForCalibrationModel", $"ImpressionWeightForCalibrationModel"/$"NegSampleRate")
       .selectAs[OfflineScoreAttributionResultPerAdGroupRecord]
 
-    val adgroupIdCardinality = modelDimensions(0).cardinality.getOrElse(0)
+    val adgroupIdCardinality = modelDimensions.find(_.name == "AdGroupId").map(_.cardinality).getOrElse(Some(0)).getOrElse(0)
 
     // union negative and positive
     val feedToIsotonicRegressionSampled = feedToIsotonicRegressionImpressionsNegSampled.union(
