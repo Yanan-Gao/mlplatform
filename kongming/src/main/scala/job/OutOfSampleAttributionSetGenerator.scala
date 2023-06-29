@@ -5,6 +5,7 @@ import com.thetradedesk.geronimo.shared.schemas.BidFeedbackDataset
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.transform._
+import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, seqFields}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.datalake.ClickTrackerDataSetV5
@@ -121,7 +122,7 @@ object OutOfSampleAttributionSetGenerator {
       .withColumn("Target", coalesce('Target, lit(0)))
       .join(scoringSet, Seq("BidRequestIdStr"), "inner")
 
-    val parquetSelectionTabular = rawOOS.columns.map { c => col(c) }.toArray ++ TrainSetTransformation.aliasedModelFeatureCols(TrainSetTransformation.seqFields)
+    val parquetSelectionTabular = rawOOS.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqFields)
 
     rawOOS
       .select(parquetSelectionTabular: _*)

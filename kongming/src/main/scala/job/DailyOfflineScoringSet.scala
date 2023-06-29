@@ -1,11 +1,10 @@
 package job
 
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, intModelFeaturesCols, loadParquetData}
-import com.thetradedesk.geronimo.shared.schemas.ModelFeature
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, STRING_FEATURE_TYPE, intModelFeaturesCols, loadParquetData}
+import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, keptFields, modelDimensions, modelFeatures, rawModelFeatureCols, seqFields}
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets.{DailyBidsImpressionsDataset, DailyOfflineScoringDataset}
 import com.thetradedesk.kongming.transform.OfflineScoringSetTransform
-import com.thetradedesk.kongming.transform.TrainSetTransformation.{aliasedModelFeatureCols, keptFields, modelDimensions, modelFeatures, rawModelFeatureCols, seqFields}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient

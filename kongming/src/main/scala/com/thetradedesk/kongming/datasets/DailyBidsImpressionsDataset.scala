@@ -1,6 +1,6 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.geronimo.shared.schemas.{AdsTxtSellerTypeLookupRecord, BrowserLookupRecord, DeviceTypeLookupRecord, DoNotTrackLookupRecord, InternetConnectionRecord, InventoryPublisherTypeLookupRecord, OSFamilyLookupRecord, PredictiveClearingModeLookupRecord, RenderingContextLookupRecord, OSLookupRecord}
+import com.thetradedesk.streaming.records.rtb._
 import com.thetradedesk.spark.util.TTDConfig.config
 
 case class BidsImpressionsSchema(
@@ -36,7 +36,7 @@ case class BidsImpressionsSchema(
                                   OperatingSystem: Option[OSLookupRecord],
                                   OperatingSystemFamily: Option[OSFamilyLookupRecord],
                                   Browser: Option[BrowserLookupRecord],
-                                  InternetConnectionType: Option[InternetConnectionRecord],
+                                  InternetConnectionType: Option[InternetConnectionTypeLookupRecord],
 
                                   RequestLanguages: String, MatchedLanguageCode: Option[String],
                                   Latitude: Option[Double],

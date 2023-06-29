@@ -1,6 +1,9 @@
 package job
 
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.Column
 import com.thetradedesk.geronimo.shared.{STRING_FEATURE_TYPE, intModelFeaturesCols}
+import com.thetradedesk.kongming.features.Features._
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.transform.NegativeTransform.aggregateNegatives
@@ -164,6 +167,7 @@ object GenerateTrainSet {
 
     // 5. join all these dataset with bidimpression to get features
     val splitColumn = modelTargetCols(Array(ModelTarget("split", STRING_FEATURE_TYPE, false)))
+
     // features to hash, including everyone except seq
     var hashFeatures = modelDimensions ++ modelFeatures ++ modelWeights
     hashFeatures = hashFeatures.filter(x => !seqFields.contains(x))
