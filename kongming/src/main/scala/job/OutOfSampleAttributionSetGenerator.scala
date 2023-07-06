@@ -102,9 +102,9 @@ object OutOfSampleAttributionSetGenerator {
     val adGroups = AdGroupDataSet().readLatestPartitionUpTo(scoreDate, true)
     val adGroupPolicy = AdGroupPolicyDataset().readDate(scoreDate)
       .withColumn("AttributionGroupKey", when('DataAggKey === lit("AdvertiserId"), lit("CampaignId")).otherwise('DataAggKey))
-      .join(adGroups.select("AdvertiserId", "CampaignId"), col("AdvertiserId") === col("DataAggValue"), "left")
+      .join(adGroups.select("AdGroupId", "CampaignId"), col("AdGroupId") === col("ConfigValue"), "left")
       .withColumn("AttributionGroupValue", when('DataAggKey === lit("AdvertiserId"), 'CampaignId).otherwise('DataAggValue))
-      .drop("AdvertiserId", "CampaignId")
+      .drop("AdGroupId", "CampaignId")
 
     val scoringSet = DailyOfflineScoringDataset().readRange(scoreDate.plusDays(1), scoreDate.plusDays(Config.ImpressionLookBack))
     val impressionsToScore = multiLevelJoinWithPolicy[BidRequestsWithAttributionGroup](
