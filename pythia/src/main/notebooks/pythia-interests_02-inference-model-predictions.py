@@ -41,6 +41,7 @@ tabnet_factor = dbutils.jobs.taskValues.get(taskKey = "pythia-interests_01-model
 # COMMAND ----------
 
 # Path to the set of matching interest labels
+import re
 labels_path = f"{data_path}/../interestLabels/{train_year}-{train_month:02d}-{train_day:02d}_labels"
 labels_path = re.sub("/dbfs", "", labels_path)
 
