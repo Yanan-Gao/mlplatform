@@ -50,7 +50,7 @@ object WeightSampling {
       })
   }
 
-  val getLabels = (label: Float) => udf((ids: Seq[Int]) => Seq.fill(ids.length)(label))
+  val getLabels = (label: Float) => udf((size: Int) => Seq.fill(size)(label))
 
   val zipAndGroupUDFGenerator =
     (maxLength: Int) =>
