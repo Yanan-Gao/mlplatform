@@ -1,5 +1,6 @@
 import pandas as pd
 import re
+import datetime
 from pyspark.sql.functions import pandas_udf, lit, mean as _mean, sum as _sum
 from sklearn.metrics import roc_auc_score
 
@@ -11,11 +12,15 @@ def auc_udf(l: pd.Series, p: pd.Series) -> float:
 
 def auc_dataframe(data_input, label_col_lst, prediction_col_lst, category_col_name = "category", label_column_prefix = "label"):
     all_auc_lst = []
+    i = 0
     for l, p in zip(label_col_lst, prediction_col_lst):
         auc = data_input.select(lit(int( re.sub(label_column_prefix + "_", "", l) )).alias(category_col_name), \
                                 auc_udf(data_input[l], data_input[p]).alias("AUC"))
-
         all_auc_lst.append(auc)
+        # Printing progress with time stamp to notebook
+        i = i+1
+        now = datetime.datetime.now()
+        print(f"{i}: {l} processing done at UTC: {now.strftime('%Y-%m-%d %H:%M:%S')}")
     return all_auc_lst
 
 # # # # # # # # # # 

@@ -38,7 +38,7 @@ path_taxonomy   = "/mnt/mlplatform/data/prod/pythia/interests/taxMap_withTgtIds.
 
 # Model directory
 model_dir = f"{model_path_parent}/{train_year}-{train_month:02d}-{train_day:02d}_{model_name}"
-model_dir = re.sub("/dbfs", "", model.dir)
+model_dir = re.sub("/dbfs", "", model_dir)
 
 # Paths where the predictions can be found
 path_predictions_validation = f"{model_dir}/predictions/validation"
