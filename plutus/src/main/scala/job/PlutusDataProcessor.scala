@@ -23,12 +23,10 @@ object PlutusDataProcessor extends Logger {
   val outputTtdEnv = config.getStringOption("outputTtd.env")
 
   val partitions = config.getInt("partitions", 2000)
-  val implicitSampleRate = config.getDouble("implicitSampleRate", 0.001)
-
-  val mbtwRatio = config.getDouble("mbtwRatio", 2.0)
+  val implicitSampleRate = config.getDouble("implicitSampleRate", 0.1)
 
   implicit val prometheus = new PrometheusClient("Plutus", "TrainingDataEtl")
-  val jobDurationTimer = prometheus.createGauge("training_data_raw_etl_runtime", "Time to process 1 day of bids, imppressions, lost bid data").startTimer()
+  val jobDurationTimer = prometheus.createGauge("training_data_raw_etl_runtime", "Time to process 1 day of bids, impressions, lost bid data").startTimer()
 
   // Features json S3 location
   val featuresJson = config.getString("featuresJson", "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/dev/schemas/features.json")
@@ -45,7 +43,7 @@ object PlutusDataProcessor extends Logger {
       inputTtdEnv = ttdEnv,
       dataVersion = dataVersion,
       implicitSampleRate = implicitSampleRate,
-      maybeOutputTtdEnv = None,
+      maybeOutputTtdEnv = outputTtdEnv,
       featuresJson = featuresJson,
     )
 
