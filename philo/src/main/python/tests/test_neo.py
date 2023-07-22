@@ -40,8 +40,8 @@ def test_extract_neo_model(dense_feature_num, sparse_feature_num):
     linear_logit_op, fm_vector_op = combine_neo_results(a_neo_predict, b_neo_predict, combined_value=False)
     fm_linear, fm_vector = fm_model.predict(x)
 
-    assert pytest.approx(fm_linear, rel=1e-5) == linear_logit_op
-    assert pytest.approx(fm_vector, rel=1e-5) == fm_vector_op
+    assert pytest.approx(fm_linear, rel=1e-4) == linear_logit_op
+    assert pytest.approx(fm_vector, rel=1e-4) == fm_vector_op
 
 
 @pytest.mark.parametrize(

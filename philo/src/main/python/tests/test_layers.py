@@ -47,7 +47,7 @@ def test_linear_mode(mode, use_bias, input_shape):
         (3 + 1, False, None, ['lakemerson'], None),
         (3 + 1, True, None, ['lakemerson'], None),
         (
-                3 + 1, False, "vocabulary_example.csv", [['lake'], ['johnson'], ['lakemerson']],
+                3 + 1, False, "src/main/python/tests/vocabulary_example.csv", [['lake'], ['johnson'], ['lakemerson']],
                 [[1], [3], [0]])
     ]
 )
