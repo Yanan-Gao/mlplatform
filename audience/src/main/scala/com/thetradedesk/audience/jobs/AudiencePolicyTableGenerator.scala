@@ -3,7 +3,7 @@ package com.thetradedesk.audience.jobs
 import com.thetradedesk.audience.datasets.Model.Model
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.utils.S3Utils
-import com.thetradedesk.audience.{dateTime, audienceVersionDateFormat, shouldConsiderTDID3, ttdEnv}
+import com.thetradedesk.audience.{audienceVersionDateFormat, dateTime, shouldConsiderTDID3, ttdEnv}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -12,12 +12,13 @@ import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.{DataFrame, Dataset, SaveMode}
+import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode}
 
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.time.{Duration, LocalDate, LocalDateTime}
 import scala.util.Random
+import spark.implicits._
 
 object AudiencePolicyTableGeneratorJob {
   object Config {
@@ -61,8 +62,8 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
     val policyS3Bucket = S3Utils.refinePath(config.getString("policyS3Bucket", "thetradedesk-mlplatform-us-east-1"))
     val policyS3Path = S3Utils.refinePath(config.getString("policyS3Path", s"configdata/${ttdEnv}/audience/policyTable/${model}/v=1"))
     val maxVersionsToKeep = config.getInt("maxVersionsToKeep", 30)
-    val bidImpressionRepartitionNum = config.getInt("bidImpressionRepartitionNum", 8192)
-    val seedRepartitionNum = config.getInt("seedRepartitionNum", 500)
+    val bidImpressionRepartitionNum = config.getInt("bidImpressionRepartitionNum", 1024)
+    val seedRepartitionNum = config.getInt("seedRepartitionNum", 32)
     val bidImpressionLookBack = config.getInt("bidImpressionLookBack", 1)
 
 
@@ -98,8 +99,8 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
       .withColumnRenamed("UIID", "TDID")
       // .filter(samplingFunction('TDID))
       .select('TDID)
-      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
       .distinct()
+      .coalesce(Config.bidImpressionRepartitionNum)
       .cache()
 
     uniqueTDIDs
@@ -187,6 +188,7 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
 }
 
 object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM) {
+
   override def retrieveSourceData(date: LocalDate): DataFrame = {
 
     val recentVersion =
@@ -214,30 +216,34 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM) {
         else S3Utils.queryCurrentDataVersion(Config.seedRawDataS3Bucket, seedDataPath)
 
         try {
-          Some(spark.read.parquet(seedDataFullPath + "/" + recentVersion)
+          val count = spark.read.parquet(seedDataFullPath + "/" + recentVersion)
             .select('UserId)
             .withColumnRenamed("UserId", "TDID")
             // .filter(samplingFunction('TDID))
             .join(uniqueTDIDs, Seq("TDID"), "inner")
-            .withColumn("SeedId", lit(record.getAs[String]("SeedId")))
-            .groupBy('SeedId)
             .count()
-            .withColumnRenamed("count", "ActiveSize")
-            .withColumn("Size", lit(record.getAs[Long]("Count")))
-            .withColumn("TargetingDataId", lit(record.getAs[Long]("TargetingDataId")))
-            .select('SeedId, 'TargetingDataId, 'Size, 'ActiveSize))
+
+          val data = Seq((
+            record.getAs[String]("SeedId"),
+            count,
+            record.getAs[Long]("Count"),
+            record.getAs[Long]("TargetingDataId")))
+
+          Some(
+            data
+              .toDF("SeedId", "ActiveSize", "Size", "TargetingDataId")
+              .coalesce(1)
+          )
         } catch {
           case e: Exception => {
             println(s"Caught exception of type ${e.getClass} on seed ${record.getAs[String]("SeedId")}")
             None
           }
-
         }
       }
     ).toArray.flatten.reduce(_ unionAll _)
       .withColumnRenamed("SeedId", "SourceId")
       .repartition(Config.seedRepartitionNum, 'SourceId)
-      .withColumn("ActiveSize", 'ActiveSize.cast(LongType))
       .withColumn("Source", lit(DataSource.Seed.id))
       .withColumn("GoalType", lit(GoalType.Relevance.id))
       .withColumn("CrossDeviceVendorId", lit(CrossDeviceVendor.None.id))
