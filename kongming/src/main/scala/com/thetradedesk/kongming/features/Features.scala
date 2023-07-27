@@ -25,6 +25,10 @@ object Features {
                                                 }
                                               }
 
+  val directFields = Array(
+    ModelFeature("ImpressionPlacementId", STRING_FEATURE_TYPE, Some(500002), 1)
+  )
+
   // Useful fields for analysis/offline attribution. Available everywhere except for the production trainset to minimise
   // data size
   val keptFields = Array(

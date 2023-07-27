@@ -12,6 +12,7 @@ final case class DataForModelTrainingRecord(
 
                                  SupplyVendor: Option[Int],
                                  SupplyVendorPublisherId: Option[Int],
+                                 ImpressionPlacementId: Option[String],
                                  Site: Option[Int],
                                  AdFormat: Int,
 

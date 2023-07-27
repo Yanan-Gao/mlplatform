@@ -15,6 +15,7 @@ final case class DailyOfflineScoringRecord(
                                            IsTracked: Int,
                                            IsUID2: Int,
 
+                                           ImpressionPlacementId: Option[String],
                                            SupplyVendor: Option[Int],
                                            SupplyVendorPublisherId: Option[Int],
                                            Site: Option[Int],
