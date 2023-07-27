@@ -19,6 +19,7 @@ final case class OutOfSampleAttributionRecord(
 
                                                SupplyVendor: Option[Int],
                                                SupplyVendorPublisherId: Option[Int],
+                                               ImpressionPlacementId: Option[String],
                                                Site: Option[Int],
                                                AdFormat: Int,
 

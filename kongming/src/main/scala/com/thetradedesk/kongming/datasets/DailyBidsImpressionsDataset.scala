@@ -17,6 +17,7 @@ case class BidsImpressionsSchema(
                                   SupplyVendor: Option[String],
                                   SupplyVendorPublisherId: Option[String],
                                   Site: Option[String],
+                                  ImpressionPlacementId: Option[String],
                                   AdWidthInPixels: Int,
                                   AdHeightInPixels: Int,
 
