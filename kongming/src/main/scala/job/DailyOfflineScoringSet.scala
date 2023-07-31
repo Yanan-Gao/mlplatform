@@ -1,7 +1,7 @@
 package job
 
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, STRING_FEATURE_TYPE, intModelFeaturesCols, loadParquetData}
-import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, keptFields, modelDimensions, modelFeatures, rawModelFeatureCols, seqFields}
+import com.thetradedesk.geronimo.shared.intModelFeaturesCols
+import com.thetradedesk.kongming.features.Features._
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets.{DailyBidsImpressionsDataset, DailyOfflineScoringDataset}
 import com.thetradedesk.kongming.transform.OfflineScoringSetTransform
@@ -9,7 +9,6 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.util.TTDConfig.config
-
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.functions.col
 
@@ -25,8 +24,8 @@ object DailyOfflineScoringSet {
     val bidsImpressionFilterByPolicy = DailyBidsImpressionsDataset().readDate(date)
 
     var hashFeatures = modelDimensions ++ modelFeatures
-    hashFeatures = hashFeatures.filter(x => !seqFields.contains(x))
-    val selectionTabular = intModelFeaturesCols(hashFeatures) ++ rawModelFeatureCols(seqFields) ++ aliasedModelFeatureCols(keptFields)
+    hashFeatures = hashFeatures.filter(x => !(seqFields ++ directFields).contains(x))
+    val selectionTabular = intModelFeaturesCols(hashFeatures) ++ rawModelFeatureCols(seqFields ++ directFields) ++ aliasedModelFeatureCols(keptFields)
 
     val scoringFeatureDS = OfflineScoringSetTransform.dailyTransform(
       date,
