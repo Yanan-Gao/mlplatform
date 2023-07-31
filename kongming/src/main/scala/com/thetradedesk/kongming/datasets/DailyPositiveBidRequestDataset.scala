@@ -1,7 +1,5 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.spark.util.TTDConfig.config
-
 final case class DailyPositiveLabelRecord(
                                            ConfigKey: String,
                                            ConfigValue: String,
@@ -18,9 +16,9 @@ final case class DailyPositiveLabelRecord(
                                            IsInViewAttributionWindow: Boolean
                                          )
 
-case class DailyPositiveBidRequestDataset(experimentName: String = "") extends KongMingDataset[DailyPositiveLabelRecord](
+case class DailyPositiveBidRequestDataset(experimentOverride: Option[String] = None) extends KongMingDataset[DailyPositiveLabelRecord](
   s3DatasetPath = "dailypositive/v=1",
-  experimentName = config.getString("ttd.DailyPositiveBidRequestDataset.experimentName", experimentName)
+  experimentOverride = experimentOverride
 )
 
 final case class DailyPositiveCountSummaryRecord(
@@ -30,7 +28,7 @@ final case class DailyPositiveCountSummaryRecord(
                                                   Count: BigInt,
                                                 )
 
-case class DailyPositiveCountSummaryDataset(experimentName: String = "") extends KongMingDataset[DailyPositiveCountSummaryRecord](
+case class DailyPositiveCountSummaryDataset(experimentOverride: Option[String] = None) extends KongMingDataset[DailyPositiveCountSummaryRecord](
   s3DatasetPath = "dailypositivesummary/v=1",
-  experimentName = config.getString("ttd.DailyPositiveCountSummaryDataset.experimentName", experimentName)
+  experimentOverride = experimentOverride
 )

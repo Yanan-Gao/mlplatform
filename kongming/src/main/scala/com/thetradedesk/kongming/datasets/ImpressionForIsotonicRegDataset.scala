@@ -9,7 +9,7 @@ final case class ImpressionForIsotonicRegRecord(
                                                 ImpressionWeightForCalibrationModel: Double
                                               )
 
-case class ImpressionForIsotonicRegDataset(experimentName: String = "") extends KongMingDataset[ImpressionForIsotonicRegRecord](
+case class ImpressionForIsotonicRegDataset(experimentOverride: Option[String] = None) extends KongMingDataset[ImpressionForIsotonicRegRecord](
   s3DatasetPath = "impressionforisotonicregression/v=1",
-  experimentName = config.getString("ttd.ImpressionForIsotonicRegDataset.experimentName", experimentName)
+  experimentOverride = experimentOverride
 )
