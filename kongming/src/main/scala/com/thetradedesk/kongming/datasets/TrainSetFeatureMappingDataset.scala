@@ -9,6 +9,5 @@ final case class TrainSetFeatureMappingRecord(
                                              )
 case class TrainSetFeatureMappingDataset() extends KongMingDataset[TrainSetFeatureMappingRecord](
   s3DatasetPath = s"trainsetfeaturesmapping/v=1",
-  fileFormat = Parquet,
-  experimentName = ""
+  fileFormat = Parquet
 )

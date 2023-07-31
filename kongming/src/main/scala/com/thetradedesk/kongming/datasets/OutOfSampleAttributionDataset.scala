@@ -1,8 +1,6 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.kongming.{MLPlatformS3Root, getExperimentPath}
 import com.thetradedesk.spark.datasets.core._
-import com.thetradedesk.spark.util.TTDConfig.config
 
 final case class OutOfSampleAttributionRecord(
                                                AdGroupId: Int,
@@ -84,9 +82,9 @@ final case class OutOfSampleAttributionRecord(
                                                longitude: Option[Double],
                                              )
 
-case class OutOfSampleAttributionDataset(experimentName: String = "")
+case class OutOfSampleAttributionDataset(experimentOverride: Option[String] = None)
   extends KongMingDataset[OutOfSampleAttributionRecord](
     s3DatasetPath =  s"outofsampleattributionset/v=1",
     fileFormat = Csv.WithHeader,
-    experimentName = config.getString("ttd.OutOfSampleAttributionDataset.experimentName", experimentName)
+    experimentOverride = experimentOverride
 )

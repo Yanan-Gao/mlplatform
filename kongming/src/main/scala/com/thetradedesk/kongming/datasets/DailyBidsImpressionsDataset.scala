@@ -1,7 +1,6 @@
 package com.thetradedesk.kongming.datasets
 
 import com.thetradedesk.streaming.records.rtb._
-import com.thetradedesk.spark.util.TTDConfig.config
 
 case class BidsImpressionsSchema(
                                   // bidrequest cols
@@ -59,7 +58,7 @@ case class BidsImpressionsSchema(
                                   ContextualCategories: Option[Seq[Long]],
                                 )
 
-case class DailyBidsImpressionsDataset(experimentName: String = "") extends KongMingDataset[BidsImpressionsSchema](
+case class DailyBidsImpressionsDataset(experimentOverride: Option[String] = None) extends KongMingDataset[BidsImpressionsSchema](
   s3DatasetPath = "dailybidsimpressions/v=1",
-  experimentName = config.getString("ttd.DailyBidsImpressionsDataset.experimentName", experimentName)
+  experimentOverride = experimentOverride
 )

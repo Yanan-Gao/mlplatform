@@ -1,6 +1,6 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.kongming.{MLPlatformS3Root, getExperimentPath}
+import com.thetradedesk.kongming.MLPlatformS3Root
 import com.thetradedesk.spark.datasets.core._
 
 final case class DataForModelTrainingRecord(
@@ -77,30 +77,34 @@ final case class DataForModelTrainingRecord(
                                  longitude: Option[Double]
                                           )
 
-case class DataForModelTrainingDataset(experimentName: String = "")
+case class DataForModelTrainingDataset(experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"kongming/${getExperimentPath(experimentName)}trainset/tfrecord/v=1",
-    fileFormat = TFRecord.Example
+    GeneratedDataSet, MLPlatformS3Root, s"kongming/trainset/tfrecord/v=1",
+    fileFormat = TFRecord.Example,
+    experimentOverride = experimentOverride
   ) {
 }
 
-case class DataIncForModelTrainingDataset(experimentName: String = "")
+case class DataIncForModelTrainingDataset(experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"kongming/${getExperimentPath(experimentName)}trainset_inc/tfrecord/v=1",
-    fileFormat = TFRecord.Example
+    GeneratedDataSet, MLPlatformS3Root, s"kongming/trainset_inc/tfrecord/v=1",
+    fileFormat = TFRecord.Example,
+    experimentOverride = experimentOverride
   ) {
 }
 
-case class DataCsvForModelTrainingDataset(experimentName: String = "")
+case class DataCsvForModelTrainingDataset(experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"kongming/${getExperimentPath(experimentName)}trainset/csv/v=1",
-    fileFormat = Csv.WithHeader
+    GeneratedDataSet, MLPlatformS3Root, s"kongming/trainset/csv/v=1",
+    fileFormat = Csv.WithHeader,
+    experimentOverride = experimentOverride
   ) {
 }
 
-case class DataIncCsvForModelTrainingDataset(experimentName: String = "")
+case class DataIncCsvForModelTrainingDataset(experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"kongming/${getExperimentPath(experimentName)}trainset_inc/csv/v=1",
-    fileFormat = Csv.WithHeader
+    GeneratedDataSet, MLPlatformS3Root, s"kongming/trainset_inc/csv/v=1",
+    fileFormat = Csv.WithHeader,
+    experimentOverride = experimentOverride
   ) {
 }

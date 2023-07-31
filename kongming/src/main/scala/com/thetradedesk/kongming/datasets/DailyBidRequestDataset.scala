@@ -1,7 +1,5 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.spark.util.TTDConfig.config
-
 case class BidRequestPolicyRecord( UIID: String,
                                    ConfigKey: String,
                                    ConfigValue: String,
@@ -21,7 +19,7 @@ final case class DailyBidRequestRecord(UIID: String,
                                        IsImp: Boolean,
                                        RecencyRank: Int)
 
-case class DailyBidRequestDataset(experimentName: String = "") extends KongMingDataset[DailyBidRequestRecord](
+case class DailyBidRequestDataset(experimentOverride: Option[String] = None) extends KongMingDataset[DailyBidRequestRecord](
   s3DatasetPath = "dailybidrequest/v=1",
-  experimentName = config.getString("ttd.DailyBidRequestDataset.experimentName", experimentName)
+  experimentOverride = experimentOverride
 )

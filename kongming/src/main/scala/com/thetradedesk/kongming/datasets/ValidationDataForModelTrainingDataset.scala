@@ -1,6 +1,6 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.kongming.{MLPlatformS3Root, getExperimentPath, writeThroughHdfs}
+import com.thetradedesk.kongming.MLPlatformS3Root
 import com.thetradedesk.spark.datasets.core._
 
 final case class ValidationDataForModelTrainingRecord(BidRequestIdStr: String,
@@ -87,9 +87,9 @@ final case class ValidationDataForModelTrainingRecord(BidRequestIdStr: String,
  * This data set is very close to DataForModelTrainingDataset. It stores  saves data with Parquet.
  * It will be used for various testing purposes since TF record isn't widely used.
  */
-case class ValidationDataForModelTrainingDataset(experimentName: String = "")
+case class ValidationDataForModelTrainingDataset(experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3Dataset[ValidationDataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"kongming/${getExperimentPath(experimentName)}trainset/parquet/v=1",
+    GeneratedDataSet, MLPlatformS3Root, s"kongming/trainset/parquet/v=1",
     fileFormat = Parquet
   ) {
 }

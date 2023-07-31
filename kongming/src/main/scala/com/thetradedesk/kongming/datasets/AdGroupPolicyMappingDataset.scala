@@ -1,9 +1,5 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.spark.util.TTDConfig.config
-
-import java.time.LocalDate
-
 final case class AdGroupPolicyMappingRecord(ConfigKey: String,
                                             ConfigValue: String,
                                             AdGroupId: String,

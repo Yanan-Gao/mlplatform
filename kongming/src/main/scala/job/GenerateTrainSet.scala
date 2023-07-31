@@ -68,8 +68,6 @@ object GenerateTrainSet {
     val saveTrainingDataAsCSV = config.getBoolean("saveTrainingDataAsCSV", true)
     val addBidRequestId = config.getBoolean("addBidRequestId", false)
 
-    val experimentName = config.getString("trainSetExperimentName" , "")
-
     val trainSetPartitionCount = config.getInt("trainSetPartitionCount", 1000)
     val valSetPartitionCount = config.getInt("valSetPartitionCount", 1000)
 
@@ -186,8 +184,8 @@ object GenerateTrainSet {
 
     // 7. save as parquet and tfrecord
     if (saveParquetData) {
-      val parquetTrainRows = ValidationDataForModelTrainingDataset(experimentName).writePartition(adjustedTrainParquet, date, "train", Some(trainSetPartitionCount))
-      val parquetValRows = ValidationDataForModelTrainingDataset(experimentName).writePartition(adjustedValParquet, date, "val", Some(valSetPartitionCount))
+      val parquetTrainRows = ValidationDataForModelTrainingDataset().writePartition(adjustedTrainParquet, date, "train", Some(trainSetPartitionCount))
+      val parquetValRows = ValidationDataForModelTrainingDataset().writePartition(adjustedValParquet, date, "val", Some(valSetPartitionCount))
       outputRowsWrittenGauge.labels("ValidationDataForModelTrainingDataset/ParquetTrain").set(parquetTrainRows)
       outputRowsWrittenGauge.labels("ValidationDataForModelTrainingDataset/ParquetVal").set(parquetValRows)
     }
@@ -199,7 +197,7 @@ object GenerateTrainSet {
     }
 
     if (saveTrainingDataAsTFRecord) {
-      val tfDS = if (incTrain) DataIncForModelTrainingDataset(experimentName) else DataForModelTrainingDataset(experimentName)
+      val tfDS = if (incTrain) DataIncForModelTrainingDataset() else DataForModelTrainingDataset()
       val tfTrainRows = tfDS.writePartition(
         adjustedTrainParquet.drop(tfDropColumnNames: _*).as[DataForModelTrainingRecord],
         date, "train", Some(trainSetPartitionCount))
@@ -212,7 +210,7 @@ object GenerateTrainSet {
     }
 
     if (saveTrainingDataAsCSV) {
-      val csvDS = if (incTrain) DataIncCsvForModelTrainingDataset(experimentName) else DataCsvForModelTrainingDataset(experimentName)
+      val csvDS = if (incTrain) DataIncCsvForModelTrainingDataset() else DataCsvForModelTrainingDataset()
       val csvTrainRows = csvDS.writePartition(
         adjustedTrainParquet.drop(tfDropColumnNames: _*).as[DataForModelTrainingRecord],
         date, "train", Some(trainSetPartitionCount))

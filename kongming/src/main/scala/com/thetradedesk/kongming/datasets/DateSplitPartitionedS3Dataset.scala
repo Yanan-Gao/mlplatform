@@ -21,6 +21,7 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
   rootFolderPath: String,
   fileFormat: FileFormat,
   schemaPolicy: SchemaPolicyType = DefaultUseFirstFileSchema,
+  experimentOverride: Option[String] = None
 )
   extends PartitionedS3DataSet2[T, LocalDate, String, String, String](
     dataSetType, s3RootPath, rootFolderPath,
@@ -29,6 +30,7 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
     fileFormat,
     writeThroughHdfs = writeThroughHdfs,
     schemaPolicy = schemaPolicy,
+    experimentOverride = experimentOverride
   ) {
 
   def partitionField1: (String, PartitionColumnCalculation) = "date" -> ColumnExistsInDataSet

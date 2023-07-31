@@ -1,9 +1,5 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.spark.util.TTDConfig.config
-
-import java.time.LocalDate
-
 final case class AdGroupPolicyRecord(ConfigKey: String,
                                      ConfigValue: String,
                                      DataAggKey: String,
@@ -21,7 +17,7 @@ final case class AdGroupPolicyRecord(ConfigKey: String,
                                      AttributionImpressionLookbackWindowInSeconds: Int
                                     )
 
-case class AdGroupPolicyDataset(experimentName: String = "") extends KongMingDataset[AdGroupPolicyRecord](
+case class AdGroupPolicyDataset(experimentOverride: Option[String] = None) extends KongMingDataset[AdGroupPolicyRecord](
   s3DatasetPath = "dailyadgrouppolicy/v=2",
-  experimentName = config.getString("ttd.AdGroupPolicyDataset.experimentName", experimentName)
+  experimentOverride = experimentOverride
 )
