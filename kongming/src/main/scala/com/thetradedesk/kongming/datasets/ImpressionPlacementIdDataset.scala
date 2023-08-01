@@ -7,8 +7,8 @@ final case class ImpressionPlacementIdSchema(
                                               ImpressionPlacementId: String
                                           )
 
-case class ImpressionPlacementIdDataset(experimentName: String = "") extends KongMingDataset[ImpressionPlacementIdSchema](
+case class ImpressionPlacementIdDataset(experimentOverride: Option[String] = None) extends KongMingDataset[ImpressionPlacementIdSchema](
   s3DatasetPath = "modelassets/impressionplacementid/v=1",
-  experimentName = config.getString("ttd.ImpressionPlacementIdDataset.experimentName", experimentName),
+  experimentOverride = experimentOverride,
   fileFormat = Tsv.Headerless
 )
