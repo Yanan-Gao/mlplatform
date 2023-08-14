@@ -1,0 +1,75 @@
+model_name: philo
+model_version: 3
+# parameters that define the model structure
+model_params:
+  # tells the utils.read_yaml method where to find the unique settings for each region
+  # for example, in this case, later train_params, batch_size is different for each region
+  # therefore, the region_specific_params would be ["batch_size"] and the method will only
+  # read the batch_size for that region in the main function
+  region_specific_params: []
+  model_arch: "deepfm_dual"
+  exclude_features:
+    - "DoNotTrack"
+    - "CreativeId"
+  dnn_hidden_units:
+    - - 64
+      - 64
+    - - 128
+      - 64
+  l2_reg_linear: 0.00001
+  l2_reg_embedding: 0.00001
+  l2_reg_dnn: 0.0
+  dnn_dropout: 0.0
+  dnn_activation: "relu"
+  dnn_use_bn: false
+  bidder_prediction_layer: "prediction_layer"
+  adgroup_feature_list:
+    - "AdGroupId"
+    - "AdvertiserId"
+# parameters that define the training process
+train_params:
+  region_specific_params:
+    - "batch_size"
+  batch_size:  # normally get reset during test
+    apac: 32768
+    emea: 65536
+    namer: 65536
+  learning_rate: 0.001 # normally get reset
+  data_trunks: 1
+  num_epochs: 1
+  training_verbosity: 2
+  early_stopping_patience: 5
+  profile_batches:
+    - 100
+    - 120
+  eval_batch_size: 131072
+  eval_model_path: null
+
+#parameters that define the default path for data/model output
+input_defaults:
+  region_specific_params: []
+  input_path: "/var/tmp/input/datasets/"
+  data_format: "csv" # or tfrecords
+  meta_data_input: "/var/tmp/input/metadata/"
+  latest_model: "/var/tmp/input/latest_model/"
+  eval_model_path: null
+
+# parameters that define the default path for output
+output_defaults:
+  region_specific_params: []
+  log_path: "/var/tmp/logs/"
+  output_path: "/var/tmp/output/"
+  # normally get overwritten during test
+  push_training_logs: false
+  model_output_step_1: "step_1/"
+  model_output_step_2: "step_2/"
+  model_output_step_3: "combined/"
+  config_save_path: "model_train.yml"
+  neo_a_output: "adgroup/"
+  neo_b_output: "bidrequest/"
+  eval_output: "eval_metrics/"
+  s3_model_files: "model_files/"
+  s3_model_logs: "model_logs/"
+  s3_model_config: "model_config"
+  s3_output_path: "s3://thetradedesk-mlplatform-us-east-1/models/"
+  base_s3_path: "{s3_output_path}{env}/{model_name}/v={model_version}/{region}/"

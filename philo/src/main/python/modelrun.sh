@@ -5,6 +5,9 @@ DOCKER_IMAGE_NAME="philo-training"
 DOCKER_INTERNAL_BASE="internal.docker.adsrvr.org"
 DOCKER_USER="svc.emr-docker-ro"
 HOME_HADOOP="../../../../../../mnt"
+HOME_DATASET="/mnt/datasets"
+DATA_FOLDER="datasets" # is there a way to read from yaml file?
+META_FOLDER="metadata"
 
 while getopts "e:t:o:r:f:b:l:" opt; do
   case "$opt" in
@@ -49,39 +52,43 @@ fi
 
 if [ -z "$ENV" ]
 then
-   $ENV="dev"
+   ENV="dev"
    echo "No environment. Falling back to $ENV" >&1
-fi
-
-if [ -z "$OUTPUT_PATH" ]
-then
-   OUTPUT_PATH="s3://thetradedesk-mlplatform-us-east-1/models/{env}/philo/v=3/{region}/"
-   echo "No output path set. Falling back to $OUTPUT_PATH" >&1
 fi
 
 if [ -z "$REGION" ]
 then
-   REGION=""
-   echo "No region set. Falling back to empty region $REGION" >&1
+   REGION_CMD=""
+   echo "No region set. Not Support, will result in Python error later" >&1
+else
+   REGION_CMD="--region=$REGION"
 fi
-
-if [ -z "$FORMAT" ]
+if [ -z "$OUTPUT_PATH" ]
 then
-   FORMAT="tfrecords"
-   echo "No format set. Falling back to $FORMAT" >&1
+   OUTPUT_PATH_CMD=""
+   echo "No output path set. Using default value from config.yaml" >&1
+else
+   OUTPUT_PATH_CMD="--s3_output_path=$OUTPUT_PATH"
 fi
 
 if [ -z "$BATCH_SIZE" ]
 then
-   BATCH_SIZE="16384"
-   echo "No batch size set. Falling back to $BATCH_SIZE" >&1
+   BATCH_SIZE_CMD=""
+   echo "No batch size set. Using default value from config.yaml" >&1
+else
+   BATCH_SIZE_CMD="--batch_size=$BATCH_SIZE"
 fi
 
 if [ -z "$LEARNING_RATE" ]
 then
-   LEARNING_RATE="0.0008"
-   echo "No learning rate set. Falling back to $LEARNING_RATE" >&1
+   LEARNING_RATE_CMD=""
+   echo "No learning rate set. Using default value from config.yaml" >&1
+else
+   LEARNING_RATE_CMD="--learning_rate=$LEARNING_RATE"
 fi
+
+REST_CMD="$REGION_CMD $OUTPUT_PATH_CMD $BATCH_SIZE_CMD $LEARNING_RATE_CMD"
+echo "rest of the command are $REST_CMD"
 
 SECRETJSON=$(aws secretsmanager get-secret-value --secret-id svc.emr-docker-ro --query SecretString --output text)
 CREDS=$(echo $SECRETJSON | jq .emr_docker_ro)
@@ -98,25 +105,13 @@ eval docker pull ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${IMAGE_TAG}
 
 echo "image pulled, running docker container"
 
-sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v /mnt/tfrecords:${MODEL_INPUT}/tfrecords \
-  -v /mnt/metadata:${MODEL_INPUT}/metadata/ \
+sudo docker run --gpus all --shm-size=5g --ulimit memlock=-1 -v ${HOME_DATASET}:${MODEL_INPUT}/${DATA_FOLDER} \
+  -v /mnt/metadata:${MODEL_INPUT}/${META_FOLDER}/ \
   -v /mnt/latest_model:${MODEL_INPUT}/latest_model \
   ${DOCKER_INTERNAL_BASE}/${DOCKER_IMAGE_NAME}:${IMAGE_TAG}  \
       "--nodummy" \
-      "--batch_size=${BATCH_SIZE}" \
-      "--learning_rate=${LEARNING_RATE}" \
-      "--eval_batch_size=131072" \
-      "--data_trunks=1" \
-      "--exclude_features=DoNotTrack,CreativeId"\
-      "--num_epochs=1" \
-      "--input_path=/var/tmp/input/tfrecords/" \
-      "--meta_data_path=/var/tmp/input/metadata/" \
-      "--latest_model_path=/var/tmp/input/latest_model/" \
-      "--push_training_logs=true" \
-      "--env=${ENV}" \
-      "--region=${REGION}" \
-      "--s3_output_path=${OUTPUT_PATH}" \
-      "--format=${FORMAT}" \
-      "--training_verbosity=2" \
-      "--model_arch=deepfm_dual" \
-      "--early_stopping_patience=5"
+       "--env=${ENV}" \
+       "${REGION_CMD}" \
+       "${OUTPUT_PATH_CMD}" \
+       "${BATCH_SIZE_CMD}" \
+       "${LEARNING_RATE_CMD}"
