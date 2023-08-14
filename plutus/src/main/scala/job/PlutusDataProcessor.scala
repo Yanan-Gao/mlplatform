@@ -26,7 +26,7 @@ object PlutusDataProcessor extends Logger {
   val implicitSampleRate = config.getDouble("implicitSampleRate", 0.1)
 
   implicit val prometheus = new PrometheusClient("Plutus", "TrainingDataEtl")
-  val jobDurationTimer = prometheus.createGauge("training_data_raw_etl_runtime", "Time to process 1 day of bids, impressions, lost bid data").startTimer()
+  val jobDurationTimer = prometheus.createGauge("plutus_data_proc_etl_runtime", "Time to process 1 day of bids, impressions, lost bid data").startTimer()
 
   // Features json S3 location
   val featuresJson = config.getString("featuresJson", "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/dev/schemas/features.json")

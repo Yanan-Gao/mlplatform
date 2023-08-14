@@ -98,6 +98,7 @@ object MockData {
 
                                     PredictiveClearingMode = Option(PredictiveClearingModeLookupRecord()),
                                     PredictiveClearingRandomControl = false,
+                                    PlutusTfModel = Some("plutusMock"),
 
                                     // bidfeedback cols
 
@@ -136,7 +137,8 @@ object MockData {
                                     IsAdFormatOptimizationEnabled = Option(false),
                                     IsGeoSegmentOptimizationEnabled = Option(false),
                                     KoaCanBidUpEnabled = Option(false), // assist only with performance
-                                    IsEnabled = Option(false) //koa always on or always off
+                                    IsEnabled = Option(false),    //koa always on or always off
+                                    UserSegmentCount = Option(1000)
 
   )
 

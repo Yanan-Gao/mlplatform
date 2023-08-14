@@ -15,7 +15,8 @@ import org.apache.spark.sql.functions.{col, lit, udf, when, xxhash64}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{Column, Dataset, Encoder, SparkSession}
 
-import java.time.LocalDate
+import java.time.{LocalDate, ZonedDateTime}
+import java.time.temporal.TemporalAmount
 import java.util.UUID
 import scala.collection.mutable.ArrayBuffer
 
@@ -126,6 +127,10 @@ package object data {
     }
   }
 
+  def explicitDateTimePart(date: ZonedDateTime): String = {
+    f"year=${date.getYear}/month=${date.getMonthValue}%02d/day=${date.getDayOfMonth}%02d/hourPart=${date.getHour}%02d"
+  }
+
   def explicitDatePart(date: LocalDate): String = {
     f"year=${date.getYear}/month=${date.getMonthValue}%02d/day=${date.getDayOfMonth}%02d"
   }
@@ -171,6 +176,9 @@ package object data {
     spark.read.parquet(paths: _*)
       .selectAs[T]
   }
+
+  def dateRange(start: ZonedDateTime, end: ZonedDateTime, step: TemporalAmount): Iterator[ZonedDateTime] =
+    Iterator.iterate(start)(_.plus(step)).takeWhile(x => !(x.isEqual(end) || x.isAfter(end)))
 
   def loadCsvData[T: Encoder](s3path: String, date: LocalDate, schema: StructType): Dataset[T] = {
     spark.read.format("csv")
