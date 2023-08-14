@@ -140,7 +140,7 @@ def combined_dnn_input(sparse_embedding_list, dense_value_list):
 
 
 def concat_func(inputs, axis=-1):
-# def concat_func(inputs, axis=-1, mask=False):
+    # def concat_func(inputs, axis=-1, mask=False):
     # if not mask:
     #     # old tensorflow might have issue if previous layers are no mask but the new one are masked
     #     # added this to make sure no error, new version seems to not have this issue, but need to test it
@@ -366,6 +366,29 @@ class PredictionLayer(Layer):
         config = {'task': self.task, 'use_bias': self.use_bias}
         base_config = super(PredictionLayer, self).get_config()
         return dict(list(base_config.items()) + list(config.items()))
+
+
+def get_prediction_layer(task, final_logit, use_bias=True, step=1, prediction_layer_name=None):
+    """
+    build prediction layer and assign name based on which step the model is at, current philo has 3 steps,
+    only the last step model will get the name from config file, otherwise, use prediction_layer_{step#}
+    Args:
+        use_bias: use bias for prediction or not
+        task: ``"binary"`` for  binary logloss or  ``"regression"`` for regression loss
+        final_logit: logit from last layer
+        step: step of the training process
+        prediction_layer_name: prediction name, only required if step is -1
+
+    Returns: output value from prediction layer
+
+    """
+    if step != -1:
+        output = PredictionLayer(task, use_bias,  name=f'prediction_layer_{step}')(final_logit)
+    else:
+        if prediction_layer_name is None:
+            raise ValueError('prediction_layer_name cannot be None if it is the last step (-1)')
+        output = PredictionLayer(task, use_bias, name=prediction_layer_name)(final_logit)
+    return output
 
 
 ############################################################################################

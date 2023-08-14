@@ -15,6 +15,7 @@ COPY philo ./philo
 # COPY setup.cfg ./
 COPY main.py ./
 COPY features.json ./
+COPY config.yml ./
 COPY requirements.txt ./
 
 RUN --mount=type=secret,id=PYPI_READ_USERNAME \

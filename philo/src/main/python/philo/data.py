@@ -35,10 +35,12 @@ def s3_sync(src_path, dst_path, quiet=True):
     return sync_command
 
 
-def s3_copy(src_path, dest_path, quiet=True, recursive=True):
+def s3_copy(src_path, dest_path, quiet=True, recursive=True, dryrun=False):
     """
     Copy data from source path to destination path, need awscli
     Args:
+        dryrun: if dryrun, don't copy, for local debug
+        recursive: for directory copy
         src_path: source path
         dest_path: destination path
         quiet: print out copy message or not
@@ -51,10 +53,12 @@ def s3_copy(src_path, dest_path, quiet=True, recursive=True):
         cp_command = cp_command + " --recursive"
     if quiet:
         cp_command = cp_command + " --quiet"
+    if dryrun:
+        cp_command = cp_command + " --dryrun"
     os.system(cp_command)
     return cp_command
 
-def s3_write_success_file(dest_path, quiet=True):
+def s3_write_success_file(dest_path, quiet=True, dryrun=False):
     """
     writes _SUCCESS file to destination path, need awscli
     Args:
@@ -67,6 +71,8 @@ def s3_write_success_file(dest_path, quiet=True):
     cp_command = f"echo -n | aws s3 cp - {dest_path}/_SUCCESS"
     if quiet:
         cp_command = cp_command + " --quiet"
+    if dryrun:
+        cp_command = cp_command + " --dryrun"
     os.system(cp_command)
     return cp_command
 
@@ -465,13 +471,13 @@ def prepare_dummy_data(model_features, model_target, batch_size):
         x, y = generate_random_pandas(model_features, model_target, num)
         return dict(x), y
 
-    options = tf.data.Options()
-    options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.OFF
+    # options = tf.data.Options()
+    # options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.OFF
 
     return {
-        TRAIN: tf.data.Dataset.from_tensor_slices(generate_tensor_slices(1000)).withOptions(options).batch(batch_size),
-        VAL: tf.data.Dataset.from_tensor_slices(generate_tensor_slices(100)).withOptions(options).batch(batch_size),
-        TEST: tf.data.Dataset.from_tensor_slices(generate_tensor_slices(100)).withOptions(options).batch(batch_size)
+        TRAIN: tf.data.Dataset.from_tensor_slices(generate_tensor_slices(1000)).batch(batch_size),
+        VAL: tf.data.Dataset.from_tensor_slices(generate_tensor_slices(100)).batch(batch_size),
+        TEST: tf.data.Dataset.from_tensor_slices(generate_tensor_slices(100)).batch(batch_size)
     }
 
 

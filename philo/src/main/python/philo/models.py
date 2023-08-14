@@ -1,7 +1,7 @@
 from philo.features import build_input_features, get_linear_logit, input_from_feature_columns, SparseFeat, DenseFeat, \
     get_dcn_input, VarLenSparseFeat
 from philo.layers import add_func, concat_func, combined_dnn_input, \
-    DNN, FM, PredictionLayer, CrossNet, CrossNetMix, CIN, Linear
+    DNN, FM, PredictionLayer, CrossNet, CrossNetMix, CIN, get_prediction_layer
 from philo.neo import create_combined_encoder, separate_feature, get_partial_fm, combine_neo_fm_logits
 import tensorflow as tf
 from tensorflow.keras.models import Model
@@ -31,8 +31,11 @@ def model_builder(model_arch, model_features, **kwargs):
     """
     fixlen_feature_columns = [SparseFeat(feat.name, vocabulary_size=feat.cardinality, embedding_dim=feat.embedding_dim)
                               if feat.sparse else DenseFeat(feat.name, 1, ) for feat in model_features if feat.max_len == 0]
-    varlen_feature_columns = [VarLenSparseFeat(SparseFeat(feat.name, vocabulary_size=feat.cardinality+1, embedding_dim=feat.embedding_dim), maxlen=feat.max_len, combiner='mean',
-                                                                                weight_name=None) for feat in model_features if feat.max_len != 0]
+    varlen_feature_columns = [
+        VarLenSparseFeat(
+        SparseFeat(feat.name, vocabulary_size=feat.cardinality+1, embedding_dim=feat.embedding_dim),
+        maxlen=feat.max_len, combiner='mean', weight_name=None
+        ) for feat in model_features if feat.max_len != 0]
     dnn_feature_columns = fixlen_feature_columns + varlen_feature_columns
     linear_feature_columns = fixlen_feature_columns + varlen_feature_columns
     if model_arch == 'deepfm':
@@ -41,13 +44,16 @@ def model_builder(model_arch, model_features, **kwargs):
         if 'adgroup_feature_list' in kwargs.keys():
             model = deep_fm_dual_tower(linear_feature_columns, dnn_feature_columns, task='binary', **kwargs)
         else:
-            raise Exception("need to specify adgroup_feature_list to split features, extract adgroup_feature_list from Features.from_json_path(FEATURES_PATH , FLAGS.exclude_features)")
+            raise Exception("need to specify adgroup_feature_list to split features, "
+                            "extract adgroup_feature_list from Features.from_json_path(FEATURES_PATH , "
+                            "FLAGS.exclude_features)")
     elif model_arch == 'deepfm_dual_neo':
         if 'adgroup_feature_list' in kwargs.keys():
             # NOTE: output here is a tuple of (model, model_neo_a, model_neo_b)
             model = deep_fm_dual_tower_neo(linear_feature_columns, dnn_feature_columns, task='binary', **kwargs)
         else:
-            raise Exception("need to specify adgroup_feature_list to split features, extract adgroup_feature_list from Features.from_json_path(FEATURES_PATH , FLAGS.exclude_features)")
+            raise Exception("need to specify adgroup_feature_list to split features, extract adgroup_feature_list "
+                            "from Features.from_json_path(FEATURES_PATH , FLAGS.exclude_features)")
     elif model_arch == 'xdeepfm':
         model = xdeepfm(linear_feature_columns, dnn_feature_columns, task='binary', **kwargs)
     elif model_arch == 'dcn':
@@ -118,12 +124,9 @@ def deep_fm_dual_tower(linear_feature_columns, dnn_feature_columns, adgroup_feat
         dual_combined_output = Dense(1, use_bias=False, kernel_initializer=glorot_normal(seed=seed))(dnn_input)
 
     final_logit = add_func([linear_logit, fm_logit, dual_combined_output])
-    if step != -1:
-        output = PredictionLayer(task, name=f'prediction_layer_{step}')(final_logit)
-    else:
-        if prediction_layer_name is None:
-            raise ValueError('prediction_layer_name cannot be None if it is the last step (-1)')
-        output = PredictionLayer(task, name=prediction_layer_name)(final_logit)
+
+    output = get_prediction_layer(task, final_logit, use_bias=True, step=step,
+                                  prediction_layer_name=prediction_layer_name)
     model = Model(inputs=inputs_list, outputs=output)
     return model
 
@@ -131,7 +134,7 @@ def deep_fm_dual_tower(linear_feature_columns, dnn_feature_columns, adgroup_feat
 def deep_fm_dual_tower_neo(linear_feature_columns, dnn_feature_columns, adgroup_feature_list,
                            fm_group=[DEFAULT_GROUP_NAME], dnn_hidden_units=[[64, 64], [128, 64]], l2_reg_linear=0.00001,
                            l2_reg_embedding=0.00001, l2_reg_dnn=0, seed=SEED, dnn_dropout=0, dnn_activation='relu',
-                           dnn_use_bn=False, task='binary'):
+                           dnn_use_bn=False, task='binary', step=1, prediction_layer_name=None):
     """Instantiates the DeepFM Network architecture with adgroup and bidrequest feature split in mlp part, and along
        together the corresponding Neo models for adgroup and bidrequest.
 
@@ -149,6 +152,9 @@ def deep_fm_dual_tower_neo(linear_feature_columns, dnn_feature_columns, adgroup_
     :param dnn_activation: Activation function to use in DNN
     :param dnn_use_bn: bool. Whether use BatchNormalization before activation or not in DNN
     :param task: str, ``"binary"`` for  binary logloss or  ``"regression"`` for regression loss
+    :param prediction_layer_name: if None, then nothing, but if step=-1, it cannot be None
+    :return: A Keras model instance.
+
     :return: A tuple of Keras model instances.
 
     """
@@ -197,11 +203,12 @@ def deep_fm_dual_tower_neo(linear_feature_columns, dnn_feature_columns, adgroup_
         # dual_combined_output = Dense(1, use_bias=False, kernel_initializer=glorot_normal(seed=seed))(dnn_input)
 
     final_logit = add_func([linear_logit, fm_logit_combined, dnn_logit])
-    output = PredictionLayer(task)(final_logit)
+    output = get_prediction_layer(task, final_logit, use_bias=True, step=step,
+                                  prediction_layer_name=prediction_layer_name)
+    model = Model(inputs=inputs_list, outputs=output)
+
     outputs_a = [linear_logit_a, fm_logits_a[1], fm_logits_a[0], dnn_output_a]
     outputs_b = [linear_logit_b, fm_logits_b[1], fm_logits_b[0], dnn_output_b]
-
-    model = Model(inputs=inputs_list, outputs=output)
     model_neo_a = Model(inputs=inputs_list_a, outputs=outputs_a)
     model_neo_b = Model(inputs=inputs_list_b, outputs=outputs_b)
     return model, model_neo_a, model_neo_b
@@ -209,7 +216,7 @@ def deep_fm_dual_tower_neo(linear_feature_columns, dnn_feature_columns, adgroup_
 
 def deep_fm(linear_feature_columns, dnn_feature_columns, fm_group=[DEFAULT_GROUP_NAME], dnn_hidden_units=[128, 128],
             l2_reg_linear=0.00001, l2_reg_embedding=0.00001, l2_reg_dnn=0, seed=SEED, dnn_dropout=0,
-            dnn_activation='relu', dnn_use_bn=False, task='binary'):
+            dnn_activation='relu', dnn_use_bn=False, task='binary', step=1, prediction_layer_name=None):
     """Instantiates the DeepFM Network architecture. https://arxiv.org/abs/1703.04247
 
     :param linear_feature_columns: An iterable containing all the features used by linear part of the model.
@@ -225,6 +232,8 @@ def deep_fm(linear_feature_columns, dnn_feature_columns, fm_group=[DEFAULT_GROUP
     :param dnn_activation: Activation function to use in DNN
     :param dnn_use_bn: bool. Whether use BatchNormalization before activation or not in DNN
     :param task: str, ``"binary"`` for  binary logloss or  ``"regression"`` for regression loss
+    :param prediction_layer_name: if None, then nothing, but if step=-1, it cannot be None
+
     :return: A Keras model instance.
     """
 
@@ -251,6 +260,8 @@ def deep_fm(linear_feature_columns, dnn_feature_columns, fm_group=[DEFAULT_GROUP
     final_logit = add_func([linear_logit, fm_logit, dnn_logit])
 
     output = PredictionLayer(task)(final_logit)
+    output = get_prediction_layer(task, final_logit, use_bias=True, step=step,
+                                  prediction_layer_name=prediction_layer_name)
     model = Model(inputs=inputs_list, outputs=output)
     return model
 
@@ -258,7 +269,7 @@ def deep_fm(linear_feature_columns, dnn_feature_columns, fm_group=[DEFAULT_GROUP
 def xdeepfm(linear_feature_columns, dnn_feature_columns, dnn_hidden_units=[256, 128, 64],
             cin_layer_size=(128, 128,), cin_split_half=True, cin_activation='relu', l2_reg_linear=0.00001,
             l2_reg_embedding=0.00001, l2_reg_dnn=0, l2_reg_cin=0, seed=1024, dnn_dropout=0,
-            dnn_activation='relu', dnn_use_bn=False, task='binary'):
+            dnn_activation='relu', dnn_use_bn=False, task='binary', step=1, prediction_layer_name=None):
     """Instantiates the xDeepFM architecture.
     :param linear_feature_columns: An iterable containing all the features used by linear part of the model.
     :param dnn_feature_columns: An iterable containing all the features used by deep part of the model.
@@ -277,6 +288,8 @@ def xdeepfm(linear_feature_columns, dnn_feature_columns, dnn_hidden_units=[256, 
     :param dnn_activation: Activation function to use in DNN
     :param dnn_use_bn: bool. Whether use BatchNormalization before activation or not in DNN
     :param task: str, ``"binary"`` for  binary logloss or  ``"regression"`` for regression loss
+    :param prediction_layer_name: if None, then nothing, but if step=-1, it cannot be None
+
     :return: A Keras model instance.
     """
 
@@ -305,8 +318,8 @@ def xdeepfm(linear_feature_columns, dnn_feature_columns, dnn_hidden_units=[256, 
         exFM_logit = Dense(1, use_bias=False)(exFM_out)
         final_logit = add_func([final_logit, exFM_logit])
 
-    output = PredictionLayer(task)(final_logit)
-
+    output = get_prediction_layer(task, final_logit, use_bias=True, step=step,
+                                  prediction_layer_name=prediction_layer_name)
     model = Model(inputs=inputs_list, outputs=output)
     return model
 
@@ -314,7 +327,7 @@ def xdeepfm(linear_feature_columns, dnn_feature_columns, dnn_hidden_units=[256, 
 def dcn_mix(linear_feature_columns, dnn_feature_columns, cross_num=2,
             dnn_hidden_units=[256, 128, 64], l2_reg_linear=1e-5, l2_reg_embedding=1e-5, low_rank=32, num_experts=4,
             l2_reg_cross=1e-5, l2_reg_dnn=0, seed=1024, dnn_dropout=0, dnn_use_bn=False,
-            dnn_activation='relu', task='binary'):
+            dnn_activation='relu', task='binary', step=1, prediction_layer_name=None):
     """Instantiates the Deep&Cross Network with mixture of experts architecture.
     :param linear_feature_columns: An iterable containing all the features used by linear part of the model.
     :param dnn_feature_columns: An iterable containing all the features used by deep part of the model.
@@ -332,6 +345,8 @@ def dcn_mix(linear_feature_columns, dnn_feature_columns, cross_num=2,
     :param low_rank: Positive integer, dimensionality of low-rank space.
     :param num_experts: Positive integer, number of experts.
     :param task: str, ``"binary"`` for  binary logloss or  ``"regression"`` for regression loss
+    :param prediction_layer_name: if None, then nothing, but if step=-1, it cannot be None
+
     :return: A Keras model instance.
     """
     dnn_input, inputs_list, linear_logit = get_dcn_input(cross_num, dnn_feature_columns, dnn_hidden_units,
@@ -354,8 +369,8 @@ def dcn_mix(linear_feature_columns, dnn_feature_columns, cross_num=2,
         raise NotImplementedError
 
     final_logit = add_func([final_logit, linear_logit])
-    output = PredictionLayer(task)(final_logit)
-
+    output = get_prediction_layer(task, final_logit, use_bias=True, step=step,
+                                  prediction_layer_name=prediction_layer_name)
     model = Model(inputs=inputs_list, outputs=output)
 
     return model
@@ -364,7 +379,8 @@ def dcn_mix(linear_feature_columns, dnn_feature_columns, cross_num=2,
 def dcn(linear_feature_columns, dnn_feature_columns, cross_num=2, cross_parameterization='vector',
         dnn_hidden_units=[256, 128, 64], l2_reg_linear=1e-5, l2_reg_embedding=1e-5,
         l2_reg_cross=1e-5, l2_reg_dnn=0, seed=1024, dnn_dropout=0, dnn_use_bn=False,
-        dnn_activation='relu', task='binary'):
+        dnn_activation='relu', task='binary',
+        step=1, prediction_layer_name=None):
     """Instantiates the Deep&Cross Network architecture. added by Paniti
     :param linear_feature_columns: An iterable containing all the features used by linear part of the model.
     :param dnn_feature_columns: An iterable containing all the features used by deep part of the model.
@@ -380,6 +396,8 @@ def dcn(linear_feature_columns, dnn_feature_columns, cross_num=2, cross_paramete
     :param dnn_use_bn: bool. Whether use BatchNormalization before activation or not DNN
     :param dnn_activation: Activation function to use in DNN
     :param task: str, ``"binary"`` for  binary logloss or  ``"regression"`` for regression loss
+    :param prediction_layer_name: if None, then nothing, but if step=-1, it cannot be None
+
     :return: A Keras model instance.
     """
     dnn_input, inputs_list, linear_logit = get_dcn_input(cross_num, dnn_feature_columns, dnn_hidden_units,
@@ -400,8 +418,8 @@ def dcn(linear_feature_columns, dnn_feature_columns, cross_num=2, cross_paramete
         raise NotImplementedError
 
     final_logit = add_func([final_logit, linear_logit])
-    output = PredictionLayer(task)(final_logit)
-
+    output = get_prediction_layer(task, final_logit, use_bias=True, step=step,
+                                  prediction_layer_name=prediction_layer_name)
     model = Model(inputs=inputs_list, outputs=output)
 
     return model

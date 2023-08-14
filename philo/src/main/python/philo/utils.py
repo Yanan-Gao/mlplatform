@@ -2,6 +2,7 @@ import tensorflow as tf
 import numpy as np
 import pandas as pd
 import warnings
+import yaml
 
 
 def get_callbacks(log_path, profile_batches, early_stopping_patience, checkpoint_base_path):
@@ -151,3 +152,58 @@ def align_model_feature(input_layers, model_features):
     model_input_order = [i.name for i in input_layers]
     feature_dict = {i.name: i for i in model_features}
     return [feature_dict.get(i) for i in model_input_order if feature_dict.get(i) is not None]
+
+
+def read_yaml(path, region, key_name="region_specific_params"):
+    """
+    read yaml file for configuration
+    Args:
+        key_name: which key to look for region specific parameters
+        path: path to the yaml file
+        region: model region
+
+    Returns: dictionary of settings
+
+    """
+    with open(path, 'r') as f:
+        default_settings = yaml.safe_load(f)
+    for k, v in default_settings.items():
+        if isinstance(v, dict):
+            default_settings[k] = extract_model_specific_settings(v, region, key_name)
+    return default_settings
+
+
+def extract_model_specific_settings(params, region, key_name="region_specific_params"):
+    """
+    each dictionary shall have a key of model_specific_params,
+    which contains the key for the parameter that is set differently for
+    different models
+    Args:
+        key_name: which key to look for region specific parameters
+        params: parameter dictionary
+        region: model region
+
+    Returns:
+        dictionary of original with the specific params set to the region model
+
+    """
+    if not params[key_name]:
+        return params
+    params_cp = params.copy()
+    for i in params_cp[key_name]:
+        params_cp[i] = params[i][region]
+    return params_cp
+
+
+def save_yaml(path, params):
+    """
+    save yaml file to local disk
+    Args:
+        path: path to the local disk
+        params: params to be saved
+
+    Returns: None
+
+    """
+    with open(path, 'w') as yaml_file:
+        yaml.dump(params, yaml_file, default_flow_style=False)

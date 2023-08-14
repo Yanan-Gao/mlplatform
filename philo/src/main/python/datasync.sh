@@ -4,7 +4,7 @@
 
 BASE_DATA_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=3"
 #BASE_MODEL_S3_PATH="s3://thetradedesk-mlplatform-us-east-1/models"
-
+VALID_FORMATS=("csv" "gz") # only csv and gz are allowed currently
 LOOKBACK=9
 
 # parse -e flag for environment
@@ -43,7 +43,7 @@ while getopts "e:d:p:m:r:l:f:" opt; do
 
     f)
       FORMAT="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
-      echo "Setting file format to $OPTARG" >&1
+      echo "Setting file format suffix to $OPTARG" >&1
       ;;
 
     *)
@@ -89,37 +89,38 @@ fi
 
 if [ -z "$FORMAT" ]
 then
-   FORMAT="tfrecords"
+   FORMAT="csv"
    echo "No file format set. Falling back to $FORMAT" >&1
+else
+  case "$FORMAT" in
+    "${VALID_FORMATS[@]}")
+      echo "The FORMAT is valid: $FORMAT"
+      ;;
+    *)
+      echo "Invalid FORMAT: $FORMAT. It should be one of the following: ${VALID_FORMATS[@]}"
+      ;;
+  esac
 fi
 
 MNT="../../../../../../mnt/"
 
 # filtered data locations
 DATA_SOURCE="${BASE_DATA_S3_PATH}/${ENV}/${PREFIX}"
-SYNC_DEST="tfrecords/"
+SYNC_DEST="datasets/"
 
 # meta locations
 META_SOURCE="${BASE_DATA_S3_PATH}/${ENV}/${META_PREFIX}"
 META_DEST="metadata/"
-
-# file format suffix
-if [[ "$FORMAT" != "csv" ]]
-  then
-    SUFFIX=".gz"
-  else
-    SUFFIX=".csv"
-fi
 
 # latest trained model
 MODEL_DEST="latest_model/"
 
 cd ${MNT}
 
-echo "starting s3 sync for params: prefix=${PREFIX}, meta_prefix=${META_PREFIX}, env=${ENV}, date=${START_DATE}, format=${FORMAT}, suffix=${SUFFIX} \n"
+echo "starting s3 sync for params: prefix=${PREFIX}, meta_prefix=${META_PREFIX}, env=${ENV}, date=${START_DATE}, format=${FORMAT}\n"
 
 ##not bash doesnt support variable expansion here, so hardcoded '9'
-for i in {1..9}; do
+ for i in {1..9}; do
 
     YEAR=$(date -d "$START_DATE -$i days" +"%Y")
     MONTH=$(date -d "$START_DATE -$i days" +"%m")
@@ -128,13 +129,13 @@ for i in {1..9}; do
     S3_META_SOURCE="${META_SOURCE}/year=${YEAR}/month=${MONTH}/day=${DAY}/"
     if ((i == 1))
       then echo "syncing from ${S3_SOURCE}  to "${SYNC_DEST}/test""
-      aws s3 cp ${S3_SOURCE} "${SYNC_DEST}/test/" --recursive --exclude "*" --include "*${SUFFIX}" --quiet
+      aws s3 cp ${S3_SOURCE} "${SYNC_DEST}/test/" --recursive --exclude "*" --include "*.${FORMAT}" --quiet
     elif ((i == 2))
       then echo "syncing from ${S3_SOURCE}  to "${SYNC_DEST}/validation""
-      aws s3 cp ${S3_SOURCE} "${SYNC_DEST}/validation/" --recursive --exclude "*" --include "*${SUFFIX}" --quiet
+      aws s3 cp ${S3_SOURCE} "${SYNC_DEST}/validation/" --recursive --exclude "*" --include "*.${FORMAT}" --quiet
     else
       echo "copying from ${S3_SOURCE} to "${SYNC_DEST}/train""
-      aws s3 cp ${S3_SOURCE} "${SYNC_DEST}/train/" --recursive --exclude "*" --include "*${SUFFIX}" --quiet
+      aws s3 cp ${S3_SOURCE} "${SYNC_DEST}/train/" --recursive --exclude "*" --include "*.${FORMAT}" --quiet
       echo "syncing meta data form ${S3_META_SOURCE} to ${META_DEST}"
       aws s3 cp ${S3_META_SOURCE} "${META_DEST}/" --recursive --exclude "*" --include "*.csv" --quiet
      fi

@@ -1,6 +1,7 @@
-tensorflow == 2.8.0
+tensorflow==2.8.0
 tensorflow_probability == 0.16.0
 boto3
+PyYAML
 prometheus_client
 awscli
 pandas
