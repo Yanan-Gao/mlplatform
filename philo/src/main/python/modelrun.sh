@@ -27,10 +27,6 @@ while getopts "e:t:o:r:f:b:l:" opt; do
       REGION="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
       echo "Setting region to $OPTARG" >&1
       ;;
-    f)
-      FORMAT="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
-      echo "Setting format to $OPTARG" >&1
-      ;;
     b)
       BATCH_SIZE="$(echo -e "${OPTARG}" | tr -d '[:space:]')"
       echo "Setting batch_size to $OPTARG" >&1
