@@ -100,5 +100,28 @@ class packageTest extends AnyFlatSpec {
 
   }
 
+  "isEqualOrBetter" should "return false when stageStat is less than prodStat" in {
+    isEqualOrBetter(10.0, 8.0) should be(false)
+  }
+
+  it should "return true when stageStat is just above threshold" in {
+    isEqualOrBetter(10.0, 9.51) should be(true)
+  }
+
+  it should "return false when stageStat is right below threshold" in {
+    isEqualOrBetter(10.0, 9.5) should be(false)
+  }
+
+  it should "return true when stageStat is above threshold" in {
+    isEqualOrBetter(10.0, 10.9) should be(true)
+  }
+
+  it should "return false when using custom margin below threshold" in {
+    isEqualOrBetter(100.0, 90.0, 0.1) should be(false)
+  }
+
+  it should "return true when using custom margin at threshold" in {
+    isEqualOrBetter(100.0, 90.1, 0.1) should be(true)
+  }
 }
 
