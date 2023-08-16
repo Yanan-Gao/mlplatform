@@ -51,7 +51,8 @@ philo:test_python:
         - "philo/src/main/python/**/*"
   before_script:
     - pushd ./philo/
-    - pip3 install -r ${PHILO_SCRIPTS_SOURCE}/tests/requirements-test.txt
+    - pip3 install -r ${PHILO_SCRIPTS_SOURCE}/requirements.txt
+    - pip3 install -r ${PHILO_SCRIPTS_SOURCE}/tests/requirements_test.txt
   script:
     - pytest ${PHILO_SCRIPTS_SOURCE}/tests/
     - popd
@@ -95,10 +96,7 @@ philo:push_scripts:
   rules:
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
-        - "philo/src/main/python/modelrun.sh"
-        - "philo/src/main/python/clustersetup.sh"
-        - "philo/src/main/python/datasync.sh"
-        - "philo/src/main/python/features.json"
+        - "philo/**/*"
   script:
     - pushd ./philo/
     - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${PHILO_SETUP_SCRIPT} ${PHILO_SCRIPTS_DEST}
