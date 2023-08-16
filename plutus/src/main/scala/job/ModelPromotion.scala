@@ -2,7 +2,7 @@ package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.logging.Logger
-import com.thetradedesk.plutus.data.{dateRange, explicitDateTimePart}
+import com.thetradedesk.plutus.data.{dateRange, explicitDateTimePart, isEqualOrBetter}
 import com.thetradedesk.spark.TTDSparkContext
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -52,8 +52,6 @@ object ModelPromotion extends Logger{
   }
 
   case class ModelPromotionResults(startDateTime: ZonedDateTime, endDateTime: ZonedDateTime, paths: Seq[String], stats: Array[ModelPromotionStats], result: String)
-
-  def isEqualOrBetter(prodStat: Double, stageStat: Double, margin: Double = 0.05) = (stageStat - prodStat) / prodStat  > - margin
 
   def deleteS3(path: String, recursive: Boolean = true) = {
     if (recursive) {

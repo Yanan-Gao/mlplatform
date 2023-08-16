@@ -120,6 +120,10 @@ package object data {
     shiftMod(hashValue, Int.MaxValue)
   })
 
+  /// We want the stage stat to be > prodstat - margin.
+  def isEqualOrBetter(prodStat: Double, stageStat: Double, margin: Double = 0.05) = stageStat > (1 - margin) * prodStat
+
+
   def paddedDatePart(date: LocalDate, separator: Option[String] = None): String = {
     separator match {
       case Some(s) => f"${date.getYear}$s${date.getMonthValue}%02d$s${date.getDayOfMonth}%02d"
@@ -128,7 +132,7 @@ package object data {
   }
 
   def explicitDateTimePart(date: ZonedDateTime): String = {
-    f"year=${date.getYear}/month=${date.getMonthValue}%02d/day=${date.getDayOfMonth}%02d/hourPart=${date.getHour}%02d"
+    f"year=${date.getYear}/month=${date.getMonthValue}%02d/day=${date.getDayOfMonth}%02d/hourPart=${date.getHour}"
   }
 
   def explicitDatePart(date: LocalDate): String = {
