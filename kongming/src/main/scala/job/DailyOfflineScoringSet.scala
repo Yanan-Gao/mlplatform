@@ -5,21 +5,12 @@ import com.thetradedesk.kongming.features.Features._
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets.{DailyBidsImpressionsDataset, DailyOfflineScoringDataset}
 import com.thetradedesk.kongming.transform.OfflineScoringSetTransform
-import com.thetradedesk.spark.TTDSparkContext.spark
-import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import com.thetradedesk.spark.util.TTDConfig.config
-import org.apache.spark.sql.Column
-import org.apache.spark.sql.functions.col
 
-object DailyOfflineScoringSet {
+object DailyOfflineScoringSet extends KongmingBaseJob {
 
-  def main(args: Array[String]): Unit = {
+  override def jobName: String = "DailyOfflineScoringSet"
 
-    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("DailyOfflineScoringSet"))
-    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
-    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
-    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
+  override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
     val bidsImpressionFilterByPolicy = DailyBidsImpressionsDataset().readDate(date)
 
@@ -31,15 +22,12 @@ object DailyOfflineScoringSet {
       date,
       bidsImpressionFilterByPolicy,
       selectionTabular
-    )(prometheus)
+    )(getPrometheus)
 
     //assuming Yuehan has implemented the tfrecord write this way. has dependency on the changes she is doing.
     val dailyOfflineScoringRows = DailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(1000))
 
-    outputRowsWrittenGauge.labels("DailyOfflineScoringDataset").set(dailyOfflineScoringRows)
-    jobDurationGaugeTimer.setDuration()
-    prometheus.pushMetrics()
+    Array(dailyOfflineScoringRows)
 
-    spark.stop()
   }
 }

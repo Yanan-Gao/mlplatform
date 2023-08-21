@@ -11,7 +11,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
-object DailyNegativeSampling {
+object DailyNegativeSampling extends KongmingBaseJob {
   /*
     Input: all bids of a day
     Output: downsampled bids per adgroup
@@ -21,11 +21,9 @@ object DailyNegativeSampling {
     Negative sampling is done at adgroup level, regardless of adgroup policy aggkey.  We'll apply aggkey in next job of aggregation negatives.
 
    */
-  def main(args: Array[String]): Unit = {
-    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("DailyNegativeSampling"))
-    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
-    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
-    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
+  override def jobName: String = "DailyNegativeSampling"
+
+  override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
     val bidsImpressionFilterByPolicy = DailyBidsImpressionsDataset().readDate(date)
 
@@ -40,7 +38,7 @@ object DailyNegativeSampling {
     // policy 0: constant down sampling
     val downSamplingConstantMod = config.getInt("downSamplingConstantMode", 10)
     val downSampledBidRequestWithConstantMod = NegativeTransform
-      .samplingWithConstantMod(initialBidRequests, downSamplingConstantMod)(prometheus)
+      .samplingWithConstantMod(initialBidRequests, downSamplingConstantMod)(getPrometheus)
 
     // policy 1: sample by grain
     val grainsForSampling = Seq(
@@ -68,16 +66,13 @@ object DailyNegativeSampling {
         grainDiscardUntil = grainDiscardUntil,
         grainSampleRateSmoother = grainSampleRateSmoother,
         samplingSeed = samplingSeed
-      )(prometheus)
+      )(getPrometheus)
       .toDF()
       .selectAs[DailyNegativeSampledBidRequestRecord]
 
     val dailyNegRows = DailyNegativeSampledBidRequestDataSet().writePartition(downSampledBidRequestByGrain, date, Some(1000))
 
-    outputRowsWrittenGauge.labels("DailyNegativeSampledBidRequest").set(dailyNegRows)
-    jobDurationGaugeTimer.setDuration()
-    prometheus.pushMetrics()
+    Array(dailyNegRows)
 
-    spark.stop()
   }
 }

@@ -13,24 +13,20 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import java.time.LocalDate
 
 
-object ConversionDataDailyProcessor extends Logger{
-  val graphThreshold = config.getDouble("graphThreshold", default = 0.01)//TODO: verify what's a good value here.
+object ConversionDataDailyProcessor extends KongmingBaseJob {
 
-  def main(args: Array[String]): Unit = {
-    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("DailyConversion"))
-    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
-    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
-    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
+  val graphThreshold: Double = config.getDouble("graphThreshold", default = 0.01)//TODO: verify what's a good value here.
+
+  override def jobName: String = "DailyConversion"
+
+  override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
     // read conversion data daily
     val conversionDS = ConversionTrackerVerticaLoadDataSetV4(defaultCloudProvider).readDate(date)
-
     // read campaign conversion reporting column setting
     val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartitionUpTo(date, true)
-
     // read master policy
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
-
     // read adgroup table to get adgroup campaign mapping
     val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
     // read campaign table to get setting
@@ -44,7 +40,7 @@ object ConversionDataDailyProcessor extends Logger{
       adGroupPolicy,
       adGroupDS,
       campaignDS
-    )(prometheus)
+    )(getPrometheus)
 
     //load cross device graph
     val xdDS = CrossDeviceGraphDataset.loadGraph(date, graphThreshold)//TODO: this threshold will need to be based on policy table minimum.
@@ -68,17 +64,14 @@ object ConversionDataDailyProcessor extends Logger{
     val conversionXD = ConversionDataDailyTransform.addCrossDeviceTransform(
       transformedConvXD
       , xdSubsetDS
-    )(prometheus)
+    )(getPrometheus)
 
     //add distinct to remove rare cases when there's two ids under the same person converted under the same trackingtag.
     val resultDS = conversionNonXD.union(conversionXD).distinct()
 
     val dailyConversionRows = DailyConversionDataset().writePartition(resultDS, date, Some(2000))
 
-    outputRowsWrittenGauge.labels("DailyConversionDataset").set(dailyConversionRows)
-    jobDurationGaugeTimer.setDuration()
-    prometheus.pushMetrics()
+    Array(dailyConversionRows)
 
-    spark.stop()
   }
 }

@@ -2,21 +2,32 @@ package job
 
 import com.thetradedesk.geronimo.shared.shiftModUdf
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupDataSet, AdGroupPolicyMappingDataset, AdGroupPolicyMappingRecord, AdGroupPolicyDataset, AdGroupPolicyRecord, AdvertiserDataSet, CampaignConversionReportingColumnDataSet, CampaignDataSet, CampaignFlightDataSet, DailyPositiveCountSummaryDataset, PartnerDataSet}
+import com.thetradedesk.kongming.datasets.{AdGroupDataSet, AdGroupPolicyDataset, AdGroupPolicyMappingDataset, AdGroupPolicyMappingRecord, AdGroupPolicyRecord, AdvertiserDataSet, CampaignConversionReportingColumnDataSet, CampaignDataSet, CampaignFlightDataSet, DailyPositiveCountSummaryDataset, PartnerDataSet}
 import com.thetradedesk.kongming.transform.TrainSetFeatureMappingTransform
-import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.TTDConfig.config
-import com.thetradedesk.spark.util.prometheus.PrometheusClient
-
 import org.apache.spark.sql.{Column, Dataset}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
 
-object AdGroupPolicyGenerator {
+object AdGroupPolicyGenerator extends KongmingBaseJob {
+
+  override def jobName: String = "GenerateAdGroupPolicy"
+
+  override def runTransform(args: Array[String]): Array[(String, Long)] = {
+
+    val (policies, adGroupMappings) = generateAdGroupPolicy(date)
+
+    val adGroupPolicyRows = AdGroupPolicyDataset().writePartition(policies, date, Some(1))
+    val adGroupPolicyMappingRows = AdGroupPolicyMappingDataset().writePartition(adGroupMappings, date, Some(100))
+
+    Array(adGroupPolicyRows, adGroupPolicyMappingRows)
+
+  }
+
   object Config {
     var GlobalMinDailyConvCount = config.getInt("AdGroupPolicyGenerator.GlobalMinDailyConvCount", 1)
     var GlobalMaxDailyConvCount = config.getInt("AdGroupPolicyGenerator.GlobalMaxDailyConvCount", 50000)
@@ -296,22 +307,4 @@ object AdGroupPolicyGenerator {
     removeSuperfluousAdGroups(date, fullPolicyTableRaw, yesterdaysPolicy, activeAdGroups)
   }
 
-  def main(args: Array[String]): Unit = {
-
-    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("GenerateAdGroupPolicy"))
-    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
-    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
-    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
-
-    val (policies, adGroupMappings) = generateAdGroupPolicy(date)
-
-    val adGroupPolicyRows = AdGroupPolicyDataset().writePartition(policies, date, Some(1))
-    val adGroupPolicyMappingRows = AdGroupPolicyMappingDataset().writePartition(adGroupMappings, date, Some(100))
-
-    outputRowsWrittenGauge.labels("AdGroupPolicyDataset").set(adGroupPolicyRows)
-    jobDurationGaugeTimer.setDuration()
-    prometheus.pushMetrics()
-
-    spark.stop()
-  }
 }

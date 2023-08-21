@@ -1,6 +1,7 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.kongming.writeThroughHdfs
+import com.thetradedesk.MetadataType
+import com.thetradedesk.kongming.{JobExperimentName, getExperimentVersion, writeThroughHdfs}
 import com.thetradedesk.spark.datasets.core._
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions.lit
@@ -43,7 +44,7 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
 
   override def toStoragePartition2(split: String): String = split
 
-  def writePartition(dataSet: Dataset[T], partition1: LocalDate, partition2: String, coalesceToNumFiles: Option[Int]): Long = {
+  def writePartition(dataSet: Dataset[T], partition1: LocalDate, partition2: String, coalesceToNumFiles: Option[Int]): (String, Long) = {
     // write to and read from test folders for ProdTesting environment to get the correct row count
     val isProdTesting = environment == ProdTesting
     if (isProdTesting) {
@@ -59,7 +60,12 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
     if (isProdTesting) {
       environment = ProdTesting
     }
-    count
+    // save row count as metadata
+    val dataSetName = s"${this.getClass.getSimpleName}/${partition2}"
+    MetadataDataset(getExperimentVersion).writeRecord(count, partition1, MetadataType.rowCount, dataSetName)
+
+    (dataSetName, count)
+
   }
 
   override def partitionExists(partition1: LocalDate, partition2: String): Boolean = {

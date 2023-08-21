@@ -1,27 +1,21 @@
 package job
 
 import com.thetradedesk.kongming.datasets.{AdGroupCvrForBiasTuningDataset, AdGroupPolicyDataset, AdGroupPolicyMappingDataset, ImpressionForIsotonicRegDataset, UnifiedAdGroupDataSet}
-import com.thetradedesk.kongming.{KongmingApplicationName, OutputRowCountGaugeName, RunTimeGaugeName, date, getJobNameWithExperimentName, policyDate, samplingSeed}
+import com.thetradedesk.kongming.{date, samplingSeed}
 import com.thetradedesk.kongming.transform.TrainSetTransformation.{TrackingTagWeightsRecord, getWeightsForTrackingTags}
 import com.thetradedesk.spark.util.TTDConfig.config
-import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import org.apache.spark.sql.functions.{broadcast, col, lit, to_timestamp}
 import com.thetradedesk.kongming.transform.OfflineAttributionTransform._
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 
 import java.time.LocalDate
 
 
-object OfflineScoringSetAttribution{
+object OfflineScoringSetAttribution extends KongmingBaseJob {
 
-  def main(args: Array[String]): Unit = {
+  override def jobName: String = "OfflineScoringSetAttribution"
 
-    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("OfflineScoringSetAttribution"))
-    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
-    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
-    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
+  override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
     val IsotonicRegPositiveLabelCountThreshold = config.getInt(path="positiveLabelCountThresholdForIsotonicReg", 10)
     val IsotonicRegNegCap = config.getInt(path="IsotonicRegNegCap", 1000000)
@@ -42,40 +36,33 @@ object OfflineScoringSetAttribution{
 
     // 1. load offline scores
     val offlineScoreEndDate =  date.minusDays(offlineScoreSetLookbackFromModelDate)
-    val offlineScore = getOfflineScore(modelDate =modelDate, endDate = offlineScoreEndDate, lookBack =offlineScoreDays-1, adgroupBaseAssociateMapping)(prometheus).cache()
+    val offlineScore = getOfflineScore(modelDate = modelDate, endDate = offlineScoreEndDate, lookBack =offlineScoreDays-1, adgroupBaseAssociateMapping)(getPrometheus).cache()
     // get a count here for later usage
 
     // 2. load attributedEventDataset and attributedEventResult
-    val attributes = getAttributedEventAndResult(adGroupPolicy = adGroupPolicy, endDate = date, lookBack = offlineScoreSetLookbackFromModelDate+offlineScoreDays-1)(prometheus)
+    val attributes = getAttributedEventAndResult(adGroupPolicy = adGroupPolicy, endDate = date, lookBack = offlineScoreSetLookbackFromModelDate+offlineScoreDays-1)(getPrometheus)
 
     // load pixel weight of adgroup and extend the pixel table to campaigns
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, isInclusive = true)
 
     val pixelWeight = getWeightsForTrackingTags(date, adGroupPolicy, adGroupDS)
     val pixelWeightForBaseAssociateAdGroup = pixelWeight.join(adgroupBaseAssociateMapping, Seq("ConfigValue","ConfigKey"))
       .withColumn("ConfigValue", $"AdGroupId").selectAs[TrackingTagWeightsRecord]
 
     // 3. attributed impressions that are in scored impressions, find the latest per conversion event
-    val offlineScoreLabel = getOfflineScoreLabelWeight(offlineScore, attributes._1, attributes._2, pixelWeightForBaseAssociateAdGroup)(prometheus)
+    val offlineScoreLabel = getOfflineScoreLabelWeight(offlineScore, attributes._1, attributes._2, pixelWeightForBaseAssociateAdGroup)(getPrometheus)
 
     // 4. get conversions, impressions, conversion rate per piece, and weight per impression for isotonic regression
-    val impressionLevelPerformance =  getOfflineScoreImpressionAndPiecePerformance(offlineScoreLabel)(prometheus)
+    val impressionLevelPerformance =  getOfflineScoreImpressionAndPiecePerformance(offlineScoreLabel)(getPrometheus)
 
     // 5. get inputs for isotonic regression and bias tuning
-    val inputForCalibration = getInputForCalibrationAndBiasTuning(impressionLevelPerformance, defaultCvr, adGroupPolicy, IsotonicRegPositiveLabelCountThreshold, IsotonicRegNegCap, IsotonicRegNegMaxSampleRate, samplingSeed)(prometheus)
+    val inputForCalibration = getInputForCalibrationAndBiasTuning(impressionLevelPerformance, defaultCvr, adGroupPolicy, IsotonicRegPositiveLabelCountThreshold, IsotonicRegNegCap, IsotonicRegNegMaxSampleRate, samplingSeed)(getPrometheus)
 
     val isotonicRegRows = ImpressionForIsotonicRegDataset().writePartition(inputForCalibration._1, date, Some(1000))
     val biasTuningRows = AdGroupCvrForBiasTuningDataset().writePartition(inputForCalibration._2, date, Some(1))
 
-    outputRowsWrittenGauge.labels("ImpressionForIsotonicRegDataset").set(isotonicRegRows)
-    outputRowsWrittenGauge.labels("AdGroupCvrForBiasTuningDataset").set(biasTuningRows)
-    jobDurationGaugeTimer.setDuration()
-    prometheus.pushMetrics()
+    Array(isotonicRegRows, biasTuningRows)
 
-    spark.stop()
   }
-
-
-
 }
 

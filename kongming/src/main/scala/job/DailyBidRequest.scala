@@ -1,22 +1,14 @@
 package job
 
-import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions}
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyBidsImpressionsDataset, DailyBidRequestDataset}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, DailyBidRequestDataset, DailyBidsImpressionsDataset}
 import com.thetradedesk.kongming.transform.BidRequestTransform
-import com.thetradedesk.spark.TTDSparkContext.spark
-import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
-import java.time.LocalDate
+object DailyBidRequest extends KongmingBaseJob {
 
-object DailyBidRequest {
-  def main(args: Array[String]): Unit = {
+  override def jobName: String = "DailyBidRequest"
 
-    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("DailyBidRequest"))
-    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
-    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
-    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
+  override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
     val bidsImpressionFilterByPolicy = DailyBidsImpressionsDataset().readDate(date)
@@ -25,14 +17,11 @@ object DailyBidRequest {
       date,
       bidsImpressionFilterByPolicy,
       adGroupPolicy
-    )(prometheus)
+    )(getPrometheus)
 
-    val dailyBrRows = DailyBidRequestDataset().writePartition(filteredBidRequestDS, date, Some(5000))
+    val rowCount = DailyBidRequestDataset().writePartition(filteredBidRequestDS, date, Some(5000))
 
-    outputRowsWrittenGauge.labels("DailyBidRequestDataset").set(dailyBrRows)
-    jobDurationGaugeTimer.setDuration()
-    prometheus.pushMetrics()
+    Array(rowCount)
 
-    spark.stop()
   }
 }
