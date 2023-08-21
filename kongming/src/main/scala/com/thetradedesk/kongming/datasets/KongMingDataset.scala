@@ -1,6 +1,7 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.kongming.{MLPlatformS3Root, writeThroughHdfs}
+import com.thetradedesk.MetadataType
+import com.thetradedesk.kongming.{JobExperimentName, MLPlatformS3Root, getExperimentVersion, writeThroughHdfs}
 import com.thetradedesk.spark.datasets.core.PartitionedS3DataSet.buildPath
 import com.thetradedesk.spark.datasets.core._
 import com.thetradedesk.spark.util.{ProdTesting, Testing}
@@ -27,7 +28,7 @@ abstract class KongMingDataset[T <: Product : Manifest](dataSetType: DataSetType
     writeThroughHdfs = writeThroughHdfs,
     experimentOverride = experimentOverride
   ) {
-  def writePartition(dataSet: Dataset[T], partition: LocalDate, coalesceToNumFiles: Option[Int]): Long = {
+  def writePartition(dataSet: Dataset[T], partition: LocalDate, coalesceToNumFiles: Option[Int]): (String, Long) = {
     // write to and read from test folders for ProdTesting environment to get the correct row count
     val isProdTesting = environment == ProdTesting
     if (isProdTesting) {
@@ -43,7 +44,12 @@ abstract class KongMingDataset[T <: Product : Manifest](dataSetType: DataSetType
     if (isProdTesting) {
       environment = ProdTesting
     }
-    count
+    // save row count as metadata
+    val dataSetName = this.getClass.getSimpleName
+    MetadataDataset(getExperimentVersion).writeRecord(count, partition, MetadataType.rowCount, dataSetName)
+
+    (dataSetName, count)
+
   }
 
   override def partitionExists(partition: LocalDate): Boolean = {

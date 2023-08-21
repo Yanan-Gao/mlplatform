@@ -2,22 +2,16 @@ package job
 
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
-import com.thetradedesk.spark.TTDSparkContext.spark
-import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
-import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.Dataset
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import java.time.LocalDate
 
-object DailyResearchAdGroupPolicy {
+object DailyResearchAdGroupPolicy extends KongmingBaseJob {
 
-  def main(args: Array[String]): Unit = {
+  override def jobName: String = "DailyResearchAdGroupPolicy"
 
-    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("DailyResearchAdGroupPolicy"))
-    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
-    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
-    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
+  override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
     // default dataset for adgroup policy table which will be updated on a monthly basis
     val defaultPolicyDate = LocalDate.of(2022, 3,15)
@@ -29,11 +23,8 @@ object DailyResearchAdGroupPolicy {
 
     val adGroupPolicyRows = AdGroupPolicyDataset(JobExperimentName).writePartition(adGroupPolicy, date, Some(1))
 
-    outputRowsWrittenGauge.labels("DailyResearchAdGroupPolicy").set(adGroupPolicyRows)
-    jobDurationGaugeTimer.setDuration()
-    prometheus.pushMetrics()
+    Array(adGroupPolicyRows)
 
-    spark.stop()
   }
 
   def getSettings(adGroupPolicy: Dataset[AdGroupPolicyRecord],

@@ -28,9 +28,14 @@ package object kongming {
   val samplingSeed = config.getLong(path = "samplingSeed", 42)
   val IdentityHouseholdUnmatchedToken = "unmatched"
   val JobExperimentName = config.getStringOption("jobExperimentName")
+  val ExperimentName = config.getStringOption("ttd.experiment")
 
   def getJobNameWithExperimentName(jobName: String): String = {
     if (JobExperimentName.isEmpty) jobName else s"Experiment=$JobExperimentName-$jobName"
+  }
+
+  def getExperimentVersion: Option[String] = {
+    if (JobExperimentName.isEmpty) ExperimentName else JobExperimentName
   }
 
   //TODO: may add some indicator on the list of fields to join based on policy.
@@ -74,4 +79,12 @@ package object kongming {
 
     prefilteredDS
   }
+}
+
+object MetadataType extends Enumeration {
+  type MetadataType = Value
+
+  val rowCount = Value("RowCount")
+  val runTime = Value("RunTime")
+
 }

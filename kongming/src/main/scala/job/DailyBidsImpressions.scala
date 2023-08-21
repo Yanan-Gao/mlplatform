@@ -3,31 +3,24 @@ package job
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, BidsImpressionsSchema, DailyBidsImpressionsDataset, UnifiedAdGroupDataSet}
-import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, BidsImpressionsSchema, DailyBidsImpressionsDataset}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
-object DailyBidsImpressions {
-  def main(args: Array[String]): Unit = {
+object DailyBidsImpressions extends KongmingBaseJob {
 
-    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("DailyBidsImpressions"))
-    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
-    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
-    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
+  override def jobName: String = "DailyBidsImpressions"
+
+  override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
-
     val dailyBidsImpressions = multiLevelJoinWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, joinType = "left_semi")
 
-    val dailyBidsImpressionsRows = DailyBidsImpressionsDataset().writePartition(dailyBidsImpressions, date, Some(10000))
+    val rowCount = DailyBidsImpressionsDataset().writePartition(dailyBidsImpressions, date, Some(10000))
 
-    outputRowsWrittenGauge.labels("DailyBidsImpressionsDataset").set(dailyBidsImpressionsRows)
-    jobDurationGaugeTimer.setDuration()
-    prometheus.pushMetrics()
-    spark.stop()
+    Array(rowCount)
+
   }
 }

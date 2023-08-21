@@ -1,21 +1,16 @@
 package job
 
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.Column
-import com.thetradedesk.geronimo.shared.{STRING_FEATURE_TYPE, intModelFeaturesCols}
+import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, STRING_FEATURE_TYPE, intModelFeaturesCols}
 import com.thetradedesk.kongming.features.Features._
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.transform.NegativeTransform.aggregateNegatives
 import com.thetradedesk.kongming.transform.TrainSetTransformation._
-import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.sql.SQLFunctions._
-
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.DoubleType
 import org.apache.spark.storage.StorageLevel
 
@@ -35,13 +30,11 @@ import org.apache.spark.storage.StorageLevel
 
  */
 
-object GenerateTrainSet {
+object GenerateTrainSet extends KongmingBaseJob {
 
-  def main(args: Array[String]): Unit = {
-    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("GenerateTrainSet"))
-    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
-    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
-    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
+  override def jobName: String = "GenerateTrainSet"
+
+  override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
     val incTrain = config.getBoolean("incTrain", false)
     val trainRatio = config.getDouble("trainRatio", 0.8)
@@ -66,8 +59,8 @@ object GenerateTrainSet {
     val saveParquetData = config.getBoolean("saveParquetData", false)
     val saveTrainingDataAsTFRecord = config.getBoolean("saveTrainingDataAsTFRecord", false)
     val saveTrainingDataAsCSV = config.getBoolean("saveTrainingDataAsCSV", true)
-    val addBidRequestId = config.getBoolean("addBidRequestId", false)
 
+    val addBidRequestId = config.getBoolean("addBidRequestId", false)
     val trainSetPartitionCount = config.getInt("trainSetPartitionCount", 1000)
     val valSetPartitionCount = config.getInt("valSetPartitionCount", 1000)
 
@@ -79,7 +72,7 @@ object GenerateTrainSet {
 
     // 0. load aggregated negatives
     val dailyNegativeSampledBids = DailyNegativeSampledBidRequestDataSet().readRange(date.minusDays(maxLookback-1), date, true)
-    val aggregatedNegativeSet = aggregateNegatives(date, dailyNegativeSampledBids, adGroupPolicy)(prometheus)
+    val aggregatedNegativeSet = aggregateNegatives(date, dailyNegativeSampledBids, adGroupPolicy)(getPrometheus)
       .withColumn("IsInTrainSet", when($"UIID".isNotNull && $"UIID"=!=lit("00000000-0000-0000-0000-000000000000"),
         when(abs(hash($"UIID")%100)<=trainRatio*100, lit(true)).otherwise(false)).otherwise(
         when(abs(hash($"BidRequestId")%100)<=trainRatio*100, lit(true)).otherwise(false)
@@ -105,7 +98,7 @@ object GenerateTrainSet {
       maxNegativeCount,
       balanceMethod = Some(balanceMethod),
       sampleValSet = sampleValSet,
-      samplingSeed = samplingSeed)(prometheus)
+      samplingSeed = samplingSeed)(getPrometheus)
 
     val balancedPositives = balancedTrainset._1
     val balancedNegatives = balancedTrainset._2
@@ -146,13 +139,13 @@ object GenerateTrainSet {
       .withColumn("NormalizedCustomCPAViewthroughWeight", $"NormalizedCustomCPAViewthroughWeight".cast(DoubleType))
       .selectAs[PositiveWithRawWeightsRecord]
 
-    val adjustedPosWithWeight = generateWeightForPositive(positivesWithRawWeight)(prometheus).cache()
+    val adjustedPosWithWeight = generateWeightForPositive(positivesWithRawWeight)(getPrometheus).cache()
     // todo: normalize weight for positives, otherwise pos/neg will be changed if neg has no weight
     // Question: do we need to upsample or just tune weights are enough, consider the naive upsamping. Upsampling can have different strategy though.
 
     // weighting negatives after balancing to optimize the runtime
     val negWeightParams = NegativeWeightDistParams(negativeWeightCoefficient, negativeWeightOffset, negativeWeightThreshold)
-    val adjustedNegWithWeight = generateWeightForNegative(validNegatives, positivesWithRawWeight, maxLookback, Some(negativeWeightMethod), methodDistParams = negWeightParams)(prometheus).cache()
+    val adjustedNegWithWeight = generateWeightForNegative(validNegatives, positivesWithRawWeight, maxLookback, Some(negativeWeightMethod), methodDistParams = negWeightParams)(getPrometheus).cache()
 
     val adjustedNeg = adjustedNegWithWeight.withColumn("Target", lit(0))
     val adjustedPos = adjustedPosWithWeight.withColumn("Target", lit(1))
@@ -172,7 +165,7 @@ object GenerateTrainSet {
     val tensorflowSelectionTabular = intModelFeaturesCols(hashFeatures) ++ rawModelFeatureCols(directFields) ++ aliasedModelFeatureCols(seqFields) ++ modelTargetCols(modelTargets) ++ splitColumn
     val parquetSelectionTabular = aliasedModelFeatureCols(keptFields) ++ tensorflowSelectionTabular
 
-    val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, maxLookback)(prometheus)
+    val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, maxLookback)(getPrometheus)
       .withColumn("split", when($"IsInTrainSet"===lit(true), "train").otherwise("val"))
       .select(parquetSelectionTabular: _*)
       .as[ValidationDataForModelTrainingRecord]
@@ -186,8 +179,6 @@ object GenerateTrainSet {
     if (saveParquetData) {
       val parquetTrainRows = ValidationDataForModelTrainingDataset().writePartition(adjustedTrainParquet, date, "train", Some(trainSetPartitionCount))
       val parquetValRows = ValidationDataForModelTrainingDataset().writePartition(adjustedValParquet, date, "val", Some(valSetPartitionCount))
-      outputRowsWrittenGauge.labels("ValidationDataForModelTrainingDataset/ParquetTrain").set(parquetTrainRows)
-      outputRowsWrittenGauge.labels("ValidationDataForModelTrainingDataset/ParquetVal").set(parquetValRows)
     }
 
     var tfDropColumnNames = if (addBidRequestId) {
@@ -195,6 +186,8 @@ object GenerateTrainSet {
     } else {
       aliasedModelFeatureNames(keptFields) ++ rawModelFeatureNames(seqFields)
     }
+
+    var trainsetRows = Array.fill(2)("", 0L)
 
     if (saveTrainingDataAsTFRecord) {
       val tfDS = if (incTrain) DataIncForModelTrainingDataset() else DataForModelTrainingDataset()
@@ -204,9 +197,7 @@ object GenerateTrainSet {
       val tfValRows = tfDS.writePartition(
         adjustedValParquet.drop(tfDropColumnNames: _*).as[DataForModelTrainingRecord],
         date, "val", Some(valSetPartitionCount))
-
-      outputRowsWrittenGauge.labels("DataForModelTrainingDataset/TFTrain").set(tfTrainRows)
-      outputRowsWrittenGauge.labels("DataForModelTrainingDataset/TFVal").set(tfValRows)
+      trainsetRows = Array(tfTrainRows, tfValRows)
     }
 
     if (saveTrainingDataAsCSV) {
@@ -217,15 +208,10 @@ object GenerateTrainSet {
       val csvValRows = csvDS.writePartition(
         adjustedValParquet.drop(tfDropColumnNames: _*).as[DataForModelTrainingRecord],
         date, "val", Some(valSetPartitionCount))
-
-      outputRowsWrittenGauge.labels("DataForModelTrainingDataset/CsvTrain").set(csvTrainRows)
-      outputRowsWrittenGauge.labels("DataForModelTrainingDataset/CsvVal").set(csvValRows)
+      trainsetRows = Array(csvTrainRows, csvValRows)
     }
 
-    jobDurationGaugeTimer.setDuration()
-    prometheus.pushMetrics()
-
-    spark.stop()
+    trainsetRows
 
   }
 }

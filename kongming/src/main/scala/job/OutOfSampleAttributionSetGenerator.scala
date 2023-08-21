@@ -1,25 +1,36 @@
 package job
 
-import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, intModelFeaturesCols, loadParquetData}
+import com.thetradedesk.geronimo.shared.loadParquetData
 import com.thetradedesk.geronimo.shared.schemas.BidFeedbackDataset
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
-import com.thetradedesk.kongming.transform._
 import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, seqFields}
-import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.kongming.transform._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.datalake.ClickTrackerDataSetV5
 import com.thetradedesk.spark.sql.SQLFunctions._
+import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import com.thetradedesk.spark.util.TTDConfig.config
-import com.thetradedesk.spark.util.TTDConfig.defaultCloudProvider
-
-import org.apache.spark.sql.{DataFrame, Dataset}
+import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
 
-object OutOfSampleAttributionSetGenerator {
+object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
+
+  override def jobName: String = "OutOfSampleAttributionSetGenerator"
+
+  override def runTransform(args: Array[String]): Array[(String, Long)] = {
+
+    val scoreDate = date.minusDays(Config.ImpressionLookBack + Config.AttributionLookBack)
+
+    val attributionSet = generateAttributionSet(scoreDate)(getPrometheus)
+    val numRows = OutOfSampleAttributionDataset().writePartition(attributionSet, scoreDate, Some(200))
+
+    Array(numRows)
+
+  }
+
   object Config {
     val ImpressionLookBack = config.getInt("OutOfSampleAttributeSetGenerator.ImpressionLookBack", 3)
     val AttributionLookBack = config.getInt("OutOfSampleAttributeSetGenerator.AttributionLookBack", 7)
@@ -127,24 +138,6 @@ object OutOfSampleAttributionSetGenerator {
     rawOOS
       .select(parquetSelectionTabular: _*)
       .selectAs[OutOfSampleAttributionRecord]
-  }
 
-  def main(args: Array[String]): Unit = {
-
-    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("OutOfSampleAttributionSetGenerator"))
-    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
-    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
-    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
-
-    val scoreDate = date.minusDays(Config.ImpressionLookBack + Config.AttributionLookBack)
-
-    val attributionSet = generateAttributionSet(scoreDate)(prometheus)
-    val numRows = OutOfSampleAttributionDataset().writePartition(attributionSet, scoreDate, Some(200))
-
-    outputRowsWrittenGauge.labels("OutOfSampleAttributionSetGenerator").set(numRows)
-    jobDurationGaugeTimer.setDuration()
-    prometheus.pushMetrics()
-
-    spark.stop()
   }
 }
