@@ -2,24 +2,25 @@ package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.geronimo.shared.schemas.{BidRequestDataset, ModelFeature}
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, shiftModUdf}
-import com.thetradedesk.kongming.features.Features.modelFeatures
+import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, GERONIMO_DATA_SOURCE, intModelFeaturesCols, loadParquetData, loadParquetDataHourly}
+import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, modelFeatures, rawModelFeatureCols, rawModelFeatureNames, seqFields}
 import com.thetradedesk.kongming.datasets.{BidsImpressionsSchema, OnlineLogsDataset, OnlineLogsDiscrepancyDataset, OnlineLogsDiscrepancyRecord}
-import com.thetradedesk.kongming.date
+import com.thetradedesk.kongming.{KongmingApplicationName, LogsDiscrepancyCountGaugeName, OutputRowCountGaugeName, RunTimeGaugeName, date, getJobNameWithExperimentName}
+import com.thetradedesk.kongming.transform.ContextualTransform
+import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
-import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.streaming.records.rtb.bidrequest.BidRequestRecord
 import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.functions.{col, lit, struct, to_json, udf, xxhash64}
+import org.apache.spark.sql.functions.{col, concat, lit, struct, to_json, udf}
 import io.circe.parser.parse
 import io.circe.Decoder
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 
 object OnlineLogsParser extends Serializable {
   case class FeatureDimensions(Dimensions: List[Int])
@@ -37,40 +38,59 @@ object OnlineLogsParser extends Serializable {
     val featureValue = featuresParsed.getOrElse(feature, null)
     featureValue.Array.head
   })
+
+  def extractFeatureArrayUDF: UserDefinedFunction = udf((featuresParsed: Map[String, OnlineLogFeatureJson], feature: String) => {
+    val featureValue = featuresParsed.getOrElse(feature, null)
+    val shape = featureValue.Shape.Dimensions(1)
+
+    featureValue.Array.slice(0, shape)
+  })
 }
 
 object OnlineLogsDiscrepancyCheck {
   def getUnsampledBidImpressions(date: LocalDate, joinCols: Seq[String]): DataFrame = {
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
-    val bidImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
+
+    val rawBidImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
+      .withColumn("AdFormat", concat(col("AdWidthInPixels"), lit('x'), col("AdHeightInPixels")))
       .withColumn("Browser", col("Browser.value"))
       .withColumn("InternetConnectionType", col("InternetConnectionType.value"))
       .withColumn("DeviceType", col("DeviceType.value"))
       .withColumn("OperatingSystem", col("OperatingSystem.value"))
+      .withColumn("RenderingContext", col("RenderingContext.value"))
       .withColumn("Latitude", (col("Latitude") + lit(90.0)) / lit(180.0))
       .withColumn("Longitude", (col("Longitude") + lit(180.0)) / lit(360.0))
       .na.fill(0, Seq("Latitude", "Longitude"))
 
+    val contextualFeatures = ContextualTransform.generateContextualFeatureTier1(
+      rawBidImpressions.select("BidRequestId", "ContextualCategories").dropDuplicates("BidRequestId").selectAs[ContextualData]
+    ).drop("ContextualCategoryNumberTier1")
+
+    val bidImpressions = rawBidImpressions.join(contextualFeatures, Seq("BidRequestId"), "left")
+
     val cols = bidImpressions.columns.map(_.toLowerCase).toSet
-    val features = modelFeatures.filter(x => cols.contains(x.name.toLowerCase))
+    val features = modelFeatures.filter(x => cols.contains(x.name.toLowerCase) && !seqFields.contains(x))
     val joinFeatures = joinCols.map(x => ModelFeature(x, "", None, 1))
 
-    features.foldLeft(bidImpressions.select((joinFeatures ++ features).map(x => col(x.name)): _*)) { (df, f) =>
-      val c = f.cardinality.getOrElse(1)
-
-      if (c != 1) df.withColumn(f.name, shiftModUdf(xxhash64(col(f.name)), lit(c)))
-      else df
-    }
+    val tensorflowSelectionTabular = intModelFeaturesCols(features) ++ rawModelFeatureCols(joinFeatures) ++ aliasedModelFeatureCols(seqFields)
+    bidImpressions.select(tensorflowSelectionTabular:_*)
   }
 
-  def getOnlineLogs(date: LocalDate, modelName: String): DataFrame = {
+  def getOnlineLogs(date: LocalDate, joinCols: Seq[String], modelName: String): DataFrame = {
     val logs = OnlineLogsDataset.readOnlineLogsDataset(date, modelName)
 
-    val featureNames = modelFeatures.map(x => x.name)
+    val joinFeatures = joinCols.map(x => ModelFeature(x, "", None, 1))
+    val tensorflowSelectionTabular = rawModelFeatureNames(modelFeatures).map(x => col(x.toString)) ++ rawModelFeatureCols(joinFeatures) ++ aliasedModelFeatureCols(seqFields)
+
     val dfParsedJson = logs.withColumn("ParsedJson", OnlineLogsParser.parseFeatureJsonUDF(col("Features")))
-    featureNames.foldLeft(dfParsedJson)((df, f) => df.withColumn(f, OnlineLogsParser.extractFeatureUDF(col("ParsedJson"), lit(f))))
-      .drop("Features", "DynamicFeatures", "ParsedJson")
-      .na.drop()
+    modelFeatures.foldLeft(dfParsedJson)((df, f) => {
+      f.dtype match {
+        case ARRAY_INT_FEATURE_TYPE => df.withColumn(f.name, OnlineLogsParser.extractFeatureArrayUDF(col("ParsedJson"), lit(f.name)))
+        case _ => df.withColumn(f.name, OnlineLogsParser.extractFeatureUDF(col("ParsedJson"), lit(f.name)))
+      }
+    }).na.drop()
+      .select(tensorflowSelectionTabular:_*)
+
   }
 
   def getBidRequests(date: LocalDate): DataFrame = {
@@ -78,39 +98,57 @@ object OnlineLogsDiscrepancyCheck {
       .select(col("AvailableBidRequestId"), col("BidRequestId"))
   }
 
-  def getDiscrepancy(onlineLogs: DataFrame, bidImpressionLogs: DataFrame): DataFrame = {
+  def getDiscrepancy(onlineLogs: DataFrame, bidImpressionLogs: DataFrame, precision: Double, ignoreCols: Seq[String]): DataFrame = {
     val f1 = onlineLogs.columns.toSet
     val f2 = bidImpressionLogs.columns.toSet
 
-    val featureCols = f1.intersect(f2).toList
+    val featureCols = f1.intersect(f2).filter(x => ignoreCols.contains(x)).toList
 
     val onlineFeatures = onlineLogs.select(featureCols.map(col): _*)
     val bidImpressionFeatures = bidImpressionLogs.select(featureCols.map(col): _*)
 
     onlineFeatures.as("a")
       .join(bidImpressionFeatures.as("b"), Seq("BidRequestId"), "inner")
-      .filter(featureCols.map(x => s"a.$x != b.$x").mkString(" OR ")) // create filter condition based on featureCols
-      .select(col("name"),
+      .filter(featureCols.map(x => s"abs(a.$x - b.$x) > $precision").mkString(" OR ")) // create filter condition based on featureCols
+      .select(col("BidRequestId"),
         to_json(struct(col("a.*"))).as("OnlineFeatures"),
         to_json(struct(col("b.*"))).as("BidImpressionFeatures")
       )
   }
 
   def main(args: Array[String]): Unit = {
+    val prometheus = new PrometheusClient(KongmingApplicationName, getJobNameWithExperimentName("OnlineLogsDiscrepancyCheck"))
+    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
+    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
+    val outputRowsWrittenGauge = prometheus.createGauge(LogsDiscrepancyCountGaugeName, "Number of rows written", "ModelName")
+
     val modelName = config.getStringRequired("modelName")
+    val precision = config.getDouble("precision", 0.0001)
 
     val unsampledBidImpressions = getUnsampledBidImpressions(date, Seq("BidRequestId"))
-    val onlineLogs = getOnlineLogs(date, modelName)
+
     val bidRequests = getBidRequests(date)
+    val onlineLogs = getOnlineLogs(date, Seq("AvailableBidRequestId"), modelName)
+      .join(bidRequests, Seq("AvailableBidRequestId"), "left")
+      .cache
 
     val bidImpressionLogs = onlineLogs.select("BidRequestId")
-      .join(bidRequests, Seq("BidRequestId"), "left")
-      .join(unsampledBidImpressions, Seq("AvailableBidRequestId"), "left")
+      .join(unsampledBidImpressions, Seq("BidRequestId"), "left")
 
-    val logDiscrepancy = getDiscrepancy(onlineLogs, bidImpressionLogs).selectAs[OnlineLogsDiscrepancyRecord]
+    val ignoreCols = Seq("AdFormat") // Online Logs have incorrect ad format. We can ignore it temporarily until online logs are fixed
+    val logDiscrepancy = getDiscrepancy(onlineLogs, bidImpressionLogs, precision, ignoreCols)
+      .selectAs[OnlineLogsDiscrepancyRecord]
+      .cache
+
     if (!logDiscrepancy.isEmpty) {
-      OnlineLogsDiscrepancyDataset(modelName).writePartition(logDiscrepancy, date, None)
+      val discrepancyRows = OnlineLogsDiscrepancyDataset(modelName).writePartition(logDiscrepancy, date, Some(1))
+      outputRowsWrittenGauge.labels(modelName).set(discrepancyRows)
+    } else {
+      outputRowsWrittenGauge.labels(modelName).set(0)
     }
+
+    jobDurationGaugeTimer.setDuration()
+    prometheus.pushMetrics()
 
     spark.stop()
   }

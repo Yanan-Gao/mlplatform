@@ -77,7 +77,7 @@ object ContextualTransform {
 
   def generateContextualFeatureTier1(
                                       contextualData: Dataset[ContextualData]
-                                    )(implicit prometheus: PrometheusClient): Dataset[ContextualFeatureTier1] = {
+                                    ): Dataset[ContextualFeatureTier1] = {
     /* ContextualFeature V2: collect tier1 category list and generate features
        1. ContextualCategoriesTier1
        2. ContextualCategoryNumberTier1

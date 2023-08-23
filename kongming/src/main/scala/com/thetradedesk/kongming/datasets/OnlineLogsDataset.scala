@@ -22,11 +22,11 @@ final case class OnlineLogsRecord(
                                  )
 
 object OnlineLogsDataset {
-  val S3Path: String = "s3://thetradedesk-useast-logs-2/valuealgofeaturediscrepancylogger/collected"
+  val s3Path: String = "s3://thetradedesk-useast-logs-2/valuealgofeaturediscrepancylogger/collected"
 
   def readOnlineLogsDataset(date: LocalDate, modelName: String): Dataset[OnlineLogsRecord] = {
     val dateStr = date.format(DateTimeFormatter.ofPattern("yyyy/MM/dd"))
-    val dir = s"${S3Path}/${dateStr}"
+    val dir = s"${s3Path}/${dateStr}"
     val filePaths = FSUtils.listFiles(dir, recursive = true)(spark).filter(x => x.contains(modelName.toLowerCase())).map(y => dir + "/" + y)
 
     val logs = spark.read.format("com.databricks.spark.csv")
