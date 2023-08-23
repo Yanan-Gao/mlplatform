@@ -19,6 +19,7 @@ package object kongming {
   val KongmingApplicationName = "KoaV4Conversion"
   val RunTimeGaugeName = "run_time_seconds"
   val OutputRowCountGaugeName = "output_rows_written"
+  val LogsDiscrepancyCountGaugeName = "logs_discrepancy_count"
 
   var writeThroughHdfs = config.getBoolean("writeThroughHdfs", true)
 
