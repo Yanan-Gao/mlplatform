@@ -102,7 +102,7 @@ object OnlineLogsDiscrepancyCheck {
     val f1 = onlineLogs.columns.toSet
     val f2 = bidImpressionLogs.columns.toSet
 
-    val featureCols = f1.intersect(f2).filter(x => ignoreCols.contains(x)).toList
+    val featureCols = f1.intersect(f2).filter(x => !ignoreCols.contains(x)).toList
 
     val onlineFeatures = onlineLogs.select(featureCols.map(col): _*)
     val bidImpressionFeatures = bidImpressionLogs.select(featureCols.map(col): _*)
@@ -141,8 +141,8 @@ object OnlineLogsDiscrepancyCheck {
       .cache
 
     if (!logDiscrepancy.isEmpty) {
-      val discrepancyRows = OnlineLogsDiscrepancyDataset(modelName).writePartition(logDiscrepancy, date, Some(1))
-      outputRowsWrittenGauge.labels(modelName).set(discrepancyRows)
+      val (discrepancyRowName, discrepancyRowCount) = OnlineLogsDiscrepancyDataset(modelName).writePartition(logDiscrepancy, date, Some(1))
+      outputRowsWrittenGauge.labels(modelName).set(discrepancyRowCount)
     } else {
       outputRowsWrittenGauge.labels(modelName).set(0)
     }
