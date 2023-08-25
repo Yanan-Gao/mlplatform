@@ -1,0 +1,28 @@
+{
+    "cluster_name": "jch-kongming-etl",
+    "user": "joyce.cheng",
+    "team": "AUDAUTO",
+    "ec2_key_name": "joyce.cheng3",
+    "emr_release_label": "emr-6.7.0",
+    "log_uri": "s3://thetradedesk-mlplatform-us-east-1/users/joyce.cheng/awslogs/",
+    "default_region_provider": "us-east-1",
+    "availability_zone": "us-east-1f",
+    "instance_groups": [
+        {
+            "name": "Primary node",
+            "market": "OnDemand",
+            "instance_role": "Master",
+            "instance_type": "r5d.8xlarge",
+            "instance_count": 1
+        }
+    ],
+	"jar_path": "/home/hadoop/.ivy2/local/com.thetradedesk.ds.libs/featurestore_2.12/0.1.0-SNAPSHOT/jars/featurestore_2.12.jar",
+    "is_eldorado": false,
+    "is_docker_project": false,
+	"mlplatform_project": "kongming",
+	"use_private_ip": true,
+	"sbt": {
+		"command": "assembly",
+		"jar_path": "kongming/jobs/target/scala-2.12/kongming.jar"
+	}
+}

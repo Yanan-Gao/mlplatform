@@ -197,10 +197,13 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
   }
 
   def removeSuperfluousAdGroups(date: LocalDate, policy: Dataset[AdGroupPolicyRecord], yesterdaysPolicy: Dataset[AdGroupPolicyRecord], adgroups: Dataset[PolicyTableAdGroup]): (Dataset[AdGroupPolicyRecord], Dataset[AdGroupPolicyMappingRecord]) = {
+    // Yesterday's policy table. We try to reuse the config value unless it is no longer active or if its aggregation level has changed
     val yesterdaysPolicyRenamd = yesterdaysPolicy.select("ConfigKey", "ConfigValue", "DataAggKey", "DataAggValue")
+      .join(policy.distinct(), Seq("ConfigKey", "ConfigValue", "DataAggKey", "DataAggValue"), "left_semi") // don't try to maintain config item if its aggregation level changed
       .withColumnRenamed("ConfigKey", "PolicyConfigKey")
       .withColumnRenamed("ConfigValue", "PolicyConfigValue")
 
+    // Pick the same config value for existing groups, and a random one for new groups
     val decisions = policy.join(yesterdaysPolicyRenamd, Seq("DataAggKey", "DataAggValue"), "left")
       .withColumn("rank", rank().over(Window.partitionBy('DataAggKey, 'DataAggValue).orderBy('ConfigKey, 'ConfigValue)))
       .withColumn("picked", when('PolicyConfigKey.isNotNull && 'PolicyConfigValue.isNotNull,
@@ -210,6 +213,8 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
 
     val newPolicyTable = decisions.filter('picked)
       .selectAs[AdGroupPolicyRecord]
+
+    // Join the config values back to the other ad groups in the group as a source of truth for aggregation group assignment
     val policyTableMapping = decisions
       .withColumnRenamed("ConfigValue", "AdGroupId").select("AdGroupId", "DataAggKey", "DataAggValue")
       .join(newPolicyTable, Seq("DataAggKey", "DataAggValue"), "left")
@@ -223,8 +228,9 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
     (newPolicyTable, policyTableMapping)
   }
 
-  // Set the policy for everything that can be determined before the aggregation level
   def addPositiveCountSummary(policy: Dataset[StaticPolicyTable]): Dataset[PolicyTableWithDailyCounts] = {
+    // Add the rolling mean ad group, campaign and advertiser counts if `PositivesCountWarmUpDays` is non zero. If the config item is set to zero, disable
+    // the dynamic logic
     if (Config.PositivesCountWarmUpDays == 0) {
       policy.withColumn("established", lit(false))
         .withColumn("DailyAdGroupCount", lit(0))
@@ -233,12 +239,12 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
         .selectAs[PolicyTableWithDailyCounts]
     } else {
       val warmUpComparisonDate = date.minusDays(Config.PositivesCountWarmUpDays + 1)
-      val preWarmUpPolicy = AdGroupPolicyDataset().readDate(warmUpComparisonDate)
+      val preWarmUpPolicy = AdGroupPolicyMappingDataset().readDate(warmUpComparisonDate)
 
       val adGroupPosSummary = DailyPositiveCountSummaryDataset().readRange(date.minusDays(Config.GlobalDataLookBack - 1), date, true)
         .groupBy("AdGroupId", "CampaignId", "AdvertiserId").agg((sum('Count) / Config.GlobalDataLookBack).as("DailyAdGroupCount"))
 
-      policy.join(multiLevelJoinWithPolicy[StaticPolicyTable](policy, preWarmUpPolicy, "left_semi").select("AdGroupId").withColumn("established", lit(true)).distinct(), Seq("AdGroupId"), "left")
+      policy.join(preWarmUpPolicy.select('AdGroupId, lit(true).as("established")).distinct(), Seq("AdGroupId"), "left")
         .withColumn("established", coalesce('established, lit(false)))
         .join(adGroupPosSummary, Seq("AdGroupId", "CampaignId", "AdvertiserId"), "left")
         .join(adGroupPosSummary.groupBy("CampaignId").agg(sum('DailyAdGroupCount).as("DailyCampaignCount")), Seq("CampaignId"), "left")
@@ -285,6 +291,7 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
       case _ => AdGroupPolicyDataset().readDate(date.minusDays(1))
     }
 
+    // Set the policy for everything that can be determined before the aggregation level
     val stage1Policy = activeAdGroups
       .withColumn("MinDailyConvCount", lit(Config.GlobalMinDailyConvCount))
       .withColumn("MaxDailyConvCount", lit(Config.GlobalMaxDailyConvCount))

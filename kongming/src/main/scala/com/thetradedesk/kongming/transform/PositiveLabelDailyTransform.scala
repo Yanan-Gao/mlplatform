@@ -206,9 +206,9 @@ case class IntraDayBidRequestWithPolicyRecord(
 
   def countDataAggGroupPositives(
                                 positives: Dataset[DailyPositiveLabelRecord],
-                                adGroups: Dataset[AdGroupRecord]
+                                bidImpressions: Dataset[BidsImpressionsSchema]
                                 ): Dataset[DailyPositiveCountSummaryRecord] = {
-    positives.join(adGroups.select("AdGroupId", "CampaignId", "AdvertiserId"), 'AdGroupId === 'ConfigValue, "inner")
+    positives.join(bidImpressions.select("AdGroupId", "CampaignId", "AdvertiserId", "BidRequestId").distinct(), Seq("BidRequestId"), "inner")
       .groupBy("AdGroupId", "CampaignId", "AdvertiserId").count()
       .selectAs[DailyPositiveCountSummaryRecord]
   }
