@@ -36,6 +36,8 @@ case class IntraDayBidRequestWithPolicyRecord(
                                           UIID: String,
                                           ConversionTime: java.sql.Timestamp,
                                           LogEntryTime: java.sql.Timestamp,
+                                          MonetaryValue: Option[BigDecimal],
+                                          MonetaryValueCurrency: Option[String],
                                           IsImp: Boolean
                                         )
   /**
@@ -62,28 +64,13 @@ case class IntraDayBidRequestWithPolicyRecord(
 
     val window = Window.partitionBy($"DataAggKey", $"DataAggValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"TruncatedLogEntryTime".desc)
 
-    filteredBidRequest.as("t1")
+    filteredBidRequest
       .filter($"UIID".isNotNullOrEmpty && $"UIID" =!= "00000000-0000-0000-0000-000000000000")
-      .join(dailyConversionDS.as("t2"),
-            filteredBidRequest("UIID")===dailyConversionDS("UIID") &&
-            filteredBidRequest("DataAggKey")===dailyConversionDS("DataAggKey") &&
-            filteredBidRequest("DataAggValue")===dailyConversionDS("DataAggValue") &&
-            filteredBidRequest("LogEntryTime")<=dailyConversionDS("ConversionTime"),
+      .join(dailyConversionDS,
+        Seq("UIID", "DataAggKey", "DataAggValue"),
             "inner"
           )
-      .select("t1.BidRequestId",
-      "t1.ConfigKey",
-        "t1.ConfigValue",
-        "t1.DataAggKey",
-        "t1.DataAggValue",
-        "t1.LogEntryTime",
-        "t1.IsImp",
-        "t1.LastTouchCount",
-        "t1.BidRequestId",
-        "t2.TrackingTagId",
-        "t2.UIID",
-        "t2.ConversionTime"
-      )
+      .filter($"LogEntryTime"<=$"ConversionTime")
       .withColumn("TruncatedLogEntryTime", date_trunc(RoundUpTimeUnit, $"LogEntryTime"))
       .withColumn("RecencyRank", dense_rank().over(window))
       .filter($"RecencyRank" <= $"LastTouchCount")

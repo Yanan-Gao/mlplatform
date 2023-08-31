@@ -21,8 +21,8 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
 
     val (policies, adGroupMappings) = generateAdGroupPolicy(date)
 
-    val adGroupPolicyRows = AdGroupPolicyDataset().writePartition(policies, date, Some(1))
-    val adGroupPolicyMappingRows = AdGroupPolicyMappingDataset().writePartition(adGroupMappings, date, Some(100))
+    val adGroupPolicyRows = AdGroupPolicyDataset().writePartition(policies, date, Some(partCount.AdGroupPolicy))
+    val adGroupPolicyMappingRows = AdGroupPolicyMappingDataset().writePartition(adGroupMappings, date, Some(partCount.AdGroupPolicyMapping))
 
     Array(adGroupPolicyRows, adGroupPolicyMappingRows)
 
@@ -32,6 +32,7 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
     var GlobalMinDailyConvCount = config.getInt("AdGroupPolicyGenerator.GlobalMinDailyConvCount", 1)
     var GlobalMaxDailyConvCount = config.getInt("AdGroupPolicyGenerator.GlobalMaxDailyConvCount", 50000)
     var GlobalLastTouchCount = config.getInt("AdGroupPolicyGenerator.GlobalLastTouchCount", 5)
+    // TODO: set to 30 for roas
     var GlobalDataLookBack = config.getInt("AdGroupPolicyGenerator.GlobalDataLookBack", 15)
     var GlobalPositiveSamplingRate = config.getDouble("AdGroupPolicyGenerator.GlobalPositiveSamplingRate", 1)
     var GlobalNegativeSamplingMethod = config.getString("AdGroupPolicyGenerator.GlobalNegativeSamplingMethod", "Constant")
@@ -256,13 +257,14 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
     }
   }
 
-  def getActiveCPAAdGroups(date: LocalDate): Dataset[PolicyTableAdGroup] = {
-    val cpaAdGroups = AdGroupDataSet().readLatestPartitionUpTo(date, true)
-      .filter('ROIGoalTypeId === lit(5))
+  def getActiveAdGroups(date: LocalDate): Dataset[PolicyTableAdGroup] = {
+
+    val adGroups = AdGroupDataSet().readLatestPartitionUpTo(date, true)
+      .filter('ROIGoalTypeId === lit(ROIGoalTypeId.get(task).get))
       .select("AdGroupId", "CampaignId", "AdvertiserId", "PartnerId")
     val activeCampaigns = CampaignDataSet().readLatestPartitionUpTo(date, true)
       .filter(('StartDate <= lit(date) && ('EndDate.isNull || 'EndDate > lit(date))))
-      .select("CampaignId", "CustomCPATypeId")
+      .select("CampaignId", CustomGoalTypeId.get(task).get)
     val activeCampaignFlights = CampaignFlightDataSet().readLatestPartitionUpTo(date, true)
       .filter('EndDateExclusiveUTC > lit(date) && 'IsDeleted === lit(false))
     val advertisers = AdvertiserDataSet().readLatestPartitionUpTo(date, true)
@@ -270,21 +272,21 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
     val spendingPartners = PartnerDataSet().readLatestPartitionUpTo(date, true)
       .filter('SpendDisabled === lit(0))
     val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartitionUpTo(date, true)
-      .select("CampaignId", "IncludeInCustomCPA", "ReportingColumnId")
+      .select("CampaignId", IncludeInCustomGoal.get(task).get, "ReportingColumnId")
 
     // Active logic from adplatform/DB/Provisioning/ProvisioningDB/Schema Objects/Views/dbo.vw_ActiveAdGroups.view.sql
-    cpaAdGroups.join(activeCampaigns, Seq("CampaignId"), "inner")
+    adGroups.join(activeCampaigns, Seq("CampaignId"), "inner")
       .join(activeCampaignFlights, Seq("CampaignId"), "leftsemi")
       .join(advertisers, Seq("AdvertiserId"), "inner")
       .join(spendingPartners, Seq("PartnerId"), "leftsemi")
       .join(ccrc, Seq("CampaignId"), "inner")
-      .filter(('CustomCPATypeId === lit(0) && 'ReportingColumnId === lit(1)) || ('CustomCPATypeId > lit(0) && 'IncludeInCustomCPA))
+      .filter((col(CustomGoalTypeId.get(task).get) === lit(0) && 'ReportingColumnId === lit(1)) || (col(CustomGoalTypeId.get(task).get) > lit(0) && col(IncludeInCustomGoal.get(task).get)))
       .selectAs[PolicyTableAdGroup]
       .distinct()
   }
 
   def generateAdGroupPolicy(date: LocalDate): (Dataset[AdGroupPolicyRecord], Dataset[AdGroupPolicyMappingRecord]) = {
-    val activeAdGroups = getActiveCPAAdGroups(date)
+    val activeAdGroups = getActiveAdGroups(date)
 
     val yesterdaysPolicy = Config.TryMaintainConfigValue match {
       case false => Seq[AdGroupPolicyRecord]().toDF().selectAs[AdGroupPolicyRecord]

@@ -10,6 +10,8 @@ final case class DailyPositiveLabelRecord(
                                            UIID: String,
                                            ConversionTime: java.sql.Timestamp,
                                            LogEntryTime: java.sql.Timestamp,
+                                           MonetaryValue: Option[BigDecimal],
+                                           MonetaryValueCurrency: Option[String],
                                            IsImp: Boolean,
                                            IsClickWindowGreater: Boolean,
                                            IsInClickAttributionWindow: Boolean,

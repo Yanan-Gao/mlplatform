@@ -17,7 +17,7 @@ object GenerateTrainSetFeatureMapping extends KongmingBaseJob {
 
     val bidsImpressions = DailyBidsImpressionsDataset().readDate(date)
     val featureMappings = TrainSetFeatureMappingTransform.dailyTransform(date, bidsImpressions)(getPrometheus)
-    val featureMappingRows = TrainSetFeatureMappingDataset().writePartition(featureMappings, fixedDateParquet, Some(100))
+    val featureMappingRows = TrainSetFeatureMappingDataset().writePartition(featureMappings, fixedDateParquet, Some(partCount.TrainSetFeatureMapping))
 
     Array(featureMappingRows)
   }

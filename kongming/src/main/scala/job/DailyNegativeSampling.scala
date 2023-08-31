@@ -70,7 +70,7 @@ object DailyNegativeSampling extends KongmingBaseJob {
       .toDF()
       .selectAs[DailyNegativeSampledBidRequestRecord]
 
-    val dailyNegRows = DailyNegativeSampledBidRequestDataSet().writePartition(downSampledBidRequestByGrain, date, Some(1000))
+    val dailyNegRows = DailyNegativeSampledBidRequestDataSet().writePartition(downSampledBidRequestByGrain, date, Some(partCount.DailyNegativeSampledBidRequest))
 
     Array(dailyNegRows)
 

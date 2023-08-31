@@ -63,13 +63,13 @@ object PositiveLabelGenerator extends KongmingBaseJob {
     val positiveLabelDS = PositiveLabelDailyTransform.positiveLabelAggTransform(unionedPositiveBidRequestDS, adGroupPolicy)
       .persist(StorageLevel.DISK_ONLY)
 
-    val dailyPositiveBrRows = DailyPositiveBidRequestDataset().writePartition(positiveLabelDS, date, Some(100))
+    val dailyPositiveBrRows = DailyPositiveBidRequestDataset().writePartition(positiveLabelDS, date, Some(partCount.DailyPositiveBidRequest))
 
     val historicBidImpressions = DailyBidsImpressionsDataset().readRange(date.minusDays(lookback + 1), date)
 
     val positiveSummary = PositiveLabelDailyTransform.countDataAggGroupPositives(positiveLabelDS, historicBidImpressions.union(bidsImpressionFilterByPolicy))
 
-    DailyPositiveCountSummaryDataset().writePartition(positiveSummary, date, Some(50))
+    DailyPositiveCountSummaryDataset().writePartition(positiveSummary, date, Some(partCount.DailyPositiveCountSummary))
 
     Array(dailyPositiveBrRows)
 

@@ -7,7 +7,8 @@ final case class CampaignRecord(CampaignId: String,
                                 AdvertiserId: String,
                                 CustomCPATypeId: Int,
                                 CustomCPAClickWeight: Option[BigDecimal],
-                                CustomCPAViewthroughWeight: Option[BigDecimal]
+                                CustomCPAViewthroughWeight: Option[BigDecimal],
+                                CustomROASTypeId: Int
                                )
 
 case class CampaignDataSet() extends ProvisioningS3DataSet[CampaignRecord](

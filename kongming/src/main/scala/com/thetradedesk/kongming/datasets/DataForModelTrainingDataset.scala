@@ -9,6 +9,7 @@ final case class DataForModelTrainingRecord(
                                  AdvertiserId: Int,
                                  Weight: Double,
                                  Target: Int,
+                                 Revenue: Option[BigDecimal],
 
                                  SupplyVendor: Option[Int],
                                  SupplyVendorPublisherId: Option[Int],

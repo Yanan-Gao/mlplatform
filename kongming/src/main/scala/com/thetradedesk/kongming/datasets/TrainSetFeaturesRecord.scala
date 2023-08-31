@@ -9,6 +9,7 @@ final case class TrainSetFeaturesRecord (
 
                                           Weight: Double,
                                           Target: Int,
+                                          Revenue: Option[BigDecimal],
                                           IsInTrainSet: Boolean,
                                           IsTracked: Int,
                                           IsUID2: Int,

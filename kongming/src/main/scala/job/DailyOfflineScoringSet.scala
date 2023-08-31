@@ -25,7 +25,7 @@ object DailyOfflineScoringSet extends KongmingBaseJob {
     )(getPrometheus)
 
     //assuming Yuehan has implemented the tfrecord write this way. has dependency on the changes she is doing.
-    val dailyOfflineScoringRows = DailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(1000))
+    val dailyOfflineScoringRows = DailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(partCount.DailyOfflineScoring))
 
     Array(dailyOfflineScoringRows)
 

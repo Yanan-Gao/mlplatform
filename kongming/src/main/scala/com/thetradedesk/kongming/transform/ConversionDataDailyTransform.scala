@@ -1,7 +1,7 @@
 package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.kongming.datasets._
-import com.thetradedesk.kongming.IdentityHouseholdUnmatchedToken
+import com.thetradedesk.kongming._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -19,11 +19,87 @@ final case class DailyTransformedConversionDataRecord(TrackingTagId: String,
                                                       CrossDeviceConfidenceLevel: Option[Double],
                                                       //Weight: Double,
                                                       ConversionTime: java.sql.Timestamp,
+                                                      MonetaryValue: Option[BigDecimal],
+                                                      MonetaryValueCurrency: Option[String],
                                                       CrossDeviceAttributionModelId: String
                                                      )
 
 
+final case class DailyValidConversionDataRecord(
+                                                 TDID: String,
+                                                 TrackingTagId: String,
+                                                 ConversionTime: java.sql.Timestamp,
+                                                 AdvertiserId: String,
+                                                 MonetaryValue: Option[BigDecimal],
+                                                 MonetaryValueCurrency: Option[String]
+                                               )
+
 object ConversionDataDailyTransform {
+
+  def dailyValidConversion(
+                            conversionDS: Dataset[ConversionTrackerVerticaLoadRecord],
+                            campaignDS: Dataset[CampaignRecord],
+                            adGroupPolicy: Dataset[AdGroupPolicyRecord],
+                          )(implicit prometheus: PrometheusClient): Dataset[DailyValidConversionDataRecord] = {
+
+    task match {
+      case "roas" => {
+        // get custom revenue from attribution table
+        val attributedEvent = AttributedEventDataSet().readDate(date)
+        val attributedEventResult = AttributedEventResultDataSet().readDate(date)
+
+        val filteredAttributedEvent = multiLevelJoinWithPolicy[AttributedEventRecord](attributedEvent, adGroupPolicy, joinType = "left_semi")
+          .filter($"AttributedEventTypeId".isin(List("1", "2"): _*))
+        val attributedCustomRevenue = attributedEventResult
+          .filter($"AttributionMethodId".isin(List("0", "1"): _*))
+          .join(filteredAttributedEvent.drop("ConversionTrackerId"),
+            Seq("ConversionTrackerLogFileId", "ConversionTrackerIntId1", "ConversionTrackerIntId2",
+              "AttributedEventLogFileId", "AttributedEventIntId1", "AttributedEventIntId2"))
+          .join(broadcast(campaignDS.select($"CampaignId", $"CustomROASTypeId")), Seq("CampaignId"), "inner")
+          .filter($"CustomROASTypeId" > lit(0))
+          .withColumn("CustomRevenue", $"CustomRevenue".cast("decimal"))
+          .withColumn(
+            "RevenueRank",
+            // only retain the largest CustomRevenue for each conversion
+            row_number().over(Window.partitionBy("ConversionTrackerId").orderBy($"CustomRevenue".desc)))
+          .filter($"RevenueRank" === lit(1))
+          .select(
+            "ConversionTrackerLogFileId",
+            "AdvertiserId",
+            "ConversionTrackerId",
+            "CustomRevenue" // [0, x)
+          )
+
+        // filter conversion data
+        // TODO: do we need to consider multiple conversions during the day? Or we drop them? For now I am keeping all conv.
+        // TODO: small number of trackingtagids are from event tracker. will need to reconsider that. less than .2% though.
+        val conv = conversionDS
+          .filter($"TDID".isNotNull && $"TDID" =!= "00000000-0000-0000-0000-000000000000")
+          .withColumn("ConversionTime", when($"OfflineConversionTime".isNotNull, $"OfflineConversionTime").otherwise($"LogEntryTime"))
+          .drop("LogEntryTime", "OfflineConversionTime")
+          .withColumnRenamed("LogFileId", "ConversionTrackerLogFileId")
+          .join(attributedCustomRevenue, Seq("ConversionTrackerLogFileId", "ConversionTrackerId", "AdvertiserId"), "left")
+          .withColumn(
+            "MonetaryValue",
+            when($"CustomRevenue".isNull || $"CustomRevenue" === lit(0), $"MonetaryValue").otherwise($"CustomRevenue")
+          )
+          //TODO: check if this is the right way to add UID2 for conv data. Or there's better way to do it.
+
+        conv.selectAs[DailyValidConversionDataRecord]
+      }
+
+      case _ => {
+        val conv = conversionDS
+          .filter($"TDID".isNotNull && $"TDID" =!= "00000000-0000-0000-0000-000000000000")
+          .withColumn("ConversionTime", when($"OfflineConversionTime".isNotNull, $"OfflineConversionTime").otherwise($"LogEntryTime"))
+          .drop("LogEntryTime", "OfflineConversionTime")
+        //TODO: check if this is the right way to add UID2 for conv data. Or there's better way to do it.
+
+        conv.selectAs[DailyValidConversionDataRecord]
+      }
+    }
+
+  }
 
 
   /**
@@ -37,25 +113,15 @@ object ConversionDataDailyTransform {
    * @return convResult conversion data expanded by DataAggValue and filtered by policy;
    *         distinctId unique ids in conversion dataset for cross device considerations
    */
-  def dailyTransform(conversionDS: Dataset[ConversionTrackerVerticaLoadRecord],
+  def dailyTransform(
+                     conversionDS: Dataset[ConversionTrackerVerticaLoadRecord],
                      ccrc: Dataset[CampaignConversionReportingColumnRecord],
                      adGroupPolicy: Dataset[AdGroupPolicyRecord],
                      adGroupDS: Dataset[AdGroupRecord],
                      campaignDS: Dataset[CampaignRecord])
                     (implicit prometheus: PrometheusClient): (Dataset[DailyTransformedConversionDataRecord], Dataset[IDRecord]) = {
-    // filter conversion data
-    // TODO: do we need to consider multiple conversions during the day? Or we drop them? For now I am keeping all conv.
-    // TODO: small number of trackingtagids are from event tracker. will need to reconsider that. less than .2% though.
-    val conv = conversionDS
-      .filter($"TDID".isNotNull && $"TDID" =!= "00000000-0000-0000-0000-000000000000")
-      .withColumn("ConversionTime", when($"OfflineConversionTime".isNotNull, $"OfflineConversionTime").otherwise($"LogEntryTime"))
-      .drop("LogEntryTime", "OfflineConversionTime")
-      //TODO: check if this is the right way to add UID2 for conv data. Or there's better way to do it.
-      .select($"TDID",//coalesce($"TDID",$"UnifiedId2").as("TDID"),
-        $"TrackingTagId",
-        $"ConversionTime",
-        $"AdvertiserId"
-      )
+
+    val conv = dailyValidConversion(conversionDS, campaignDS, adGroupPolicy)
 
     // get subset of trackingtag to process based on policy table and campaign setting
     // get the trackingtag weight in as well
@@ -64,9 +130,10 @@ object ConversionDataDailyTransform {
     //1.process ccrc
     //TODO: we will move adding weight to later stage when we finished getting the positive labels.
     // Daily job on conversion will be just collection converison data.
+
     val ccrcProcessed = ccrc
-      .join(broadcast(campaignDS.select($"CampaignId", $"CustomCPATypeId")), Seq("CampaignId"), "left")
-      .filter(($"CustomCPATypeId"===0 && $"ReportingColumnId"===1) || ($"CustomCPATypeId">0 && $"IncludeInCustomCPA") )
+      .join(broadcast(campaignDS.select($"CampaignId", col(CustomGoalTypeId.get(task).get))), Seq("CampaignId"), "left")
+      .filter((col(CustomGoalTypeId.get(task).get) === 0 && $"ReportingColumnId"===1) || (col(CustomGoalTypeId.get(task).get)>0 && col(IncludeInCustomGoal.get(task).get)))
       // will only use IAv2 and IAv2HH, other graphs will be replaced by IAv2
       .withColumn("CrossDeviceAttributionModelId",
         when(($"CrossDeviceAttributionModelId".isNotNull) && !($"CrossDeviceAttributionModelId".isin(List("IdentityAllianceWithHousehold", "IdentityAlliance"): _*)), lit("IdentityAlliance"))
@@ -77,6 +144,7 @@ object ConversionDataDailyTransform {
     val trackingTagWithSettings = adGroupPolicy
       .join(broadcast(adGroupDS), adGroupPolicy("ConfigValue")===adGroupDS("AdGroupId"), "inner")
       .select("CampaignId","DataAggKey","DataAggValue","CrossDeviceConfidenceLevel")
+      .distinct()
       .join(broadcast(ccrcProcessed), Seq("CampaignId"), "inner")
       .select( "TrackingTagId","DataAggKey","DataAggValue","CrossDeviceConfidenceLevel","AdvertiserId", "CrossDeviceAttributionModelId")//, "Weight")
       //distinct to remove possible duplicate dataAggValue in the policy table
@@ -120,17 +188,7 @@ object ConversionDataDailyTransform {
         )
       //only include additional IDs added by cross device graph in this case. The raw conversions will be included outside this function.
       .filter($"TDID"=!=$"uiid")
-      .select(
-        $"TrackingTagId",
-        $"DataAggKey",
-        $"DataAggValue",
-        //$"CrossDeviceUsage",
-        //$"CrossDeviceAttributionModelId",
-        $"CrossDeviceConfidenceLevel",
-        //, $"Weight"
-        $"ConversionTime",
-        $"uiid".as("UIID"),
-        $"score" )
+      .withColumnRenamed("uiid", "UIID")
       .filter($"CrossDeviceConfidenceLevel"<=$"score")
       .drop("score")
       .selectAs[DailyConversionDataRecord]

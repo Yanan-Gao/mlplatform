@@ -39,6 +39,7 @@ object TrainSetTransformation {
                                    Weight: Double,
                                    LogEntryTime:  java.sql.Timestamp,
                                    Target: Int,
+                                   Revenue: Option[BigDecimal],
                                    IsInTrainSet: Boolean
 
                                  )
@@ -49,6 +50,7 @@ object TrainSetTransformation {
                              DataAggKey: String,
                              DataAggValue: String,
                              BidRequestId: String,
+                             Revenue: Option[BigDecimal],
                              Weight: Double,
                              LogEntryTime:  java.sql.Timestamp,
                              IsInTrainSet: Boolean
@@ -61,7 +63,7 @@ object TrainSetTransformation {
                                      DataAggValue: String,
                                      BidRequestId: String,
                                      TrackingTagId: String,
-
+                                     Revenue: Option[BigDecimal],
                                      Weight: Double,
                                      ConversionTime: java.sql.Timestamp,
                                      LogEntryTime: java.sql.Timestamp,
@@ -183,7 +185,7 @@ object TrainSetTransformation {
             .when($"IsClickWindowGreater"&&$"IsInViewAttributionWindow", $"NormalizedCustomCPAClickWeight" * CTR +$"NormalizedCustomCPAViewthroughWeight" ) // click window is longer, bid in view window
             .when((!$"IsClickWindowGreater")&&$"IsInClickAttributionWindow", $"NormalizedCustomCPAClickWeight" * CTR+$"NormalizedCustomCPAViewthroughWeight" ) // view window is longer,  bid in click window
             .otherwise($"NormalizedCustomCPAViewthroughWeight") // view window is longer, bid not in click window
-        ).selectAs[TrainSetRecord]
+        ).selectAs[TrainSetRecord](nullIfAbsent = true)
       }
     }
   }
@@ -237,7 +239,7 @@ object TrainSetTransformation {
         negativeDataWithDateDiff.join(broadcast(adGroupRangeConvDist), Seq("ConfigKey", "ConfigValue", "BidDiffDayInt"), "left")
           .withColumn("WeightDecayFunc", lit(1) - lit(methodDistParams.Offset) * exp(lit(methodDistParams.Coefficient) * $"BidDiffDayInSeconds"))
           .withColumn("Weight", when($"AdGroupSize" > methodDistParams.Threshold, $"PosPctInNDay").otherwise($"WeightDecayFunc").cast(DoubleType))
-          .selectAs[TrainSetRecord]
+          .selectAs[TrainSetRecord](nullIfAbsent = true)
       }
       case _ => { // default is non-weighting
         negativeData

@@ -66,7 +66,7 @@ object OfflineAttributionTransform {
                                  lookBack: Int
                               )(implicit prometheus:PrometheusClient): Tuple2[Dataset[AttributedEventRecord], Dataset[AttributedEventResultRecord]] ={
     // AttributedEventTypeId: 1->Click, 2-> Impression；
-    // AttributionMethodId: 0 -> 'LastClick' , 1 -> 'ViewThrough' , 2 -> 'Touch'
+    // AttributionMethodId: 0 -> 'LastClick' , 1 -> 'ViewThrough' , 2 -> 'Touch', 3 -> 'Decay'
     val attributedEvent =  AttributedEventDataSet().readRange(endDate.minusDays(lookBack), endDate, isInclusive = true).selectAs[AttributedEventRecord]
     val filteredAttributedEvent = multiLevelJoinWithPolicy[AttributedEventRecord](attributedEvent, adGroupPolicy, joinType = "left_semi")
       .filter($"AttributedEventTypeId".isin(List("1", "2"): _*))
