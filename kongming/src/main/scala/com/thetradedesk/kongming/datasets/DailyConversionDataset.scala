@@ -4,7 +4,9 @@ final case class DailyConversionDataRecord( TrackingTagId: String,
                                             UIID: String,
                                             DataAggKey: String,
                                             DataAggValue: String,
-                                            ConversionTime: java.sql.Timestamp
+                                            ConversionTime: java.sql.Timestamp,
+                                            MonetaryValue: Option[BigDecimal],
+                                            MonetaryValueCurrency: Option[String]
                                           )
 
 

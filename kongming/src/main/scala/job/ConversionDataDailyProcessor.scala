@@ -1,21 +1,23 @@
 package job
 
 import com.thetradedesk.kongming.datasets._
-import com.thetradedesk.logging.Logger
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.transform.ConversionDataDailyTransform
 import com.thetradedesk.spark.datasets.sources.datalake.ConversionTrackerVerticaLoadDataSetV4
-import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.spark.sql.SQLFunctions._
+import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
 
 
 object ConversionDataDailyProcessor extends KongmingBaseJob {
-
   val graphThreshold: Double = config.getDouble("graphThreshold", default = 0.01)//TODO: verify what's a good value here.
+  val bidLookback = config.getInt("bidLookback", default = 20)
+
+  // TODO: set true for roas
+  val redate = config.getBoolean("redate", default = false)
 
   override def jobName: String = "DailyConversion"
 
@@ -51,14 +53,8 @@ object ConversionDataDailyProcessor extends KongmingBaseJob {
     val conversionNonXD = transformedConvDS
       //removing this following filter to include everything without cross device
       //.filter(!$"CrossDeviceUsage")
-      .select(
-        $"TrackingTagId",
-        $"TDID".as("UIID"),
-        $"DataAggKey",
-        $"DataAggValue",
-        $"ConversionTime"
-      )
-      .as[DailyConversionDataRecord]
+      .withColumnRenamed("TDID", "UIID")
+      .selectAs[DailyConversionDataRecord]
       .distinct
 
     val conversionXD = ConversionDataDailyTransform.addCrossDeviceTransform(
@@ -67,11 +63,38 @@ object ConversionDataDailyProcessor extends KongmingBaseJob {
     )(getPrometheus)
 
     //add distinct to remove rare cases when there's two ids under the same person converted under the same trackingtag.
-    val resultDS = conversionNonXD.union(conversionXD).distinct()
+    val unionConversion = conversionNonXD.union(conversionXD)
+    val resultDS = (
+      task match {
+        case "roas" => unionConversion.distinct()
+        // offline conversions could have multiple monetary values under the same ("TrackingTagId","UIID","DataAggKey","DataAggValue","ConversionTime")
+        case _ => unionConversion.dropDuplicates("TrackingTagId","UIID","DataAggKey","DataAggValue","ConversionTime")
+      }
+    )
 
-    val dailyConversionRows = DailyConversionDataset().writePartition(resultDS, date, Some(2000))
+    var rowCounts = if (redate) new Array[(String, Long)](bidLookback+1) else new Array[(String, Long)](1)
 
-    Array(dailyConversionRows)
+    if (redate) {
+      // to repartition today's conversion based on their actual conversion date
+      val todayConversions = resultDS.withColumn("ConversionDate", to_date($"ConversionTime"))
+
+      (0 until bidLookback).par.foreach(i => {
+        // read, union, and write in parallel
+        val histConversions = DailyConversionDataset().readDate(date.minusDays(bidLookback - i)).selectAs[DailyConversionDataRecord]
+        val dailyConversions = todayConversions.filter(datediff(lit(date), $"ConversionDate") === lit(bidLookback - i)).selectAs[DailyConversionDataRecord]
+        val dailyConversionRows = DailyConversionDataset().writePartition(histConversions.union(dailyConversions), date.minusDays(bidLookback - i), Some(partCount.DailyConversion))
+        rowCounts(i) = dailyConversionRows
+      })
+      val dailyConversions = todayConversions.filter($"ConversionDate" === lit(date)).selectAs[DailyConversionDataRecord]
+      val dailyConversionRows = DailyConversionDataset().writePartition(dailyConversions, date, Some(partCount.DailyConversion))
+      rowCounts(bidLookback) = dailyConversionRows
+
+    } else {
+      val dailyConversionRows = DailyConversionDataset().writePartition(resultDS, date, Some(partCount.DailyConversion))
+      rowCounts(0) = dailyConversionRows
+    }
+
+    rowCounts
 
   }
 }

@@ -18,7 +18,7 @@ object DailyBidsImpressions extends KongmingBaseJob {
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
     val dailyBidsImpressions = multiLevelJoinWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, joinType = "left_semi")
 
-    val rowCount = DailyBidsImpressionsDataset().writePartition(dailyBidsImpressions, date, Some(10000))
+    val rowCount = DailyBidsImpressionsDataset().writePartition(dailyBidsImpressions, date, Some(partCount.DailyBidsImpressions))
 
     Array(rowCount)
 

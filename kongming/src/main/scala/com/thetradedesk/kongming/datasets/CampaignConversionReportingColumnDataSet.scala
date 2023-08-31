@@ -8,7 +8,11 @@ final case class CampaignConversionReportingColumnRecord(AdvertiserId: String,
                                                          TrackingTagId: String,
                                                          CrossDeviceAttributionModelId: Option[String],
                                                          IncludeInCustomCPA: Boolean,
-                                                         Weight: Option[BigDecimal])
+                                                         Weight: Option[BigDecimal],
+                                                         IncludeInCustomROAS: Boolean,
+                                                         CustomROASWeight: Option[BigDecimal],
+                                                         CustomROASClickWeight: Option[BigDecimal],
+                                                         CustomROASViewthroughWeight: Option[BigDecimal])
 
 case class CampaignConversionReportingColumnDataSet() extends ProvisioningS3DataSet[CampaignConversionReportingColumnRecord](
   "campaignconversionreportingcolumn/v=1"){}

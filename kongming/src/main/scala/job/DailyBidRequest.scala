@@ -19,7 +19,7 @@ object DailyBidRequest extends KongmingBaseJob {
       adGroupPolicy
     )(getPrometheus)
 
-    val rowCount = DailyBidRequestDataset().writePartition(filteredBidRequestDS, date, Some(5000))
+    val rowCount = DailyBidRequestDataset().writePartition(filteredBidRequestDS, date, Some(partCount.DailyBidRequest))
 
     Array(rowCount)
 
