@@ -121,7 +121,10 @@ package object data {
   })
 
   /// We want the stage stat to be > prodstat - margin.
-  def isEqualOrBetter(prodStat: Double, stageStat: Double, margin: Double = 0.05) = stageStat > (1 - margin) * prodStat
+  def isOkay(prodStat: Double, stageStat: Double, margin: Double = 0.05) = stageStat > (1 - margin) * prodStat
+
+  /// We want the stage stat to be >= prodstat.
+  def isBetter(prodStat: Double, stageStat: Double) = stageStat >= prodStat
 
 
   def paddedDatePart(date: LocalDate, separator: Option[String] = None): String = {
