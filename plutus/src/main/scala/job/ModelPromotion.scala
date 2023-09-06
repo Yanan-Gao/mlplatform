@@ -74,7 +74,7 @@ object ModelPromotion extends Logger{
     val endDateTime = config.getDateTimeRequired("enddate").atZone(ZoneId.of("UTC"))
     val lookback = config.getIntRequired("lookback")
     val modelVersion = config.getStringRequired("modelversion")
-    val eval = config.getBoolean("evalulate", true)
+    val eval = config.getBoolean("evaluate", true)
 
     val startDateTime = endDateTime.minusHours(lookback)
 
