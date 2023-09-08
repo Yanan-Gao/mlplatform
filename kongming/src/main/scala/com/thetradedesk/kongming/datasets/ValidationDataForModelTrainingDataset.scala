@@ -17,7 +17,7 @@ final case class ValidationDataForModelTrainingRecord(BidRequestIdStr: String,
                                                       Target: Int,
                                                       Revenue: Option[BigDecimal],
 
-                                                      ImpressionPlacementId: Option[String],
+//                                                      ImpressionPlacementId: Option[String],
                                                       SupplyVendor: Option[Int],
                                                       SupplyVendorPublisherId: Option[Int],
                                                       Site: Option[Int],

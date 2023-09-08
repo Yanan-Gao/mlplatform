@@ -163,8 +163,10 @@ object GenerateTrainSet extends KongmingBaseJob {
 
     // features to hash, including everyone except seq
     var hashFeatures = modelDimensions ++ modelFeatures ++ modelWeights
-    hashFeatures = hashFeatures.filter(x => !(seqFields ++ directFields).contains(x))
-    val tensorflowSelectionTabular = intModelFeaturesCols(hashFeatures) ++ rawModelFeatureCols(directFields) ++ aliasedModelFeatureCols(seqFields) ++ modelTargetCols(modelTargets) ++ splitColumn
+    hashFeatures = hashFeatures.filter(x => !(seqFields).contains(x))
+    val tensorflowSelectionTabular = intModelFeaturesCols(hashFeatures) ++ aliasedModelFeatureCols(seqFields) ++ modelTargetCols(modelTargets) ++ splitColumn
+//    hashFeatures = hashFeatures.filter(x => !(seqFields ++ directFields).contains(x))
+//    val tensorflowSelectionTabular = intModelFeaturesCols(hashFeatures) ++ rawModelFeatureCols(directFields) ++ aliasedModelFeatureCols(seqFields) ++ modelTargetCols(modelTargets) ++ splitColumn
     val parquetSelectionTabular = aliasedModelFeatureCols(keptFields) ++ tensorflowSelectionTabular
 
     val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, maxLookback)(getPrometheus)
