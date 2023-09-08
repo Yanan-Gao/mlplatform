@@ -2,23 +2,11 @@
 variables:
   SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
   PHILO_JAR_NAME: "philo.jar"
-  FEATURES_JSON: "features.json"
   PHILO_LIBS_S3_LOCATION: "s3://thetradedesk-mlplatform-us-east-1/libs/philo"
   PHILO_MERGEREQUESTS_JAR_FOLDER: "$PHILO_LIBS_S3_LOCATION/jars/mergerequests"
   PHILO_SNAPSHOTS_JAR_FOLDER: "$PHILO_LIBS_S3_LOCATION/jars/snapshots"
   PHILO_PROD_JAR_FOLDER: "$PHILO_LIBS_S3_LOCATION/jars/prod"
   PHILO_ASSEMBLY_OUT: "$CI_PROJECT_DIR/philo/target/scala-2.12/philo.jar"
-  PHILO_SCRIPTS_SOURCE: "src/main/python"
-  PHILO_MODEL_RUN_SCRIPT: "modelrun.sh"
-  PHILO_DATA_SYNC_SCRIPT: "datasync.sh"
-  PHILO_SETUP_SCRIPT: "clustersetup.sh"
-  PHILO_SCRIPTS_DEST: "$PHILO_LIBS_S3_LOCATION/scripts/"
-  PHILO_FEATURES_DEST: "s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/schemas/"
-  PHILO_MERGEREQUESTS_FEATURES_DEST: "$PHILO_LIBS_S3_LOCATION/features/mergerequests/$CI_COMMIT_REF_SLUG/"
-  PHILO_MERGEREQUESTS_SCRIPTS_DEST: "$PHILO_LIBS_S3_LOCATION/scripts/mergerequests/$CI_COMMIT_REF_SLUG/"
-  PYTHON_BUILD_IMAGE: "python:3.8"
-  PYTHON_BUILDX_IMAGE: "production.docker.adsrvr.org/ttd-base/mlops/mlops_infra_build:0.2.0"
-  PHILO_TRAINING_IMAGE: "philo-training"
 
 philo:test:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
@@ -43,19 +31,6 @@ philo:test:
     - popd
     - echo "ran philo_test"
 
-philo:test_python:
-  image: "$PYTHON_BUILD_IMAGE"
-  stage: test
-  rules:
-     - changes:
-        - "philo/src/main/python/**/*"
-  before_script:
-    - pushd ./philo/
-    - pip3 install -r ${PHILO_SCRIPTS_SOURCE}/requirements.txt
-    - pip3 install -r ${PHILO_SCRIPTS_SOURCE}/tests/requirements_test.txt
-  script:
-    - pytest ${PHILO_SCRIPTS_SOURCE}/tests/
-    - popd
 
 philo:push_bits_merge_request:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
@@ -89,93 +64,6 @@ philo:push_bits_master_snapshot:
     - aws s3 cp ${PHILO_ASSEMBLY_OUT} ${DEST}/${PHILO_JAR_NAME}
     - popd
     - echo "ran PHILO_push_bits_master_snapshot"
-
-philo:push_scripts:
-  image: "$PYTHON_BUILD_IMAGE"
-  stage: assembly_upload
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
-      changes:
-        - "philo/**/*"
-  script:
-    - pushd ./philo/
-    - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${PHILO_SETUP_SCRIPT} ${PHILO_SCRIPTS_DEST}
-    - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${PHILO_MODEL_RUN_SCRIPT} ${PHILO_SCRIPTS_DEST}
-    - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${PHILO_DATA_SYNC_SCRIPT} ${PHILO_SCRIPTS_DEST}
-    - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${FEATURES_JSON} ${PHILO_FEATURES_DEST}
-    - popd
-    - echo "ran push_set_scripts"
-
-philo:push_scripts_merge_request:
-  image: "$PYTHON_BUILD_IMAGE"
-  stage: assembly_upload
-  rules:
-   - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-     changes:
-      - "philo/**/*"
-  script:
-    - pushd ./philo/
-    - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${PHILO_SETUP_SCRIPT} ${PHILO_MERGEREQUESTS_SCRIPTS_DEST}
-    - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${PHILO_MODEL_RUN_SCRIPT} ${PHILO_MERGEREQUESTS_SCRIPTS_DEST}
-    - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${PHILO_DATA_SYNC_SCRIPT} ${PHILO_MERGEREQUESTS_SCRIPTS_DEST}
-    - aws s3 cp ${PHILO_SCRIPTS_SOURCE}/${FEATURES_JSON} ${PHILO_MERGEREQUESTS_FEATURES_DEST}
-    - popd
-    - echo "ran push_set_scripts"
-
-philo:build_push_training_container:
-  image: "$PYTHON_BUILDX_IMAGE"
-  stage: test
-  services:
-    - docker:dind
-  variables:
-    DOCKER_BUILDKIT: 1
-    DOCKER_CLI_EXPERIMENTAL: "enabled"
-  before_script:
-    - echo 'deb http://archive.debian.org/debian stretch main' >> /etc/apt/sources.list
-    - apt update
-    - apt-get install docker.io -y
-  rules:
-    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
-      changes:
-        - "philo/src/main/python/*"
-        - "philo/src/main/python/**/*"
-      when: manual
-  script:
-    - export DOCKER_HOST=$DOCKER_PORT
-    - pushd ./philo/src/main/python/
-    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
-    - docker buildx build --secret id=PYPI_READ_USERNAME --secret id=PYPI_READ_PASSWORD -f Dockerfile.prod -t ${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} .
-    - docker tag ${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG} ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
-    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}
-    - popd
-    - echo "latest training container pushed to ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:${CI_COMMIT_REF_SLUG}"
-
-philo:build_push_release_container:
-  image: "$PYTHON_BUILDX_IMAGE"
-  stage: deploy
-  services:
-    - docker:dind
-  variables:
-    DOCKER_BUILDKIT: 1
-    DOCKER_CLI_EXPERIMENTAL: "enabled"
-  before_script:
-    - echo 'deb http://archive.debian.org/debian stretch main' >> /etc/apt/sources.list
-    - apt update
-    - apt-get install docker.io -y
-  rules:
-    - if: '$CI_COMMIT_BRANCH == "master"'
-      changes:
-        - "philo/src/main/python/*"
-        - "philo/src/main/python/**/*"
-  script:
-    - export DOCKER_HOST=$DOCKER_PORT
-    - pushd ./philo/src/main/python/
-    - docker login -u ${DOCKER_INTERNAL_USER} -p ${DOCKER_INTERNAL_PASS} ${DOCKER_INTERNAL_REGISTRY}
-    - docker buildx build --secret id=PYPI_READ_USERNAME --secret id=PYPI_READ_PASSWORD -f Dockerfile.prod -t ${PHILO_TRAINING_IMAGE}:release .
-    - docker tag ${PHILO_TRAINING_IMAGE}:release ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:release
-    - docker push ${DOCKER_INTERNAL_REGISTRY}/${PHILO_TRAINING_IMAGE}:release
-    - popd
-    - echo "latest training container pushed"
 
 
 philo:deploy_release:
