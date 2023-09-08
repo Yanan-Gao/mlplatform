@@ -1,3 +1,0 @@
-# packages for test are installed here to avoid unnecessary installation in prod docker
-pytest
-jsonschema
