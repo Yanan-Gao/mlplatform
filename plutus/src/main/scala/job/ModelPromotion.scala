@@ -74,7 +74,10 @@ object ModelPromotion extends Logger{
     val endDateTime = config.getDateTimeRequired("enddate").atZone(ZoneId.of("UTC"))
     val lookback = config.getIntRequired("lookback")
     val modelVersion = config.getStringRequired("modelversion")
-    val eval = config.getBoolean("evaluate", true)
+
+    // This argument is parsed as a string because boolean arguments sent by the python/airflow/emr connection
+    // aren't received by scala as boolean (they're sent in title case ('False') instead of 'false').
+    val eval = config.getString("evaluate", "true").toBoolean
 
     val startDateTime = endDateTime.minusHours(lookback)
 
