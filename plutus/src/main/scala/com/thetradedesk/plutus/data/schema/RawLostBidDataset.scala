@@ -8,7 +8,8 @@ final case class MinimumBidToWinData(BidRequestId: String,
                                      WinCPM: Double,
                                      mbtw: Double)
 
-final case class LostNotOutbidData(BidRequestId: String)
+final case class InvalidLossData(BidRequestId: String,
+                                 IsInvalidLoss: Boolean)
 
 final case class RawLostBidData(
                                  LogEntryTime: String,
