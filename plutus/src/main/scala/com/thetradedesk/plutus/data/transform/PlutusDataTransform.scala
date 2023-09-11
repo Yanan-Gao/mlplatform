@@ -38,10 +38,8 @@ object PlutusDataTransform extends Logger {
     val mbtwData = loadMbtwData(date, svNames).repartition(partitions)
     log.info("lost bid data " + mbtwData.cache.count())
 
-
-    val fpaBidsImpsExplicit = loadExplicitFpaBidsImpsData(date, svNames, inputTtdEnv)
-    val fpaBidsImpsImplicit = loadImplicitFpaBidsImpsData(date, svNames, inputTtdEnv, implicitSampleRate)
-
+    val fpaBidsImpsExplicit = loadExplicitFpaBidsImpsData(date = date, svNames = svNames, ttdEnv = inputTtdEnv)
+    val fpaBidsImpsImplicit = loadImplicitFpaBidsImpsData(date = date, ttdEnv = inputTtdEnv, implicitSampleRate = implicitSampleRate, filterInvalidLoss = true)
 
     val svb = loadParquetData[Svb](DiscrepancyDataset.SBVS3, date)
     val pda = loadParquetData[Pda](DiscrepancyDataset.PDAS3, date)
@@ -138,45 +136,49 @@ object PlutusDataTransform extends Logger {
       ).selectAs[TrainingData]
   }
 
-  private def loadFpaBidsImpsData(date: LocalDate, ttdEnv: String, maybeLostNotOutbidData: Option[Dataset[LostNotOutbidData]] = None): Dataset[BidsImpressionsSchema] = {
-    val data = loadParquetData[BidsImpressionsSchema](
+  private def loadFpaBidsImpsData(date: LocalDate, ttdEnv: String): Dataset[BidsImpressionsSchema] = {
+    loadParquetData[BidsImpressionsSchema](
       s3path = BidsImpressions.BIDSIMPRESSIONSS3 + f"${ttdEnv}/bidsimpressions/",
       date = date,
       source = Some(PLUTUS_DATA_SOURCE)
     ).filter(
       col("AuctionType") === 1
     )
-
-    maybeLostNotOutbidData match {
-      case Some(lostNotOutbid) => data.join(lostNotOutbid, Seq("BidRequestId"), "leftanti").as[BidsImpressionsSchema]
-      case None => data
-    }
   }
 
   def loadExplicitFpaBidsImpsData(date: LocalDate, svNames: Seq[String], ttdEnv: String): Dataset[BidsImpressionsSchema] = {
     loadFpaBidsImpsData(
       date = date,
       ttdEnv = ttdEnv,
-      maybeLostNotOutbidData = Some(loadLostNotOutbidData(date))
     ).filter(
       col("SupplyVendor").isin(svNames: _*)
     )
   }
 
   def loadImplicitFpaBidsImpsData(date: LocalDate,
-                                  svNames: Seq[String],
                                   ttdEnv: String,
                                   implicitSampleRate: Double,
+                                  filterInvalidLoss: Boolean = true,
                                   randomSeed: Int = 123,
                                   stratificationColumns: Seq[Column] = Seq(col("SupplyVendor"), col("IsImp")),
                                   stratificationColumnName: String = "stratify_col"
                                  ): Dataset[BidsImpressionsSchema] = {
 
-    val implicitData = loadFpaBidsImpsData(
-      date = date,
-      ttdEnv = ttdEnv,
-      maybeLostNotOutbidData = Some(loadLostNotOutbidData(date))
-    ).withColumn(
+
+    val bidsImps =
+      filterInvalidLoss match {
+        case true =>
+          val invalidLoss = loadInvalidLossData(date)
+          loadFpaBidsImpsData(date = date, ttdEnv = ttdEnv)
+            .join(invalidLoss, Seq("BidRequestId"), "left")
+            .filter(col("IsInvalidLoss").isNull)
+            .drop("IsInvalidLoss")
+
+        case false =>
+          loadFpaBidsImpsData(date = date, ttdEnv = ttdEnv)
+      }
+
+    val implicitData = bidsImps.withColumn(
       stratificationColumnName,
       concat_ws("_", stratificationColumns: _*)
     )
@@ -241,7 +243,8 @@ object PlutusDataTransform extends Logger {
     loadCsvData[RawLostBidData](RawLostBidDataset.S3PATH, date, RawLostBidDataset.SCHEMA)
       .filter(col("SupplyVendor").isin(svNames: _*))
       // https://gitlab.adsrvr.org/thetradedesk/adplatform/-/blob/master/TTD/DB/Provisioning/TTD.DB.Provisioning.Primitives/LossReason.cs
-      .filter((col("LossReason") === LOSS_CODE_WIN) || (col("LossReason") === LOSS_CODE_LOST_TO_HIGHER_BIDDER))
+      //  it doesnt really matter what the loss code was as long as there is mbtw provided we should use it
+      // .filter((col("LossReason") === LOSS_CODE_WIN) || (col("LossReason") === LOSS_CODE_LOST_TO_HIGHER_BIDDER))
       .filter(col("mbtw") =!= 0.0)
       .select(
         col("BidRequestId").cast(StringType),
@@ -252,13 +255,13 @@ object PlutusDataTransform extends Logger {
       ).as[MinimumBidToWinData]
   }
 
-  def loadLostNotOutbidData(date: LocalDate): Dataset[LostNotOutbidData] = {
+  def loadInvalidLossData(date: LocalDate): Dataset[InvalidLossData] = {
     loadCsvData[RawLostBidData](RawLostBidDataset.S3PATH, date, RawLostBidDataset.SCHEMA)
-      // https://gitlab.adsrvr.org/thetradedesk/adplatform/-/blob/master/TTD/DB/Provisioning/TTD.DB.Provisioning.Primitives/LossReason.cs
-      .filter(col("LossReason") =!= LOSS_CODE_LOST_TO_HIGHER_BIDDER)
+      .filter(!col("LossReason").isin(VALID_LOSS_CODES: _*))
       .select(
-        col("BidRequestId").cast(StringType)
-      ).as[LostNotOutbidData]
+        col("BidRequestId").cast(StringType),
+        lit(true).alias("IsInvalidLoss")
+      ).as[InvalidLossData]
   }
 
   def loadPlutusLogData(date: LocalDate): Dataset[PlutusLogsData] = {

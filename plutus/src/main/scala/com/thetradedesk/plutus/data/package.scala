@@ -35,7 +35,10 @@ package object data {
   val DEFAULT_NUM_PARQUET_PARTITIONS = 500
 
   val LOSS_CODE_WIN = -1
+  val LOSS_CONDITIONAL_WIN = 301
   val LOSS_CODE_LOST_TO_HIGHER_BIDDER = 102
+
+  val VALID_LOSS_CODES = Seq(LOSS_CODE_WIN, LOSS_CODE_LOST_TO_HIGHER_BIDDER)
 
   val DEFAULT_MODEL_FEATURES: Array[ModelFeature] = Array(
     ModelFeature("SupplyVendor", STRING_FEATURE_TYPE, Some(102), 0),
