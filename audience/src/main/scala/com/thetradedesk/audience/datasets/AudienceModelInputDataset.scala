@@ -10,6 +10,8 @@ final case class AudienceModelInputRecord(
                                                   SupplyVendor: Option[Int],
                                                   @FeatureDesc("SupplyVendorPublisherId", "string", 200002)
                                                   SupplyVendorPublisherId: Option[Int],
+                                                  @FeatureDesc("AliasedSupplyPublisherId", "int", 200002)
+                                                  AliasedSupplyPublisherId: Option[Int],
                                                   @FeatureDesc("Site", "string", 500002)
                                                   Site: Option[Int],
                                                   @FeatureDesc("Country", "string", 252)

@@ -9,7 +9,6 @@ case class ConversionDataset(cloudProvider: CloudProvider)
     "rtb_conversiontracker_verticaload/v=4",
     timestampFieldName = "LogEntryTime",
     cloudProvider = cloudProvider,
-    mergeSchema = false,
     partitioningType = CoalesceOnWrite
   ) {
   override protected val forceSchemaForParquet: Boolean = true
