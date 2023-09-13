@@ -3,6 +3,7 @@ package com.thetradedesk.plutus.data.schema
 final case class TrainingData(supplyVendor: String, // ImpressionContext.BiddingRequest.SupplyVendorName
                               dealId: String, //Bid.MatchedPrivateContract?.SupplyVendorDealCode
                               supplyVendorPublisherId: String, //ImpressionContext.BiddingRequest.SupplyVendorPublisherId
+                              aspSvpId: String,
                               supplyVendorSiteId: String, //ImpressionContext.BiddingRequest.SupplyVendorSiteId
                               site: String, //ImpressionContext.Site
                               adFormat: String, //Bid.MatchedAdFormat
@@ -19,6 +20,7 @@ final case class TrainingData(supplyVendor: String, // ImpressionContext.Bidding
                               requestLanguages: String, //ImpressionContext.BiddingRequest.Languages
 
                               renderingContext: Int, //ImpressionContext.BiddingRequest.RenderingContext
+                              aliasedSupplyPublisherId: Int,
                               // matchedFoldPosition: Int, not in impression context / adinfo
                               // volumeControlPriority: Int, not in impression context / adinfo
                               userHourOfWeek: Int, //ImpressionContext.BiddingRequest.UserHourOfWeek
