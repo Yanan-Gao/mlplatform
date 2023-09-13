@@ -44,6 +44,7 @@ package object data {
     ModelFeature("SupplyVendor", STRING_FEATURE_TYPE, Some(102), 0),
     ModelFeature("DealId", STRING_FEATURE_TYPE, Some(5002), 0),
     ModelFeature("SupplyVendorPublisherId", STRING_FEATURE_TYPE, Some(15002), 0),
+    ModelFeature("AspSvpId", STRING_FEATURE_TYPE, Some(15002), 0),
     ModelFeature("SupplyVendorSiteId", STRING_FEATURE_TYPE, Some(102), 0),
     ModelFeature("Site", STRING_FEATURE_TYPE, Some(350002), 0),
     ModelFeature("AdFormat", STRING_FEATURE_TYPE, Some(102), 0),
@@ -58,6 +59,7 @@ package object data {
     ModelFeature("RequestLanguages", STRING_FEATURE_TYPE, Some(502), 0),
 
     // these are already integers
+    ModelFeature("AliasedSupplyPublisherId", INT_FEATURE_TYPE, Some(15002), 0),
     ModelFeature("RenderingContext", INT_FEATURE_TYPE, Some(6), 0),
     ModelFeature("UserHourOfWeek", INT_FEATURE_TYPE, Some(24 * 7 + 2), 0),
     ModelFeature("AdsTxtSellerType", INT_FEATURE_TYPE, Some(7), 0),
