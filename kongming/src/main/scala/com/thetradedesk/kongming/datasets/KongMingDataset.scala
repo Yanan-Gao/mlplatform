@@ -1,7 +1,7 @@
 package com.thetradedesk.kongming.datasets
 
 import com.thetradedesk.MetadataType
-import com.thetradedesk.kongming.{JobExperimentName, MLPlatformS3Root, getExperimentVersion, writeThroughHdfs}
+import com.thetradedesk.kongming.{BaseFolderPath, JobExperimentName, MLPlatformS3Root, getExperimentVersion, writeThroughHdfs}
 import com.thetradedesk.spark.datasets.core.PartitionedS3DataSet.buildPath
 import com.thetradedesk.spark.datasets.core._
 import com.thetradedesk.spark.util.{ProdTesting, Testing}
@@ -22,7 +22,7 @@ abstract class KongMingDataset[T <: Product : Manifest](dataSetType: DataSetType
   extends DatePartitionedS3DataSet[T](
     dataSetType = dataSetType,
     s3RootPath = MLPlatformS3Root,
-    rootFolderPath = s"kongming/${s3DatasetPath}",
+    rootFolderPath = s"${BaseFolderPath}/${s3DatasetPath}",
     fileFormat = fileFormat,
     partitionField = partitionField,
     writeThroughHdfs = writeThroughHdfs,

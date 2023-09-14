@@ -1,6 +1,6 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.kongming.MLPlatformS3Root
+import com.thetradedesk.kongming.{BaseFolderPath, MLPlatformS3Root}
 import com.thetradedesk.spark.datasets.core._
 
 final case class ValidationDataForModelTrainingRecord(BidRequestIdStr: String,
@@ -90,7 +90,7 @@ final case class ValidationDataForModelTrainingRecord(BidRequestIdStr: String,
  */
 case class ValidationDataForModelTrainingDataset(experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3Dataset[ValidationDataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"kongming/trainset/parquet/v=1",
+    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/trainset/parquet/v=1",
     fileFormat = Parquet
   ) {
 }

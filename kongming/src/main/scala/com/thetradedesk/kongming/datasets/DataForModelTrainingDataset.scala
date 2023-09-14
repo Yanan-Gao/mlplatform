@@ -1,6 +1,6 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.kongming.MLPlatformS3Root
+import com.thetradedesk.kongming.{BaseFolderPath, MLPlatformS3Root}
 import com.thetradedesk.spark.datasets.core._
 
 final case class DataForModelTrainingRecord(
@@ -80,7 +80,7 @@ final case class DataForModelTrainingRecord(
 
 case class DataForModelTrainingDataset(experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"kongming/trainset/tfrecord/v=1",
+    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/trainset/tfrecord/v=1",
     fileFormat = TFRecord.Example,
     experimentOverride = experimentOverride
   ) {
@@ -88,7 +88,7 @@ case class DataForModelTrainingDataset(experimentOverride: Option[String] = None
 
 case class DataIncForModelTrainingDataset(experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"kongming/trainset_inc/tfrecord/v=1",
+    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/trainset_inc/tfrecord/v=1",
     fileFormat = TFRecord.Example,
     experimentOverride = experimentOverride
   ) {
@@ -96,7 +96,7 @@ case class DataIncForModelTrainingDataset(experimentOverride: Option[String] = N
 
 case class DataCsvForModelTrainingDataset(experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"kongming/trainset/csv/v=1",
+    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/trainset/csv/v=1",
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
   ) {
@@ -104,7 +104,7 @@ case class DataCsvForModelTrainingDataset(experimentOverride: Option[String] = N
 
 case class DataIncCsvForModelTrainingDataset(experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"kongming/trainset_inc/csv/v=1",
+    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/trainset_inc/csv/v=1",
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
   ) {
