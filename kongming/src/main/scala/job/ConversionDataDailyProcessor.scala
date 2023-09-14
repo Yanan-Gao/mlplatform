@@ -7,6 +7,7 @@ import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.transform.ConversionDataDailyTransform
 import com.thetradedesk.spark.datasets.sources.datalake.ConversionTrackerVerticaLoadDataSetV4
 import com.thetradedesk.spark.sql.SQLFunctions._
+import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
@@ -20,6 +21,23 @@ object ConversionDataDailyProcessor extends KongmingBaseJob {
   val redate = config.getBoolean("redate", default = false)
 
   override def jobName: String = "DailyConversion"
+
+  /**
+   * @param lookbackDate date of historical data partition to union
+   * @param todayConversions today's conversions
+   * @return if historical data can be found, returns dailyConversions union with historical conversions of specified date;
+   *         else returns todayConversions filtered conversions of specified date.
+   */
+  private def getConversionWithHistoricalData(lookbackDate: LocalDate, todayConversions: DataFrame): Dataset[DailyConversionDataRecord] = {
+    val dailyConversions = todayConversions.filter($"ConversionDate" === lit(lookbackDate)).selectAs[DailyConversionDataRecord]
+
+    if (DailyConversionDataset().partitionExists(lookbackDate)) {
+      val histConversions = DailyConversionDataset().readDate(lookbackDate).selectAs[DailyConversionDataRecord]
+      dailyConversions.union(histConversions)
+    } else {
+      dailyConversions
+    }
+  }
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
@@ -78,23 +96,19 @@ object ConversionDataDailyProcessor extends KongmingBaseJob {
       // to repartition today's conversion based on their actual conversion date
       val todayConversions = resultDS.withColumn("ConversionDate", to_date($"ConversionTime"))
 
-      (0 until bidLookback).par.foreach(i => {
+      (0 to bidLookback).par.foreach(i => {
         // read, union, and write in parallel
-        val histConversions = DailyConversionDataset().readDate(date.minusDays(bidLookback - i)).selectAs[DailyConversionDataRecord]
-        val dailyConversions = todayConversions.filter(datediff(lit(date), $"ConversionDate") === lit(bidLookback - i)).selectAs[DailyConversionDataRecord]
-        val dailyConversionRows = DailyConversionDataset().writePartition(histConversions.union(dailyConversions), date.minusDays(bidLookback - i), Some(partCount.DailyConversion))
+        val lookbackDate = date.minusDays(bidLookback - i)
+        val conversions = getConversionWithHistoricalData(lookbackDate, todayConversions)
+
+        val dailyConversionRows = DailyConversionDataset().writePartition(conversions, lookbackDate, Some(partCount.DailyConversion))
         rowCounts(i) = dailyConversionRows
       })
-      val dailyConversions = todayConversions.filter($"ConversionDate" === lit(date)).selectAs[DailyConversionDataRecord]
-      val dailyConversionRows = DailyConversionDataset().writePartition(dailyConversions, date, Some(partCount.DailyConversion))
-      rowCounts(bidLookback) = dailyConversionRows
-
     } else {
       val dailyConversionRows = DailyConversionDataset().writePartition(resultDS, date, Some(partCount.DailyConversion))
       rowCounts(0) = dailyConversionRows
     }
 
     rowCounts
-
   }
 }
