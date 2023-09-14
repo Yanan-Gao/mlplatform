@@ -33,7 +33,7 @@ object ConversionDataDailyProcessor extends KongmingBaseJob {
 
     if (DailyConversionDataset().partitionExists(lookbackDate)) {
       val histConversions = DailyConversionDataset().readDate(lookbackDate).selectAs[DailyConversionDataRecord]
-      dailyConversions.union(histConversions)
+      dailyConversions.union(histConversions).distinct
     } else {
       dailyConversions
     }
