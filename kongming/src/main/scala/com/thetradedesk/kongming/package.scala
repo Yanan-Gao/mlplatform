@@ -16,17 +16,24 @@ package object kongming {
   val MLPlatformS3Root: String = "s3://thetradedesk-mlplatform-us-east-1/data"
   val BidsImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
-  // TODO: config to KoaV4ROAS when task="roas"
-  val KongmingApplicationName = "KoaV4Conversion"
+  // TODO: set roas for ROAS
+  // task: cpa (default), roas
+  val task = config.getString("task", "cpa")
+  val KongmingApplicationName = task match {
+    case "roas" => "KoaV4ROAS"
+    case _ => "KoaV4Conversion"
+  }
+  val BaseFolderPath = task match {
+    case "roas" => "roas"
+    case _ => "kongming"
+  }
+
   val RunTimeGaugeName = "run_time_seconds"
   val OutputRowCountGaugeName = "output_rows_written"
   val LogsDiscrepancyCountGaugeName = "logs_discrepancy_count"
 
   var writeThroughHdfs = config.getBoolean("writeThroughHdfs", true)
 
-  // TODO: set roas for ROAS
-  // task: cpa (default), roas
-  val task = config.getString("task", "cpa")
   var date = config.getDate("date" , LocalDate.now())
   val RoundUpTimeUnit = "minute"
   val policyDate = config.getDate("policydate" , LocalDate.parse("2022-03-15"))
