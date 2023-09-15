@@ -4,7 +4,7 @@ import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.transform.ModelFeatureTransform
 import com.thetradedesk.audience.utils.OnlineLogsParser
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.schemas.{BidRequestDataset, BidRequestRecord}
+import com.thetradedesk.geronimo.shared.schemas.{BidRequestDataset, GeronimoBidRequestRecord}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -87,7 +87,7 @@ abstract class AudienceModelMonitoringDataGenerator {
   }
 
   def getBidRequests(date: LocalDate): DataFrame = {
-    loadParquetData[BidRequestRecord](s3path = BidRequestDataset.BIDSS3, date = date)
+    loadParquetData[GeronimoBidRequestRecord](s3path = BidRequestDataset.BIDSS3, date = date)
       .select('AvailableBidRequestId, 'BidRequestId)
   }
 

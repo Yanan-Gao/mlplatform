@@ -270,6 +270,7 @@ abstract class AudienceModelInputGenerator(name: String) {
         'SupplyVendor,
         'DealId,
         'SupplyVendorPublisherId,
+        'AliasedSupplyPublisherId,
         'Site,
         'AdWidthInPixels,
         'AdHeightInPixels,
