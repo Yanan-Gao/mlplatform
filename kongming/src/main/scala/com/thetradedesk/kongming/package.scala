@@ -60,9 +60,9 @@ package object kongming {
                                           ): Dataset[T] = {
     inputDataSet.join(broadcast(adGroupPolicy.filter(col(joinKeyName) === lit("AdGroupId"))), col(joinValueName) === col("AdGroupId"), joinType).union(
       inputDataSet.join(broadcast(adGroupPolicy.filter(col(joinKeyName) === lit("CampaignId"))), col(joinValueName) === col("CampaignId"), joinType)
-    ).union(
+    ).dropDuplicates().union(
       inputDataSet.join(broadcast(adGroupPolicy.filter(col(joinKeyName) === lit("AdvertiserId"))), col(joinValueName) === col("AdvertiserId"), joinType)
-    ).selectAs[T]
+    ).dropDuplicates().selectAs[T]
   }
 
 
