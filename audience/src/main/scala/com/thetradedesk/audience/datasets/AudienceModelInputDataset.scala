@@ -61,7 +61,8 @@ final case class AudienceModelInputRecord(
                                                   Targets: Seq[Float],
                                                   TDID: String,
                                                   BidRequestId: String,
-                                                  AdvertiserId: String,
+                                                  @FeatureDesc("AdvertiserId", "string", 200002)
+                                                  AdvertiserId: Option[Int],
                                                   CampaignId: String,
                                                   AdGroupId: String
                                                 )

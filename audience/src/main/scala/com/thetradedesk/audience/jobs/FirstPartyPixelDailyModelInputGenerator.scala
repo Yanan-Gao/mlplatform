@@ -164,6 +164,7 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
         'SupplyVendor,
         'DealId,
         'SupplyVendorPublisherId,
+        'AliasedSupplyPublisherId,
         'Site,
         'AdWidthInPixels,
         'AdHeightInPixels,
