@@ -11,6 +11,8 @@ final case class FirstPartyPixelModelInputRecord(
                                                   SupplyVendor: Option[Int],
                                                   @FeatureDesc("SupplyVendorPublisherId", "string", 200002)
                                                   SupplyVendorPublisherId: Option[Int],
+                                                  @FeatureDesc("AliasedSupplyPublisherId", "int", 200002)
+                                                  AliasedSupplyPublisherId: Option[Int],
                                                   @FeatureDesc("Site", "string", 500002)
                                                   Site: Option[Int],
                                                   @FeatureDesc("Country", "string", 252)
@@ -62,7 +64,8 @@ final case class FirstPartyPixelModelInputRecord(
 
                                                   TDID: String,
                                                   BidRequestId: String,
-                                                  AdvertiserId: String,
+                                                  @FeatureDesc("AdvertiserId", "string", 200002)
+                                                  AdvertiserId: Option[Int],
                                                   CampaignId: String,
                                                   AdGroupId: String,
 
