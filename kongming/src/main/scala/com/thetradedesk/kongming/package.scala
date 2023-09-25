@@ -20,8 +20,8 @@ package object kongming {
   // task: cpa (default), roas
   val task = config.getString("task", "cpa")
   val KongmingApplicationName = task match {
-    case "roas" => "KoaV4ROAS"
-    case _ => "KoaV4Conversion"
+    case "roas" => "ValueAlgoROAS"
+    case _ => "ValueAlgoCPA"
   }
   val BaseFolderPath = task match {
     case "roas" => "roas"
