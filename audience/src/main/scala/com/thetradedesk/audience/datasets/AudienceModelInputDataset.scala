@@ -64,7 +64,8 @@ final case class AudienceModelInputRecord(
                                                   @FeatureDesc("AdvertiserId", "string", 200002)
                                                   AdvertiserId: Option[Int],
                                                   CampaignId: String,
-                                                  AdGroupId: String
+                                                  AdGroupId: String,
+                                                  GroupId: String
                                                 )
 
 case class AudienceModelInputDataset(model: String, tag: String, version: Int = 1) extends
