@@ -2,17 +2,17 @@ package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.geronimo.shared.schemas.{BidRequestDataset, ModelFeature}
-import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, GERONIMO_DATA_SOURCE, intModelFeaturesCols, loadParquetData, loadParquetDataHourly}
+import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, GERONIMO_DATA_SOURCE, intModelFeaturesCols, loadParquetData}
 import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, modelFeatures, rawModelFeatureCols, rawModelFeatureNames, seqFields}
 import com.thetradedesk.kongming.datasets.{BidsImpressionsSchema, OnlineLogsDataset, OnlineLogsDiscrepancyDataset, OnlineLogsDiscrepancyRecord}
-import com.thetradedesk.kongming.{KongmingApplicationName, LogsDiscrepancyCountGaugeName, OutputRowCountGaugeName, RunTimeGaugeName, date, getJobNameWithExperimentName}
+import com.thetradedesk.kongming.{KongmingApplicationName, LogsDiscrepancyCountGaugeName, RunTimeGaugeName, date, getJobNameWithExperimentName}
 import com.thetradedesk.kongming.transform.ContextualTransform
 import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.streaming.records.rtb.bidrequest.BidRequestRecord
 import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.functions.{col, concat, lit, struct, to_json, udf}
+import org.apache.spark.sql.functions.{broadcast, col, concat, lit, struct, to_json, udf}
 import io.circe.parser.parse
 import io.circe.Decoder
 import org.apache.spark.sql.expressions.UserDefinedFunction
@@ -21,6 +21,7 @@ import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 object OnlineLogsParser extends Serializable {
   case class FeatureDimensions(Dimensions: List[Int])
@@ -128,24 +129,22 @@ object OnlineLogsDiscrepancyCheck {
     val unsampledBidImpressions = getUnsampledBidImpressions(date, Seq("BidRequestId"))
 
     val bidRequests = getBidRequests(date)
+
     val onlineLogs = getOnlineLogs(date, Seq("AvailableBidRequestId"), modelName)
-      .join(bidRequests, Seq("AvailableBidRequestId"), "left")
       .cache
 
-    val bidImpressionLogs = onlineLogs.select("BidRequestId")
-      .join(unsampledBidImpressions, Seq("BidRequestId"), "left")
+    val bidRequestToImpression = bidRequests
+      .join(broadcast(onlineLogs), Seq("AvailableBidRequestId"), "left_semi")
+      .cache
+
+    val bidImpressionLogs = unsampledBidImpressions.join(broadcast(bidRequestToImpression), Seq("BidRequestId"), "left_semi")
 
     val ignoreCols = Seq("AdFormat") // Online Logs have incorrect ad format. We can ignore it temporarily until online logs are fixed
-    val logDiscrepancy = getDiscrepancy(onlineLogs, bidImpressionLogs, precision, ignoreCols)
+    val logDiscrepancy = getDiscrepancy(onlineLogs.join(bidRequestToImpression, Seq("AvailableBidRequestId"), "left"), bidImpressionLogs, precision, ignoreCols)
       .selectAs[OnlineLogsDiscrepancyRecord]
-      .cache
 
-    if (!logDiscrepancy.isEmpty) {
-      val (discrepancyRowName, discrepancyRowCount) = OnlineLogsDiscrepancyDataset(modelName).writePartition(logDiscrepancy, date, Some(1))
-      outputRowsWrittenGauge.labels(modelName).set(discrepancyRowCount)
-    } else {
-      outputRowsWrittenGauge.labels(modelName).set(0)
-    }
+    val (discrepancyRowName, discrepancyRowCount) = OnlineLogsDiscrepancyDataset(modelName).writePartition(logDiscrepancy, date, None)
+    outputRowsWrittenGauge.labels(modelName).set(discrepancyRowCount)
 
     jobDurationGaugeTimer.setDuration()
     prometheus.pushMetrics()
