@@ -1,9 +1,12 @@
 package com.thetradedesk.audience.jobs
 
+import com.thetradedesk.audience.datasets.CrossDeviceVendor.CrossDeviceVendor
 import com.thetradedesk.audience.datasets.Model.Model
+import com.thetradedesk.audience.datasets.SeedTagOperations.{dataSourceCheck, dataSourceTag}
 import com.thetradedesk.audience.datasets._
-import com.thetradedesk.audience.utils.S3Utils
-import com.thetradedesk.audience.{audienceVersionDateFormat, dateTime, shouldConsiderTDID3, ttdEnv}
+import com.thetradedesk.audience.utils.Logger.Log
+import com.thetradedesk.audience.utils.{BitwiseOrAgg, S3Utils}
+import com.thetradedesk.audience._
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -11,14 +14,12 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types._
-import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode}
+import org.apache.spark.sql.{DataFrame, Dataset, SaveMode, SparkSession}
 
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
-import java.time.{Duration, LocalDate, LocalDateTime}
+import java.time.{LocalDate, LocalDateTime}
 import scala.util.Random
-import spark.implicits._
 
 object AudiencePolicyTableGeneratorJob {
   object Config {
@@ -44,7 +45,9 @@ object AudiencePolicyTableGeneratorJob {
 
 abstract class AudiencePolicyTableGenerator(model: Model) {
 
-  val samplingFunction = shouldConsiderTDID3(config.getInt(s"userDownSampleHitPopulation${model}", default = 1000000), config.getStringRequired(s"saltToSampleUser${model}"))(_)
+  val userDownSampleHitPopulation = config.getInt(s"userDownSampleHitPopulation${model}", default = 100000)
+  val samplingFunction = shouldConsiderTDID3(userDownSampleHitPopulation, config.getStringRequired(s"saltToSampleUser${model}"))(_)
+  val arraySamplingFunction = shouldConsiderTDIDInArray3(userDownSampleHitPopulation, config.getStringRequired(s"saltToSampleUser${model}"))
 
   object Config {
     // detect recent seed metadata path in airflow and pass to spark job
@@ -65,8 +68,12 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
     val bidImpressionRepartitionNum = config.getInt("bidImpressionRepartitionNum", 1024)
     val seedRepartitionNum = config.getInt("seedRepartitionNum", 32)
     val bidImpressionLookBack = config.getInt("bidImpressionLookBack", 1)
-
-
+    val graphUniqueCountKeepThreshold = config.getInt("graphUniqueCountKeepThreshold", 20)
+    val graphScoreThreshold = config.getDouble("graphScoreThreshold", 0.01)
+    val seedJobParallel = config.getInt("seedJobParallel", Runtime.getRuntime.availableProcessors())
+    val seedProcessLowerThreshold = config.getLong("seedProcessLowerThreshold", 2000)
+    val seedProcessUpperThreshold = config.getLong("seedProcessUpperThreshold", 100000000)
+    val seedExtendGraphUpperThreshold = config.getLong("seedExtendGraphUpperThreshold", 3000000)
   }
 
   private val policyTableDateFormatter = DateTimeFormatter.ofPattern(audienceVersionDateFormat)
@@ -97,13 +104,51 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
 
     val uniqueTDIDs = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(Config.bidImpressionLookBack), source = Some(GERONIMO_DATA_SOURCE))
       .withColumnRenamed("UIID", "TDID")
-      // .filter(samplingFunction('TDID))
+      .filter(samplingFunction('TDID))
       .select('TDID)
+      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
       .distinct()
-      .coalesce(Config.bidImpressionRepartitionNum)
       .cache()
 
     uniqueTDIDs
+  }
+
+  def readGraphData(date: LocalDate, crossDeviceVendor: CrossDeviceVendor)(implicit spark: SparkSession): DataFrame = {
+    if (crossDeviceVendor == CrossDeviceVendor.IAV2Person) {
+      CrossDeviceGraphUtil
+        .readGraphData(date, LightCrossDeviceGraphDataset())
+        .withColumnRenamed("personId", "groupId")
+    } else if (crossDeviceVendor == CrossDeviceVendor.IAV2Household) {
+      CrossDeviceGraphUtil
+        .readGraphData(date, LightCrossDeviceHouseholdGraphDataset())
+        .withColumnRenamed("householdID", "groupId")
+    } else {
+      throw new UnsupportedOperationException(s"crossDeviceVendor ${crossDeviceVendor} is not supported")
+    }
+  }
+
+  def generateGraphMapping(sourceGraph: DataFrame): DataFrame = {
+    val graph = sourceGraph
+      .where(shouldTrackTDID('uiid) && 'score > lit(Config.graphScoreThreshold))
+      .groupBy('groupId)
+      .agg(collect_set('uiid).alias("TDID"))
+      .where(size('TDID) > lit(1) && size('TDID) <= lit(Config.graphUniqueCountKeepThreshold)) // remove persons with too many individuals or only one TDID
+      .cache()
+
+    val sampledGraph = graph
+      .select('groupId, arraySamplingFunction('TDID).alias("co_TDIDs"))
+      .where(size('co_TDIDs) > lit(0))
+
+    val mapping = graph
+      .join(
+        sampledGraph,
+        Seq("groupId"),
+        "inner")
+      .select(explode('TDID).alias("TDID"), 'co_TDIDs)
+      .select('TDID, array_remove('co_TDIDs, 'TDID).alias("co_TDIDs"))
+      .where(size('co_TDIDs) > lit(0))
+
+    mapping
   }
 
   private def updatePolicyCurrentVersion(dateTime: LocalDateTime) = {
@@ -167,7 +212,7 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
   def retrieveSourceData(date: LocalDate): DataFrame
 
   private def allocateSyntheticId(dateTime: LocalDateTime, policyTable: DataFrame): DataFrame = {
-    val recentVersionOption = if (Config.seedMetaDataRecentVersion != null) Some(LocalDateTime.parse(Config.seedMetaDataRecentVersion, DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSS")).toLocalDate.atStartOfDay())
+    val recentVersionOption = if (Config.seedMetaDataRecentVersion != null) Some(LocalDateTime.parse(Config.seedMetaDataRecentVersion.split("=")(1), DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSS")).toLocalDate.atStartOfDay())
     else availablePolicyTableVersions.find(_.isBefore(dateTime))
 
     if (!(recentVersionOption.isDefined) || Config.policyTableResetSyntheticId) {
@@ -189,6 +234,8 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
 
 object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM) {
 
+  val bitwiseOrAgg = udaf(BitwiseOrAgg)
+
   override def retrieveSourceData(date: LocalDate): DataFrame = {
 
     val recentVersion =
@@ -199,57 +246,171 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM) {
 
     val uniqueTDIDs = getBidImpUniqueTDIDs(date)
 
+    val personGraph = readGraphData(date, CrossDeviceVendor.IAV2Person)(spark)
+
+    val sampledPersonGraph = personGraph
+      .select('uiid.alias("TDID"), 'groupId)
+      .where(samplingFunction('TDID))
+      .withColumnRenamed("groupId", "personId")
+      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+
+    val householdGraph = readGraphData(date, CrossDeviceVendor.IAV2Household)(spark)
+
+    val sampledHouseholdGraph = householdGraph
+      .select('uiid.alias("TDID"), 'groupId)
+      .where(samplingFunction('TDID))
+      .withColumnRenamed("groupId", "householdId")
+      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+
+    val sampledGraph = sampledPersonGraph
+      .join(sampledHouseholdGraph, Seq("TDID"), "outer")
+      .cache()
+
+    val personGraphMapping = generateGraphMapping(personGraph)
+      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .cache()
+
+    val householdGraphMapping = generateGraphMapping(householdGraph)
+      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .cache()
+
     val policyMetaTable = spark.read.parquet(seedDataFullPath)
-      .select('SeedId, 'TargetingDataId, 'Count)
+      .select('SeedId, 'TargetingDataId, 'Count, 'Path)
       .withColumn("TargetingDataId", coalesce('TargetingDataId, lit(-1)))
-      .where('Count > 0)
-      .groupBy('SeedId, 'TargetingDataId)
-      .agg(max('Count).alias("Count"))
-      .select('SeedId, 'TargetingDataId, 'Count)
+      .where('Count >= lit(Config.seedProcessLowerThreshold) && 'Count <= lit(Config.seedProcessUpperThreshold))
       .collect()
+      .par
 
-    val policyTable = policyMetaTable.par.map(
-      record => {
-        val seedDataPath = Config.seedRawDataS3Path + record.getAs[String]("SeedId")
-        val seedDataFullPath = "s3a://" + Config.seedRawDataS3Bucket + "/" + seedDataPath
-        val recentVersion = if (Config.seedRawDataRecentVersion != null) Config.seedRawDataRecentVersion
-        else S3Utils.queryCurrentDataVersion(Config.seedRawDataS3Bucket, seedDataPath)
+    policyMetaTable.tasksupport = new scala.collection.parallel.ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(Config.seedJobParallel))
 
-        try {
-          val count = spark.read.parquet(seedDataFullPath + "/" + recentVersion)
-            .select('UserId)
-            .withColumnRenamed("UserId", "TDID")
-            // .filter(samplingFunction('TDID))
-            .join(uniqueTDIDs, Seq("TDID"), "inner")
-            .count()
+    val policyTable = policyMetaTable.map(
+        record => {
+          val seedDataFullPath = record.getAs[String]("Path")
+          val seedId = record.getAs[String]("SeedId")
 
-          val data = Seq((
-            record.getAs[String]("SeedId"),
-            count,
-            record.getAs[Long]("Count"),
-            record.getAs[Long]("TargetingDataId")))
+          try {
+            val seedData = spark.read.parquet(seedDataFullPath)
+              .where(shouldTrackTDID('UserId))
+              .select('UserId)
+              .withColumnRenamed("UserId", "TDID")
+              .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+              .distinct()
+              .cache()
 
-          Some(
-            data
-              .toDF("SeedId", "ActiveSize", "Size", "TargetingDataId")
-              .coalesce(1)
-          )
-        } catch {
-          case e: Exception => {
-            println(s"Caught exception of type ${e.getClass} on seed ${record.getAs[String]("SeedId")}")
-            None
+            var fullSeedData = seedData
+              .where(samplingFunction('TDID))
+              .withColumn("tag", dataSourceTag(CrossDeviceVendor.None))
+
+            // when the seed count is huge, ignore the seed
+            if (record.getAs[Long]("Count") <= Config.seedExtendGraphUpperThreshold) {
+              val personGraphSeedData = extendSeedWithGraphs(seedData, personGraphMapping, CrossDeviceVendor.IAV2Person)
+              Log(() => s"seed: ${seedId} personGraphSeedData: ${personGraphSeedData.count()}")
+              val householdGraphSeedData = extendSeedWithGraphs(seedData, householdGraphMapping, CrossDeviceVendor.IAV2Household)
+              Log(() => s"seed: ${seedId} householdGraphSeedData: ${householdGraphSeedData.count()}")
+
+              val allGraphSeedData = personGraphSeedData
+                .union(householdGraphSeedData)
+                .groupBy('TDID)
+                .agg(sum('tag).alias("tag"))
+
+
+              fullSeedData = fullSeedData
+                .union(allGraphSeedData)
+                .cache()
+            } else {
+              fullSeedData = fullSeedData.cache()
+            }
+
+            val fullSeedDataWithGraph = fullSeedData
+              .join(sampledGraph, Seq("TDID"), "inner")
+              .as[ExtendedSeedRecord]
+
+            Log(() => s"seed: ${seedId} fullSeedDataWithGraph: ${fullSeedDataWithGraph.count()}")
+
+            ExtendedSeedWritableDataset(seedId)
+              .writePartition(
+                fullSeedDataWithGraph,
+                date,
+                saveMode = SaveMode.Overwrite)
+
+            // count tdids from different source
+            val count = fullSeedData
+              // .filter(samplingFunction('TDID))
+              .join(uniqueTDIDs, Seq("TDID"), "inner")
+              .agg(
+                sum(dataSourceCheck('tag, CrossDeviceVendor.None)),
+                sum(dataSourceCheck('tag, CrossDeviceVendor.IAV2Person)),
+                sum(dataSourceCheck('tag, CrossDeviceVendor.IAV2Household))
+              ).collect()
+
+            seedData.unpersist()
+            fullSeedData.unpersist()
+
+            var data = Seq(
+              (
+                count(0).getLong(0) * (userDownSampleBasePopulation / userDownSampleHitPopulation),
+                CrossDeviceVendor.None.id
+              ))
+
+            if (count(0).getLong(1) > 0) {
+              data ++= Seq(
+                (
+                (count(0).getLong(0) + count(0).getLong(1)) * (userDownSampleBasePopulation / userDownSampleHitPopulation),
+                CrossDeviceVendor.IAV2Person.id)
+              )
+            }
+
+            if (count(0).getLong(2) > 0) {
+              data ++= Seq(
+                (
+                  (count(0).getLong(0) + count(0).getLong(2)) * (userDownSampleBasePopulation / userDownSampleHitPopulation),
+                  CrossDeviceVendor.IAV2Household.id)
+              )
+            }
+
+            Some(
+              data
+                .toDF("ActiveSize", "CrossDeviceVendorId")
+                .withColumn("SeedId", lit(record.getAs[String]("SeedId")))
+                .withColumn("Size", lit(record.getAs[Long]("Count")))
+                .withColumn("TargetingDataId", lit(record.getAs[Long]("TargetingDataId")))
+                .coalesce(1)
+            )
+          } catch {
+            case e: Exception => {
+              println(s"Caught exception of type ${e.getClass} on seed ${record.getAs[String]("SeedId")}")
+              e.printStackTrace()
+              throw e
+              //              None
+            }
           }
         }
-      }
-    ).toArray.flatten.reduce(_ unionAll _)
+      ).toArray.flatten.reduce(_ unionAll _)
       .withColumnRenamed("SeedId", "SourceId")
       .repartition(Config.seedRepartitionNum, 'SourceId)
       .withColumn("Source", lit(DataSource.Seed.id))
       .withColumn("GoalType", lit(GoalType.Relevance.id))
-      .withColumn("CrossDeviceVendorId", lit(CrossDeviceVendor.None.id))
       .cache()
 
+    personGraph.unpersist()
+    householdGraph.unpersist()
+    sampledGraph.unpersist()
+    personGraphMapping.unpersist()
+    householdGraphMapping.unpersist()
+    householdGraph.unpersist()
+    uniqueTDIDs.unpersist()
+
     policyTable
+  }
+
+  private def extendSeedWithGraphs(seedData: DataFrame, graph: DataFrame, crossDeviceVendor: CrossDeviceVendor): DataFrame = {
+    val seedWithGraph = graph
+      .join(seedData, Seq("TDID"), "inner")
+      .select(explode('co_TDIDs).alias("TDID"))
+      .join(seedData, Seq("TDID"), "leftanti")
+      .withColumn("tag", dataSourceTag(crossDeviceVendor))
+
+    seedWithGraph
   }
 }
 
