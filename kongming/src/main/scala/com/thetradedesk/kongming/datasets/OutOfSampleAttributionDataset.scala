@@ -14,6 +14,7 @@ final case class OutOfSampleAttributionRecord(
                                                IsUID2: Int,
 
                                                Target: Int,
+                                               Revenue: Option[BigDecimal],
 
                                                SupplyVendor: Option[Int],
                                                SupplyVendorPublisherId: Option[Int],
