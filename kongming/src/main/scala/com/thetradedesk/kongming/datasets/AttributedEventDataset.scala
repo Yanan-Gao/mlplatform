@@ -18,7 +18,9 @@ final case class AttributedEventRecord(
                                         TDID: String,
                                         AdvertiserId: String,
                                         CampaignId: String,
-                                        AdGroupId: String
+                                        AdGroupId: String,
+                                        MonetaryValue: Option[String],
+                                        MonetaryValueCurrency: Option[String]
                                       )
 
 case class AttributedEventDataSet() extends IdentitySourcesS3DataSet[AttributedEventRecord]("firstpartydata_v2/attributedevent")

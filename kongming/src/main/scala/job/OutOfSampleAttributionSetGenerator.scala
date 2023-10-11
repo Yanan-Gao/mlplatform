@@ -66,6 +66,8 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
                                                          TrackingTagId: String,
                                                          ConfigKey: String,
                                                          ConfigValue: String,
+                                                         MonetaryValue: Option[String],
+                                                         MonetaryValueCurrency: Option[String]
                                                        )
 
   final case class BidRequestsWithAttributionGroup(
@@ -74,7 +76,11 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
                                                   AttributionGroupValue: String
                                                   )
 
-  final case class EventsAttribution(BidRequestId: String, Target: Int)
+  final case class EventsAttribution(
+                                      BidRequestId: String,
+                                      Target: Int,
+                                      Revenue: Option[BigDecimal]
+                                    )
 
   def getEventsAttributions(adGroupPolicy: Dataset[_], adGroups: Dataset[AdGroupRecord], scoreDate: LocalDate)(implicit prometheus: PrometheusClient): Dataset[EventsAttribution] = {
     val pixelWeight = TrainSetTransformation.getWeightsForTrackingTags(scoreDate, adGroupPolicy.selectAs[AdGroupPolicyRecord], adGroups)
@@ -82,6 +88,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
     val (attributedEvent, attributedEventResult) = OfflineAttributionTransform.getAttributedEventAndResult(adGroupPolicy.selectAs[AdGroupPolicyRecord], date, lookBack = Config.AttributionLookBack + Config.ImpressionLookBack - 1)
     val attributedEventResultOfInterest = multiLevelJoinWithPolicy[AttributedEventRecordWithPolicyKeys](attributedEvent, adGroupPolicy, "inner")
+      .withColumn("MonetaryValue", $"MonetaryValue".cast("decimal"))
       .join(
         attributedEventResult.withColumn("ConversionTrackerLogEntryTime", to_timestamp(col("ConversionTrackerLogEntryTime")).as("ConversionTrackerLogEntryTime")),
         Seq("ConversionTrackerLogFileId", "ConversionTrackerIntId1", "ConversionTrackerIntId2", "AttributedEventLogFileId", "AttributedEventIntId1", "AttributedEventIntId2"),
@@ -102,11 +109,25 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
         adGroupPolicy, "left_semi", "AttributionGroupKey", "AttributionGroupValue")
       .select("BidRequestId", "ClickRedirectId")
 
-    attributedEventResultOfInterest.filter($"AttributedEventTypeId" === lit("2")).join(bidFeedBack, col("AttributedEventId") === col("BidFeedbackId"), "inner")
+    val attribution = attributedEventResultOfInterest.filter($"AttributedEventTypeId" === lit("2")).join(bidFeedBack, col("AttributedEventId") === col("BidFeedbackId"), "inner")
       .union(attributedEventResultOfInterest.filter($"AttributedEventTypeId" === lit("1")).join(clicks, col("AttributedEventId") === col("ClickRedirectId"), "inner"))
-      .select("BidRequestId")
+      .select("BidRequestId", "MonetaryValue", "MonetaryValueCurrency")
       .distinct().withColumn("Target", lit(1))
-      .selectAs[EventsAttribution]
+
+      task match {
+        case "roas" => {
+          val rate = DailyExchangeRateDataset().readDate(scoreDate).cache() // use scoreDate's exchange to simplify the calculation
+          attribution
+            .withColumn("CurrencyCodeId", $"MonetaryValueCurrency").join(broadcast(rate), Seq("CurrencyCodeId"), "left")
+            .withColumn("ValidRevenue", $"MonetaryValue".isNotNull && $"MonetaryValueCurrency".isNotNull)
+            .withColumn("FromUSD", when($"MonetaryValueCurrency" === "USD", lit(1)).otherwise($"FromUSD"))
+            .withColumn("RevenueInUSD", when($"ValidRevenue", $"MonetaryValue" / $"FromUSD").otherwise(0))
+            .withColumn("Revenue", greatest($"RevenueInUSD", lit(1)))
+            .selectAs[EventsAttribution]
+        }
+        case _ => attribution.withColumn("Revenue", lit(0)).selectAs[EventsAttribution]
+      }
+
   }
 
   def generateAttributionSet(scoreDate: LocalDate)(implicit prometheus: PrometheusClient): Dataset[OutOfSampleAttributionRecord] = {
@@ -131,6 +152,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
     // offline score labels: one impression could have more than one row if it contributes to multiple conversions. If it contributes to no conversion, then it has one row.
     val rawOOS = impressionsToScore.join(eventsAttributions, Seq("BidRequestIdStr"), "left")
       .withColumn("Target", coalesce('Target, lit(0)))
+      .withColumn("Revenue", coalesce('Revenue, lit(0)))
       .join(scoringSet, Seq("BidRequestIdStr"), "inner")
 
     val parquetSelectionTabular = rawOOS.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqFields)
