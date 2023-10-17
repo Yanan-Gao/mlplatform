@@ -2,8 +2,8 @@ package com.thetradedesk.kongming.datasets
 import com.thetradedesk.spark.util.TTDConfig.config
 
 final case class ImpressionForIsotonicRegRecord(
-                                                AdGroupIdStr: String,
-                                                AdGroupId: Int,
+                                                Level:String,
+                                                Id: String,
                                                 Score: Double,
                                                 Label: Int,
                                                 ImpressionWeightForCalibrationModel: Double

@@ -115,7 +115,8 @@ object TrainSetTransformation {
                                  date: LocalDate,
                                  adGroupPolicy: Dataset[AdGroupPolicyRecord],
                                  adGroupDS: Dataset[AdGroupRecord],
-                                 normalized: Boolean=false
+                                 normalized: Boolean=false,
+                                 adgroupBaseAssociateMapping: Option[Dataset[AdGroupPolicyMappingRecord]]=None
                                ): Dataset[TrackingTagWeightsRecord]= {
     // 1. get the latest weights per campaign and trackingtagid
     val campaignDS = CampaignDataSet().readLatestPartitionUpTo(date, true)
@@ -153,15 +154,38 @@ object TrainSetTransformation {
             .otherwise(null)
         )
       )
+      .withColumn("isClickViewWeightEmpty", $"NormalizedCustomCPAClickWeight".isNotNull && $"NormalizedCustomCPAViewthroughWeight".isNotNull &&(($"NormalizedCustomCPAClickWeight"+$"NormalizedCustomCPAViewthroughWeight")<lit(1e-8)))
+      .withColumn("NormalizedCustomCPAClickWeight",
+        when($"isClickViewWeightEmpty", lit(0.5)).otherwise($"NormalizedCustomCPAClickWeight"))
+      .withColumn("NormalizedCustomCPAViewthroughWeight",
+        when($"isClickViewWeightEmpty", lit(0.5)).otherwise($"NormalizedCustomCPAViewthroughWeight"))
       .select($"CampaignId",$"TrackingTagId", $"ReportingColumnId", $"NormalizedPixelWeight".cast(DoubleType),$"NormalizedCustomCPAClickWeight".cast(DoubleType), $"NormalizedCustomCPAViewthroughWeight".cast(DoubleType) )
+    //isClickViewWeightEmpty: This is for handling the case where the customCPAType=2 so there should be a at least one non-zero weight for click or view,
+    // but some campaigns didn't fill any of those two weights, in which case, our logic at line 145 and 153 sets both weights to 0, but not null value.
+    //Besides, the zero weight is represented to 0e18, so I use clickweight+viewweight <1e-8 instead of clickweight+viewweight==0.
 
     // 2. join trackingtag weights with policy table
-    adGroupPolicy
-      .join(broadcast(adGroupDS), adGroupPolicy("ConfigValue")===adGroupDS("AdGroupId"), "inner")
-      .select("CampaignId","ConfigKey", "ConfigValue", "DataAggKey", "DataAggValue")
-      .join(ccrcProcessed, Seq("CampaignId"), "inner")
-      .select($"TrackingTagId", $"ReportingColumnId", $"ConfigKey", $"ConfigValue", $"NormalizedPixelWeight",$"NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAViewthroughWeight" ) // one trackingtagid can have different following values
-      .selectAs[TrackingTagWeightsRecord]
+    adgroupBaseAssociateMapping match {
+      case Some(adgroupBaseAssociateMapping) =>
+        adgroupBaseAssociateMapping
+//          .join(broadcast(adGroupDS), adgroupBaseAssociateMapping("AdGroupId")===adGroupDS("AdGroupId"), "inner")
+          .select("AdGroupId","CampaignId")
+          .join(ccrcProcessed, Seq("CampaignId"), "inner")
+          .select($"AdGroupId",$"TrackingTagId", $"ReportingColumnId", $"NormalizedPixelWeight",$"NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAViewthroughWeight" ) // one trackingtagid can have different following values
+          .withColumn("ConfigKey", lit("AdGroupId"))
+          .withColumnRenamed("AdGroupId", "ConfigValue")
+          .selectAs[TrackingTagWeightsRecord]
+        // renaming AdGroupId to ConfigValue here only serve for matching the schema. AdGroupId in this table is not limited to ConfigValues in policy table
+
+      case None =>
+        adGroupPolicy
+          .join(broadcast(adGroupDS), adGroupPolicy("ConfigValue")===adGroupDS("AdGroupId"), "inner")
+          .select("CampaignId","ConfigKey", "ConfigValue", "DataAggKey", "DataAggValue")
+          .join(ccrcProcessed, Seq("CampaignId"), "inner")
+          .select($"TrackingTagId", $"ReportingColumnId", $"ConfigKey", $"ConfigValue", $"NormalizedPixelWeight",$"NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAViewthroughWeight" ) // one trackingtagid can have different following values
+          .selectAs[TrackingTagWeightsRecord]
+    }
+
 
   }
 

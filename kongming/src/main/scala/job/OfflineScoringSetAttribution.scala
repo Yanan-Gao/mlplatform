@@ -1,8 +1,8 @@
 package job
 
-import com.thetradedesk.kongming.datasets.{AdGroupCvrForBiasTuningDataset, AdGroupPolicyDataset, AdGroupPolicyMappingDataset, ImpressionForIsotonicRegDataset, UnifiedAdGroupDataSet}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, AdGroupPolicyMappingDataset, CampaignCvrForScalingDataset, ImpressionForIsotonicRegDataset, UnifiedAdGroupDataSet}
 import com.thetradedesk.kongming.{date, samplingSeed}
-import com.thetradedesk.kongming.transform.TrainSetTransformation.{TrackingTagWeightsRecord, getWeightsForTrackingTags}
+import com.thetradedesk.kongming.transform.TrainSetTransformation.getWeightsForTrackingTags
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.kongming.transform.OfflineAttributionTransform._
@@ -18,13 +18,11 @@ object OfflineScoringSetAttribution extends KongmingBaseJob {
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
     val IsotonicRegPositiveLabelCountThreshold = config.getInt(path="positiveLabelCountThresholdForIsotonicReg", 10)
-    val IsotonicRegNegCap = config.getInt(path="IsotonicRegNegCap", 1000000)
+    val IsotonicRegNegCap = config.getInt(path="IsotonicRegNegCap", 100000)
     val IsotonicRegNegMaxSampleRate = config.getDouble(path="IsotonicRegNegMaxSampleRate", 1.0/3)
 
-    val defaultCvr = config.getDouble(path="DefaultConversionRate", 1e-3)
-
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date).cache()
-    val adgroupBaseAssociateMapping = AdGroupPolicyMappingDataset().readDate(date)
+    val adgroupBaseAssociateMapping = AdGroupPolicyMappingDataset().readDate(date).cache()
     // prerequisite:
     // 1. the model used to score impressions should be the same as model in production, which has modelDate
     // modelDate can be earlier than date.
@@ -39,29 +37,27 @@ object OfflineScoringSetAttribution extends KongmingBaseJob {
     val offlineScore = getOfflineScore(modelDate = modelDate, endDate = offlineScoreEndDate, lookBack =offlineScoreDays-1, adgroupBaseAssociateMapping)(getPrometheus).cache()
     // get a count here for later usage
 
-    // 2. load attributedEventDataset and attributedEventResult
+    // 2. load attributedEventDataset and attributedEventResult  for all adgroups
     val attributes = getAttributedEventAndResult(adGroupPolicy = adGroupPolicy, endDate = date, lookBack = offlineScoreSetLookbackFromModelDate+offlineScoreDays-1)(getPrometheus)
 
     // load pixel weight of adgroup and extend the pixel table to campaigns
     val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, isInclusive = true)
 
-    val pixelWeight = getWeightsForTrackingTags(date, adGroupPolicy, adGroupDS)
-    val pixelWeightForBaseAssociateAdGroup = pixelWeight.join(adgroupBaseAssociateMapping, Seq("ConfigValue","ConfigKey"))
-      .withColumn("ConfigValue", $"AdGroupId").selectAs[TrackingTagWeightsRecord]
+    val pixelWeight = getWeightsForTrackingTags(date, adGroupPolicy, adGroupDS, adgroupBaseAssociateMapping = Some(adgroupBaseAssociateMapping))
 
     // 3. attributed impressions that are in scored impressions, find the latest per conversion event
-    val offlineScoreLabel = getOfflineScoreLabelWeight(offlineScore, attributes._1, attributes._2, pixelWeightForBaseAssociateAdGroup)(getPrometheus)
+    val offlineScoreLabel = getOfflineScoreLabelWeight(offlineScore, attributes._1, attributes._2, pixelWeight)(getPrometheus)
 
     // 4. get conversions, impressions, conversion rate per piece, and weight per impression for isotonic regression
-    val impressionLevelPerformance =  getOfflineScoreImpressionAndPiecePerformance(offlineScoreLabel)(getPrometheus)
+    val impressionLevelPerformance =  getOfflineScoreImpressionAndPiecePerformance(offlineScoreLabel)(getPrometheus).cache()
 
     // 5. get inputs for isotonic regression and bias tuning
-    val inputForCalibration = getInputForCalibrationAndBiasTuning(impressionLevelPerformance, defaultCvr, adGroupPolicy, IsotonicRegPositiveLabelCountThreshold, IsotonicRegNegCap, IsotonicRegNegMaxSampleRate, samplingSeed)(getPrometheus)
+    val inputForCalibration = getInputForCalibrationAndScaling(impressionLevelPerformance, IsotonicRegPositiveLabelCountThreshold, IsotonicRegNegCap, IsotonicRegNegMaxSampleRate, samplingSeed)(getPrometheus)
 
     val isotonicRegRows = ImpressionForIsotonicRegDataset().writePartition(inputForCalibration._1, date, Some(1000))
-    val biasTuningRows = AdGroupCvrForBiasTuningDataset().writePartition(inputForCalibration._2, date, Some(1))
+    val campaigncvrScalingRows = CampaignCvrForScalingDataset().writePartition(inputForCalibration._2, date, Some(1))
 
-    Array(isotonicRegRows, biasTuningRows)
+    Array(isotonicRegRows, campaigncvrScalingRows)
 
   }
 }
