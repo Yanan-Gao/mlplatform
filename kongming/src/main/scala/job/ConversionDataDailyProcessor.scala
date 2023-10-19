@@ -95,6 +95,7 @@ object ConversionDataDailyProcessor extends KongmingBaseJob {
     if (redate) {
       // to repartition today's conversion based on their actual conversion date
       val todayConversions = resultDS.withColumn("ConversionDate", to_date($"ConversionTime"))
+        .cache
 
       (0 to bidLookback).par.foreach(i => {
         // read, union, and write in parallel
