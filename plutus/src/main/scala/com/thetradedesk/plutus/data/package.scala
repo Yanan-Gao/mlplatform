@@ -100,8 +100,12 @@ package object data {
     }.toArray
   }
 
-  def plutusTargetCols(targets: Seq[ModelTarget]): Array[Column] = {
+  def modelTargeCols(targets: Seq[ModelTarget]): Array[Column] = {
     targets.map(t => col(t.name).alias(t.name)).toArray
+  }
+
+  def modelFeatureCols(features: Seq[ModelFeature]): Array[Column] = {
+    features.map(t => col(t.name).alias(t.name)).toArray
   }
 
   def shiftModMaxValueUDF: UserDefinedFunction = udf((hashValue: Long) => {

@@ -6,6 +6,8 @@ import com.thetradedesk.geronimo.shared.{intModelFeaturesCols, loadModelFeatures
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.plutus.data._
 import com.thetradedesk.plutus.data.schema._
+import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -21,7 +23,6 @@ object PlutusDataTransform extends Logger {
   val EMPIRICAL_DISCREPANCY_ROUNDING_PRECISION = 2
 
   def transform(date: LocalDate,
-                svNames: Seq[String],
                 partitions: Int,
                 outputPath: String,
                 dataVersion: Int,
@@ -32,61 +33,164 @@ object PlutusDataTransform extends Logger {
                 maybeOutputTtdEnv: Option[String] = None,
                 featuresJson: String)(implicit prometheus: PrometheusClient): Unit = {
 
-    val bidsGaugeExplicit = prometheus.createGauge("raw_bids_count_exp", "count of raw bids (explicit)")
-    val bidsGaugeImplicit = prometheus.createGauge("raw_bids_count_imp", "count of raw bids (implicit)")
-
-    val mbtwData = loadMbtwData(date, svNames).repartition(partitions)
-    log.info("lost bid data " + mbtwData.cache.count())
-
-    val fpaBidsImpsExplicit = loadExplicitFpaBidsImpsData(date = date, svNames = svNames, ttdEnv = inputTtdEnv)
-    val fpaBidsImpsImplicit = loadImplicitFpaBidsImpsData(date = date, ttdEnv = inputTtdEnv, implicitSampleRate = implicitSampleRate, filterInvalidLoss = true)
+    val modelFeatures = loadModelFeatures(featuresJson)
 
     val svb = loadParquetData[Svb](DiscrepancyDataset.SBVS3, date)
     val pda = loadParquetData[Pda](DiscrepancyDataset.PDAS3, date)
     val deals = loadParquetData[Deals](DiscrepancyDataset.DEALSS3, date)
     val dealDf = dealData(svb, deals)
 
-    val rawExplicit = fpaBidsImpsWithDiscrepancy(fpaBidsImpsExplicit, svb, pda, dealDf, empiricalImpressions(fpaBidsImpsExplicit), Some(mbtwData), partitions)
-    val rawImplicit = fpaBidsImpsWithDiscrepancy(fpaBidsImpsImplicit, svb, pda, dealDf, empiricalImpressions(fpaBidsImpsImplicit), None, partitions)
+
+    processImplicit(
+      date = date,
+      partitions = partitions,
+      outputPath = outputPath,
+      dataVersion = dataVersion,
+      implicitSampleRate = implicitSampleRate,
+      rawOutputPrefix = rawOutputPrefix,
+      cleanOutputPrefix = cleanOutputPrefix,
+      inputTtdEnv = inputTtdEnv,
+      maybeOutputTtdEnv = maybeOutputTtdEnv,
+      modelFeatures = modelFeatures,
+      svb = svb,
+      pda = pda,
+      dealDf = dealDf
+    )
+
+    processExplicit(
+      date = date,
+      partitions = 200, //partitions,
+      outputPath = outputPath,
+      dataVersion = dataVersion,
+      rawOutputPrefix = rawOutputPrefix,
+      cleanOutputPrefix = cleanOutputPrefix,
+      inputTtdEnv = inputTtdEnv,
+      maybeOutputTtdEnv = maybeOutputTtdEnv,
+      modelFeatures = modelFeatures,
+      svb = svb,
+      pda = pda,
+      dealDf = dealDf,
+    )
+
+
+  }
+
+  def processExplicit(date: LocalDate,
+                      partitions: Int,
+                      outputPath: String,
+                      dataVersion: Int,
+                      rawOutputPrefix: String,
+                      cleanOutputPrefix: String,
+                      inputTtdEnv: String,
+                      maybeOutputTtdEnv: Option[String] = None,
+                      modelFeatures: Seq[ModelFeature],
+                      svb: Dataset[Svb],
+                      pda: Dataset[Pda],
+                      dealDf: DataFrame)(implicit prometheus: PrometheusClient): Unit = {
+
+    val (mbtwData, mbtwSv) = loadMbtwData(date)
+    val fpaBidsImpsExplicit = loadExplicitFpaBidsImpsData(date = date, svNames = mbtwSv, ttdEnv = inputTtdEnv)
+
+    var rawExplicit = fpaBidsImpsMbtwDiscrepancy(fpaBidsImpsExplicit, svb, pda, dealDf, empiricalDiscrepancy(fpaBidsImpsExplicit), Some(partitions))
+      .join(mbtwData, Seq("BidRequestId"), "inner")
+      .repartition(partitions)
+
+    val bidsGaugeExplicit = prometheus.createGauge("raw_bids_count_exp", "count of raw bids (explicit)")
+    bidsGaugeExplicit.set(rawExplicit.count())
 
     val versionedOutputPath = s"$outputPath/v=$dataVersion"
-    bidsGaugeExplicit.set(rawExplicit.count())
-    writeParquet(rawExplicit, versionedOutputPath, maybeOutputTtdEnv.getOrElse(inputTtdEnv), rawOutputPrefix, "explicit", date)
-    bidsGaugeImplicit.set(rawImplicit.count())
-    writeParquet(rawImplicit, versionedOutputPath, maybeOutputTtdEnv.getOrElse(inputTtdEnv), rawOutputPrefix, "implicit", date)
+    val rawParquetPath = writeParquet(rawExplicit, versionedOutputPath, maybeOutputTtdEnv.getOrElse(inputTtdEnv), rawOutputPrefix, "explicit", date)
 
-
-    // TODO: model features should be versioned
-    val modelFeatures = loadModelFeatures(featuresJson)
-
-    val outputTypes = Seq(cleanOutputPrefix, "csv")
+    rawExplicit = spark.read.parquet(rawParquetPath)
 
     val cleanExplicitDataset = cleanExplicitData(rawExplicit).cache()
-    outputTypes.foreach(x =>
-      writeDatasetToS3(
-        trainingDataset = cleanExplicitDataset,
-        outputPath = versionedOutputPath,
-        ttdEnv = maybeOutputTtdEnv.getOrElse(inputTtdEnv),
-        outputPrefix = x,
-        dataName = "explicit",
-        date = date,
-        maybeModelFeatures = Some(modelFeatures),
-      )
-    )
+
+    mbtwSv.foreach {
+      case sv =>
+        cleanExplicitDataset
+          .filter(col("SupplyVendor") === sv)
+          .select(modelFeatureCols(modelFeatures) ++ modelTargeCols(EXPLICIT_MODEL_TARGETS): _*)
+          .repartition(partitions)
+          .write
+          .mode(SaveMode.Overwrite)
+          .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/explicit/clean/$sv/${explicitDatePart(date)}")
+
+        cleanExplicitDataset
+          .filter(col("SupplyVendor") === sv)
+          .select(intModelFeaturesCols(modelFeatures) ++ modelTargeCols(EXPLICIT_MODEL_TARGETS): _*)
+          .repartition(partitions)
+          .write
+          .mode(SaveMode.Overwrite)
+          .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/explicit/clean-hashed/$sv/${explicitDatePart(date)}")
+
+        cleanExplicitDataset
+          .filter(col("SupplyVendor") === sv)
+          .select(intModelFeaturesCols(modelFeatures) ++ modelTargeCols(EXPLICIT_MODEL_TARGETS): _*)
+          .repartition(partitions)
+          .write
+          .option("header", "true")
+          .mode(SaveMode.Overwrite)
+          .csv(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/explicit/csv/$sv/${explicitDatePart(date)}")
+    }
+
+    cleanExplicitDataset.unpersist()
+
+  }
+
+  def processImplicit(date: LocalDate,
+                      partitions: Int,
+                      outputPath: String,
+                      dataVersion: Int,
+                      implicitSampleRate: Double,
+                      rawOutputPrefix: String,
+                      cleanOutputPrefix: String,
+                      inputTtdEnv: String,
+                      maybeOutputTtdEnv: Option[String] = None,
+                      modelFeatures: Seq[ModelFeature],
+                      svb: Dataset[Svb],
+                      pda: Dataset[Pda],
+                      dealDf: DataFrame)(implicit prometheus: PrometheusClient): Unit = {
+
+    val fpaBidsImpsImplicit = loadImplicitFpaBidsImpsData(date = date, ttdEnv = inputTtdEnv, implicitSampleRate = implicitSampleRate, filterInvalidLoss = true)
+//      .repartition(partitions)
+    var rawImplicit = fpaBidsImpsMbtwDiscrepancy(fpaBidsImpsImplicit, svb, pda, dealDf, empiricalDiscrepancy(fpaBidsImpsImplicit), Some(partitions))
+      .withColumn("mbtw", lit(null).cast(DoubleType))
+
+//    val bidsGaugeImplicit = prometheus.createGauge("raw_bids_count_imp", "count of raw bids (implicit)")
+//    bidsGaugeImplicit.set(rawImplicit.count())
+
+    val versionedOutputPath = s"$outputPath/v=$dataVersion"
+    val rawParquetPath = writeParquet(rawImplicit, versionedOutputPath, maybeOutputTtdEnv.getOrElse(inputTtdEnv), rawOutputPrefix, "implicit", date)
+
+    rawImplicit = spark.read.parquet(rawParquetPath)
 
     val cleanImplicitDataset = cleanImplicitData(rawImplicit).cache()
-    outputTypes.foreach(x =>
-      writeDatasetToS3(
-        trainingDataset = cleanImplicitDataset,
-        outputPath = versionedOutputPath,
-        ttdEnv = maybeOutputTtdEnv.getOrElse(inputTtdEnv),
-        outputPrefix = x,
-        dataName = "implicit",
-        date = date,
-        maybeModelFeatures = Some(modelFeatures),
-      )
-    )
+
+    cleanImplicitDataset
+      .select(modelFeatureCols(modelFeatures) ++ modelTargeCols(EXPLICIT_MODEL_TARGETS): _*)
+      .repartition(partitions)
+      .write
+      .mode(SaveMode.Overwrite)
+      .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/implicit/clean/${explicitDatePart(date)}")
+
+    cleanImplicitDataset
+      .select(intModelFeaturesCols(modelFeatures) ++ modelTargeCols(EXPLICIT_MODEL_TARGETS): _*)
+      .repartition(partitions)
+      .write
+      .mode(SaveMode.Overwrite)
+      .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/implicit/clean-hashed/${explicitDatePart(date)}")
+
+    cleanImplicitDataset
+      .select(intModelFeaturesCols(modelFeatures) ++ modelTargeCols(EXPLICIT_MODEL_TARGETS): _*)
+      .repartition(partitions)
+      .write
+      .option("header", "true")
+      .mode(SaveMode.Overwrite)
+      .csv(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/implicit/csv/${explicitDatePart(date)}")
+
+    cleanImplicitDataset.unpersist()
   }
+
 
   def withAuctionBidPrice(df: DataFrame): DataFrame = {
     df.withColumn(
@@ -111,7 +215,8 @@ object PlutusDataTransform extends Logger {
 
 
   def cleanExplicitData(rawDf: DataFrame, extremeValueThreshold: Double = .8): Dataset[TrainingData] = {
-    withAuctionBidPrice(rawDf).filter(col("mbtw").isNotNull)
+    withAuctionBidPrice(rawDf)
+      .filter(col("mbtw").isNotNull)
       .withColumn("valid",
         // there are cases that dont make sense - we choose to remove these for simplicity while we investigate further.
         // impressions where mbtw < Media Cost and mbtw is above a floor (if present)
@@ -192,67 +297,113 @@ object PlutusDataTransform extends Logger {
     ).drop(stratificationColumnName).as[BidsImpressionsSchema]
   }
 
-  private def writeDatasetToS3(trainingDataset: Dataset[TrainingData], outputPath: String, ttdEnv: String, outputPrefix: String, dataName: String, date: LocalDate, numParitions: Option[Int] = None, maybeModelFeatures: Option[Seq[ModelFeature]]): Unit = {
-    (outputPrefix, dataName) match {
-      case ("csv", "explicit") =>
-        trainingDataset.select(
-          intModelFeaturesCols(maybeModelFeatures.getOrElse(DEFAULT_MODEL_FEATURES)) ++ plutusTargetCols(EXPLICIT_MODEL_TARGETS): _*
-        ).repartition(
-          numParitions.getOrElse(DEFAULT_NUM_CSV_PARTITIONS)
-        ).write.option(
-          "header", "true"
-        ).mode(
-          SaveMode.Overwrite
-        ).csv(
-          s"$outputPath/$ttdEnv/$outputPrefix/$dataName/${explicitDatePart(date)}"
-        )
+  private def writeDatasetToS3(trainingDataset: Dataset[TrainingData], outputPath: String, ttdEnv: String,
+                               outputPrefix: String, labelType: String, date: LocalDate, maybeNumPartitions: Option[Int] = None,
+                               maybeModelFeatures: Option[Seq[ModelFeature]], hashedCols: Boolean = false): Unit = {
+
+
+    def fullOutputPath(hashedCols: Boolean): String = {
+      hashedCols match {
+        case true => s"$outputPath/$ttdEnv/$outputPrefix/$labelType/hashed/${explicitDatePart(date)}"
+        case false => s"$outputPath/$ttdEnv/$outputPrefix/$labelType/${explicitDatePart(date)}"
+
+      }
+    }
+
+    def selectColumns(dataName: String, hashed: Boolean): Array[Column] = {
+      (dataName, hashed) match {
+        case ("explicit", true) => intModelFeaturesCols(maybeModelFeatures.getOrElse(DEFAULT_MODEL_FEATURES)) ++ modelTargeCols(EXPLICIT_MODEL_TARGETS)
+        case ("implicit", true) => intModelFeaturesCols(maybeModelFeatures.getOrElse(DEFAULT_MODEL_FEATURES)) ++ modelTargeCols(IMPLICIT_MODEL_TARGETS)
+        case (_, false) => modelFeatureCols(maybeModelFeatures.getOrElse(DEFAULT_MODEL_FEATURES)) ++ modelTargeCols(IMPLICIT_MODEL_TARGETS)
+      }
+    }
+
+    (outputPrefix, labelType) match {
+
       case ("csv", "implicit") =>
         trainingDataset.select(
-          intModelFeaturesCols(maybeModelFeatures.getOrElse(DEFAULT_MODEL_FEATURES)) ++ plutusTargetCols(IMPLICIT_MODEL_TARGETS): _*
+          selectColumns(labelType, hashedCols): _*
         ).repartition(
-          numParitions.getOrElse(DEFAULT_NUM_CSV_PARTITIONS)
+          maybeNumPartitions.getOrElse(DEFAULT_NUM_CSV_PARTITIONS)
         ).write.option(
           "header", "true"
         ).mode(
           SaveMode.Overwrite
         ).csv(
-          s"$outputPath/$ttdEnv/$outputPrefix/$dataName/${explicitDatePart(date)}"
+          fullOutputPath(hashedCols)
         )
-      case (_, _) =>
-        trainingDataset
-          .repartition(
-            numParitions.getOrElse(DEFAULT_NUM_PARQUET_PARTITIONS)
-          ).write.mode(
+
+      case ("csv", "explicit") =>
+        trainingDataset.select(
+          selectColumns(labelType, hashedCols): _*
+        ).withColumn(
+          "sv",
+          col("SupplyVendor")
+        ).repartition(
+          maybeNumPartitions.getOrElse(DEFAULT_NUM_CSV_PARTITIONS)
+        ).write.option(
+          "header", "true"
+        ).partitionBy(
+          "sv"
+        ).mode(
+          SaveMode.Overwrite
+        ).csv(
+          fullOutputPath(hashedCols)
+        )
+      case (_, "explicit") =>
+        trainingDataset.select(
+          selectColumns(labelType, hashedCols): _*
+        ).withColumn(
+          "sv",
+          col("SupplyVendor")
+        ).repartition(
+          maybeNumPartitions.getOrElse(DEFAULT_NUM_PARQUET_PARTITIONS)
+        ).write.partitionBy(
+          "sv"
+        ).mode(
           SaveMode.Overwrite
         ).parquet(
-          s"$outputPath/$ttdEnv/$outputPrefix/$dataName/${explicitDatePart(date)}"
+          fullOutputPath(hashedCols)
+        )
+      case (_, _) =>
+        trainingDataset.select(
+          selectColumns(labelType, hashedCols): _*
+        ).repartition(
+          maybeNumPartitions.getOrElse(DEFAULT_NUM_PARQUET_PARTITIONS)
+        ).write.mode(
+          SaveMode.Overwrite
+        ).parquet(
+          fullOutputPath(hashedCols)
         )
     }
   }
 
-  def writeParquet(rawData: DataFrame, outputPath: String, ttdEnv: String, outputPrefix: String, dataName: String, date: LocalDate): Unit = {
+  def writeParquet(rawData: DataFrame, outputPath: String, ttdEnv: String, outputPrefix: String, labelType: String, date: LocalDate): String = {
     // note the date part is year=yyyy/month=m/day=d/
     rawData
       .write
       .mode(SaveMode.Overwrite)
       .option("compression", "snappy")
-      .parquet(s"$outputPath/$ttdEnv/$outputPrefix/$dataName/${explicitDatePart(date)}")
+      .parquet(s"$outputPath/$ttdEnv/$labelType/$outputPrefix/${explicitDatePart(date)}")
+
+    s"$outputPath/$ttdEnv/$labelType/$outputPrefix/${explicitDatePart(date)}"
   }
 
-  def loadMbtwData(date: LocalDate, svNames: Seq[String]): Dataset[MinimumBidToWinData] = {
-    loadCsvData[RawLostBidData](RawLostBidDataset.S3PATH, date, RawLostBidDataset.SCHEMA)
-      .filter(col("SupplyVendor").isin(svNames: _*))
-      // https://gitlab.adsrvr.org/thetradedesk/adplatform/-/blob/master/TTD/DB/Provisioning/TTD.DB.Provisioning.Primitives/LossReason.cs
-      //  it doesnt really matter what the loss code was as long as there is mbtw provided we should use it
-      // .filter((col("LossReason") === LOSS_CODE_WIN) || (col("LossReason") === LOSS_CODE_LOST_TO_HIGHER_BIDDER))
+  def loadMbtwData(date: LocalDate): (Dataset[MinimumBidToWinData], Seq[String]) = {
+    val rawMbtwData = loadCsvData[RawLostBidData](RawLostBidDataset.S3PATH, date, RawLostBidDataset.SCHEMA)
       .filter(col("mbtw") =!= 0.0)
-      .select(
-        col("BidRequestId").cast(StringType),
-        col("SupplyVendorLossReason").cast(IntegerType),
-        col("LossReason").cast(IntegerType),
-        col("WinCPM").cast(DoubleType),
-        col("mbtw").cast(DoubleType)
-      ).as[MinimumBidToWinData]
+
+    val mbtwData = rawMbtwData.select(
+      col("BidRequestId").cast(StringType),
+      col("SupplyVendorLossReason").cast(IntegerType),
+      col("LossReason").cast(IntegerType),
+      col("WinCPM").cast(DoubleType),
+      col("mbtw").cast(DoubleType)
+    ).as[MinimumBidToWinData]
+
+    val mbtwSupplyVendors = rawMbtwData.select("SupplyVendor").distinct().as[String].collect().toSeq
+
+    (mbtwData, mbtwSupplyVendors)
   }
 
   def loadInvalidLossData(date: LocalDate): Dataset[InvalidLossData] = {
@@ -283,8 +434,7 @@ object PlutusDataTransform extends Logger {
       .select(col("SupplyVendor"), col("SupplyVendorDealCode").alias("DealId"), col("IsVariablePrice"))
   }
 
-
-  def empiricalImpressions(fpaBidsImpressions: Dataset[BidsImpressionsSchema]): Dataset[EmpiricalDiscrepancy] = {
+  def empiricalDiscrepancy(fpaBidsImpressions: Dataset[BidsImpressionsSchema]): Dataset[EmpiricalDiscrepancy] = {
     fpaBidsImpressions
       .filter(col("IsImp"))
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
@@ -302,8 +452,8 @@ object PlutusDataTransform extends Logger {
   }
 
 
-  def fpaBidsImpsWithDiscrepancy(bidsImpressions: Dataset[BidsImpressionsSchema], svb: Dataset[Svb], pda: Dataset[Pda], dealDf: DataFrame, empDisDf: Dataset[EmpiricalDiscrepancy], maybeMbtw: Option[Dataset[MinimumBidToWinData]], partitions: Int): DataFrame = {
-    val data = bidsImpressions
+  def fpaBidsImpsMbtwDiscrepancy(bidsImpressions: Dataset[BidsImpressionsSchema], svb: Dataset[Svb], pda: Dataset[Pda], dealDf: DataFrame, empDisDf: Dataset[EmpiricalDiscrepancy], maybePartitions: Option[Int] = None): DataFrame = {
+    val df = bidsImpressions
       .alias("bids")
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
 
@@ -489,10 +639,9 @@ object PlutusDataTransform extends Logger {
         col("IsImp")
       )
 
-    maybeMbtw match {
-      case Some(mbtw) => data.join(mbtw, Seq("BidRequestId"), "left").repartition(partitions)
-      case None => data.withColumn("mbtw", lit(null).cast(DoubleType)).repartition(partitions)
+    maybePartitions match {
+      case Some(partitions) => df.repartition(partitions)
+      case None => df
     }
-
   }
 }

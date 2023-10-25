@@ -17,7 +17,6 @@ object PlutusDataProcessor extends Logger {
   val dataVersion = config.getInt("dataVersion", DATA_VERSION)
   val rawOutputPrefix = config.getString("outputPrefix", "raw")
   val cleanOutputPrefix = config.getString("outputPrefix", "clean")
-  val svNames = config.getStringSeq("svNames", Seq("google", "rubicon", "pubmatic"))
 
   val ttdEnv = config.getString("ttd.env", "dev")
   val outputTtdEnv = config.getStringOption("outputTtd.env")
@@ -35,7 +34,6 @@ object PlutusDataProcessor extends Logger {
   def main(args: Array[String]): Unit = {
     PlutusDataTransform.transform(
       date = date,
-      svNames = svNames,
       partitions = partitions,
       outputPath = outputPath,
       rawOutputPrefix = rawOutputPrefix,
