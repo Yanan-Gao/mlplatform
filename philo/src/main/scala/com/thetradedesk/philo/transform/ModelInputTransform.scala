@@ -5,7 +5,7 @@ import com.thetradedesk.geronimo.shared.{FLOAT_FEATURE_TYPE, INT_FEATURE_TYPE, S
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.philo.{flattenData, schema, shiftModUdf}
-import com.thetradedesk.philo.schema.{AdGroupPerformanceModelValueRecord, ClickTrackerRecord, ModelInputRecord}
+import com.thetradedesk.philo.schema.{AdGroupPerformanceModelValueRecord, AdGroupRecord, ClickTrackerRecord, ModelInputRecord}
 import com.thetradedesk.spark.sql.SQLFunctions._
 import org.apache.spark.sql.{Column, DataFrame, Dataset, SparkSession}
 import org.apache.spark.sql.functions.{col, concat_ws, lit, when, xxhash64}
@@ -21,6 +21,7 @@ object ModelInputTransform extends Logger {
   // return training input based on bidimps combined dataset
   // if filterresults = true, adgroupfilter must be provided & output will be filtered.
   def transform(clicks: Dataset[ClickTrackerRecord],
+                adgroup: Dataset[AdGroupRecord],
                 bidsImpsDat: Dataset[BidsImpressionsSchema],
                 performanceModelValues: Dataset[AdGroupPerformanceModelValueRecord],
                 adGroupFilter: Option[Dataset[AdGroupFilterRecord]],
@@ -30,7 +31,7 @@ object ModelInputTransform extends Logger {
 
     val (clickLabels, bidsImpsPreJoin) = hashBidAndClickLabels(clicks, bidsImpsDat)
 
-    val joinedData = joinDatasets(clickLabels, bidsImpsPreJoin, performanceModelValues, adGroupFilter, countryFilter, filterResults)
+    val joinedData = joinDatasets(clickLabels, adgroup, bidsImpsPreJoin, performanceModelValues, adGroupFilter, countryFilter, filterResults)
 
     val flatten = flattenData(joinedData.toDF, flatten_set)
       .selectAs[ModelInputRecord]
@@ -67,6 +68,7 @@ object ModelInputTransform extends Logger {
   }
 
   def joinDatasets(clickLabels: DataFrame,
+                   adgroup: Dataset[AdGroupRecord],
                    bidsImpsPreJoin: DataFrame,
                    performanceModelValues: Dataset[AdGroupPerformanceModelValueRecord],
                    adGroupIdFilter: Option[Dataset[AdGroupFilterRecord]] = None,
@@ -74,6 +76,7 @@ object ModelInputTransform extends Logger {
                    filterResults: Boolean = false): DataFrame = {
     bidsImpsPreJoin.join(clickLabels, Seq("BidRequestIdHash"), "leftouter")
       .join(performanceModelValues, Seq("AdGroupId"), "leftouter")
+      .join(adgroup, Seq("AdGroupId"), "leftouter")
       .withColumn("label", when(col("label").isNull, 0).otherwise(1))
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
       .withColumn("IsTestAdGroup", when(col("ModelType") === 1 && col("ModelVersion") == 1, 1).otherwise(0))
