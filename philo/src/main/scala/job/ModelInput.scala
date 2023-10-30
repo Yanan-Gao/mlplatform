@@ -2,7 +2,7 @@ package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{loadModelFeaturesSplit, loadParquetData}
-import com.thetradedesk.philo.schema.{AdGroupPerformanceModelValueDataset, AdGroupPerformanceModelValueRecord, ClickTrackerDataset, ClickTrackerRecord}
+import com.thetradedesk.philo.schema.{AdGroupPerformanceModelValueDataset, AdGroupPerformanceModelValueRecord, AdGroupDataset, AdGroupRecord, ClickTrackerDataset, ClickTrackerRecord}
 import com.thetradedesk.philo.transform.ModelInputTransform
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -38,6 +38,7 @@ object ModelInput {
 
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](brBfLoc, date, source = Some("geronimo"))
     val clicks = loadParquetData[ClickTrackerRecord](ClickTrackerDataset.CLICKSS3, date)
+    val adgroup = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, date)
     val performanceModelValues = loadParquetData[AdGroupPerformanceModelValueRecord](AdGroupPerformanceModelValueDataset.AGPMVS3, date);
 
     val modelFeaturesSplit = loadModelFeaturesSplit(featuresJson)
@@ -58,8 +59,8 @@ object ModelInput {
       }
 
       val (filteredData, labelCounts) = filterBy match {
-        case "AdGroupId" => ModelInputTransform.transform(clicks, bidsImpressions, performanceModelValues, Some(filterByData.as[AdGroupFilterRecord]), None, true, modelFeatures)
-        case "Country" => ModelInputTransform.transform(clicks, bidsImpressions, performanceModelValues, None, Some(filterByData.as[CountryFilterRecord]), true, modelFeatures)
+        case "AdGroupId" => ModelInputTransform.transform(clicks, adgroup,  bidsImpressions, performanceModelValues, Some(filterByData.as[AdGroupFilterRecord]), None, true, modelFeatures)
+        case "Country" => ModelInputTransform.transform(clicks, adgroup, bidsImpressions, performanceModelValues, None, Some(filterByData.as[CountryFilterRecord]), true, modelFeatures)
         case _ => throw new Exception(f"Cannot filter by property ${filterBy}")
       }
 
@@ -68,7 +69,7 @@ object ModelInput {
     }
 
     if (!filterResults) {
-      val (trainingData, labelCounts) = ModelInputTransform.transform(clicks, bidsImpressions,performanceModelValues, None, None, false, modelFeatures)
+      val (trainingData, labelCounts) = ModelInputTransform.transform(clicks, adgroup, bidsImpressions,performanceModelValues, None, None, false, modelFeatures)
       //write to csv to dev for production job
       writeData(trainingData, outputPath, writeEnv, outputPrefix, date, partitions, false)
       writeData(labelCounts, outputPath, writeEnv, "metadata", date, 1, false)
