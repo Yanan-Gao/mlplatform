@@ -13,6 +13,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.storage.StorageLevel
 
@@ -87,6 +88,18 @@ object GenerateTrainSetRevenue extends KongmingBaseJob {
       .drop("ConfigValue", "ConfigKey")
       .join(broadcast(adGroupPolicy.select("ConfigValue", "ConfigKey", "DataAggKey", "DataAggValue")), Seq("DataAggKey","DataAggValue"), "inner")
 
+    val window = Window.partitionBy($"DataAggValue")
+    // cap on the valid positives (where Revenue>1)
+    val cappedPositive = aggregatedPositiveSet.filter($"Revenue">lit(1))
+      .withColumn("LogRevenue", log(col("Revenue")))
+      .withColumn("MeanLogRevenue", mean($"LogRevenue").over(window))
+      .withColumn("StdLogRevenue", stddev($"LogRevenue").over(window))
+      .withColumn("RevenueCap", exp(col("MeanLogRevenue") + lit(3) * col("StdLogRevenue")))
+      .withColumn("Revenue", least($"Revenue", $"RevenueCap").cast("decimal(10,2)"))
+      .drop("LogRevenue", "MeanLogRevenue", "StdLogRevenue", "RevenueCap")
+    val aggregatedPositiveSetPreprocessed = cappedPositive.union(
+      aggregatedPositiveSet.filter($"Revenue"<=lit(1)))
+
     // 1. exclude positives from negative; balance neg:pos; remain pos and neg that have both train and val
     val negativeExcludePos = aggregatedNegativeSet.join(
       broadcast(aggregatedPositiveSet.select("DataAggValue").distinct), Seq("DataAggValue"), "left_semi")
@@ -94,7 +107,7 @@ object GenerateTrainSetRevenue extends KongmingBaseJob {
 
 
     val balancedTrainset = balancePosNeg(
-      aggregatedPositiveSet.selectAs[TrainSetRecordVerbose],
+      aggregatedPositiveSetPreprocessed.selectAs[TrainSetRecordVerbose],
       negativeExcludePos.selectAs[TrainSetRecord],
       desiredNegOverPos,
       maxPositiveCount,

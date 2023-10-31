@@ -57,7 +57,7 @@ object ConversionDataDailyTransform {
               "AttributedEventLogFileId", "AttributedEventIntId1", "AttributedEventIntId2"))
           .join(broadcast(campaignDS.select($"CampaignId", $"CustomROASTypeId")), Seq("CampaignId"), "inner")
           .filter($"CustomROASTypeId" > lit(0))
-          .withColumn("CustomRevenue", $"CustomRevenue".cast("decimal"))
+          .withColumn("CustomRevenue", $"CustomRevenue".cast("decimal(10,2)"))
           .withColumn(
             "RevenueRank",
             // only retain the largest CustomRevenue for each conversion
