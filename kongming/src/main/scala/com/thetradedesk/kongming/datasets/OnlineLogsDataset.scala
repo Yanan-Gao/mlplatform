@@ -29,12 +29,16 @@ object OnlineLogsDataset {
     val dir = s"${s3Path}/${dateStr}"
     val filePaths = FSUtils.listFiles(dir, recursive = true)(spark).filter(x => x.contains(modelName.toLowerCase())).map(y => dir + "/" + y)
 
-    val logs = spark.read.format("com.databricks.spark.csv")
-      .option("sep", "\t")
-      .option("header", "false")
-      .load(filePaths: _*)
-      .toDF("Timestamp", "AvailableBidRequestId", "Features", "OnlineModelScore", "ModelVersion", "FeaturesVersion", "DynamicFeatures")
+    if (filePaths.length > 0) {
+      val logs = spark.read.format("com.databricks.spark.csv")
+        .option("sep", "\t")
+        .option("header", "false")
+        .load(filePaths: _*)
+        .toDF("Timestamp", "AvailableBidRequestId", "Features", "OnlineModelScore", "ModelVersion", "FeaturesVersion", "DynamicFeatures")
 
-    logs.selectAs[OnlineLogsRecord]
+      logs.selectAs[OnlineLogsRecord]
+    } else {
+      spark.emptyDataset[OnlineLogsRecord]
+    }
   }
 }
