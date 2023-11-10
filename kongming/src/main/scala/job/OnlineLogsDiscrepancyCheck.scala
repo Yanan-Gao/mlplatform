@@ -1,8 +1,9 @@
 package job
 
+import com.google.protobuf.Field.Cardinality
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.geronimo.shared.schemas.{BidRequestDataset, ModelFeature}
-import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, GERONIMO_DATA_SOURCE, intModelFeaturesCols, loadParquetData}
+import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, GERONIMO_DATA_SOURCE, intModelFeaturesCols, loadParquetData, shiftModUdf}
 import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, modelFeatures, rawModelFeatureCols, rawModelFeatureNames, seqFields}
 import com.thetradedesk.kongming.datasets.{BidsImpressionsSchema, OnlineLogsDataset, OnlineLogsDiscrepancyDataset, OnlineLogsDiscrepancyRecord}
 import com.thetradedesk.kongming.{KongmingApplicationName, LogsDiscrepancyCountGaugeName, RunTimeGaugeName, date, getJobNameWithExperimentName}
@@ -12,7 +13,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.streaming.records.rtb.bidrequest.BidRequestRecord
 import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.functions.{broadcast, col, concat, lit, struct, to_json, udf}
+import org.apache.spark.sql.functions.{broadcast, col, concat, lit, struct, to_json, udf, xxhash64}
 import io.circe.parser.parse
 import io.circe.Decoder
 import org.apache.spark.sql.expressions.UserDefinedFunction
@@ -49,7 +50,7 @@ object OnlineLogsParser extends Serializable {
 }
 
 object OnlineLogsDiscrepancyCheck {
-  def getUnsampledBidImpressions(date: LocalDate, joinCols: Seq[String]): DataFrame = {
+  def getUnsampledBidImpressions(date: LocalDate): DataFrame = {
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
     val rawBidImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
@@ -59,8 +60,6 @@ object OnlineLogsDiscrepancyCheck {
       .withColumn("DeviceType", col("DeviceType.value"))
       .withColumn("OperatingSystem", col("OperatingSystem.value"))
       .withColumn("RenderingContext", col("RenderingContext.value"))
-      .withColumn("Latitude", (col("Latitude") + lit(90.0)) / lit(180.0))
-      .withColumn("Longitude", (col("Longitude") + lit(180.0)) / lit(360.0))
       .na.fill(0, Seq("Latitude", "Longitude"))
 
     val contextualFeatures = ContextualTransform.generateContextualFeatureTier1(
@@ -71,7 +70,7 @@ object OnlineLogsDiscrepancyCheck {
 
     val cols = bidImpressions.columns.map(_.toLowerCase).toSet
     val features = modelFeatures.filter(x => cols.contains(x.name.toLowerCase) && !seqFields.contains(x))
-    val joinFeatures = joinCols.map(x => ModelFeature(x, "", None, 1))
+    val joinFeatures = Seq("BidRequestId").map(x => ModelFeature(x, "", None, 1))
 
     val tensorflowSelectionTabular = intModelFeaturesCols(features) ++ rawModelFeatureCols(joinFeatures) ++ aliasedModelFeatureCols(seqFields)
     bidImpressions.select(tensorflowSelectionTabular:_*)
@@ -126,7 +125,7 @@ object OnlineLogsDiscrepancyCheck {
     val modelName = config.getStringRequired("modelName")
     val precision = config.getDouble("precision", 0.0001)
 
-    val unsampledBidImpressions = getUnsampledBidImpressions(date, Seq("BidRequestId"))
+    val unsampledBidImpressions = getUnsampledBidImpressions(date)
 
     val bidRequests = getBidRequests(date)
 
@@ -138,6 +137,7 @@ object OnlineLogsDiscrepancyCheck {
       .cache
 
     val bidImpressionLogs = unsampledBidImpressions.join(broadcast(bidRequestToImpression), Seq("BidRequestId"), "left_semi")
+      .cache
 
     val ignoreCols = Seq("AdFormat") // Online Logs have incorrect ad format. We can ignore it temporarily until online logs are fixed
     val logDiscrepancy = getDiscrepancy(onlineLogs.join(bidRequestToImpression, Seq("AvailableBidRequestId"), "left"), bidImpressionLogs, precision, ignoreCols)
