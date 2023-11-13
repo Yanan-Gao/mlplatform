@@ -42,6 +42,7 @@ final case class AudienceModelInputRecord(
                                                   InternetConnectionType: Option[Int],
                                                   @FeatureDesc("Browser", "int", 16)
                                                   Browser: Option[Int],
+                                                  ContextualCategoriesTier1: Array[Int],
                                                   AdWidthInPixels: Double,
                                                   AdHeightInPixels: Double,
 
