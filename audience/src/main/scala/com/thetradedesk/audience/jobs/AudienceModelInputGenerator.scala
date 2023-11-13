@@ -5,7 +5,6 @@ import com.thetradedesk.audience.datasets.CrossDeviceVendor.CrossDeviceVendor
 import com.thetradedesk.audience.datasets.SeedTagOperations.dataSourceCheck
 import com.thetradedesk.audience.datasets.{CrossDeviceVendor, ExtendedSeedReadableDataset, _}
 import com.thetradedesk.audience.sample.WeightSampling.{getLabels, negativeSampleUDFGenerator, positiveSampleUDFGenerator, zipAndGroupUDFGenerator}
-import com.thetradedesk.audience.transform.ModelFeatureTransform
 import com.thetradedesk.audience.utils.S3Utils
 import com.thetradedesk.audience.{dateTime, seedCoalesceAfterFilter, shouldConsiderTDID3, ttdEnv}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
@@ -19,7 +18,7 @@ import org.apache.spark.sql.{DataFrame, Row, SaveMode}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
-
+import com.thetradedesk.audience.transform._
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -219,7 +218,8 @@ abstract class AudienceModelInputGenerator(name: String) {
         'cos_minute_day,
         'CampaignId,
         'TDID,
-        'LogEntryTime
+        'LogEntryTime,
+        'ContextualCategories,
       )
       // they saved in struct type
       .withColumn("OperatingSystemFamily", 'OperatingSystemFamily("value"))
@@ -238,7 +238,13 @@ abstract class AudienceModelInputGenerator(name: String) {
       .withColumn("Longitude", when('Longitude.isNotNull, 'Longitude).otherwise(0))
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .cache()
+      
+    val bidImpressionsContextual = ContextualTransform.generateContextualFeatureTier1(
+      bidsImpressionsLong.select('BidRequestId, 'ContextualCategories).dropDuplicates("BidRequestId").as[ContextualTransform.ContextualData]
+    ).cache()
 
+    val bidsImpressionsFeatures = bidsImpressionsLong.drop("ContextualCategories").join(bidImpressionsContextual, Seq("BidRequestId"), "left")
+    
     val sampledBidsImpressionsKeys = ApplyNTouchOnSameTdid(
       bidsImpressionsLong.select('BidRequestId, 'TDID, 'CampaignId, 'LogEntryTime), 
       Ntouch, tdidTouchSelection)
@@ -246,7 +252,7 @@ abstract class AudienceModelInputGenerator(name: String) {
 
     val uniqueTDIDs = sampledBidsImpressionsKeys.select('TDID).distinct().cache()
 
-    (sampledBidsImpressionsKeys, bidsImpressionsLong, uniqueTDIDs)
+    (sampledBidsImpressionsKeys, bidsImpressionsFeatures, uniqueTDIDs)
   }
 
   def ApplyNTouchOnSameTdid(sampledBidsImpressionsKeys: DataFrame, Ntouch: Int, tdidTouchSelection: Int = 0): DataFrame = {
