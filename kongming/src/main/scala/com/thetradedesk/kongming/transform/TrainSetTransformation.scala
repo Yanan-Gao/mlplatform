@@ -4,11 +4,10 @@ import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImp
 import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, FLOAT_FEATURE_TYPE, GERONIMO_DATA_SOURCE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, loadParquetData, shiftModUdf}
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
-import com.thetradedesk.kongming.{date, multiLevelJoinWithPolicy}
+import com.thetradedesk.kongming.{CustomGoalTypeId, IncludeInCustomGoal, ROIGoalTypeId, date, multiLevelJoinWithPolicy, task}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-
 import org.apache.spark.sql.{Column, Dataset}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
@@ -110,6 +109,34 @@ object TrainSetTransformation {
                                        Threshold: Int
                                      )
 
+  case class TrackingTagRecord(
+                                TrackingTagId: String,
+                                ReportingColumnId: Int,
+                                ConfigKey: String,
+                                ConfigValue: String,
+                              )
+
+  def getValidTrackingTags(
+                            endDate: LocalDate,
+                            adGroupPolicy: Dataset[_],
+                            // adGroupDS: Dataset[AdGroupRecord],
+                          ): Dataset[TrackingTagRecord] = {
+    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(endDate, isInclusive = true)
+    val campaignDS = CampaignDataSet().readLatestPartitionUpTo(endDate, true)
+    val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartitionUpTo(endDate, true)
+
+    val ccrcProcessed = ccrc
+      .join(broadcast(campaignDS.select($"CampaignId", col(CustomGoalTypeId.get(task).get))), Seq("CampaignId"), "left")
+      .filter((col(CustomGoalTypeId.get(task).get) === 0 && $"ReportingColumnId" === 1) || (col(CustomGoalTypeId.get(task).get) > 0 && col(IncludeInCustomGoal.get(task).get)))
+      .filter($"Weight" > lit(0))
+
+    adGroupPolicy
+      .join(broadcast(adGroupDS), adGroupPolicy("ConfigValue") === adGroupDS("AdGroupId"), "inner")
+      .select("CampaignId", "ConfigKey", "ConfigValue", "DataAggKey", "DataAggValue")
+      .join(ccrcProcessed, Seq("CampaignId"), "inner")
+      .select($"TrackingTagId", $"ReportingColumnId", $"ConfigKey", $"ConfigValue")
+      .selectAs[TrackingTagRecord]
+  }
 
   def getWeightsForTrackingTags(
                                  date: LocalDate,

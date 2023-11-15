@@ -5,6 +5,7 @@ import com.thetradedesk.geronimo.shared.schemas.BidFeedbackDataset
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, seqFields}
+import com.thetradedesk.kongming.transform.TrainSetTransformation.getValidTrackingTags
 import com.thetradedesk.kongming.transform._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.datalake.ClickTrackerDataSetV5
@@ -83,8 +84,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
                                     )
 
   def getEventsAttributions(adGroupPolicy: Dataset[_], adGroups: Dataset[AdGroupRecord], scoreDate: LocalDate)(implicit prometheus: PrometheusClient): Dataset[EventsAttribution] = {
-    val pixelWeight = TrainSetTransformation.getWeightsForTrackingTags(scoreDate, adGroupPolicy.selectAs[AdGroupPolicyRecord], adGroups)
-      .select("TrackingTagId", "ReportingColumnId", "ConfigKey", "ConfigValue")
+    val validTags = getValidTrackingTags(scoreDate, adGroupPolicy)
 
     val (attributedEvent, attributedEventResult) = OfflineAttributionTransform.getAttributedEventAndResult(adGroupPolicy.selectAs[AdGroupPolicyRecord], date, lookBack = Config.AttributionLookBack + Config.ImpressionLookBack - 1)
     val attributedEventResultOfInterest = multiLevelJoinWithPolicy[AttributedEventRecordWithPolicyKeys](attributedEvent, adGroupPolicy, "inner")
@@ -94,7 +94,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
         Seq("ConversionTrackerLogFileId", "ConversionTrackerIntId1", "ConversionTrackerIntId2", "AttributedEventLogFileId", "AttributedEventIntId1", "AttributedEventIntId2"),
         "inner")
       .join(
-        pixelWeight.withColumnRenamed("ReportingColumnId", "CampaignReportingColumnId"),
+        validTags.withColumnRenamed("ReportingColumnId", "CampaignReportingColumnId"),
         Seq("ConfigKey", "ConfigValue", "TrackingTagId", "CampaignReportingColumnId"),
         "inner")
       .filter($"AttributedEventLogEntryTime".isNotNull && ((unix_timestamp($"ConversionTrackerLogEntryTime") - unix_timestamp($"AttributedEventLogEntryTime")) <= 604800))

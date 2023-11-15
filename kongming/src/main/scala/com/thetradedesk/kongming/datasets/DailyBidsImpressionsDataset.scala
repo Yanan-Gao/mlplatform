@@ -56,6 +56,10 @@ case class BidsImpressionsSchema(
 
                                   // contextual cols
                                   ContextualCategories: Option[Seq[Long]],
+
+                                  // uncomment for online test backtesting set generation
+                                  // ExpectedValue: Option[BigDecimal],
+                                  // RPacingValue: Option[BigDecimal],
                                 )
 
 case class DailyBidsImpressionsDataset(experimentOverride: Option[String] = None) extends KongMingDataset[BidsImpressionsSchema](
