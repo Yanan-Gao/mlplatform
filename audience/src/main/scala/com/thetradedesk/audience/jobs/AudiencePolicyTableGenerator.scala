@@ -74,6 +74,7 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
     val seedProcessLowerThreshold = config.getLong("seedProcessLowerThreshold", 2000)
     val seedProcessUpperThreshold = config.getLong("seedProcessUpperThreshold", 100000000)
     val seedExtendGraphUpperThreshold = config.getLong("seedExtendGraphUpperThreshold", 3000000)
+    val activeUserRatio = config.getDouble("activeUserRatio", 0.4)
   }
 
   private val policyTableDateFormatter = DateTimeFormatter.ofPattern(audienceVersionDateFormat)
@@ -230,6 +231,21 @@ abstract class AudiencePolicyTableGenerator(model: Model) {
       updateSyntheticId(dateTime.toLocalDate, policyTable, previousPolicyTable, recentVersionOption.get.toLocalDate)
     }
   }
+
+  protected def activeUserRatio(dateTime: LocalDateTime) : Double = {
+    val recentVersionOption = if (Config.seedMetaDataRecentVersion != null) Some(LocalDateTime.parse(Config.seedMetaDataRecentVersion.split("=")(1), DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSS")).toLocalDate.atStartOfDay())
+    else availablePolicyTableVersions.find(_.isBefore(dateTime))
+
+    if (recentVersionOption.isEmpty || Config.policyTableResetSyntheticId) {
+        Config.activeUserRatio
+    } else {
+      val previousPolicyTable = AudienceModelPolicyReadableDataset(model)
+        .readSinglePartition(recentVersionOption.get)(spark).cache()
+      previousPolicyTable
+        .where('CrossDeviceVendorId === lit(CrossDeviceVendor.None.id))
+        .agg(sum('ActiveSize) / sum('Size)).collect()(0).getDouble(0)
+    }
+  }
 }
 
 object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM) {
@@ -275,7 +291,7 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM) {
       .cache()
 
     val policyMetaTable = spark.read.parquet(seedDataFullPath)
-      .select('SeedId, 'TargetingDataId, 'Count, 'Path)
+      .select('SeedId, 'TargetingDataId, coalesce('Count, lit(-1)).alias("Count"), 'Path)
       .withColumn("TargetingDataId", coalesce('TargetingDataId, lit(-1)))
       .where('Count >= lit(Config.seedProcessLowerThreshold) && 'Count <= lit(Config.seedProcessUpperThreshold))
       .collect()
@@ -333,40 +349,50 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM) {
                 date,
                 saveMode = SaveMode.Overwrite)
 
-            // count tdids from different source
-            val count = fullSeedData
-              // .filter(samplingFunction('TDID))
-              .join(uniqueTDIDs, Seq("TDID"), "inner")
-              .agg(
-                sum(dataSourceCheck('tag, CrossDeviceVendor.None)),
-                sum(dataSourceCheck('tag, CrossDeviceVendor.IAV2Person)),
-                sum(dataSourceCheck('tag, CrossDeviceVendor.IAV2Household))
-              ).collect()
+            var data: Seq[(Long, Int)] = Seq()
+            // when the seed count is huge , use estimated size
+            if (record.getAs[Long]("Count") > Config.seedExtendGraphUpperThreshold) {
+              data ++= Seq(
+                (
+                  (record.getAs[Long]("Count") * activeUserRatio(dateTime)).toLong,
+                  CrossDeviceVendor.None.id
+                ))
+            } else {
+              // count tdids from different source
+              val count = fullSeedData
+                // .filter(samplingFunction('TDID))
+                .join(uniqueTDIDs, Seq("TDID"), "inner")
+                .agg(
+                  sum(dataSourceCheck('tag, CrossDeviceVendor.None)),
+                  sum(dataSourceCheck('tag, CrossDeviceVendor.IAV2Person)),
+                  sum(dataSourceCheck('tag, CrossDeviceVendor.IAV2Household))
+                ).collect()
+
+              data ++= Seq(
+                (
+                  count(0).getLong(0) * (userDownSampleBasePopulation / userDownSampleHitPopulation),
+                  CrossDeviceVendor.None.id
+                ))
+
+              if (count(0).getLong(1) > 0) {
+                data ++= Seq(
+                  (
+                    (count(0).getLong(0) + count(0).getLong(1)) * (userDownSampleBasePopulation / userDownSampleHitPopulation),
+                    CrossDeviceVendor.IAV2Person.id)
+                )
+              }
+
+              if (count(0).getLong(2) > 0) {
+                data ++= Seq(
+                  (
+                    (count(0).getLong(0) + count(0).getLong(2)) * (userDownSampleBasePopulation / userDownSampleHitPopulation),
+                    CrossDeviceVendor.IAV2Household.id)
+                )
+              }
+            }
 
             seedData.unpersist()
             fullSeedData.unpersist()
-
-            var data = Seq(
-              (
-                count(0).getLong(0) * (userDownSampleBasePopulation / userDownSampleHitPopulation),
-                CrossDeviceVendor.None.id
-              ))
-
-            if (count(0).getLong(1) > 0) {
-              data ++= Seq(
-                (
-                (count(0).getLong(0) + count(0).getLong(1)) * (userDownSampleBasePopulation / userDownSampleHitPopulation),
-                CrossDeviceVendor.IAV2Person.id)
-              )
-            }
-
-            if (count(0).getLong(2) > 0) {
-              data ++= Seq(
-                (
-                  (count(0).getLong(0) + count(0).getLong(2)) * (userDownSampleBasePopulation / userDownSampleHitPopulation),
-                  CrossDeviceVendor.IAV2Household.id)
-              )
-            }
 
             Some(
               data
@@ -385,7 +411,7 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM) {
             }
           }
         }
-      ).toArray.flatten.reduce(_ unionAll _)
+      ).seq.toArray.flatten.reduce(_ unionAll _)
       .withColumnRenamed("SeedId", "SourceId")
       .repartition(Config.seedRepartitionNum, 'SourceId)
       .withColumn("Source", lit(DataSource.Seed.id))
