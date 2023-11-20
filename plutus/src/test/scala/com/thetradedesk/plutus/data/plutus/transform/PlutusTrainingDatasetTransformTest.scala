@@ -7,7 +7,7 @@ import org.scalatest.matchers.should.Matchers._
 import java.time.LocalDate
 import com.thetradedesk.plutus.data.transform.TrainingDataTransform
 
-class TrainingDataTransformTest extends AnyFlatSpec {
+class PlutusTrainingDatasetTransformTest extends AnyFlatSpec {
 
   "inputDataPaths" should "create all the input paths" in {
     val result = TrainingDataTransform.inputDataPaths(

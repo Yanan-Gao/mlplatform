@@ -10,10 +10,10 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import java.time.LocalDate
 
 
-object PlutusDataProcessor extends Logger {
+object PlutusExplicitDataProcessor extends Logger {
 
   val date = config.getDate("date", LocalDate.now())
-  val outputPath = config.getString("outputPath", "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=2/")
+  val outputPath = config.getString("outputPath", "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/")
   val dataVersion = config.getInt("dataVersion", DATA_VERSION)
   val rawOutputPrefix = config.getString("outputPrefix", "raw")
   val cleanOutputPrefix = config.getString("outputPrefix", "clean")
@@ -21,18 +21,18 @@ object PlutusDataProcessor extends Logger {
   val ttdEnv = config.getString("ttd.env", "dev")
   val outputTtdEnv = config.getStringOption("outputTtd.env")
 
-  val partitions = config.getInt("partitions", 2000)
-  val implicitSampleRate = config.getDouble("implicitSampleRate", 0.1)
+  val partitions = config.getInt("partitions", 200)
 
-  implicit val prometheus = new PrometheusClient("Plutus", "TrainingDataEtl")
-  val jobDurationTimer = prometheus.createGauge("plutus_data_proc_etl_runtime", "Time to process 1 day of bids, impressions, lost bid data").startTimer()
+  implicit val prometheus = new PrometheusClient("Plutus", "TrainingDataExEtl")
+
+  val jobDurationTimer = prometheus.createGauge("plutus_data_proc_ex_etl_runtime", "Time to process 1 day of bids, impressions, lost bid data").startTimer()
 
   // Features json S3 location
   val featuresJson = config.getString("featuresJson", "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/dev/schemas/features.json")
 
 
   def main(args: Array[String]): Unit = {
-    PlutusDataTransform.transform(
+    PlutusDataTransform.processExplicit(
       date = date,
       partitions = partitions,
       outputPath = outputPath,
@@ -40,7 +40,6 @@ object PlutusDataProcessor extends Logger {
       cleanOutputPrefix = cleanOutputPrefix,
       inputTtdEnv = ttdEnv,
       dataVersion = dataVersion,
-      implicitSampleRate = implicitSampleRate,
       maybeOutputTtdEnv = outputTtdEnv,
       featuresJson = featuresJson,
     )

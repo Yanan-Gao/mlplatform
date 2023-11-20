@@ -39,57 +39,6 @@ package object data {
   val LOSS_CODE_LOST_TO_HIGHER_BIDDER = 102
 
   val VALID_LOSS_CODES = Seq(LOSS_CODE_WIN, LOSS_CODE_LOST_TO_HIGHER_BIDDER)
-
-  val DEFAULT_MODEL_FEATURES: Array[ModelFeature] = Array(
-    ModelFeature("SupplyVendor", STRING_FEATURE_TYPE, Some(102), 0),
-    ModelFeature("DealId", STRING_FEATURE_TYPE, Some(5002), 0),
-    ModelFeature("SupplyVendorPublisherId", STRING_FEATURE_TYPE, Some(15002), 0),
-    ModelFeature("AspSvpId", STRING_FEATURE_TYPE, Some(15002), 0),
-    ModelFeature("SupplyVendorSiteId", STRING_FEATURE_TYPE, Some(102), 0),
-    ModelFeature("Site", STRING_FEATURE_TYPE, Some(350002), 0),
-    ModelFeature("AdFormat", STRING_FEATURE_TYPE, Some(102), 0),
-    ModelFeature("ImpressionPlacementId", STRING_FEATURE_TYPE, Some(102), 0),
-    ModelFeature("Country", STRING_FEATURE_TYPE, Some(252), 0),
-    ModelFeature("Region", STRING_FEATURE_TYPE, Some(4002), 0),
-    ModelFeature("Metro", STRING_FEATURE_TYPE, Some(302), 0),
-    ModelFeature("City", STRING_FEATURE_TYPE, Some(75002), 0),
-    ModelFeature("Zip", STRING_FEATURE_TYPE, Some(90002), 0),
-    ModelFeature("DeviceMake", STRING_FEATURE_TYPE, Some(1002), 0),
-    ModelFeature("DeviceModel", STRING_FEATURE_TYPE, Some(10002), 0),
-    ModelFeature("RequestLanguages", STRING_FEATURE_TYPE, Some(502), 0),
-
-    // these are already integers
-    ModelFeature("AliasedSupplyPublisherId", INT_FEATURE_TYPE, Some(15002), 0),
-    ModelFeature("RenderingContext", INT_FEATURE_TYPE, Some(6), 0),
-    ModelFeature("UserHourOfWeek", INT_FEATURE_TYPE, Some(24 * 7 + 2), 0),
-    ModelFeature("AdsTxtSellerType", INT_FEATURE_TYPE, Some(7), 0),
-    ModelFeature("PublisherType", INT_FEATURE_TYPE, Some(7), 0),
-    ModelFeature("DeviceType", INT_FEATURE_TYPE, Some(9), 0),
-    ModelFeature("OperatingSystemFamily", INT_FEATURE_TYPE, Some(10), 0),
-    ModelFeature("Browser", INT_FEATURE_TYPE, Some(20), 0),
-
-    ModelFeature("sin_hour_day", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("cos_hour_day", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("sin_minute_hour", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("cos_minute_hour", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("sin_hour_week", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("cos_hour_week", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("latitude", FLOAT_FEATURE_TYPE, None, 0),
-    ModelFeature("longitude", FLOAT_FEATURE_TYPE, None, 0)
-  )
-
-  val EXPLICIT_MODEL_TARGETS: Array[ModelTarget] = Array(
-    ModelTarget("IsImp", "float", nullable = false),
-    ModelTarget("AuctionBidPrice", "float", nullable = false),
-    ModelTarget("RealMediaCost", "float", nullable = true),
-    ModelTarget("mbtw", "float", nullable = false),
-    ModelTarget("FloorPriceInUSD", "float", nullable = true),
-  )
-
-  val IMPLICIT_MODEL_TARGETS: Array[ModelTarget] = Array(
-    ModelTarget("IsImp", "float", nullable = false),
-  )
-
   val MISSING_DATA_VALUE: Int = -1
 
   def plutusFeaturesCols(inputColAndDims: Seq[ModelFeature]): Array[Column] = {
