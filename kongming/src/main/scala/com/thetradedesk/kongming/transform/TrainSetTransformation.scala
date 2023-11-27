@@ -4,7 +4,7 @@ import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImp
 import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, FLOAT_FEATURE_TYPE, GERONIMO_DATA_SOURCE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, loadParquetData, shiftModUdf}
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
-import com.thetradedesk.kongming.{CustomGoalTypeId, IncludeInCustomGoal, ROIGoalTypeId, date, multiLevelJoinWithPolicy, task}
+import com.thetradedesk.kongming.{CustomGoalTypeId, IncludeInCustomGoal, date, multiLevelJoinWithPolicy, task}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
