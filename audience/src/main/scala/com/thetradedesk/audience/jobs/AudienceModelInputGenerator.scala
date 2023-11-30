@@ -96,6 +96,35 @@ object AudienceModelInputGeneratorJob {
         saveMode = SaveMode.Overwrite
       )
 
+      AudienceModelInputDataset(AudienceModelInputGeneratorConfig.model.toString, s"${typePolicyTable._1._1}_${typePolicyTable._1._2}").writePartition(
+        resultSet.filter('SubFolder === lit(SubFolder.Train.id)).as[AudienceModelInputRecord],
+        dateTime,
+        subFolderKey = Some(AudienceModelInputGeneratorConfig.subFolder),
+        subFolderValue = Some("Train_parquet"),
+        format = Some("parquet"),
+        saveMode = SaveMode.Overwrite
+      )
+
+      val calculateStats = udf((array: Seq[Float]) => {
+        val totalElements = array.size
+        val onesCount = array.sum
+        val zerosCount = totalElements - onesCount
+
+        (totalElements, onesCount, zerosCount)
+      })
+
+      val resultDF = resultSet.filter('SubFolder === lit(SubFolder.Train.id)).as[AudienceModelInputRecord]
+        .withColumn("total", calculateStats(col("Targets")).getItem("_1"))
+        .withColumn("pos", calculateStats(col("Targets")).getItem("_2"))
+        .withColumn("neg", calculateStats(col("Targets")).getItem("_3"))
+      resultDF.cache()
+      val total = resultDF.select(sum("total")).cache().head().getLong(0)
+      val pos_ratio = resultDF.select(sum("pos")).head().getDouble(0) / total
+      //val pos_neg_ratio = pos_ratio/(1 - pos_ratio)
+      MetadataDataset().writeRecord(total, dateTime,"metadata", "Count")
+      MetadataDataset().writeRecord(pos_ratio, dateTime,"metadata", "PosRatio")
+      resultDF.unpersist()
+
       resultSet.unpersist()
     }
     )
