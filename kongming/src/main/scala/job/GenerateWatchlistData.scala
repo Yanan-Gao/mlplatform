@@ -42,7 +42,6 @@ object GenerateWatchlistData extends KongmingBaseJob {
       .withColumnRenamed("AdGroupId", "AdGroupIdStr").withColumnRenamed("AdGroupIdInt", "AdGroupId")
       .withColumnRenamed("CampaignId", "CampaignIdStr").withColumnRenamed("CampaignIdInt", "CampaignId")
       .withColumnRenamed("AdvertiserId", "AdvertiserIdStr").withColumnRenamed("AdvertiserIdInt", "AdvertiserId")
-      .selectAs[AdGroupPolicyMappingRecord]
 
     // get train & validation
     val splits = Seq("train", "val")
