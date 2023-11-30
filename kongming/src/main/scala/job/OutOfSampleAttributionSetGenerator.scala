@@ -97,7 +97,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
         validTags.withColumnRenamed("ReportingColumnId", "CampaignReportingColumnId"),
         Seq("ConfigKey", "ConfigValue", "TrackingTagId", "CampaignReportingColumnId"),
         "inner")
-      .filter($"AttributedEventLogEntryTime".isNotNull && ((unix_timestamp($"ConversionTrackerLogEntryTime") - unix_timestamp($"AttributedEventLogEntryTime")) <= 604800))
+      .filter($"AttributedEventLogEntryTime".isNotNull && ((unix_timestamp($"ConversionTrackerLogEntryTime") - unix_timestamp($"AttributedEventLogEntryTime")) <= Config.AttributionLookBack*86400))
 
     val bidFeedBack = multiLevelJoinWithPolicy[AttributionBidFeedbackRecord](
       loadParquetData[AttributionBidFeedbackRecord](BidFeedbackDataset.BFS3, scoreDate.plusDays(Config.ImpressionLookBack), lookBack = Some(Config.ImpressionLookBack - 1)),
@@ -138,7 +138,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
       .withColumn("AttributionGroupValue", when('DataAggKey === lit("AdvertiserId"), 'CampaignId).otherwise('DataAggValue))
       .drop("AdGroupId", "CampaignId")
 
-    val scoringSet = DailyOfflineScoringDataset().readRange(scoreDate.plusDays(1), scoreDate.plusDays(Config.ImpressionLookBack))
+    val scoringSet = DailyOfflineScoringDataset().readRange(scoreDate.plusDays(1), scoreDate.plusDays(Config.ImpressionLookBack), isInclusive=true)
     val impressionsToScore = multiLevelJoinWithPolicy[BidRequestsWithAttributionGroup](
       scoringSet.withColumnRenamed("AdGroupId", "AdGroupIdInt").withColumnRenamed("AdGroupIdStr", "AdGroupId")
         .withColumnRenamed("CampaignId", "CampaignIdInt").withColumnRenamed("CampaignIdStr", "CampaignId")
