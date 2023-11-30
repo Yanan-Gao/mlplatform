@@ -128,7 +128,6 @@ object TrainSetTransformation {
     val ccrcProcessed = ccrc
       .join(broadcast(campaignDS.select($"CampaignId", col(CustomGoalTypeId.get(task).get))), Seq("CampaignId"), "left")
       .filter((col(CustomGoalTypeId.get(task).get) === 0 && $"ReportingColumnId" === 1) || (col(CustomGoalTypeId.get(task).get) > 0 && col(IncludeInCustomGoal.get(task).get)))
-      .filter($"Weight" > lit(0))
 
     adGroupPolicy
       .join(broadcast(adGroupDS), adGroupPolicy("ConfigValue") === adGroupDS("AdGroupId"), "inner")
