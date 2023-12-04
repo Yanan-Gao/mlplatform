@@ -36,6 +36,8 @@ package object audience {
 
   val seedCoalesceAfterFilter = config.getInt("seedCoalesceAfterFilter", 4)
 
+  val dryRun = config.getBoolean("dryRun", false)
+
   def shouldConsiderTDID(symbol: Symbol) = {
     shouldTrackTDID(symbol) && substring(symbol, 9, 1) === lit("-") && userIsInSampleUDF(symbol, lit(userDownSampleBasePopulation), lit(userDownSampleHitPopulation))
   }

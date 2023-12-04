@@ -4,7 +4,10 @@ import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
 import com.thetradedesk.audience.datasets.CrossDeviceVendor.CrossDeviceVendor
 import com.thetradedesk.audience.datasets.SeedTagOperations.dataSourceCheck
 import com.thetradedesk.audience.datasets.{CrossDeviceVendor, ExtendedSeedReadableDataset, _}
+import com.thetradedesk.audience.jobs.AudienceModelInputGeneratorJob.prometheus
 import com.thetradedesk.audience.sample.WeightSampling.{getLabels, negativeSampleUDFGenerator, positiveSampleUDFGenerator, zipAndGroupUDFGenerator}
+import com.thetradedesk.audience.transform.ContextualTransform.generateContextualFeatureTier1
+import com.thetradedesk.audience.transform.ExtendArrayTransforms.seedIdToSyntheticIdMapping
 import com.thetradedesk.audience.utils.S3Utils
 import com.thetradedesk.audience.{dateTime, seedCoalesceAfterFilter, shouldConsiderTDID3, ttdEnv}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
@@ -14,32 +17,40 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.spark.sql.{DataFrame, Row, SaveMode}
+import org.apache.spark.sql.{Column, DataFrame, Row, SaveMode}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
 import com.thetradedesk.audience.transform._
+
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 object AudienceModelInputGeneratorJob {
+  val prometheus = new PrometheusClient("AudienceModelJob", "AudienceModelInputGeneratorJob")
+  val jobRunningTime = prometheus.createGauge(s"audience_etl_job_running_time", "AudienceModelInputGeneratorJob running time", "model", "date")
+  val jobProcessSize = prometheus.createGauge(s"audience_etl_job_process_size", "AudienceModelInputGeneratorJob process size", "model", "date", "data_source", "cross_device_vendor")
+
   object SubFolder extends Enumeration {
     type SubFolder = Value
     val Val, Holdout, Train = Value
   }
 
   def main(args: Array[String]): Unit = {
+    val start = System.currentTimeMillis()
     runETLPipeline()
+    jobRunningTime.labels(AudienceModelInputGeneratorConfig.model.toString.toLowerCase, dateTime.toLocalDate.toString).set(System.currentTimeMillis() - start)
+    prometheus.pushMetrics()
   }
 
   def runETLPipeline(): Unit = {
-    val policyTable = clusterTargetingData(AudienceModelInputGeneratorConfig.model, AudienceModelInputGeneratorConfig.supportedDataSources, 
-    AudienceModelInputGeneratorConfig.seedSizeLowerScaleThreshold, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold)
+    val policyTable = clusterTargetingData(AudienceModelInputGeneratorConfig.model, AudienceModelInputGeneratorConfig.supportedDataSources,
+      AudienceModelInputGeneratorConfig.seedSizeLowerScaleThreshold, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold)
     val date = dateTime.toLocalDate
 
     policyTable.foreach(typePolicyTable => {
       val dataset = {
-        AudienceModelInputGeneratorConfig.model match {
+        val result = AudienceModelInputGeneratorConfig.model match {
           case Model.AEM =>
             typePolicyTable match {
               case ((DataSource.SIB, CrossDeviceVendor.None), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
@@ -56,6 +67,11 @@ object AudienceModelInputGeneratorJob {
             }
           case _ => throw new Exception(s"unsupported Model[${AudienceModelInputGeneratorConfig.model}]")
         }
+        jobProcessSize
+          .labels(AudienceModelInputGeneratorConfig.model.toString.toLowerCase, dateTime.toLocalDate.toString, typePolicyTable._1._1.toString, typePolicyTable._1._2.toString)
+          .set(typePolicyTable._2.length)
+
+        result
       }
 
       val resultSet = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](dataset)
@@ -96,7 +112,6 @@ object AudienceModelInputGeneratorJob {
         saveMode = SaveMode.Overwrite
       )
 
-
       val calculateStats = udf((array: Seq[Float]) => {
         val totalElements = array.size
         val onesCount = array.sum
@@ -115,8 +130,6 @@ object AudienceModelInputGeneratorJob {
       MetadataDataset().writeRecord(total, dateTime,"metadata", "Count")
       MetadataDataset().writeRecord(pos_ratio, dateTime,"metadata", "PosRatio")
       resultDF.unpersist()
-
-      resultSet.unpersist()
     }
     )
   }
@@ -143,7 +156,7 @@ object AudienceModelInputGeneratorJob {
 abstract class AudienceModelInputGenerator(name: String) {
   // set the default sampling ratio as 10%
   val samplingFunction = shouldConsiderTDID3(config.getInt(s"userDownSampleHitPopulation${name}", default = 100000), config.getString(s"saltToSampleUser${name}", default = "0BgGCE"))(_)
-  val prometheus = new PrometheusClient("AudienceModel", name)
+
   val mappingFunctionGenerator =
     (dictionary: Map[Any, Int]) =>
       udf((values: Array[Any]) =>
@@ -174,7 +187,7 @@ abstract class AudienceModelInputGenerator(name: String) {
           .join(
             sampledBidsImpressionsKeys, Seq("TDID"), "inner"),
         Seq("TDID", "BidRequestId"), "inner")
-//      .where(stringEqUdf('BidRequestId, 'BidRequestId2))
+    //      .where(stringEqUdf('BidRequestId, 'BidRequestId2))
 
     if (AudienceModelInputGeneratorConfig.recordIntermediateResult) {
       filteredLabels.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/filteredLabels/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
@@ -184,7 +197,7 @@ abstract class AudienceModelInputGenerator(name: String) {
     
     }
 
-    refineResult(roughResult)
+    extendFeatures(refineResult(roughResult))
   }
 
   def refineResult(roughResult: DataFrame): DataFrame = {
@@ -192,6 +205,10 @@ abstract class AudienceModelInputGenerator(name: String) {
      *   https://atlassian.thetradedesk.com/confluence/display/EN/ETL+and+model+training+pipline+based+on+SIB+dataset
      */
     roughResult
+  }
+
+  def extendFeatures(refinedResult: DataFrame): DataFrame = {
+    generateContextualFeatureTier1(refinedResult)
   }
 
   def generateLabels(date: LocalDate, policyTable: Array[AudienceModelPolicyRecord]): DataFrame
@@ -258,13 +275,7 @@ abstract class AudienceModelInputGenerator(name: String) {
       .withColumn("Longitude", when('Longitude.isNotNull, 'Longitude).otherwise(0))
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .cache()
-      
-    val bidImpressionsContextual = ContextualTransform.generateContextualFeatureTier1(
-      bidsImpressionsLong.select('BidRequestId, 'ContextualCategories).dropDuplicates("BidRequestId").as[ContextualTransform.ContextualData]
-    ).cache()
 
-    val bidsImpressionsFeatures = bidsImpressionsLong.drop("ContextualCategories").join(bidImpressionsContextual, Seq("BidRequestId"), "left")
-    
     val sampledBidsImpressionsKeys = ApplyNTouchOnSameTdid(
       bidsImpressionsLong.select('BidRequestId, 'TDID, 'CampaignId, 'LogEntryTime), 
       Ntouch, tdidTouchSelection)
@@ -272,7 +283,7 @@ abstract class AudienceModelInputGenerator(name: String) {
 
     val uniqueTDIDs = sampledBidsImpressionsKeys.select('TDID).distinct().cache()
 
-    (sampledBidsImpressionsKeys, bidsImpressionsFeatures, uniqueTDIDs)
+    (sampledBidsImpressionsKeys, bidsImpressionsLong, uniqueTDIDs)
   }
 
   def ApplyNTouchOnSameTdid(sampledBidsImpressionsKeys: DataFrame, Ntouch: Int, tdidTouchSelection: Int = 0): DataFrame = {
@@ -428,12 +439,20 @@ object AEMConversionInputGenerator extends AudienceModelInputGenerator("AEMConve
  * using the dataset provided by seed service
  */
 case class RSMSeedInputGenerator(crossDeviceVendor: CrossDeviceVendor) extends AudienceModelInputGenerator("RSMSeed") {
-  lazy val groupColumn : String = crossDeviceVendor match {
-    case CrossDeviceVendor.None => "TDID"
-    case CrossDeviceVendor.IAV2Person => "personId"
-    case CrossDeviceVendor.IAV2Household => "householdId"
+  lazy val groupColumn: Column = crossDeviceVendor match {
+    case CrossDeviceVendor.None => col("TDID")
+    case CrossDeviceVendor.IAV2Person => col("personId")
+    case CrossDeviceVendor.IAV2Household => col("householdId")
     case _ => throw new RuntimeException(s"cross device vendor ${crossDeviceVendor} is not supportted!")
   }
+
+  lazy val seedIdsColumn: Column = crossDeviceVendor match {
+    case CrossDeviceVendor.None => col("SeedIds")
+    case CrossDeviceVendor.IAV2Person => array_union(col("SeedIds"), col("PersonGraphSeedIds"))
+    case CrossDeviceVendor.IAV2Household => array_union(col("SeedIds"), col("HouseholdGraphSeedIds"))
+    case _ => throw new RuntimeException(s"cross device vendor ${crossDeviceVendor} is not supportted!")
+  }
+
   /**
    * read seed data from s3
    * seed data should be SeedId to TDID
@@ -444,28 +463,21 @@ case class RSMSeedInputGenerator(crossDeviceVendor: CrossDeviceVendor) extends A
    */
   override def generateLabels(date: LocalDate, policyTable: Array[AudienceModelPolicyRecord]):
   DataFrame = {
-    policyTable.par.map(
-      record => {
-        val seedDataset = ExtendedSeedReadableDataset(record.SourceId)
-        val sourcePath = s"${seedDataset.basePath}/date=${date.format(seedDataset.dateFormatter)}/_SUCCESS"
-        if (FSUtils.fileExists(sourcePath)(spark)) {
-          Some(seedDataset
-            .readPartition(date)(spark)
-            .where(dataSourceCheck('tag, crossDeviceVendor) === lit(1) || dataSourceCheck('tag, CrossDeviceVendor.None) === lit(1))
-            .select('TDID, col(groupColumn).alias("GroupId"))
-            .filter(samplingFunction('TDID))
-            .coalesce(seedCoalesceAfterFilter)
-            .withColumn("SyntheticId", lit(record.SyntheticId))
-            .select('TDID, 'SyntheticId, 'GroupId))
-        } else {
-          println(s"Seed data ${sourcePath} doesn't exist")
-          None
-        }
-      }
-    ).toArray.flatten.reduce(_ unionAll _)
+    val seedData = AggregatedSeedReadableDataset()
+      .readPartition(date)(spark)
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
-      .groupBy('TDID, 'GroupId)
-      .agg(collect_list('SyntheticId) as "PositiveSyntheticIds")
+      .cache()
+
+    val seedIdToSyntheticId = policyTable
+      .filter(e => e.CrossDeviceVendorId == crossDeviceVendor.id)
+      .map(e => (e.SourceId, e.SyntheticId))
+      .toMap
+
+    val mapping = seedIdToSyntheticIdMapping(seedIdToSyntheticId)
+
+    seedData
+      .select('TDID, groupColumn.alias("GroupId"), mapping(seedIdsColumn).alias("PositiveSyntheticIds"))
+      .where(size('PositiveSyntheticIds) > 0)
       .cache()
   }
 }

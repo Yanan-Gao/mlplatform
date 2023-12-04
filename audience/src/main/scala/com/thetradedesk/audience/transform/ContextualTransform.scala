@@ -2,7 +2,7 @@ package com.thetradedesk.audience.transform
 
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.datasets._
-import org.apache.spark.sql.Dataset
+import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.functions._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -76,8 +76,8 @@ object ContextualTransform {
   }
 
   def generateContextualFeatureTier1(
-                                      contextualData: Dataset[ContextualData]
-                                    ): Dataset[ContextualFeatureTier1] = {
+                                      contextualData: DataFrame
+                                    ): DataFrame = {
     /* ContextualFeature V2: collect tier1 category list and generate features
        1. ContextualCategoriesTier1
        2. ContextualCategoryNumberTier1
@@ -104,7 +104,7 @@ object ContextualTransform {
         "HasContextualCategoryTier1",
         when(isnull($"ContextualCategoriesTier1"), 0).otherwise(1))
       .withColumn("ContextualCategoryLengthTier1", $"ContextualCategoryNumberTier1" / lit(CARDINALITY_TIER1_CATEGORY.toDouble))
-      .selectAs[ContextualFeatureTier1]
+      .drop("ContextualCategories")
   }
 
   def seq2String(list: Seq[Long]): String = {
