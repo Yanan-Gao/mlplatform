@@ -49,7 +49,7 @@ case class SampledCrossDeviceGraphDataset() extends
 
 object CrossDeviceGraphUtil {
   def readGraphData[T <: Product : Manifest](date: LocalDate, dataset: LightReadableDataset[T])(implicit spark: SparkSession): DataFrame = {
-    for (i <- 0 to 7) {
+    for (i <- 0 to 13) {
       val sourcePath = s"${dataset.basePath}/${date.minusDays(i).format(dataset.crossDeviceDateFormatter)}/_SUCCESS"
 
       if (FSUtils.fileExists(sourcePath)(spark)) {
