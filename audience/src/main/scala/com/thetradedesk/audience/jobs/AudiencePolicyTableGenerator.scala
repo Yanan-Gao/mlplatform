@@ -485,7 +485,7 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM, p
 
     val groupIdToSeedIds = seedWithGraph
       .groupBy('groupId)
-      .agg(collect_list('SeedIds).alias("SeedIds"))
+      .agg(collect_set('SeedIds).alias("SeedIds"))
       .select('groupId, flatten('SeedIds).alias("SeedIds"))
 
     val graphGroup = graph
