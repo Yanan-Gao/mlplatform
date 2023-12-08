@@ -10,6 +10,7 @@ object S3Utils {
     queryCurrentDataVersions(refinePath(s3Bucket), refinePath(s3Path)).mkString(",")
   }
 
+  // search for the latest files
   def queryCurrentDataVersions(s3Bucket: String, s3Path: String): Iterator[String] = {
     val content = Try(Source.fromInputStream(s3Client.getObject(refinePath(s3Bucket), refinePath(s3Path) + "/_CURRENT").getObjectContent))
     content match {
