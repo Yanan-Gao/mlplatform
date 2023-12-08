@@ -1,8 +1,9 @@
 package job
 
-import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
+import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.plutus.data.{explicitDateTimePart, paddedDatePart}
 import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.core.S3Roots
 import com.thetradedesk.spark.listener.WriteListener
 import com.thetradedesk.spark.util.TTDConfig.{config, environment}
@@ -31,7 +32,7 @@ object PcResultsGeronimoJob {
     // sample outputPath: s3://ttd-identity/datapipeline/test/pcresultsgeronimo/v=2/date=20231025/hour=1
     val outputPath = f"${S3Roots.IDENTITY_ROOT}/${environment}/pcresultsgeronimo/v=2/date=${paddedDatePart(dateTime.toLocalDate)}/hour=${dateTime.getHour}"
 
-    val geronimoDataset = spark.read.parquet(geronimoPath)
+    val geronimoDataset = spark.read.parquet(geronimoPath).drop("matchedSegments")
     val pcResultsDataset = spark.read.parquet(pcResultsPath).drop("LogEntryTime", "AdgroupId", "SupplyVendor", "PrivateContractId")
 
     val absentCount = pcResultsDataset.join(geronimoDataset, Seq("BidRequestId"), "leftanti").count()
