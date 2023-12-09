@@ -30,6 +30,7 @@ object ModelInputProcessor extends Logger {
 
   val numCsvPartitions = config.getInt("numCsvPartitions", 20)
   val onlyWriteSingleDay = config.getBoolean("onlyWriteSingleDay", false)
+  val onlyWriteMaxIntMod = config.getBoolean("onlyWriteMaxIntMod", false)
 
   // Features json S3 location
   val featuresJson = config.getString("featuresJson", "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/dev/schemas/features.json")

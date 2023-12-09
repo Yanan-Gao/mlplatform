@@ -1,6 +1,6 @@
 package com.thetradedesk.plutus.data.transform
 
-import job.ModelInputProcessor.{numCsvPartitions, onlyWriteSingleDay, outputPath, prometheus}
+import job.ModelInputProcessor.{numCsvPartitions, onlyWriteMaxIntMod, onlyWriteSingleDay, outputPath, prometheus}
 import com.thetradedesk.geronimo.shared.{intModelFeaturesCols, loadModelFeatures}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -11,7 +11,7 @@ import org.apache.spark.sql.functions.{coalesce, col}
 
 import java.time.LocalDate
 import com.thetradedesk.plutus.data.schema.{CleanInputData, MetaData, ModelTarget}
-import com.thetradedesk.plutus.data.{plutusDataPath, plutusDataPaths}
+import com.thetradedesk.plutus.data.{plutusDataPath, plutusDataPaths, plutusFeaturesCols}
 
 object TrainingDataTransform {
   val STRING_FEATURE_TYPE = "string"
@@ -45,6 +45,7 @@ object TrainingDataTransform {
     targets.map(t => col(t.name).alias(t.name)).toArray
   }
 
+
   val trainCount = prometheus.createGauge("train_row_count", "rows of train data", labelNames = "ssp")
   val validationCount = prometheus.createGauge("validation_row_count", "rows of validation data", labelNames = "ssp")
   val testCount = prometheus.createGauge("test_row_count", "ros of test data", labelNames = "ssp")
@@ -64,16 +65,16 @@ object TrainingDataTransform {
     
     // convert to int (hash)
     val selectionTabular = intModelFeaturesCols(modelFeatures) ++ modelTargetCols(modelTargets)
+    val selectionTabMaxMod = plutusFeaturesCols(modelFeatures, 3) ++ modelTargetCols(modelTargets)
 
     // single day
     val singleDay = loadInputData(Seq(paths.head))
 
-    singleDay.select(selectionTabular: _*)
-      .coalesce(numCsvPartitions)
-      .write
-      .option("header", "true")
-      .mode(SaveMode.Overwrite)
-      .csv(plutusDataPath(s3Path, ttdEnv, prefix = "singledayprocessed", svName, endDate))
+    if (!onlyWriteMaxIntMod) {
+      writeSingleDayProcessed(s3Path, ttdEnv, svName, endDate, singleDay, selectionTabular, "singledayprocessed")
+    }
+    writeSingleDayProcessed(s3Path, ttdEnv, svName, endDate, singleDay, selectionTabMaxMod, "singledayprocessedmaxint")
+
 
     if (!onlyWriteSingleDay) {
 
@@ -128,6 +129,15 @@ object TrainingDataTransform {
       x => formats.map(
         y => (x, y))
     )
+  }
+
+  def writeSingleDayProcessed(s3Path: String, ttdEnv: String, svName: Option[String], endDate: LocalDate, data: Dataset[CleanInputData], selectionTab: Array[Column], prefix: String) = {
+    data.select(selectionTab: _*)
+      .coalesce(numCsvPartitions)
+      .write
+      .option("header", "true")
+      .mode(SaveMode.Overwrite)
+      .csv(plutusDataPath(s3Path, ttdEnv, prefix = prefix, svName, endDate))
   }
 
   def loadInputData(paths: Seq[String]): Dataset[CleanInputData] = {
