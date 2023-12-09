@@ -39,14 +39,25 @@ package object data {
   val LOSS_CODE_LOST_TO_HIGHER_BIDDER = 102
 
   val VALID_LOSS_CODES = Seq(LOSS_CODE_WIN, LOSS_CODE_LOST_TO_HIGHER_BIDDER)
-  val MISSING_DATA_VALUE: Int = -1
 
-  def plutusFeaturesCols(inputColAndDims: Seq[ModelFeature]): Array[Column] = {
+  val MISSING_DATA_VALUE: Int = 0
+
+  def plutusFeaturesCols(inputColAndDims: Seq[ModelFeature], shift: Int): Array[Column] = {
     inputColAndDims.map {
-      case ModelFeature(name, STRING_FEATURE_TYPE, _, _) => when(col(name).isNotNullOrEmpty, shiftModMaxValueUDF(xxhash64(col(name)))).otherwise(MISSING_DATA_VALUE).alias(name)
-      case ModelFeature(name, INT_FEATURE_TYPE, _, _) => when(col(name).isNotNull, shiftModMaxValueUDF(col(name))).otherwise(MISSING_DATA_VALUE).alias(name)
+      case ModelFeature(name, STRING_FEATURE_TYPE, _, _) => when(col(name).isNotNullOrEmpty, shiftModMaxValueUDF(xxhash64(col(name)), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
+      case ModelFeature(name, INT_FEATURE_TYPE, _, _) => when(col(name).isNotNull, shiftModMaxValueUDF(col(name), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
       case ModelFeature(name, FLOAT_FEATURE_TYPE, _, _) => col(name).alias(name)
     }.toArray
+  }
+
+  def shiftMod(hashValue: Long, cardinality: Int, shift: Int = 1): Int = {
+    val modulo = math.min(cardinality - shift, Int.MaxValue - shift)
+    val index = (hashValue % modulo).toInt
+
+    // Adjusting shift if index is negative
+    val adjustedShift = if (index < 0) shift + modulo else shift
+
+    index + adjustedShift
   }
 
   def modelTargeCols(targets: Seq[ModelTarget]): Array[Column] = {
@@ -57,8 +68,8 @@ package object data {
     features.map(t => col(t.name).alias(t.name)).toArray
   }
 
-  def shiftModMaxValueUDF: UserDefinedFunction = udf((hashValue: Long) => {
-    shiftMod(hashValue, Int.MaxValue)
+  def shiftModMaxValueUDF: UserDefinedFunction = udf((hashValue: Long, shift: Int) => {
+    shiftMod(hashValue, Int.MaxValue, shift)
   })
 
   def nonNegativeModulo(hashValue: Long, maybeCardinality: Option[Int] = None): Int = {
@@ -75,7 +86,7 @@ package object data {
   }
 
   def modMaxValueUDF: UserDefinedFunction = udf((hashValue: Long) => {
-    shiftMod(hashValue, Int.MaxValue)
+    shiftMod(hashValue, (Int.MaxValue))
   })
 
   /// We want the stage stat to be > prodstat - margin.
