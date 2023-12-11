@@ -3,7 +3,6 @@ package com.thetradedesk.kongming.transform
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, BidsImpressionsSchema, DailyOfflineScoringRecord, UnifiedAdGroupDataSet}
 import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
-import com.thetradedesk.kongming.{multiLevelJoinWithPolicy, preFilteringWithPolicy}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.{Column, Dataset}

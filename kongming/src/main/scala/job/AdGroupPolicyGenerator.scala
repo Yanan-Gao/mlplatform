@@ -97,9 +97,18 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
                                 AttributionImpressionLookbackWindowInSeconds: Int
                                )
 
-  case class StaticPolicyTable(AdGroupId: String,
-                               CampaignId: String,
+  case class SkeletalPolicyTable(CampaignId: String,
+                                 AdvertiserId: String,
+                                 ConfigKey: String,
+                                 ConfigValue: String,
+                                 AttributionClickLookbackWindowInSeconds: Int,
+                                 AttributionImpressionLookbackWindowInSeconds: Int
+                                )
+
+  case class StaticPolicyTable(CampaignId: String,
                                AdvertiserId: String,
+                               ConfigKey: String,
+                               ConfigValue: String,
                                AttributionClickLookbackWindowInSeconds: Int,
                                AttributionImpressionLookbackWindowInSeconds: Int,
                                MinDailyConvCount: Int,
@@ -112,9 +121,10 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
                                OldTrainingDataEpoch: Int
                               )
 
-  case class PolicyTableWithDailyCounts(AdGroupId: String,
-                                        CampaignId: String,
+  case class PolicyTableWithDailyCounts(CampaignId: String,
                                         AdvertiserId: String,
+                                        ConfigKey: String,
+                                        ConfigValue: String,
                                         AttributionClickLookbackWindowInSeconds: Int,
                                         AttributionImpressionLookbackWindowInSeconds: Int,
                                         MinDailyConvCount: Int,
@@ -126,14 +136,14 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
                                         FetchOlderTrainingData: Boolean,
                                         OldTrainingDataEpoch: Int,
                                         established: Boolean,
-                                        DailyAdGroupCount: Double,
                                         DailyCampaignCount: Double,
                                         DailyAdvertiserCount: Double
                                        )
 
-  case class PolicyTableWithAggregationLevel(AdGroupId: String,
-                                             CampaignId: String,
+  case class PolicyTableWithAggregationLevel(CampaignId: String,
                                              AdvertiserId: String,
+                                             ConfigKey: String,
+                                             ConfigValue: String,
                                              AttributionClickLookbackWindowInSeconds: Int,
                                              AttributionImpressionLookbackWindowInSeconds: Int,
                                              MinDailyConvCount: Int,
@@ -145,7 +155,6 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
                                              FetchOlderTrainingData: Boolean,
                                              OldTrainingDataEpoch: Int,
                                              established: Boolean,
-                                             DailyAdGroupCount: Double,
                                              DailyCampaignCount: Double,
                                              DailyAdvertiserCount: Double,
                                              DataAggKey: String,
@@ -153,9 +162,10 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
                                              DailyDataAggGroupCount: Double
                                             )
 
-  case class PolicyTableWithLastTouchCount(AdGroupId: String,
-                                           CampaignId: String,
+  case class PolicyTableWithLastTouchCount(CampaignId: String,
                                            AdvertiserId: String,
+                                           ConfigKey: String,
+                                           ConfigValue: String,
                                            AttributionClickLookbackWindowInSeconds: Int,
                                            AttributionImpressionLookbackWindowInSeconds: Int,
                                            MinDailyConvCount: Int,
@@ -167,7 +177,6 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
                                            FetchOlderTrainingData: Boolean,
                                            OldTrainingDataEpoch: Int,
                                            established: Boolean,
-                                           DailyAdGroupCount: Double,
                                            DailyCampaignCount: Double,
                                            DailyAdvertiserCount: Double,
                                            DataAggKey: String,
@@ -181,52 +190,23 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
       .withColumn("DataAggKey", when('established && 'DailyCampaignCount < lit(Config.AggregateOnAdvertiserThreshold), lit("AdvertiserId")).otherwise("CampaignId"))
       .withColumn("DataAggValue", new ConditionalSetting(
         new CategoricalRule[String]('DataAggKey, "CampaignId", 'CampaignId),
-        new CategoricalRule[String]('DataAggKey, "AdGroupId", 'AdGroupId),
         new CategoricalRule[String]('DataAggKey, "AdvertiserId", 'AdvertiserId)).get())
-      .withColumn("DailyDataAggGroupCount", when('DataAggKey === lit("AdGroupId"), 'DailyAdGroupCount).when('DataAggKey === lit("CampaignId"), 'DailyCampaignCount).when('DataAggKey === lit("AdvertiserId"), 'DailyAdvertiserCount).otherwise(0))
+      .withColumn("DailyDataAggGroupCount", when('DataAggKey === lit("CampaignId"), 'DailyCampaignCount).when('DataAggKey === lit("AdvertiserId"), 'DailyAdvertiserCount).otherwise(0))
       .selectAs[PolicyTableWithAggregationLevel]
   }
 
-  def addLastTouchCount(policy: Dataset[PolicyTableWithAggregationLevel], yesterdaysPolicy: Dataset[AdGroupPolicyRecord]): Dataset[PolicyTableWithLastTouchCount] = {
+  def addLastTouchCount(policy: Dataset[PolicyTableWithAggregationLevel], yesterdaysPolicy: Dataset[AdGroupPolicyRecord], adgroups: Dataset[PolicyTableAdGroup]): Dataset[PolicyTableWithLastTouchCount] = {
+    val yesterdaysPolicyWithCampaign = yesterdaysPolicy
+      .join(adgroups.select('AdGroupId.as("ConfigValue"), 'CampaignId), Seq("ConfigValue"), "inner")
+      .select('CampaignId, 'DataAggKey, 'DataAggValue, lit(true).as("dataAggLevelPresentYesterday"))
+
     policy
-      .join(yesterdaysPolicy.select('DataAggKey, 'DataAggValue, 'DataAggKey.as("DataAggKeyYesterday")), Seq("DataAggKey", "DataAggValue"), "left")
-      .withColumn("LastTouchCount", when('established && ('DailyDataAggGroupCount < lit(Config.LastTouchCountRareThreshold)) && 'DataAggKeyYesterday === 'DataAggKey,
+      .join(yesterdaysPolicyWithCampaign, Seq("CampaignId", "DataAggKey", "DataAggValue"), "left")
+      .withColumn("LastTouchCount", when('established && ('DailyDataAggGroupCount < lit(Config.LastTouchCountRareThreshold)) && 'dataAggLevelPresentYesterday.isNotNull,
           Config.LastTouchCountRareLastTouchCount).otherwise(
           Config.GlobalLastTouchCount
         ))
       .selectAs[PolicyTableWithLastTouchCount]
-  }
-
-  def removeSuperfluousAdGroups(date: LocalDate, policy: Dataset[AdGroupPolicyRecord], yesterdaysPolicy: Dataset[AdGroupPolicyRecord], adgroups: Dataset[PolicyTableAdGroup]): (Dataset[AdGroupPolicyRecord], Dataset[AdGroupPolicyMappingRecord]) = {
-    // Yesterday's policy table. We try to reuse the config value unless it is no longer active or if its aggregation level has changed
-    val yesterdaysPolicyRenamd = yesterdaysPolicy.select("ConfigKey", "ConfigValue", "DataAggKey", "DataAggValue")
-      .join(policy.distinct(), Seq("ConfigKey", "ConfigValue", "DataAggKey", "DataAggValue"), "left_semi") // don't try to maintain config item if its aggregation level changed
-      .withColumnRenamed("ConfigKey", "PolicyConfigKey")
-      .withColumnRenamed("ConfigValue", "PolicyConfigValue")
-
-    // Pick the same config value for existing groups, and a random one for new groups
-    val decisions = policy.join(yesterdaysPolicyRenamd, Seq("DataAggKey", "DataAggValue"), "left")
-      .withColumn("rank", rank().over(Window.partitionBy('DataAggKey, 'DataAggValue).orderBy('ConfigKey, 'ConfigValue)))
-      .withColumn("picked", when('PolicyConfigKey.isNotNull && 'PolicyConfigValue.isNotNull,
-        'ConfigKey === 'PolicyConfigKey && 'ConfigValue === 'PolicyConfigValue).otherwise(
-        'rank === lit(1)
-      ))
-
-    val newPolicyTable = decisions.filter('picked)
-      .selectAs[AdGroupPolicyRecord]
-
-    // Join the config values back to the other ad groups in the group as a source of truth for aggregation group assignment
-    val policyTableMapping = decisions
-      .withColumnRenamed("ConfigValue", "AdGroupId").select("AdGroupId", "DataAggKey", "DataAggValue")
-      .join(newPolicyTable, Seq("DataAggKey", "DataAggValue"), "left")
-      .join(adgroups.select("AdGroupId", "CampaignId", "AdvertiserId"), Seq("AdGroupId"), "left")
-      .withColumn("AdGroupIdInt", shiftModUdf(xxhash64('AdGroupId), lit(TrainSetFeatureMappingTransform.tryGetFeatureCardinality("AdGroupId"))))
-      .withColumn("CampaignIdInt", shiftModUdf(xxhash64('CampaignId), lit(TrainSetFeatureMappingTransform.tryGetFeatureCardinality("CampaignId"))))
-      .withColumn("AdvertiserIdInt", shiftModUdf(xxhash64('AdvertiserId), lit(TrainSetFeatureMappingTransform.tryGetFeatureCardinality("AdvertiserId"))))
-      .selectAs[AdGroupPolicyMappingRecord]
-      .distinct()
-
-    (newPolicyTable, policyTableMapping)
   }
 
   def addPositiveCountSummary(policy: Dataset[StaticPolicyTable]): Dataset[PolicyTableWithDailyCounts] = {
@@ -234,7 +214,6 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
     // the dynamic logic
     if (Config.PositivesCountWarmUpDays == 0) {
       policy.withColumn("established", lit(false))
-        .withColumn("DailyAdGroupCount", lit(0))
         .withColumn("DailyCampaignCount", lit(0))
         .withColumn("DailyAdvertiserCount", lit(0))
         .selectAs[PolicyTableWithDailyCounts]
@@ -242,15 +221,13 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
       val warmUpComparisonDate = date.minusDays(Config.PositivesCountWarmUpDays + 1)
       val preWarmUpPolicy = AdGroupPolicyMappingDataset().readDate(warmUpComparisonDate)
 
-      val adGroupPosSummary = DailyPositiveCountSummaryDataset().readRange(date.minusDays(Config.GlobalDataLookBack - 1), date, true)
-        .groupBy("AdGroupId", "CampaignId", "AdvertiserId").agg((sum('Count) / Config.GlobalDataLookBack).as("DailyAdGroupCount"))
+      val campaignPosSummary = DailyPositiveCountSummaryDataset().readRange(date.minusDays(Config.GlobalDataLookBack - 1), date, true)
+        .groupBy("CampaignId", "AdvertiserId").agg((sum('Count) / Config.GlobalDataLookBack).as("DailyCampaignCount"))
 
-      policy.join(preWarmUpPolicy.select('AdGroupId, lit(true).as("established")).distinct(), Seq("AdGroupId"), "left")
+      policy.join(preWarmUpPolicy.select('CampaignId, lit(true).as("established")).distinct(), Seq("CampaignId"), "left")
         .withColumn("established", coalesce('established, lit(false)))
-        .join(adGroupPosSummary, Seq("AdGroupId", "CampaignId", "AdvertiserId"), "left")
-        .join(adGroupPosSummary.groupBy("CampaignId").agg(sum('DailyAdGroupCount).as("DailyCampaignCount")), Seq("CampaignId"), "left")
-        .join(adGroupPosSummary.groupBy("AdvertiserId").agg(sum('DailyAdGroupCount).as("DailyAdvertiserCount")), Seq("AdvertiserId"), "left")
-        .withColumn("DailyAdGroupCount", coalesce('DailyAdGroupCount, lit(0)))
+        .join(campaignPosSummary, Seq("CampaignId", "AdvertiserId"), "left")
+        .join(campaignPosSummary.groupBy("AdvertiserId").agg(sum('DailyCampaignCount).as("DailyAdvertiserCount")), Seq("AdvertiserId"), "left")
         .withColumn("DailyCampaignCount", coalesce('DailyCampaignCount, lit(0)))
         .withColumn("DailyAdvertiserCount", coalesce('DailyAdvertiserCount, lit(0)))
         .selectAs[PolicyTableWithDailyCounts]
@@ -293,16 +270,43 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
       .distinct()
   }
 
-  def generateAdGroupPolicy(date: LocalDate): (Dataset[AdGroupPolicyRecord], Dataset[AdGroupPolicyMappingRecord]) = {
-    val activeAdGroups = getActiveAdGroups(date)
+  def generateSkeletalPolicyTableAndMappings(adgroups: Dataset[PolicyTableAdGroup], yesterdaysMapping: Dataset[AdGroupPolicyMappingRecord]): (Dataset[SkeletalPolicyTable], Dataset[AdGroupPolicyMappingRecord]) = {
+    // Pick a random config value from yesterdays mapping table if available (there should only be one, but just in case), and pick a random ad group from todays active ad groups if it's a new campaign.
+    // TODO: the ranks here is required when one policy table row can collate multiple multiple campaigns. Remove after everything is stable
+    val activeMappingsFromYesterday = yesterdaysMapping.select("ConfigValue").distinct
+      .join(adgroups.select('AdGroupId.as("ConfigValue"), 'CampaignId), Seq("ConfigValue"), "inner")
+      .withColumn("rank", rank().over(Window.partitionBy("CampaignId").orderBy("ConfigValue")))
+      .filter('rank === lit(1)).drop("rank")
 
-    val yesterdaysPolicy = Config.TryMaintainConfigValue match {
-      case false => Seq[AdGroupPolicyRecord]().toDF().selectAs[AdGroupPolicyRecord]
-      case _ => AdGroupPolicyDataset().readDate(date.minusDays(1))
+    val policy = adgroups
+      .withColumn("rank", rank().over(Window.partitionBy("CampaignId").orderBy("AdGroupId")))
+      .filter('rank === lit(1)).drop("rank")
+      .join(activeMappingsFromYesterday, Seq("CampaignId"), "left")
+      .withColumn("ConfigKey", lit("AdGroupId"))
+      .withColumn("ConfigValue", coalesce('ConfigValue, 'AdGroupId))
+      .selectAs[SkeletalPolicyTable]
+      .distinct()
+
+    val mapping = adgroups.join(policy.select("ConfigKey", "ConfigValue", "CampaignId"), Seq("CampaignId"), "inner")
+      .withColumn("AdGroupIdInt", shiftModUdf(xxhash64('AdGroupId), lit(TrainSetFeatureMappingTransform.tryGetFeatureCardinality("AdGroupId"))))
+      .withColumn("CampaignIdInt", shiftModUdf(xxhash64('CampaignId), lit(TrainSetFeatureMappingTransform.tryGetFeatureCardinality("CampaignId"))))
+      .withColumn("AdvertiserIdInt", shiftModUdf(xxhash64('AdvertiserId), lit(TrainSetFeatureMappingTransform.tryGetFeatureCardinality("AdvertiserId"))))
+      .selectAs[AdGroupPolicyMappingRecord]
+      .distinct()
+
+    (policy, mapping)
+  }
+
+  def getYesterdaysPolicyAndMapping(date: LocalDate): (Dataset[AdGroupPolicyRecord], Dataset[AdGroupPolicyMappingRecord]) = {
+    if (Config.TryMaintainConfigValue) {
+      (AdGroupPolicyDataset().readDate(date.minusDays(1)), AdGroupPolicyMappingDataset().readDate(date.minusDays(1)))
+    } else {
+      (Seq[AdGroupPolicyRecord]().toDF().selectAs[AdGroupPolicyRecord], Seq[AdGroupPolicyMappingRecord]().toDF().selectAs[AdGroupPolicyMappingRecord])
     }
+  }
 
-    // Set the policy for everything that can be determined before the aggregation level
-    val stage1Policy = activeAdGroups
+  def addStaticFields(skeletalPolicyTable: Dataset[SkeletalPolicyTable]): Dataset[StaticPolicyTable] = {
+    skeletalPolicyTable
       .withColumn("MinDailyConvCount", lit(Config.GlobalMinDailyConvCount))
       .withColumn("MaxDailyConvCount", lit(Config.GlobalMaxDailyConvCount))
       .withColumn("DataLookBack", lit(Config.GlobalDataLookBack))
@@ -312,16 +316,23 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
       .withColumn("FetchOlderTrainingData", lit(Config.GlobalFetchOlderTrainingData))
       .withColumn("OldTrainingDataEpoch", lit(Config.GlobalOldTrainingDataEpoch))
       .selectAs[StaticPolicyTable]
+  }
 
-    val fullPolicyTableRaw = stage1Policy
+  def generateAdGroupPolicy(date: LocalDate): (Dataset[AdGroupPolicyRecord], Dataset[AdGroupPolicyMappingRecord]) = {
+    val activeAdGroups = getActiveAdGroups(date)
+
+    val (yesterdaysPolicy, yesterdaysMapping) = getYesterdaysPolicyAndMapping(date)
+
+    val (skeletalPolicyTable, mappings) = generateSkeletalPolicyTableAndMappings(activeAdGroups, yesterdaysMapping)
+
+    val policyTable = skeletalPolicyTable
+      .transform(addStaticFields)
       .transform(addPositiveCountSummary) // Adds established and DailyCount
       .transform(addAggregationLevel) // Updates DataAggKey and DataAggValue
-      .transform(addLastTouchCount(_, yesterdaysPolicy)) // Adds the column `LastTouchCount`
-      .withColumnRenamed("AdGroupId", "ConfigValue")
-      .withColumn("ConfigKey", lit("AdGroupId"))
+      .transform(addLastTouchCount(_, yesterdaysPolicy, activeAdGroups)) // Adds the column `LastTouchCount`
       .selectAs[AdGroupPolicyRecord]
 
-    removeSuperfluousAdGroups(date, fullPolicyTableRaw, yesterdaysPolicy, activeAdGroups)
+    (policyTable, mappings)
   }
 
 }

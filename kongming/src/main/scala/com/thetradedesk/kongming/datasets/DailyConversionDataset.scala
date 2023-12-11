@@ -2,8 +2,8 @@ package com.thetradedesk.kongming.datasets
 
 final case class DailyConversionDataRecord( TrackingTagId: String,
                                             UIID: String,
-                                            DataAggKey: String,
-                                            DataAggValue: String,
+                                            ConfigKey: String,
+                                            ConfigValue: String,
                                             ConversionTime: java.sql.Timestamp,
                                             MonetaryValue: Option[BigDecimal],
                                             MonetaryValueCurrency: Option[String]

@@ -48,7 +48,7 @@ object ConversionDataDailyProcessor extends KongmingBaseJob {
     // read master policy
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
     // read adgroup table to get adgroup campaign mapping
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
+    val adGroupMapping = AdGroupPolicyMappingDataset().readDate(date)
     // read campaign table to get setting
     val campaignDS = CampaignDataSet().readLatestPartitionUpTo(date, true)
 
@@ -58,7 +58,7 @@ object ConversionDataDailyProcessor extends KongmingBaseJob {
       conversionDS,
       ccrc,
       adGroupPolicy,
-      adGroupDS,
+      adGroupMapping,
       campaignDS
     )(getPrometheus)
 
@@ -86,7 +86,7 @@ object ConversionDataDailyProcessor extends KongmingBaseJob {
       task match {
         case "roas" => unionConversion.distinct()
         // offline conversions could have multiple monetary values under the same ("TrackingTagId","UIID","DataAggKey","DataAggValue","ConversionTime")
-        case _ => unionConversion.dropDuplicates("TrackingTagId","UIID","DataAggKey","DataAggValue","ConversionTime")
+        case _ => unionConversion.dropDuplicates("TrackingTagId", "UIID", "ConfigKey", "ConfigValue", "ConversionTime")
       }
     )
 

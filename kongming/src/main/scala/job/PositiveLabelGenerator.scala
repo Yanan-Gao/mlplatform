@@ -4,6 +4,7 @@ import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.transform.PositiveLabelDailyTransform
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.TTDConfig.config
 
 import org.apache.spark.sql.functions._
@@ -37,11 +38,11 @@ object PositiveLabelGenerator extends KongmingBaseJob {
     val lookback = math.min(maxPolicyLookbackInDays, bidLookback) - 1 //the -1 is to account for the given date is partial
 
     // previous multiday data
-    val rawMultiDayBidRequestDS = DailyBidRequestDataset().readRange(date.minusDays(lookback+1), date)
+    val rawMultiDayBidRequestDS = DailyBidRequestDataset().readRange(date.minusDays(lookback+1), date, isInclusive=false).selectAs[DailyBidRequestRecord]
 
     // single day data
     val bidsImpressionFilterByPolicy = DailyBidsImpressionsDataset().readDate(date)
-    val dailyConversionDS = DailyConversionDataset().readDate(date).cache
+    val dailyConversionDS = DailyConversionDataset().readDate(date)
     val sameDayPositiveBidRequestDS = PositiveLabelDailyTransform.intraDayConverterNTouchesTransform(
       bidsImpressionFilterByPolicy,
       adGroupPolicy,

@@ -13,11 +13,9 @@ import org.apache.spark.sql.functions._
 
 final case class DailyTransformedConversionDataRecord(TrackingTagId: String,
                                                       TDID:String,
-                                                      DataAggKey: String,
-                                                      DataAggValue: String,
-                                                      //CrossDeviceUsage: Boolean,
+                                                      ConfigKey: String,
+                                                      ConfigValue: String,
                                                       CrossDeviceConfidenceLevel: Option[Double],
-                                                      //Weight: Double,
                                                       ConversionTime: java.sql.Timestamp,
                                                       MonetaryValue: Option[BigDecimal],
                                                       MonetaryValueCurrency: Option[String],
@@ -117,7 +115,7 @@ object ConversionDataDailyTransform {
                      conversionDS: Dataset[ConversionTrackerVerticaLoadRecord],
                      ccrc: Dataset[CampaignConversionReportingColumnRecord],
                      adGroupPolicy: Dataset[AdGroupPolicyRecord],
-                     adGroupDS: Dataset[AdGroupRecord],
+                     adGroupMapping: Dataset[AdGroupPolicyMappingRecord],
                      campaignDS: Dataset[CampaignRecord])
                     (implicit prometheus: PrometheusClient): (Dataset[DailyTransformedConversionDataRecord], Dataset[IDRecord]) = {
 
@@ -132,7 +130,7 @@ object ConversionDataDailyTransform {
     // Daily job on conversion will be just collection converison data.
 
     val ccrcProcessed = ccrc
-      .join(broadcast(campaignDS.select($"CampaignId", col(CustomGoalTypeId.get(task).get))), Seq("CampaignId"), "left")
+      .join(broadcast(campaignDS.select($"CampaignId", col(CustomGoalTypeId.get(task).get))), Seq("CampaignId"), "inner")
       .filter((col(CustomGoalTypeId.get(task).get) === 0 && $"ReportingColumnId"===1) || (col(CustomGoalTypeId.get(task).get)>0 && col(IncludeInCustomGoal.get(task).get)))
       // will only use IAv2 and IAv2HH, other graphs will be replaced by IAv2
       .withColumn("CrossDeviceAttributionModelId",
@@ -142,12 +140,11 @@ object ConversionDataDailyTransform {
       .select("CampaignId","TrackingTagId", "AdvertiserId", "CrossDeviceAttributionModelId")
 
     val trackingTagWithSettings = adGroupPolicy
-      .join(broadcast(adGroupDS), adGroupPolicy("ConfigValue")===adGroupDS("AdGroupId"), "inner")
-      .select("CampaignId","DataAggKey","DataAggValue","CrossDeviceConfidenceLevel")
-      .distinct()
+      .join(broadcast(adGroupMapping.select("ConfigKey", "ConfigValue", "CampaignId").distinct), Seq("ConfigKey", "ConfigValue"), "inner")
+      .select("CampaignId", "ConfigKey", "ConfigValue", "CrossDeviceConfidenceLevel")
       .join(broadcast(ccrcProcessed), Seq("CampaignId"), "inner")
-      .select( "TrackingTagId","DataAggKey","DataAggValue","CrossDeviceConfidenceLevel","AdvertiserId", "CrossDeviceAttributionModelId")//, "Weight")
-      //distinct to remove possible duplicate dataAggValue in the policy table
+      .select("TrackingTagId", "ConfigKey", "ConfigValue", "CampaignId", "CrossDeviceConfidenceLevel", "AdvertiserId", "CrossDeviceAttributionModelId")
+      // distinct to remove possible duplicate dataAggValue in the policy table
       .distinct
 
     val convResult = conv.join(broadcast(trackingTagWithSettings), Seq("TrackingTagId", "AdvertiserId"), "inner").selectAs[DailyTransformedConversionDataRecord].cache()
@@ -168,7 +165,7 @@ object ConversionDataDailyTransform {
                             )
                             (implicit prometheus: PrometheusClient): Dataset[DailyConversionDataRecord] = {
     //IdentityId would be personId for iav2 usage and householdId for iav2hh usage
-    val window = Window.partitionBy($"IdentityId", $"TrackingTagId", $"DataAggKey", $"DataAggValue").orderBy($"conversionTime".desc)
+    val window = Window.partitionBy($"IdentityId", $"TrackingTagId", $"ConfigKey", $"ConfigValue").orderBy($"conversionTime".desc)
     val convWithPersonIdDS = transformedConvDS
       .join(xdDS, transformedConvDS("TDID")===xdDS("uiid"),"inner")
       .withColumn("IdentityId",
@@ -182,10 +179,8 @@ object ConversionDataDailyTransform {
       .drop("rank") //alleviate possible inflation on conversion due to multiple conversions belongs to the same person.
 
     // keep the latest conversion if there multiple on the same person
-    val convWithDeviceIdDS =
-      ( convWithPersonIdDS.join(xdDS, $"IdentityId"===$"PersonId", "inner")
-        .union(convWithPersonIdDS.join(xdDS, $"IdentityId"===$"HouseholdID", "inner") )
-        )
+    val convWithDeviceIdDS = convWithPersonIdDS.join(xdDS, $"IdentityId"===$"PersonId", "inner")
+      .union(convWithPersonIdDS.join(xdDS, $"IdentityId" === $"HouseholdID", "inner"))
       //only include additional IDs added by cross device graph in this case. The raw conversions will be included outside this function.
       .filter($"TDID"=!=$"uiid")
       .withColumnRenamed("uiid", "UIID")

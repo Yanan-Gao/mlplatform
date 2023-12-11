@@ -3,7 +3,7 @@ package job
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, BidsImpressionsSchema, DailyBidsImpressionsDataset}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, AdGroupPolicyMappingDataset, BidsImpressionsSchema, DailyBidsImpressionsDataset}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 
 object DailyBidsImpressions extends KongmingBaseJob {
@@ -16,7 +16,10 @@ object DailyBidsImpressions extends KongmingBaseJob {
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
 
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
-    val dailyBidsImpressions = multiLevelJoinWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, joinType = "left_semi")
+    val adGroupMapping = AdGroupPolicyMappingDataset().readDate(date)
+    val policy = getMinimalPolicy(adGroupPolicy, adGroupMapping).cache()
+
+    val dailyBidsImpressions = multiLevelJoinWithPolicy[BidsImpressionsSchema](bidsImpressions, policy, joinType = "left_semi")
 
     val rowCount = DailyBidsImpressionsDataset().writePartition(dailyBidsImpressions, date, Some(partCount.DailyBidsImpressions))
 

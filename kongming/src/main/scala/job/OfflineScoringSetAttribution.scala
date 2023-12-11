@@ -33,17 +33,15 @@ object OfflineScoringSetAttribution extends KongmingBaseJob {
     val offlineScoreDays = config.getInt(path="offlineScoreDays", 13)
 
     // 1. load offline scores
-    val offlineScoreEndDate =  date.minusDays(offlineScoreSetLookbackFromModelDate)
+    val offlineScoreEndDate = date.minusDays(offlineScoreSetLookbackFromModelDate)
     val offlineScore = getOfflineScore(modelDate = modelDate, endDate = offlineScoreEndDate, lookBack =offlineScoreDays-1, adgroupBaseAssociateMapping)(getPrometheus).cache()
     // get a count here for later usage
 
     // 2. load attributedEventDataset and attributedEventResult  for all adgroups
-    val attributes = getAttributedEventAndResult(adGroupPolicy = adGroupPolicy, endDate = date, lookBack = offlineScoreSetLookbackFromModelDate+offlineScoreDays-1)(getPrometheus)
+    val attributes = getAttributedEventAndResult(adgroupBaseAssociateMapping, endDate=date, lookBack=offlineScoreSetLookbackFromModelDate + offlineScoreDays - 1)(getPrometheus)
 
     // load pixel weight of adgroup and extend the pixel table to campaigns
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, isInclusive = true)
-
-    val pixelWeight = getWeightsForTrackingTags(date, adGroupPolicy, adGroupDS, adgroupBaseAssociateMapping = Some(adgroupBaseAssociateMapping))
+    val pixelWeight = getWeightsForTrackingTags(date, adgroupBaseAssociateMapping)
 
     // 3. attributed impressions that are in scored impressions, find the latest per conversion event
     val offlineScoreLabel = getOfflineScoreLabelWeight(offlineScore, attributes._1, attributes._2, pixelWeight)(getPrometheus)

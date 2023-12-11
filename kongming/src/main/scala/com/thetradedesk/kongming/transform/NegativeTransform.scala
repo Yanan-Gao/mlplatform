@@ -33,8 +33,6 @@ object NegativeTransform {
   final case class AggregateNegativesRecord (
                                               ConfigKey: String,
                                               ConfigValue: String,
-                                              DataAggKey: String,
-                                              DataAggValue: String,
                                               BidRequestId: String,
                                               UIID: String,
                                               LogEntryTime: java.sql.Timestamp,
@@ -101,11 +99,8 @@ object NegativeTransform {
      */
     // todo: pre-check possible aggregation levels.
 
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
-    val prefilteredDS = preFilteringWithPolicy[DailyNegativeSampledBidRequestRecord](dailyNegativeSampledBids, adGroupPolicy, adGroupDS)
-
     val filterCondition = date_add($"LogEntryTime", $"DataLookBack")>=date
-    val dailyNegativeSampledBidsFilterByPolicy = multiLevelJoinWithPolicy[AggregateNegativesRecord](prefilteredDS, adGroupPolicy, filterCondition, "inner")
+    val dailyNegativeSampledBidsFilterByPolicy = multiLevelJoinWithPolicy[AggregateNegativesRecord](dailyNegativeSampledBids, adGroupPolicy, filterCondition, "inner")
 
     dailyNegativeSampledBidsFilterByPolicy
   }

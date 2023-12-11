@@ -1,7 +1,8 @@
 package com.thetradedesk
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, AdGroupRecord}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, AdGroupPolicyMappingRecord, AdGroupRecord}
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.TTDConfig.config
 
@@ -76,20 +77,18 @@ package object kongming {
       .filter(filterCondition)
   }
 
-  def preFilteringWithPolicy[T: Encoder](
-                                          inputDataSet: Dataset[T]
-                                          , adGroupPolicy: Dataset[AdGroupPolicyRecord]
-                                          , adGroupDS: Dataset[AdGroupRecord]
-                                        ): Dataset[T] ={
-    //setup prefiltering of data, based on campaignId for now.
-    //TODO: this might subject to change if we wish to have higher level filtering.
-    val filterDF = adGroupPolicy.join(adGroupDS, adGroupPolicy("ConfigValue")===adGroupDS("AdGroupId"),"left").select("AdvertiserId").distinct
+  // Get a minimal subset of the policy table with no change in DataAggValue coverage.
+  // Advertisers entirely aggregated on campaign ID is unchanged, but only one of the
+  // advertiser rows are included if any campaign is aggregated on advertiser ID.
+  def getMinimalPolicy(policy: Dataset[AdGroupPolicyRecord], mapping: Dataset[AdGroupPolicyMappingRecord]): Dataset[AdGroupPolicyRecord] = {
+    val policyWithAdvertisers = policy.join(mapping.select("AdGroupId", "CampaignId", "AdvertiserId"), col("ConfigValue") === col("AdGroupId"), "inner")
+    val advertiserRows = policyWithAdvertisers.filter(col("DataAggKey") === lit("AdvertiserId"))
+      .dropDuplicates("DataAggKey", "DataAggValue")
+      .select('ConfigValue.as("AdvertiserConfigValue"), 'AdvertiserId)
 
-    val prefilteredDS = inputDataSet
-      .join(broadcast(filterDF), Seq("AdvertiserId"), "inner")
-      .selectAs[T]
-
-    prefilteredDS
+    policyWithAdvertisers.join(advertiserRows, Seq("AdvertiserId"), "left")
+      .filter(col("AdvertiserConfigValue").isNull || col("ConfigValue") === col("AdvertiserConfigValue"))
+      .selectAs[AdGroupPolicyRecord]
   }
 
   class PartitionCount {
