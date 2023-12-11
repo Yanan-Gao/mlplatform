@@ -45,13 +45,12 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
                                                  AdvertiserId: String
                                                )
 
-  final case class AttributionClickTrackerRecord(
-                                                BidRequestId: String,
-                                                ClickRedirectId: String,
-                                                AdGroupId: String,
-                                                CampaignId: String,
-                                                AdvertiserId: String
-                                                )
+  final case class AttributionEventRecordWithConfigKeys(
+                                                         BidRequestId: String,
+                                                         AttributedEventId: String,
+                                                         ConfigKey: String,
+                                                         ConfigValue: String
+                                                       )
 
   final case class AttributedEventRecordWithPolicyKeys(
                                                          AttributedEventId: String,
@@ -71,10 +70,10 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
                                                          MonetaryValueCurrency: Option[String]
                                                        )
 
-  final case class BidRequestsWithAttributionGroup(
+  final case class BidRequestsWithConfigValue(
                                                   BidRequestIdStr: String,
-                                                  AttributionGroupKey: String,
-                                                  AttributionGroupValue: String
+                                                  ConfigKey: String,
+                                                  ConfigValue: String
                                                   )
 
   final case class EventsAttribution(
@@ -83,7 +82,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
                                       Revenue: Option[BigDecimal]
                                     )
 
-  def getEventsAttributions(adGroupPolicy: Dataset[_], adGroupPolicyMapping: Dataset[AdGroupPolicyMappingRecord], scoreDate: LocalDate)(implicit prometheus: PrometheusClient): Dataset[EventsAttribution] = {
+  def getEventsAttributions(adGroupPolicy: Dataset[AdGroupPolicyRecord], adGroupPolicyMapping: Dataset[AdGroupPolicyMappingRecord], scoreDate: LocalDate)(implicit prometheus: PrometheusClient): Dataset[EventsAttribution] = {
     val validTags = getValidTrackingTags(scoreDate, adGroupPolicy)
 
     val (attributedEvent, attributedEventResult) = OfflineAttributionTransform.getAttributedEventAndResult(adGroupPolicyMapping, date, lookBack = Config.AttributionLookBack + Config.ImpressionLookBack - 1)
@@ -99,18 +98,18 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
         "inner")
       .filter($"AttributedEventLogEntryTime".isNotNull && ((unix_timestamp($"ConversionTrackerLogEntryTime") - unix_timestamp($"AttributedEventLogEntryTime")) <= Config.AttributionLookBack*86400))
 
-    val bidFeedBack = multiLevelJoinWithPolicy[AttributionBidFeedbackRecord](
-      loadParquetData[AttributionBidFeedbackRecord](BidFeedbackDataset.BFS3, scoreDate.plusDays(Config.ImpressionLookBack), lookBack = Some(Config.ImpressionLookBack - 1)),
-      adGroupPolicy, "left_semi", "AttributionGroupKey", "AttributionGroupValue")
-      .select("BidFeedbackId", "BidRequestId")
+    val bidFeedBack = multiLevelJoinWithPolicy[AttributionEventRecordWithConfigKeys](
+      loadParquetData[AttributionBidFeedbackRecord](BidFeedbackDataset.BFS3, scoreDate.plusDays(Config.ImpressionLookBack), lookBack = Some(Config.ImpressionLookBack - 1))
+        .withColumnRenamed("BidFeedbackId", "AttributedEventId"),
+      adGroupPolicy, "inner")
 
-    val clicks = multiLevelJoinWithPolicy[AttributionClickTrackerRecord](
-        ClickTrackerDataSetV5(defaultCloudProvider).readRange(scoreDate.plusDays(1).atStartOfDay(), scoreDate.plusDays(Config.ImpressionLookBack + 1).atStartOfDay()),
-        adGroupPolicy, "left_semi", "AttributionGroupKey", "AttributionGroupValue")
-      .select("BidRequestId", "ClickRedirectId")
+    val clicks = multiLevelJoinWithPolicy[AttributionEventRecordWithConfigKeys](
+      ClickTrackerDataSetV5(defaultCloudProvider).readRange(scoreDate.plusDays(1).atStartOfDay(), scoreDate.plusDays(Config.ImpressionLookBack + 1).atStartOfDay())
+        .withColumnRenamed("ClickRedirectId", "AttributedEventId"),
+      adGroupPolicy, "inner")
 
-    val attribution = attributedEventResultOfInterest.filter($"AttributedEventTypeId" === lit("2")).join(bidFeedBack, col("AttributedEventId") === col("BidFeedbackId"), "inner")
-      .union(attributedEventResultOfInterest.filter($"AttributedEventTypeId" === lit("1")).join(clicks, col("AttributedEventId") === col("ClickRedirectId"), "inner"))
+    val attribution = attributedEventResultOfInterest.filter($"AttributedEventTypeId" === lit("2")).join(bidFeedBack, Seq("AttributedEventId", "ConfigKey", "ConfigValue"), "inner")
+      .union(attributedEventResultOfInterest.filter($"AttributedEventTypeId" === lit("1")).join(clicks, Seq("AttributedEventId", "ConfigKey", "ConfigValue"), "inner"))
       .select("BidRequestId", "MonetaryValue", "MonetaryValueCurrency")
       .distinct().withColumn("Target", lit(1))
 
@@ -131,23 +130,18 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
   }
 
   def generateAttributionSet(scoreDate: LocalDate)(implicit prometheus: PrometheusClient): Dataset[OutOfSampleAttributionRecord] = {
-    val adGroups = AdGroupDataSet().readLatestPartitionUpTo(scoreDate, true)
     val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(scoreDate)
-    val adGroupPolicy = AdGroupPolicyDataset().readDate(scoreDate)
-      .withColumn("AttributionGroupKey", when('DataAggKey === lit("AdvertiserId"), lit("CampaignId")).otherwise('DataAggKey))
-      .join(adGroups.select("AdGroupId", "CampaignId"), col("AdGroupId") === col("ConfigValue"), "left")
-      .withColumn("AttributionGroupValue", when('DataAggKey === lit("AdvertiserId"), 'CampaignId).otherwise('DataAggValue))
-      .drop("AdGroupId", "CampaignId")
+    val policy = AdGroupPolicyDataset().readDate(scoreDate)
 
     val scoringSet = DailyOfflineScoringDataset().readRange(scoreDate.plusDays(1), scoreDate.plusDays(Config.ImpressionLookBack), isInclusive=true)
-    val impressionsToScore = multiLevelJoinWithPolicy[BidRequestsWithAttributionGroup](
+    val impressionsToScore = multiLevelJoinWithPolicy[BidRequestsWithConfigValue](
       scoringSet.withColumnRenamed("AdGroupId", "AdGroupIdInt").withColumnRenamed("AdGroupIdStr", "AdGroupId")
         .withColumnRenamed("CampaignId", "CampaignIdInt").withColumnRenamed("CampaignIdStr", "CampaignId")
         .withColumnRenamed("AdvertiserId", "AdvertiserIdInt").withColumnRenamed("AdvertiserIdStr", "AdvertiserId"),
-      adGroupPolicy.select("AttributionGroupKey", "AttributionGroupValue"),
-      "inner", "AttributionGroupKey", "AttributionGroupValue")
+      policy,
+      "inner")
 
-    val eventsAttributions = getEventsAttributions(adGroupPolicy, adGroupPolicyMapping, scoreDate)(prometheus)
+    val eventsAttributions = getEventsAttributions(policy, adGroupPolicyMapping, scoreDate)(prometheus)
       .withColumnRenamed("BidRequestId", "BidRequestIdStr")
 
     // offline score labels: one impression could have more than one row if it contributes to multiple conversions. If it contributes to no conversion, then it has one row.

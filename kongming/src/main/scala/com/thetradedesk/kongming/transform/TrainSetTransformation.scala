@@ -480,7 +480,7 @@ object TrainSetTransformation {
 
   def adjustWeightForTrainset(trainset: Dataset[PreFeatureJoinRecord],desiredNegOverPos: Int ):
   Dataset[PreFeatureJoinRecord] = {
-    val train = trainset.filter($"IsInTrainSet" === lit(true)).cache()
+    val train = trainset.filter($"IsInTrainSet" === lit(true))
     val validation = trainset.filter($"IsInTrainSet" === lit(false))
     val sumWeight = train.filter(col("Target")===0).groupBy("ConfigKey", "ConfigValue").agg(sum("Weight").as("NegSumWeight"))
       .join(train.filter(col("Target")===1).groupBy("ConfigKey", "ConfigValue").agg(sum("Weight").as("PosSumWeight")), Seq("ConfigKey", "ConfigValue"),"inner")

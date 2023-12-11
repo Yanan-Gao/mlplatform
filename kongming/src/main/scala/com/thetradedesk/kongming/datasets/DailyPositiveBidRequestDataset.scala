@@ -15,7 +15,8 @@ final case class DailyPositiveLabelRecord(
                                            IsImp: Boolean,
                                            IsClickWindowGreater: Boolean,
                                            IsInClickAttributionWindow: Boolean,
-                                           IsInViewAttributionWindow: Boolean
+                                           IsInViewAttributionWindow: Boolean,
+                                           AdGroupId: String
                                          )
 
 case class DailyPositiveBidRequestDataset(experimentOverride: Option[String] = None) extends KongMingDataset[DailyPositiveLabelRecord](

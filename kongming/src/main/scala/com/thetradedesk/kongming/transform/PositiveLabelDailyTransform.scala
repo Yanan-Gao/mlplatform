@@ -24,7 +24,8 @@ object PositiveLabelDailyTransform {
                                           LogEntryTime: java.sql.Timestamp,
                                           MonetaryValue: Option[BigDecimal],
                                           MonetaryValueCurrency: Option[String],
-                                          IsImp: Boolean
+                                          IsImp: Boolean,
+                                          AdGroupId: String
                                         )
   /**
    * function dealing with raw bidrequest and conversion joining for the same day as conversion data.
@@ -37,8 +38,7 @@ object PositiveLabelDailyTransform {
   def intraDayConverterNTouchesTransform(
                                          bidsImpressions: Dataset[BidsImpressionsSchema],
                                          adGroupPolicy: Dataset[AdGroupPolicyRecord],
-                                         dailyConversionDS : Dataset[DailyConversionDataRecord],
-                                         adGroupDS: Dataset[AdGroupRecord]
+                                         dailyConversionDS : Dataset[DailyConversionDataRecord]
                                        )
                     (implicit prometheus: PrometheusClient): Dataset[DailyPositiveBidRequestRecord] = {
 
@@ -166,7 +166,7 @@ object PositiveLabelDailyTransform {
                                   positives: Dataset[DailyPositiveLabelRecord],
                                   adGroups: Dataset[AdGroupRecord]
                                 ): Dataset[DailyPositiveCountSummaryRecord] = {
-    positives.join(adGroups.select("AdGroupId", "CampaignId", "AdvertiserId"), 'AdGroupId === 'ConfigValue, "inner")
+    positives.join(adGroups.select("AdGroupId", "CampaignId", "AdvertiserId"), Seq("AdGroupId"), "inner")
       .groupBy("AdGroupId", "CampaignId", "AdvertiserId").count()
       .selectAs[DailyPositiveCountSummaryRecord]
   }

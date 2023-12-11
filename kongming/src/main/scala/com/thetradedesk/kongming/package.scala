@@ -1,7 +1,7 @@
 package com.thetradedesk
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, AdGroupPolicyMappingRecord, AdGroupRecord}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyMappingRecord, AdGroupPolicyRecord, AdGroupRecord}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -61,11 +61,10 @@ package object kongming {
                                           ): Dataset[T] = {
     inputDataSet.join(broadcast(adGroupPolicy.filter(col(joinKeyName) === lit("AdGroupId"))), col(joinValueName) === col("AdGroupId"), joinType).union(
       inputDataSet.join(broadcast(adGroupPolicy.filter(col(joinKeyName) === lit("CampaignId"))), col(joinValueName) === col("CampaignId"), joinType)
-    ).dropDuplicates().union(
+    ).union(
       inputDataSet.join(broadcast(adGroupPolicy.filter(col(joinKeyName) === lit("AdvertiserId"))), col(joinValueName) === col("AdvertiserId"), joinType)
-    ).dropDuplicates().selectAs[T]
+    ).selectAs[T]
   }
-
 
   def multiLevelJoinWithPolicy[T: Encoder](
                                             inputDataSet: Dataset[_]

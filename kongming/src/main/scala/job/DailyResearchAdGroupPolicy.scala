@@ -15,34 +15,18 @@ object DailyResearchAdGroupPolicy extends KongmingBaseJob {
 
     // default dataset for adgroup policy table which will be updated on a monthly basis
     val defaultPolicyDate = LocalDate.of(2022, 3,15)
-    val historyAdGroupPolicy = AdGroupPolicyDataset(JobExperimentName).readDate(defaultPolicyDate).select($"ConfigKey", $"ConfigValue")
+    val historicalAdGroupPolicy = AdGroupPolicyDataset(JobExperimentName).readDate(defaultPolicyDate)
 
     val latestAdGroupPolicy = AdGroupPolicyDataset().readLatestPartitionUpTo(date)
+    val mappings = AdGroupPolicyMappingDataset().readLatestPartitionUpTo(date)
 
-    val adGroupPolicy = historyAdGroupPolicy.join(latestAdGroupPolicy, Seq("ConfigKey", "ConfigValue"), "inner").selectAs[AdGroupPolicyRecord]
+    val researchMapping = multiLevelJoinWithPolicy[AdGroupPolicyMappingRecord](mappings, historicalAdGroupPolicy, "left_semi").distinct
+    val researchPolicy = latestAdGroupPolicy.join(researchMapping.select("ConfigKey", "ConfigValue").distinct, Seq("ConfigKey", "ConfigValue"), "inner")
+      .selectAs[AdGroupPolicyRecord]
 
-    val adGroupPolicyRows = AdGroupPolicyDataset(JobExperimentName).writePartition(adGroupPolicy, date, Some(1))
+    val adGroupPolicyRows = AdGroupPolicyDataset(JobExperimentName).writePartition(researchPolicy, date, Some(1))
+    val adGroupPolicyMappingRows = AdGroupPolicyMappingDataset(JobExperimentName).writePartition(researchMapping, date, Some(1))
 
     Array(adGroupPolicyRows)
-
-  }
-
-  def getSettings(adGroupPolicy: Dataset[AdGroupPolicyRecord],
-                  adGroupDS: Dataset[AdGroupRecord],
-                  campaignDS: Dataset[CampaignRecord],
-                  advertiserDS: Dataset[AdvertiserRecord]
-                 ): Dataset[AdGroupPolicyRecord] = {
-    val advertiserAttributionWindow =
-      advertiserDS
-        .select($"AdvertiserId", $"AttributionClickLookbackWindowInSeconds", $"AttributionImpressionLookbackWindowInSeconds")
-
-    adGroupPolicy.drop("AttributionClickLookbackWindowInSeconds", "AttributionImpressionLookbackWindowInSeconds")
-      .join(adGroupDS, adGroupPolicy("ConfigValue") === adGroupDS("AdGroupId"), "left")
-      .join(campaignDS, Seq("CampaignId"), "left")
-      .join(advertiserAttributionWindow,
-        Seq("AdvertiserId"),
-        "left"
-      )
-      .selectAs[AdGroupPolicyRecord]
   }
 }

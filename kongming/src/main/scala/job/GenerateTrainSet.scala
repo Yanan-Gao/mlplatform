@@ -1,6 +1,5 @@
 package job
 
-import org.apache.spark.sql.functions._
 import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, STRING_FEATURE_TYPE, intModelFeaturesCols}
 import com.thetradedesk.kongming.features.Features._
 import com.thetradedesk.kongming._
@@ -10,9 +9,14 @@ import com.thetradedesk.kongming.transform.TrainSetTransformation._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.sql.SQLFunctions._
+
+import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.DoubleType
 import org.apache.spark.storage.StorageLevel
+
+import java.time.LocalDate
 
 /*
   Generate train set for conversion model training job
@@ -34,55 +38,62 @@ object GenerateTrainSet extends KongmingBaseJob {
 
   override def jobName: String = "GenerateTrainSet"
 
-  override def runTransform(args: Array[String]): Array[(String, Long)] = {
+  val incTrain = config.getBoolean("incTrain", false)
+  val trainRatio = config.getDouble("trainRatio", 0.8)
+  val desiredNegOverPos = config.getInt(path="desiredPosOverNeg", 9)
+  val maxPositiveCount = config.getInt(path="maxPositiveCount", 500000)
+  val maxNegativeCount = config.getInt(path="maxNegativeCount", 500000)
+  val balanceMethod = config.getString(path="balanceMethod", "downsampling")
+  val sampleValSet = config.getBoolean(path = "sampleValSet", true)
+  val conversionLookback = config.getInt("conversionLookback", 7)
 
-    val incTrain = config.getBoolean("incTrain", false)
-    val trainRatio = config.getDouble("trainRatio", 0.8)
-    val desiredNegOverPos = config.getInt(path="desiredPosOverNeg", 9)
-    val maxPositiveCount = config.getInt(path="maxPositiveCount", 500000)
-    val maxNegativeCount = config.getInt(path="maxNegativeCount", 500000)
-    val balanceMethod = config.getString(path="balanceMethod", "downsampling")
-    val sampleValSet = config.getBoolean(path = "sampleValSet", true)
-    val conversionLookback = config.getInt("conversionLookback", 7)
+  val negativeWeightMethod = config.getString("negativeWeightMethod", "PostDistVar")
 
-    val negativeWeightMethod = config.getString("negativeWeightMethod", "PostDistVar")
+  /*
+  Params for func generateWeightForNegative
+  The default Offset and Coefficient is derived from f = 1 - a * exp(b*x) that fits the overall distribution of positive samples
+  Need to be updated if the distribution change dramatically
+  */
+  val negativeWeightOffset = config.getDouble("negativeWeightOffset", 0.7)
+  val negativeWeightCoefficient = config.getDouble("negativeWeightCoef", -0.33)
+  val negativeWeightThreshold = config.getInt("negativeWeightThreshold", 3000)
 
-    /*
-    Params for func generateWeightForNegative
-    The default Offset and Coefficient is derived from f = 1 - a * exp(b*x) that fits the overall distribution of positive samples
-    Need to be updated if the distribution change dramatically
-     */
-    val negativeWeightOffset = config.getDouble("negativeWeightOffset", 0.7)
-    val negativeWeightCoefficient = config.getDouble("negativeWeightCoef", -0.33)
-    val negativeWeightThreshold = config.getInt("negativeWeightThreshold", 3000)
+  val saveParquetData = config.getBoolean("saveParquetData", false)
+  val saveTrainingDataAsTFRecord = config.getBoolean("saveTrainingDataAsTFRecord", false)
+  val saveTrainingDataAsCSV = config.getBoolean("saveTrainingDataAsCSV", true)
+  val addBidRequestId = config.getBoolean("addBidRequestId", false)
+  val trainSetPartitionCount = config.getInt("trainSetPartitionCount", partCount.trainSet)
+  val valSetPartitionCount = config.getInt("valSetPartitionCount", partCount.valSet)
 
-    val saveParquetData = config.getBoolean("saveParquetData", false)
-    val saveTrainingDataAsTFRecord = config.getBoolean("saveTrainingDataAsTFRecord", false)
-    val saveTrainingDataAsCSV = config.getBoolean("saveTrainingDataAsCSV", true)
-    val addBidRequestId = config.getBoolean("addBidRequestId", false)
-    val trainSetPartitionCount = config.getInt("trainSetPartitionCount", partCount.trainSet)
-    val valSetPartitionCount = config.getInt("valSetPartitionCount", partCount.valSet)
-
+  def generateData(date: LocalDate): Dataset[ValidationDataForModelTrainingRecord] = {
     // test only adgroups in the policy table. since aggKey are all adgroupId, we filter by adgroup id
-    val adGroupPolicy = AdGroupPolicyDataset().readDate(date).cache()
+    val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
+    val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(date)
 
     // maximum lookback from adgroup's policy
     val maxLookback = adGroupPolicy.agg(max("DataLookBack")).first.getInt(0)
 
     // 0. load aggregated negatives
+    //    load aggregated positives
+    val aggregatedPositiveSetHist = DailyPositiveBidRequestDataset().readRange(date.minusDays(conversionLookback-1), date, true)
+    val aggregatedPositiveSet = (if (incTrain) DailyPositiveBidRequestDataset().readDate(date) else aggregatedPositiveSetHist)
+      .withColumn("IsInTrainSet", abs(hash($"UIID") % 100) <= trainRatio * 100)
+      .join(broadcast(adGroupPolicy.select("ConfigKey", "ConfigValue")), Seq("ConfigKey", "ConfigValue"), "left_semi")
+
     val dailyNegativeSampledBids = DailyNegativeSampledBidRequestDataSet().readRange(date.minusDays(maxLookback-1), date, true)
-    val aggregatedNegativeSet = aggregateNegatives(date, dailyNegativeSampledBids, adGroupPolicy)(getPrometheus)
+      .selectAs[DailyNegativeSampledBidRequestRecord]
+
+    // Don't bother with config items with no positives in the trainset.
+    val preFilteredPolicy = adGroupPolicy
+      .join(aggregatedPositiveSet.filter('IsInTrainSet).select("ConfigKey", "ConfigValue").distinct, Seq("ConfigKey", "ConfigValue"), "left_semi")
+      .selectAs[AdGroupPolicyRecord]
+
+    val aggregatedNegativeSet = aggregateNegatives(date, dailyNegativeSampledBids, preFilteredPolicy, adGroupPolicyMapping)(getPrometheus)
       .withColumn("IsInTrainSet", when($"UIID".isNotNull && $"UIID"=!=lit("00000000-0000-0000-0000-000000000000"),
         when(abs(hash($"UIID")%100)<=trainRatio*100, lit(true)).otherwise(false)).otherwise(
         when(abs(hash($"BidRequestId")%100)<=trainRatio*100, lit(true)).otherwise(false)
       ))
       .withColumn("Weight", lit(1))  // placeholder: 1. assign format with positive 2. we might weight for negative in the future, TBD.
-
-    //    load aggregated positives
-    val aggregatedPositiveSetHist = DailyPositiveBidRequestDataset().readRange(date.minusDays(conversionLookback-1), date, true)
-    val aggregatedPositiveSet = (if (incTrain) DailyPositiveBidRequestDataset().readDate(date) else aggregatedPositiveSetHist)
-      .withColumn("IsInTrainSet", abs(hash($"UIID") % 100) <= trainRatio * 100)
-      .join(broadcast(adGroupPolicy), Seq("ConfigKey", "ConfigValue"), "left_semi")
 
     // 1. exclude positives from negative; balance neg:pos; remain pos and neg that have both train and val
     val negativeExcludePos = aggregatedNegativeSet.join(broadcast(aggregatedPositiveSet.select("ConfigKey", "ConfigValue").distinct), Seq("ConfigKey", "ConfigValue"), "left_semi")
@@ -100,14 +111,14 @@ object GenerateTrainSet extends KongmingBaseJob {
       sampleValSet = sampleValSet,
       samplingSeed = samplingSeed)(getPrometheus)
 
-    val balancedPositives = balancedTrainset._1
-    val balancedNegatives = balancedTrainset._2
+    val balancedPositives = balancedTrainset._1.persist(StorageLevel.DISK_ONLY)
+    val balancedNegatives = balancedTrainset._2.persist(StorageLevel.DISK_ONLY)
 
     /*
      Make sure there are train and val in negative samples.
      Make sure there are train in positive samples.
      */
-    val  dataHaveBothTrainVal = balancedNegatives
+    val dataHaveBothTrainVal = balancedNegatives
       .groupBy("ConfigValue","ConfigKey").agg(collect_set("IsInTrainSet").as("hasValOrTrain"))
       .filter(size($"hasValOrTrain")===lit(2))
       .join(
@@ -118,13 +129,11 @@ object GenerateTrainSet extends KongmingBaseJob {
       ).cache()
 
     val validPositives = balancedPositives.join(dataHaveBothTrainVal, Seq("ConfigValue","ConfigKey"), "left_semi" )
-    val validNegatives = balancedNegatives.join(dataHaveBothTrainVal, Seq("ConfigValue","ConfigKey"), "left_semi" ).selectAs[TrainSetRecord].cache()
-
+    val validNegatives = balancedNegatives.join(dataHaveBothTrainVal, Seq("ConfigValue","ConfigKey"), "left_semi" ).selectAs[TrainSetRecord]
 
     // 2. get the latest weights for trackingtags for adgroups in policytable
     val trackingTagWindow =  Window.partitionBy($"TrackingTagId", $"ConfigKey", $"ConfigValue")
       .orderBy($"ReportingColumnId")
-    val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(date)
     val trackingTagWithWeight = getWeightsForTrackingTags(date, adGroupPolicyMapping, normalized = true)
       .withColumn("ReportingColumnRank", dense_rank().over(trackingTagWindow))
       .filter($"ReportingColumnRank"===lit(1))
@@ -139,19 +148,19 @@ object GenerateTrainSet extends KongmingBaseJob {
       .withColumn("NormalizedCustomCPAViewthroughWeight", $"NormalizedCustomCPAViewthroughWeight".cast(DoubleType))
       .selectAs[PositiveWithRawWeightsRecord]
 
-    val adjustedPosWithWeight = generateWeightForPositive(positivesWithRawWeight)(getPrometheus).cache()
+    val adjustedPosWithWeight = generateWeightForPositive(positivesWithRawWeight)(getPrometheus)
     // todo: normalize weight for positives, otherwise pos/neg will be changed if neg has no weight
     // Question: do we need to upsample or just tune weights are enough, consider the naive upsamping. Upsampling can have different strategy though.
 
     // weighting negatives after balancing to optimize the runtime
     val negWeightParams = NegativeWeightDistParams(negativeWeightCoefficient, negativeWeightOffset, negativeWeightThreshold)
-    val adjustedNegWithWeight = generateWeightForNegative(validNegatives, positivesWithRawWeight, maxLookback, Some(negativeWeightMethod), methodDistParams = negWeightParams)(getPrometheus).cache()
+    val adjustedNegWithWeight = generateWeightForNegative(validNegatives, positivesWithRawWeight, maxLookback, Some(negativeWeightMethod), methodDistParams = negWeightParams)(getPrometheus)
 
     val adjustedNeg = adjustedNegWithWeight.withColumn("Target", lit(0))
     val adjustedPos = adjustedPosWithWeight.withColumn("Target", lit(1))
 
     val preFeatureJoinTrainSet = adjustedPos.union(adjustedNeg)
-      .selectAs[PreFeatureJoinRecord].cache()
+      .selectAs[PreFeatureJoinRecord]
 
     //adjust weight in trainset
     val adjustedWeightDataset = adjustWeightForTrainset(preFeatureJoinTrainSet,desiredNegOverPos)
@@ -165,13 +174,19 @@ object GenerateTrainSet extends KongmingBaseJob {
     val tensorflowSelectionTabular = intModelFeaturesCols(hashFeatures) ++ aliasedModelFeatureCols(seqFields) ++ modelTargetCols(modelTargets) ++ splitColumn
 //    hashFeatures = hashFeatures.filter(x => !(seqFields ++ directFields).contains(x))
 //    val tensorflowSelectionTabular = intModelFeaturesCols(hashFeatures) ++ rawModelFeatureCols(directFields) ++ aliasedModelFeatureCols(seqFields) ++ modelTargetCols(modelTargets) ++ splitColumn
+
     val parquetSelectionTabular = aliasedModelFeatureCols(keptFields) ++ tensorflowSelectionTabular
 
     val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, maxLookback)(getPrometheus)
       .withColumn("split", when($"IsInTrainSet"===lit(true), "train").otherwise("val"))
       .select(parquetSelectionTabular: _*)
       .selectAs[ValidationDataForModelTrainingRecord](nullIfAbsent=true)
-      .persist(StorageLevel.DISK_ONLY)
+
+    trainDataWithFeature
+  }
+
+  override def runTransform(args: Array[String]): Array[(String, Long)] = {
+    val trainDataWithFeature = generateData(date)
 
     // 6. split train and val
     val adjustedTrainParquet = trainDataWithFeature.filter($"split"===lit("train"))
@@ -214,6 +229,6 @@ object GenerateTrainSet extends KongmingBaseJob {
     }
 
     trainsetRows
-
   }
+
 }

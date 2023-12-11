@@ -62,7 +62,13 @@ case class BidsImpressionsSchema(
                                   // RPacingValue: Option[BigDecimal],
                                 )
 
+// For easier feature adding while avoiding rubbish data, we should always write the full dataset, but read only the required fields
 case class DailyBidsImpressionsDataset(experimentOverride: Option[String] = None) extends KongMingDataset[BidsImpressionsSchema](
+  s3DatasetPath = "dailybidsimpressions/v=1",
+  experimentOverride = experimentOverride
+)
+
+case class DailyBidsImpressionsFullDataset(experimentOverride: Option[String] = None) extends KongMingDataset[com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema](
   s3DatasetPath = "dailybidsimpressions/v=1",
   experimentOverride = experimentOverride
 )
