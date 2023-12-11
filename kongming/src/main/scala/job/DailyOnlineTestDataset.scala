@@ -26,11 +26,13 @@ object DailyOnlineTestDataset extends KongmingBaseJob {
     val endDate = config.getDate("endDate", LocalDate.now())
 
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
+    val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(date)
+    val minimalPolicy = getMinimalPolicy(adGroupPolicy, adGroupPolicyMapping)
 
     // daily bids impressions
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
-    val dailyBidsImpressions = multiLevelJoinWithPolicy[BidsImpressionsSchema](bidsImpressions, adGroupPolicy, joinType = "left_semi")
+    val dailyBidsImpressions = multiLevelJoinWithPolicy[BidsImpressionsSchema](bidsImpressions, minimalPolicy, joinType = "left_semi")
     val impRowCount = DailyBidsImpressionsDataset().writePartition(dailyBidsImpressions, date, Some(partCount.DailyBidsImpressions))
 
     // daily bids feedbacks
@@ -39,17 +41,17 @@ object DailyOnlineTestDataset extends KongmingBaseJob {
       date = date,
       lookBack = Some(0)
     )
-    val dailybf = multiLevelJoinWithPolicy[DailyBidFeedbackRecord](bidfeedback, adGroupPolicy, joinType = "left_semi")
+    val dailybf = multiLevelJoinWithPolicy[DailyBidFeedbackRecord](bidfeedback, minimalPolicy, joinType = "left_semi")
     val bfRowCount = DailyBidFeedbackDataset().writePartition(dailybf, date, Some(100))
 
     // daily clicks
     val clicks = ClickTrackerDataSetV5(defaultCloudProvider).readDate(date).selectAs[DailyClickRecord]
-    val dailyClicks = multiLevelJoinWithPolicy[DailyClickRecord](clicks, adGroupPolicy, joinType = "left_semi")
+    val dailyClicks = multiLevelJoinWithPolicy[DailyClickRecord](clicks, minimalPolicy, joinType = "left_semi")
     val clickRowCount = DailyClickDataset().writePartition(dailyClicks, date, Some(10))
 
     // daily attributed events and results
     val attributedEvent = AttributedEventDataSet().readDate(date).selectAs[AttributedEventRecord]
-    val filteredAttributedEvent = multiLevelJoinWithPolicy[AttributedEventRecord](attributedEvent, adGroupPolicy, joinType = "left_semi")
+    val filteredAttributedEvent = multiLevelJoinWithPolicy[AttributedEventRecord](attributedEvent, minimalPolicy, joinType = "left_semi")
       .filter($"AttributedEventTypeId".isin(List("1", "2"): _*))
       .withColumn("AttributedEventLogEntryTime", to_timestamp(col("AttributedEventLogEntryTime")).as("AttributedEventLogEntryTime"))
       .filter(to_date($"AttributedEventLogEntryTime") >= lit(startDate))

@@ -64,14 +64,14 @@ object OfflineAttributionTransform {
                                                                 )
 
   def getAttributedEventAndResult(
-                                 adGroupPolicy: Dataset[AdGroupPolicyRecord],
+                                 adGroupPolicyMapping: Dataset[AdGroupPolicyMappingRecord],
                                  endDate: java.time.LocalDate,
                                  lookBack: Int
                               )(implicit prometheus:PrometheusClient): Tuple2[Dataset[AttributedEventRecord], Dataset[AttributedEventResultRecord]] ={
     // AttributedEventTypeId: 1->Click, 2-> Impression；
     // AttributionMethodId: 0 -> 'LastClick' , 1 -> 'ViewThrough' , 2 -> 'Touch', 3 -> 'Decay'
     val attributedEvent =  AttributedEventDataSet().readRange(endDate.minusDays(lookBack), endDate, isInclusive = true).selectAs[AttributedEventRecord]
-    val filteredAttributedEvent = multiLevelJoinWithPolicy[AttributedEventRecord](attributedEvent, adGroupPolicy, joinType = "left_semi")
+    val filteredAttributedEvent = attributedEvent.join(adGroupPolicyMapping, Seq("AdGroupId"), "left_semi")
       .filter($"AttributedEventTypeId".isin(List("1", "2"): _*))
       .withColumn("AttributedEventLogEntryTime", to_timestamp(col("AttributedEventLogEntryTime")).as("AttributedEventLogEntryTime"))
       .selectAs[AttributedEventRecord]
@@ -176,14 +176,13 @@ object OfflineAttributionTransform {
   }
 
   def getInputForCalibrationAndScaling(
-                                           impressionLevelPerformance: Dataset[OfflineScoreAttributionResultRecord] ,
-                                           IsotonicRegPositiveLabelCountThreshold: Int,
-                                           IsotonicRegNegCap: Int,
-                                           IsotonicRegNegMaxSampleRate: Double,
-                                           samplingSeed:Long
-                                         )(implicit prometheus:PrometheusClient): (Dataset[ImpressionForIsotonicRegRecord], Dataset[CampaignCvrForScalingRecord]) = {
-
-  val convertedImpressions = impressionLevelPerformance.filter($"Label"===lit(1)).filter($"ImpressionWeightForCalibrationModel">0).cache()
+                                       impressionLevelPerformance: Dataset[OfflineScoreAttributionResultRecord] ,
+                                       IsotonicRegPositiveLabelCountThreshold: Int,
+                                       IsotonicRegNegCap: Int,
+                                       IsotonicRegNegMaxSampleRate: Double,
+                                       samplingSeed:Long
+                                      )(implicit prometheus:PrometheusClient): (Dataset[ImpressionForIsotonicRegRecord], Dataset[CampaignCvrForScalingRecord]) = {
+    val convertedImpressions = impressionLevelPerformance.filter($"Label"===lit(1)).filter($"ImpressionWeightForCalibrationModel">0).cache()
 
     // 1. prepare adgroup data for isotonic regression
     // filter in adgroups impressions that has conversions more than threshold.

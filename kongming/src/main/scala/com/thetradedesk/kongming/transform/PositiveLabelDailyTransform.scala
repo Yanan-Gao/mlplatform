@@ -2,7 +2,7 @@ package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.kongming.RoundUpTimeUnit
 import com.thetradedesk.kongming.datasets._
-import com.thetradedesk.kongming.{multiLevelJoinWithPolicy, preFilteringWithPolicy}
+import com.thetradedesk.kongming.multiLevelJoinWithPolicy
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -14,23 +14,9 @@ import java.sql.Timestamp
 import java.time.LocalDate
 
 object PositiveLabelDailyTransform {
-case class IntraDayBidRequestWithPolicyRecord(
-                                               ConfigKey: String,
-                                               ConfigValue: String,
-                                               DataAggKey: String,
-                                               DataAggValue: String,
-                                               BidRequestId: String,
-                                               UIID: String,
-                                               LogEntryTime: java.sql.Timestamp,
-                                               IsImp: Boolean,
-                                               LastTouchCount: Int
-                                             )
-
   case class DailyPositiveBidRequestRecord(
                                           ConfigKey: String,
                                           ConfigValue: String,
-                                          DataAggKey: String,
-                                          DataAggValue: String,
                                           BidRequestId: String,
                                           TrackingTagId: String,
                                           UIID: String,
@@ -57,19 +43,18 @@ case class IntraDayBidRequestWithPolicyRecord(
                     (implicit prometheus: PrometheusClient): Dataset[DailyPositiveBidRequestRecord] = {
 
     // tag bidImpressions with policy
-    val filteredBidRequest = multiLevelJoinWithPolicy[IntraDayBidRequestWithPolicyRecord](
-      bidsImpressions,
-      adGroupPolicy.select("DataAggKey", "DataAggValue", "ConfigKey", "ConfigValue", "LastTouchCount"),
-      "inner")
+    val filteredBidRequest = bidsImpressions.filter($"UIID".isNotNullOrEmpty && $"UIID" =!= "00000000-0000-0000-0000-000000000000")
 
-    val window = Window.partitionBy($"DataAggKey", $"DataAggValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"TruncatedLogEntryTime".desc)
+    val sameDayCampaignPositiveBidRequests = dailyConversionDS
+      .join(broadcast(adGroupPolicy.filter('DataAggKey === lit("CampaignId")).select("ConfigKey", "ConfigValue", "DataAggValue", "LastTouchCount")), Seq("ConfigKey", "ConfigValue"), "inner")
+      .join(filteredBidRequest.withColumnRenamed("CampaignId", "DataAggValue"), Seq("UIID", "DataAggValue"), "inner")
+    val sameDayAdvertiserPositiveBidRequests = dailyConversionDS
+      .join(broadcast(adGroupPolicy.filter('DataAggKey === lit("AdvertiserId")).select("ConfigKey", "ConfigValue", "DataAggValue", "LastTouchCount")), Seq("ConfigKey", "ConfigValue"), "inner")
+      .join(filteredBidRequest.withColumnRenamed("AdvertiserId", "DataAggValue"), Seq("UIID", "DataAggValue"), "inner")
 
-    filteredBidRequest
-      .filter($"UIID".isNotNullOrEmpty && $"UIID" =!= "00000000-0000-0000-0000-000000000000")
-      .join(dailyConversionDS,
-        Seq("UIID", "DataAggKey", "DataAggValue"),
-            "inner"
-          )
+    val window = Window.partitionBy($"ConfigKey", $"ConfigValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"TruncatedLogEntryTime".desc)
+
+    sameDayCampaignPositiveBidRequests.union(sameDayAdvertiserPositiveBidRequests)
       .filter($"LogEntryTime"<=$"ConversionTime")
       .withColumn("TruncatedLogEntryTime", date_trunc(RoundUpTimeUnit, $"LogEntryTime"))
       .withColumn("RecencyRank", dense_rank().over(window))
@@ -92,22 +77,9 @@ case class IntraDayBidRequestWithPolicyRecord(
                                   adGroupPolicy: Dataset[AdGroupPolicyRecord]
                                 )
                                 (implicit prometheus: PrometheusClient): Dataset[DailyPositiveBidRequestRecord] = {
-
-    // TODO: code will break if data agg key is not adgroupid. will need to revisit this later.
-    //val window = Window.partitionBy($"DataAggKey", $"DataAggValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"LogEntryTime".desc)
-
-    val dailyConversionDSWithConfig = dailyConversionDS
-      .join(broadcast(adGroupPolicy.select("ConfigKey","ConfigValue","DataAggKey","DataAggValue")),
-            Seq("DataAggValue", "DataAggKey"),
-            "inner"
-      )
-      .drop("DataAggKey","DataAggValue")
-
-    multidayBidImpressionDS
-      .join(dailyConversionDSWithConfig,
-        Seq("UIID","ConfigKey", "ConfigValue"),
-        "inner"
-      )
+    dailyConversionDS
+      .join(broadcast(adGroupPolicy.select("ConfigKey", "ConfigValue", "DataAggKey", "DataAggValue")), Seq("ConfigKey", "ConfigValue"), "inner")
+      .join(multidayBidImpressionDS, Seq("UIID", "DataAggKey", "DataAggValue"), "inner")
       .selectAs[DailyPositiveBidRequestRecord]
   }
   //TODO: below function is commented out but might be worth testing for calculation efficiency.
@@ -160,35 +132,34 @@ case class IntraDayBidRequestWithPolicyRecord(
                                , adGroupPolicy: Dataset[AdGroupPolicyRecord]
                                ):Dataset[DailyPositiveLabelRecord]={
 
-    val window = Window.partitionBy($"DataAggKey", $"DataAggValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"TruncatedLogEntryTime".desc)
+    val window = Window.partitionBy($"ConfigKey", $"ConfigValue", $"UIID", $"TrackingTagId", $"ConversionTime").orderBy($"TruncatedLogEntryTime".desc)
 
     unionedMultidayPositive
-    .join(broadcast(adGroupPolicy.drop("DataAggKey","DataAggValue")), Seq("ConfigKey","ConfigValue"))
-    .withColumn("DataLookBackInSeconds", $"DataLookBack"*24*3600)
-    .withColumn("lookbackInSeconds",
-      least(
-        greatest($"AttributionClickLookbackWindowInSeconds",$"AttributionImpressionLookbackWindowInSeconds")
-        , $"DataLookBackInSeconds")
-    )
-    .withColumn("TouchConvTimeDiffInSeconds", unix_timestamp($"ConversionTime") - unix_timestamp($"LogEntryTime"))
-    .filter($"TouchConvTimeDiffInSeconds" >= 0)
-    .filter($"lookbackInSeconds">=$"TouchConvTimeDiffInSeconds")
-    .withColumn("TruncatedLogEntryTime", date_trunc(RoundUpTimeUnit, $"LogEntryTime"))
-    .withColumn("RecencyRank", dense_rank().over(window))
-    .filter($"RecencyRank" <= $"LastTouchCount")
-    .withColumn(
-      "IsClickWindowGreater", $"AttributionClickLookbackWindowInSeconds">$"AttributionImpressionLookbackWindowInSeconds"
-    )
-    .withColumn(
-      "IsInClickAttributionWindow",
-      when($"TouchConvTimeDiffInSeconds"<=$"AttributionClickLookbackWindowInSeconds", true).otherwise(false)
-    )
-    .withColumn(
-      "IsInViewAttributionWindow",
-      when($"TouchConvTimeDiffInSeconds"<=$"AttributionImpressionLookbackWindowInSeconds", true).otherwise(false)
-    )
-    .selectAs[DailyPositiveLabelRecord]
-
+      .join(broadcast(adGroupPolicy), Seq("ConfigKey","ConfigValue"), "inner")
+      .withColumn("DataLookBackInSeconds", $"DataLookBack"*24*3600)
+      .withColumn("lookbackInSeconds",
+        least(
+          greatest($"AttributionClickLookbackWindowInSeconds", $"AttributionImpressionLookbackWindowInSeconds")
+          , $"DataLookBackInSeconds")
+        )
+      .withColumn("TouchConvTimeDiffInSeconds", unix_timestamp($"ConversionTime") - unix_timestamp($"LogEntryTime"))
+      .filter($"TouchConvTimeDiffInSeconds" >= 0)
+      .filter($"lookbackInSeconds">=$"TouchConvTimeDiffInSeconds")
+      .withColumn("TruncatedLogEntryTime", date_trunc(RoundUpTimeUnit, $"LogEntryTime"))
+      .withColumn("RecencyRank", dense_rank().over(window))
+      .filter($"RecencyRank" <= $"LastTouchCount")
+      .withColumn(
+        "IsClickWindowGreater", $"AttributionClickLookbackWindowInSeconds">$"AttributionImpressionLookbackWindowInSeconds"
+      )
+      .withColumn(
+        "IsInClickAttributionWindow",
+        when($"TouchConvTimeDiffInSeconds"<=$"AttributionClickLookbackWindowInSeconds", true).otherwise(false)
+      )
+      .withColumn(
+        "IsInViewAttributionWindow",
+        when($"TouchConvTimeDiffInSeconds"<=$"AttributionImpressionLookbackWindowInSeconds", true).otherwise(false)
+      )
+      .selectAs[DailyPositiveLabelRecord]
   }
 
   def countDataAggGroupPositives(

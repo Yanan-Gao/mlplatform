@@ -10,6 +10,7 @@ final case class AdGroupPolicyMappingRecord(ConfigKey: String,
                                             AdvertiserIdInt: Int
                                            )
 
-case class AdGroupPolicyMappingDataset() extends KongMingDataset[AdGroupPolicyMappingRecord](
-  s3DatasetPath = "dailyadgrouppolicymapping/v=1"
+case class AdGroupPolicyMappingDataset(experimentOverride: Option[String] = None) extends KongMingDataset[AdGroupPolicyMappingRecord](
+  s3DatasetPath = "dailyadgrouppolicymapping/v=1",
+  experimentOverride = experimentOverride
 )

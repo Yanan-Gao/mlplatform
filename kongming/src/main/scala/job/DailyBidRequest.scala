@@ -11,10 +11,10 @@ object DailyBidRequest extends KongmingBaseJob {
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
+
     val bidsImpressionFilterByPolicy = DailyBidsImpressionsDataset().readDate(date)
 
     val filteredBidRequestDS = BidRequestTransform.dailyTransform(
-      date,
       bidsImpressionFilterByPolicy,
       adGroupPolicy
     )(getPrometheus)

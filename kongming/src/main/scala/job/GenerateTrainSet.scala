@@ -81,13 +81,11 @@ object GenerateTrainSet extends KongmingBaseJob {
     //    load aggregated positives
     val aggregatedPositiveSetHist = DailyPositiveBidRequestDataset().readRange(date.minusDays(conversionLookback-1), date, true)
     val aggregatedPositiveSet = (if (incTrain) DailyPositiveBidRequestDataset().readDate(date) else aggregatedPositiveSetHist)
-      .withColumn("IsInTrainSet", when(abs(hash($"UIID")%100)<=trainRatio*100, lit(true)).otherwise(false))
-      .drop("ConfigValue", "ConfigKey")
-      .join(broadcast(adGroupPolicy.select("ConfigValue", "ConfigKey", "DataAggKey", "DataAggValue")), Seq("DataAggKey", "DataAggValue"), "inner")
+      .withColumn("IsInTrainSet", abs(hash($"UIID") % 100) <= trainRatio * 100)
+      .join(broadcast(adGroupPolicy), Seq("ConfigKey", "ConfigValue"), "left_semi")
 
     // 1. exclude positives from negative; balance neg:pos; remain pos and neg that have both train and val
-    val negativeExcludePos = aggregatedNegativeSet.join(
-      broadcast(aggregatedPositiveSet.select("DataAggValue").distinct), Seq("DataAggValue"), "left_semi")
+    val negativeExcludePos = aggregatedNegativeSet.join(broadcast(aggregatedPositiveSet.select("ConfigKey", "ConfigValue").distinct), Seq("ConfigKey", "ConfigValue"), "left_semi")
       .join(aggregatedPositiveSetHist, Seq("ConfigValue", "ConfigKey", "BidRequestId"), "left_anti")
 
     val balancedTrainset = balancePosNeg(
@@ -119,15 +117,15 @@ object GenerateTrainSet extends KongmingBaseJob {
         "inner"
       ).cache()
 
-    val validPositives = balancedPositives.join(dataHaveBothTrainVal, Seq("ConfigValue","ConfigKey" ), "left_semi" )
+    val validPositives = balancedPositives.join(dataHaveBothTrainVal, Seq("ConfigValue","ConfigKey"), "left_semi" )
     val validNegatives = balancedNegatives.join(dataHaveBothTrainVal, Seq("ConfigValue","ConfigKey"), "left_semi" ).selectAs[TrainSetRecord].cache()
 
 
     // 2. get the latest weights for trackingtags for adgroups in policytable
     val trackingTagWindow =  Window.partitionBy($"TrackingTagId", $"ConfigKey", $"ConfigValue")
       .orderBy($"ReportingColumnId")
-    val adGroupDS = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, true)
-    val trackingTagWithWeight = getWeightsForTrackingTags(date, adGroupPolicy, adGroupDS, normalized = true)
+    val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(date)
+    val trackingTagWithWeight = getWeightsForTrackingTags(date, adGroupPolicyMapping, normalized = true)
       .withColumn("ReportingColumnRank", dense_rank().over(trackingTagWindow))
       .filter($"ReportingColumnRank"===lit(1))
       .drop("ReportingColumnId")
@@ -156,7 +154,7 @@ object GenerateTrainSet extends KongmingBaseJob {
       .selectAs[PreFeatureJoinRecord].cache()
 
     //adjust weight in trainset
-    val adjustedWeightDataset= adjustWeightForTrainset(preFeatureJoinTrainSet,desiredNegOverPos)
+    val adjustedWeightDataset = adjustWeightForTrainset(preFeatureJoinTrainSet,desiredNegOverPos)
 
     // 5. join all these dataset with bidimpression to get features
     val splitColumn = modelTargetCols(Array(ModelTarget("split", STRING_FEATURE_TYPE, false)))

@@ -83,10 +83,10 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
                                       Revenue: Option[BigDecimal]
                                     )
 
-  def getEventsAttributions(adGroupPolicy: Dataset[_], adGroups: Dataset[AdGroupRecord], scoreDate: LocalDate)(implicit prometheus: PrometheusClient): Dataset[EventsAttribution] = {
+  def getEventsAttributions(adGroupPolicy: Dataset[_], adGroupPolicyMapping: Dataset[AdGroupPolicyMappingRecord], scoreDate: LocalDate)(implicit prometheus: PrometheusClient): Dataset[EventsAttribution] = {
     val validTags = getValidTrackingTags(scoreDate, adGroupPolicy)
 
-    val (attributedEvent, attributedEventResult) = OfflineAttributionTransform.getAttributedEventAndResult(adGroupPolicy.selectAs[AdGroupPolicyRecord], date, lookBack = Config.AttributionLookBack + Config.ImpressionLookBack - 1)
+    val (attributedEvent, attributedEventResult) = OfflineAttributionTransform.getAttributedEventAndResult(adGroupPolicyMapping, date, lookBack = Config.AttributionLookBack + Config.ImpressionLookBack - 1)
     val attributedEventResultOfInterest = multiLevelJoinWithPolicy[AttributedEventRecordWithPolicyKeys](attributedEvent, adGroupPolicy, "inner")
       .withColumn("MonetaryValue", $"MonetaryValue".cast("decimal"))
       .join(
@@ -132,6 +132,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
   def generateAttributionSet(scoreDate: LocalDate)(implicit prometheus: PrometheusClient): Dataset[OutOfSampleAttributionRecord] = {
     val adGroups = AdGroupDataSet().readLatestPartitionUpTo(scoreDate, true)
+    val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(scoreDate)
     val adGroupPolicy = AdGroupPolicyDataset().readDate(scoreDate)
       .withColumn("AttributionGroupKey", when('DataAggKey === lit("AdvertiserId"), lit("CampaignId")).otherwise('DataAggKey))
       .join(adGroups.select("AdGroupId", "CampaignId"), col("AdGroupId") === col("ConfigValue"), "left")
@@ -146,7 +147,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
       adGroupPolicy.select("AttributionGroupKey", "AttributionGroupValue"),
       "inner", "AttributionGroupKey", "AttributionGroupValue")
 
-    val eventsAttributions = getEventsAttributions(adGroupPolicy, adGroups, scoreDate)(prometheus)
+    val eventsAttributions = getEventsAttributions(adGroupPolicy, adGroupPolicyMapping, scoreDate)(prometheus)
       .withColumnRenamed("BidRequestId", "BidRequestIdStr")
 
     // offline score labels: one impression could have more than one row if it contributes to multiple conversions. If it contributes to no conversion, then it has one row.

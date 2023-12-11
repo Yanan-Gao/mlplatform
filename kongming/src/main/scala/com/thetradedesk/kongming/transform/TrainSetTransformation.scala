@@ -4,7 +4,7 @@ import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImp
 import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, FLOAT_FEATURE_TYPE, GERONIMO_DATA_SOURCE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, loadParquetData, shiftModUdf}
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
-import com.thetradedesk.kongming.{CustomGoalTypeId, IncludeInCustomGoal, date, multiLevelJoinWithPolicy, task}
+import com.thetradedesk.kongming.{CustomGoalTypeId, IncludeInCustomGoal, date, task}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -29,11 +29,8 @@ object TrainSetTransformation {
                                         )
 
   case class PreFeatureJoinRecord(
-                                   //                                     AdGroupId: String,
                                    ConfigKey: String,
                                    ConfigValue: String,
-                                   //                                       DataAggKey: String,
-                                   //                                       DataAggValue: String,
                                    BidRequestId: String,
                                    Weight: Double,
                                    LogEntryTime:  java.sql.Timestamp,
@@ -46,8 +43,6 @@ object TrainSetTransformation {
   case class TrainSetRecord(
                              ConfigKey: String,
                              ConfigValue: String,
-                             DataAggKey: String,
-                             DataAggValue: String,
                              BidRequestId: String,
                              Revenue: Option[BigDecimal],
                              Weight: Double,
@@ -58,8 +53,6 @@ object TrainSetTransformation {
   case class TrainSetRecordVerbose(
                                      ConfigKey: String,
                                      ConfigValue: String,
-                                     DataAggKey: String,
-                                     DataAggValue: String,
                                      BidRequestId: String,
                                      TrackingTagId: String,
                                      Revenue: Option[BigDecimal],
@@ -86,8 +79,6 @@ object TrainSetTransformation {
   case class PositiveWithRawWeightsRecord(
                                            ConfigKey: String,
                                            ConfigValue: String,
-                                           DataAggKey: String,
-                                           DataAggValue: String,
 
                                            BidRequestId: String,
 
@@ -139,10 +130,8 @@ object TrainSetTransformation {
 
   def getWeightsForTrackingTags(
                                  date: LocalDate,
-                                 adGroupPolicy: Dataset[AdGroupPolicyRecord],
-                                 adGroupDS: Dataset[AdGroupRecord],
+                                 adgroupBaseAssociateMapping: Dataset[AdGroupPolicyMappingRecord],
                                  normalized: Boolean=false,
-                                 adgroupBaseAssociateMapping: Option[Dataset[AdGroupPolicyMappingRecord]]=None
                                ): Dataset[TrackingTagWeightsRecord]= {
     // 1. get the latest weights per campaign and trackingtagid
     val campaignDS = CampaignDataSet().readLatestPartitionUpTo(date, true)
@@ -191,28 +180,14 @@ object TrainSetTransformation {
     //Besides, the zero weight is represented to 0e18, so I use clickweight+viewweight <1e-8 instead of clickweight+viewweight==0.
 
     // 2. join trackingtag weights with policy table
-    adgroupBaseAssociateMapping match {
-      case Some(adgroupBaseAssociateMapping) =>
-        adgroupBaseAssociateMapping
-//          .join(broadcast(adGroupDS), adgroupBaseAssociateMapping("AdGroupId")===adGroupDS("AdGroupId"), "inner")
-          .select("AdGroupId","CampaignId")
-          .join(ccrcProcessed, Seq("CampaignId"), "inner")
-          .select($"AdGroupId",$"TrackingTagId", $"ReportingColumnId", $"NormalizedPixelWeight",$"NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAViewthroughWeight" ) // one trackingtagid can have different following values
-          .withColumn("ConfigKey", lit("AdGroupId"))
-          .withColumnRenamed("AdGroupId", "ConfigValue")
-          .selectAs[TrackingTagWeightsRecord]
-        // renaming AdGroupId to ConfigValue here only serve for matching the schema. AdGroupId in this table is not limited to ConfigValues in policy table
-
-      case None =>
-        adGroupPolicy
-          .join(broadcast(adGroupDS), adGroupPolicy("ConfigValue")===adGroupDS("AdGroupId"), "inner")
-          .select("CampaignId","ConfigKey", "ConfigValue", "DataAggKey", "DataAggValue")
-          .join(ccrcProcessed, Seq("CampaignId"), "inner")
-          .select($"TrackingTagId", $"ReportingColumnId", $"ConfigKey", $"ConfigValue", $"NormalizedPixelWeight",$"NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAViewthroughWeight" ) // one trackingtagid can have different following values
-          .selectAs[TrackingTagWeightsRecord]
-    }
-
-
+    adgroupBaseAssociateMapping
+      .select("AdGroupId","CampaignId")
+      .join(ccrcProcessed, Seq("CampaignId"), "inner")
+      .select($"AdGroupId",$"TrackingTagId", $"ReportingColumnId", $"NormalizedPixelWeight",$"NormalizedCustomCPAClickWeight", $"NormalizedCustomCPAViewthroughWeight" ) // one trackingtagid can have different following values
+      .withColumn("ConfigKey", lit("AdGroupId"))
+      .withColumnRenamed("AdGroupId", "ConfigValue")
+      .selectAs[TrackingTagWeightsRecord]
+    // renaming AdGroupId to ConfigValue here only serve for matching the schema. AdGroupId in this table is not limited to ConfigValues in policy table
   }
 
   def generateWeightForPositive(
@@ -470,7 +445,7 @@ object TrainSetTransformation {
     }
 
     val downSampledPositives = positivesToResample
-      .withColumn("PositiveCount", count("BidRequestId").over(Window.partitionBy("DataAggValue")))
+      .withColumn("PositiveCount", count("BidRequestId").over(Window.partitionBy("ConfigKey", "ConfigValue")))
       .withColumn("Ratio", lit(maxPositiveCount) / $"PositiveCount")
       .withColumn("Rand", rand(seed = samplingSeed))
       .filter($"Rand" <= $"Ratio")
@@ -478,15 +453,15 @@ object TrainSetTransformation {
 
     val positiveDailyCount = downSampledPositives
       .withColumn("LogEntryDate", to_date($"LogEntryTime"))
-      .groupBy("DataAggValue", "LogEntryDate")
+      .groupBy("ConfigKey", "ConfigValue", "LogEntryDate")
       .count()
       .withColumnRenamed("count", "PosDailyCount")
 
     val downSampledNegatives = negativeToResample
       .withColumn("LogEntryDate", to_date($"LogEntryTime"))
       .withColumn("NegDailyCount",
-        count("BidRequestId").over(Window.partitionBy("DataAggValue", "LogEntryDate")))
-      .join(broadcast(positiveDailyCount), Seq("DataAggValue", "LogEntryDate"), "left")
+        count("BidRequestId").over(Window.partitionBy("ConfigKey", "ConfigValue", "LogEntryDate")))
+      .join(broadcast(positiveDailyCount), Seq("ConfigKey", "ConfigValue", "LogEntryDate"), "left")
       .withColumn("Ratio", lit(desiredNegOverPos) * $"PosDailyCount" / $"NegDailyCount")
       .withColumn("Rand", rand(seed = samplingSeed))
       .filter($"Rand" <= $"Ratio")
@@ -507,11 +482,11 @@ object TrainSetTransformation {
   Dataset[PreFeatureJoinRecord] = {
     val train = trainset.filter($"IsInTrainSet" === lit(true)).cache()
     val validation = trainset.filter($"IsInTrainSet" === lit(false))
-    val sumWeight = train.filter(col("Target")===0).groupBy("ConfigValue").agg(sum("Weight").as("NegSumWeight"))
-      .join(train.filter(col("Target")===1).groupBy("ConfigValue").agg(sum("Weight").as("PosSumWeight")),Seq("ConfigValue"),"inner")
+    val sumWeight = train.filter(col("Target")===0).groupBy("ConfigKey", "ConfigValue").agg(sum("Weight").as("NegSumWeight"))
+      .join(train.filter(col("Target")===1).groupBy("ConfigKey", "ConfigValue").agg(sum("Weight").as("PosSumWeight")), Seq("ConfigKey", "ConfigValue"),"inner")
     // We observed that there are some adgroups where its pos-weight is 0, which is caused by user settings.May solve it in the future.
     val adjustedTrainset = sumWeight.withColumn("Coefficient",when($"PosSumWeight">0,$"NegSumweight"/$"PosSumWeight").otherwise($"NegSumWeight"))
-      .join(train,Seq("ConfigValue"),"inner")
+      .join(train, Seq("ConfigKey", "ConfigValue"), "inner")
       .withColumn("Weight",when(col("Target")===1,col("Weight")*col("Coefficient")/lit(desiredNegOverPos)).otherwise(col("Weight")))
       .selectAs[PreFeatureJoinRecord].toDF()
     val orgValidationset = validation.toDF()
