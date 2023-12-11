@@ -59,21 +59,12 @@ object GenerateTrainSetRevenue extends KongmingBaseJob {
 
     // test only adgroups in the policy table. since aggKey are all adgroupId, we filter by adgroup id
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date).cache()
+    val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(date).cache()
 
     val rate = DailyExchangeRateDataset().readDate(date).cache()
 
     // maximum lookback from adgroup's policy
     val maxLookback = adGroupPolicy.agg(max("DataLookBack")).first.getInt(0)
-
-    // 0. load aggregated negatives
-    val dailyNegativeSampledBids = DailyNegativeSampledBidRequestDataSet().readRange(date.minusDays(maxLookback-1), date, true)
-    val aggregatedNegativeSet = aggregateNegatives(date, dailyNegativeSampledBids, adGroupPolicy)(getPrometheus)
-      .withColumn("IsInTrainSet", when($"UIID".isNotNull && $"UIID"=!=lit("00000000-0000-0000-0000-000000000000"),
-        when(abs(hash($"UIID")%100)<=trainRatio*100, lit(true)).otherwise(false)).otherwise(
-        when(abs(hash($"BidRequestId")%100)<=trainRatio*100, lit(true)).otherwise(false)
-      ))
-      .withColumn("Weight", lit(1))  // placeholder: 1. assign format with positive 2. we might weight for negative in the future, TBD.
-      .withColumn("Revenue", lit(0))
 
     //    load aggregated positives
     val aggregatedPositiveSetHist = DailyPositiveBidRequestDataset().readRange(date.minusDays(conversionLookback-1), date, true)
@@ -87,6 +78,22 @@ object GenerateTrainSetRevenue extends KongmingBaseJob {
       .withColumn("IsInTrainSet", when(abs(hash($"UIID")%100)<=trainRatio*100, lit(true)).otherwise(false))
       .drop("ConfigValue", "ConfigKey")
       .join(broadcast(adGroupPolicy.select("ConfigValue", "ConfigKey", "DataAggKey", "DataAggValue")), Seq("DataAggKey","DataAggValue"), "inner")
+
+    // Don't bother with config items with no positives in the trainset.
+    val preFilteredPolicy = adGroupPolicy
+      .join(aggregatedPositiveSet.filter('IsInTrainSet).select("ConfigKey", "ConfigValue").distinct, Seq("ConfigKey", "ConfigValue"), "left_semi")
+      .selectAs[AdGroupPolicyRecord]
+      .cache
+
+    // 0. load aggregated negatives
+    val dailyNegativeSampledBids = DailyNegativeSampledBidRequestDataSet().readRange(date.minusDays(maxLookback-1), date, true)
+    val aggregatedNegativeSet = aggregateNegatives(date, dailyNegativeSampledBids, adGroupPolicy, adGroupPolicyMapping)(getPrometheus)
+      .withColumn("IsInTrainSet", when($"UIID".isNotNull && $"UIID"=!=lit("00000000-0000-0000-0000-000000000000"),
+        when(abs(hash($"UIID")%100)<=trainRatio*100, lit(true)).otherwise(false)).otherwise(
+        when(abs(hash($"BidRequestId")%100)<=trainRatio*100, lit(true)).otherwise(false)
+      ))
+      .withColumn("Weight", lit(1))  // placeholder: 1. assign format with positive 2. we might weight for negative in the future, TBD.
+      .withColumn("Revenue", lit(0))
 
     val window = Window.partitionBy($"DataAggValue")
     // cap on the valid positives (where Revenue>1)

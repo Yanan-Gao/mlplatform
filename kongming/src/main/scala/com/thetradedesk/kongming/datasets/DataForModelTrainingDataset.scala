@@ -4,9 +4,15 @@ import com.thetradedesk.kongming.{BaseFolderPath, MLPlatformS3Root}
 import com.thetradedesk.spark.datasets.core._
 
 final case class DataForModelTrainingRecord(
+                                 AdGroupIdStr: String,
                                  AdGroupId: Int,
+                                 CampaignIdStr: String,
                                  CampaignId: Int,
+                                 AdvertiserIdStr: String,
                                  AdvertiserId: Int,
+                                 BidRequestIdStr: String,
+                                 IsTracked: Int,
+                                 IsUID2: Int,
                                  Weight: Double,
                                  Target: Int,
                                  Revenue: Option[BigDecimal],

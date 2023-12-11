@@ -5,8 +5,8 @@ case class BidRequestPolicyRecord( UIID: String,
                                    DataAggValue: String,
                                    BidRequestId: String,
                                    LogEntryTime: java.sql.Timestamp,
-                                   IsImp: Boolean
-                                   )
+                                   IsImp: Boolean,
+                                   AdGroupId: String)
 
 final case class DailyBidRequestRecord(UIID: String,
                                        DataAggKey: String,
@@ -14,7 +14,8 @@ final case class DailyBidRequestRecord(UIID: String,
                                        BidRequestId: String,
                                        LogEntryTime: java.sql.Timestamp,
                                        IsImp: Boolean,
-                                       RecencyRank: Int)
+                                       RecencyRank: Int,
+                                       AdGroupId: String)
 
 case class DailyBidRequestDataset(experimentOverride: Option[String] = None) extends KongMingDataset[DailyBidRequestRecord](
   s3DatasetPath = "dailybidrequest/v=1",

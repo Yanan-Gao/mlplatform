@@ -2,12 +2,12 @@ package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.kongming
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, DailyNegativeSampledBidRequestRecord, UnifiedAdGroupDataSet}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyMappingRecord, AdGroupPolicyRecord, DailyNegativeSampledBidRequestRecord, UnifiedAdGroupDataSet}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions.{count, date_add, hash, lit, pow, rand, when}
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.Dataset
 
 import java.time.LocalDate
@@ -37,6 +37,12 @@ object NegativeTransform {
                                               UIID: String,
                                               LogEntryTime: java.sql.Timestamp,
                                             )
+
+  final case class CampaignInConfigGroupDataRecord (
+                                           ConfigKey: String,
+                                           ConfigValue: String,
+                                           CampaignId: String
+                                         )
 
   def samplingWithConstantMod(
                                negativeSamplingBidWithGrains: Dataset[NegativeSamplingBidRequestGrainsRecord],
@@ -91,17 +97,18 @@ object NegativeTransform {
   def aggregateNegatives(
                           date: LocalDate,
                           dailyNegativeSampledBids: Dataset[DailyNegativeSampledBidRequestRecord],
-                          adGroupPolicy: Dataset[AdGroupPolicyRecord])
+                          adGroupPolicy: Dataset[AdGroupPolicyRecord],
+                          mapping: Dataset[AdGroupPolicyMappingRecord])
                         (implicit prometheus:PrometheusClient): Dataset[AggregateNegativesRecord] = {
-    /*
-     join negatives with adgroup policy at different aggregation level
-     The implementation is for future use cases when campaign/advertiser level aggregation come into play. For now the hard coded dataset has no such rows then the code will just passes two of of allNeagtives.
-     */
-    // todo: pre-check possible aggregation levels.
+    // Temporary hack. Do not duplicate a bid request by more than 50 times.
+    val campaignConfigGroupMembership = multiLevelJoinWithPolicy[CampaignInConfigGroupDataRecord](mapping.select("AdGroupId", "CampaignId", "AdvertiserId"), adGroupPolicy, "inner")
+      .groupBy("CampaignId").agg(collect_set("ConfigValue").as("ConfigValues"))
 
-    val filterCondition = date_add($"LogEntryTime", $"DataLookBack")>=date
-    val dailyNegativeSampledBidsFilterByPolicy = multiLevelJoinWithPolicy[AggregateNegativesRecord](dailyNegativeSampledBids, adGroupPolicy, filterCondition, "inner")
-
-    dailyNegativeSampledBidsFilterByPolicy
+    dailyNegativeSampledBids.filter(date_add('LogEntryTime, lit(15)) >= date)
+      .join(campaignConfigGroupMembership, Seq("CampaignId"), "inner")
+      .withColumn("ConfigValues", when(size('ConfigValues) <= 20, 'ConfigValues).otherwise(slice(shuffle('ConfigValues), 1, 20)))
+      .withColumn("ConfigKey", lit("AdGroupId"))
+      .withColumn("ConfigValue", explode('ConfigValues))
+      .selectAs[AggregateNegativesRecord]
   }
 }
