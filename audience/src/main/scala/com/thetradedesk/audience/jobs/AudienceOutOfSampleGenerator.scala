@@ -6,7 +6,7 @@ import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.jobs.AudienceModelInputGeneratorJob.clusterTargetingData
 import com.thetradedesk.audience.sample.RandomSampling.negativeSampleUDFGenerator
 import com.thetradedesk.audience.sample.WeightSampling.{getLabels, zipAndGroupUDFGenerator}
-import com.thetradedesk.audience.transform.ModelFeatureTransform
+import com.thetradedesk.audience.transform.{ContextualTransform, ModelFeatureTransform}
 import com.thetradedesk.audience.utils.S3Utils
 import com.thetradedesk.audience.{dateTime, shouldConsiderTDID3}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -50,54 +50,55 @@ object OutOfSampleGenerateJob {
       var samplingFunction = shouldConsiderTDID3((RSM_OOS_Config.outSeedSampleRatio*1000000).toInt, RSM_OOS_Config.saltSampleOutSeed)(_)
       val (sampledBidsImpressionsKeys, bidsImpressionsLong, uniqueTDIDs) = new RSMSeedInputGenerator(CrossDeviceVendor.None).getBidImpressions(date, AudienceModelInputGeneratorConfig.lastTouchNumberInBR,
         AudienceModelInputGeneratorConfig.tdidTouchSelection)
+
       policyTable.foreach(typePolicyTable => {
-      val dataset = {
-        AudienceModelInputGeneratorConfig.model match {
-          case Model.RSM => typePolicyTable match {
-            case ((DataSource.Seed, crossDeviceVendor: CrossDeviceVendor), subPolicyTable: Array[AudienceModelPolicyRecord]) => {
-              val rawLabels = new RSMSeedInputGenerator(crossDeviceVendor).generateLabels(date, subPolicyTable)
-              // in seed oos
-              val filteredInSeedLabels = uniqueTDIDs.join(rawLabels, Seq("TDID"), "inner")
-              val refinedInSeedLabels = OOSSampling.inSeedSampleLabels(filteredInSeedLabels, subPolicyTable)
-              val inSeedOOS = bidsImpressionsLong.drop("CampaignId", "LogEntryTime")
-                .join(
-                  refinedInSeedLabels
-                    .join(
-                      sampledBidsImpressionsKeys, Seq("TDID"), "inner"),
-                  Seq("TDID", "BidRequestId"), "inner")
+        val dataset = {
+          AudienceModelInputGeneratorConfig.model match {
+            case Model.RSM => typePolicyTable match {
+              case ((DataSource.Seed, crossDeviceVendor: CrossDeviceVendor), subPolicyTable: Array[AudienceModelPolicyRecord]) => {
+                val rawLabels = new RSMSeedInputGenerator(crossDeviceVendor).generateLabels(date, subPolicyTable)
+                // in seed oos
+                val filteredInSeedLabels = uniqueTDIDs.join(rawLabels, Seq("TDID"), "inner")
+                val refinedInSeedLabels = OOSSampling.inSeedSampleLabels(filteredInSeedLabels, subPolicyTable)
+                val inSeedOOS = bidsImpressionsLong.drop("CampaignId", "LogEntryTime")
+                  .join(
+                    refinedInSeedLabels
+                      .join(
+                        sampledBidsImpressionsKeys, Seq("TDID"), "inner"),
+                    Seq("TDID", "BidRequestId"), "inner")
 
-              // out seed oos
-              val filteredOutSeedLabels = uniqueTDIDs.join(rawLabels, Seq("TDID"), "left_anti")
-              val refinedOutSeedLabels = OOSSampling.outSeedSampleLabels(filteredOutSeedLabels, subPolicyTable, samplingFunction)
-              val outSeedOOS = bidsImpressionsLong.drop("CampaignId", "LogEntryTime")
-                .filter(samplingFunction('TDID))
-                .join(
-                  refinedOutSeedLabels
-                    .join(
-                      sampledBidsImpressionsKeys, Seq("TDID"), "inner"),
-                  Seq("TDID", "BidRequestId"), "inner")
+                // out seed oos
+                val filteredOutSeedLabels = uniqueTDIDs.join(rawLabels, Seq("TDID"), "left_anti")
+                val refinedOutSeedLabels = OOSSampling.outSeedSampleLabels(filteredOutSeedLabels, subPolicyTable, samplingFunction)
+                val outSeedOOS = bidsImpressionsLong.drop("CampaignId", "LogEntryTime")
+                  .filter(samplingFunction('TDID))
+                  .join(
+                    refinedOutSeedLabels
+                      .join(
+                        sampledBidsImpressionsKeys, Seq("TDID"), "inner"),
+                    Seq("TDID", "BidRequestId"), "inner")
 
-              var OOS: DataFrame = inSeedOOS.union(outSeedOOS)
-              if (RSM_OOS_Config.extraSampleRatio != 1.0) {
-                var extraSampling = shouldConsiderTDID3((RSM_OOS_Config.extraSampleRatio*1000000).toInt, RSM_OOS_Config.extraSaltSample)(_)
-                OOS = OOS.filter(extraSampling('TDID))
+                var OOS: DataFrame = inSeedOOS.union(outSeedOOS)
+                if (RSM_OOS_Config.extraSampleRatio != 1.0) {
+                  var extraSampling = shouldConsiderTDID3((RSM_OOS_Config.extraSampleRatio*1000000).toInt, RSM_OOS_Config.extraSaltSample)(_)
+                  OOS = OOS.filter(extraSampling('TDID))
+                }
+                ContextualTransform.generateContextualFeatureTier1(OOS.withColumn("GroupID", 'TDID))
               }
-              OOS
+              case _ => throw new Exception(s"unsupported policy settings: Model[${Model.RSM}], Setting[${typePolicyTable._1}]")
             }
-            case _ => throw new Exception(s"unsupported policy settings: Model[${Model.RSM}], Setting[${typePolicyTable._1}]")
+            case _ => throw new Exception(s"unsupported Model[${AudienceModelInputGeneratorConfig.model}]")
           }
-          case _ => throw new Exception(s"unsupported Model[${AudienceModelInputGeneratorConfig.model}]")
         }
-      }
-      val resultTransformed = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](dataset)
-      AudienceModelInputDataset(AudienceModelInputGeneratorConfig.model.toString, s"${typePolicyTable._1._1}_${typePolicyTable._1._2}_${RSM_OOS_Config.workTask}").writePartition(
-            resultTransformed.as[AudienceModelInputRecord],
-            dateTime,
-            subFolderKey = Some(RSM_OOS_Config.subFolder),
-            subFolderValue = Some(RSM_OOS_Config.workTask),
-            format = Some("tfrecord"),
-            saveMode = SaveMode.Overwrite
-          )
+        val resultTransformed = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](dataset)
+        AudienceModelInputDataset(AudienceModelInputGeneratorConfig.model.toString, s"${typePolicyTable._1._1}_${typePolicyTable._1._2}_${RSM_OOS_Config.workTask}").writePartition(
+          resultTransformed.as[AudienceModelInputRecord],
+          dateTime,
+          subFolderKey = Some(RSM_OOS_Config.subFolder),
+          subFolderValue = Some(RSM_OOS_Config.workTask),
+          format = Some("tfrecord"),
+          saveMode = SaveMode.Overwrite
+        )
       })
   }
 }
