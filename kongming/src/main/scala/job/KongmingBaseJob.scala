@@ -35,6 +35,7 @@ abstract class KongmingBaseJob {
     MetadataDataset().writeRecord(runTime.toLong, date, MetadataType.runTime, jobName)
     prometheus.pushMetrics()
 
+    spark.catalog.clearCache()
     spark.stop()
   }
 }
