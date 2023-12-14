@@ -30,6 +30,8 @@ object AudienceModelInputGeneratorJob {
   val prometheus = new PrometheusClient("AudienceModelJob", "AudienceModelInputGeneratorJob")
   val jobRunningTime = prometheus.createGauge(s"audience_etl_job_running_time", "AudienceModelInputGeneratorJob running time", "model", "date")
   val jobProcessSize = prometheus.createGauge(s"audience_etl_job_process_size", "AudienceModelInputGeneratorJob process size", "model", "date", "data_source", "cross_device_vendor")
+  val posRatioGauge = prometheus.createGauge(s"pos_ratio", "pos ratio value", "model")
+
 
   object SubFolder extends Enumeration {
     type SubFolder = Value
@@ -129,6 +131,8 @@ object AudienceModelInputGeneratorJob {
       val pos_ratio = resultDF.select(sum("pos")).head().getDouble(0) / total
       MetadataDataset().writeRecord(total, dateTime,"metadata", "Count")
       MetadataDataset().writeRecord(pos_ratio, dateTime,"metadata", "PosRatio")
+      posRatioGauge.labels(AudienceModelInputGeneratorConfig.model.toString.toLowerCase).set(pos_ratio)
+
       resultDF.unpersist()
     }
     )
