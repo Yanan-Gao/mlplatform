@@ -48,7 +48,7 @@ object GenerateWatchlistData extends KongmingBaseJob {
     val csvDS = if (incTrain) DataIncCsvForModelTrainingDataset() else DataCsvForModelTrainingDataset()
 
     val trainDF = csvDS.readPartition(date)
-    val watchlistTrainDF = trainDF.join(
+    val watchlistTrainDF = trainDF.drop("AdGroupIdStr", "CampaignIdStr", "AdvertiserIdStr").join(
       broadcast(watchlistMappings),
       Seq("AdGroupId", "CampaignId", "AdvertiserId"),
       "inner"
