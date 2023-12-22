@@ -76,8 +76,7 @@ object GenerateTrainSetRevenue extends KongmingBaseJob {
       .withColumn("Revenue", greatest($"RevenueInUSD", lit(1)))
       .withColumn("Weight", lit(1))
       .withColumn("IsInTrainSet", when(abs(hash($"UIID")%100)<=trainRatio*100, lit(true)).otherwise(false))
-      .drop("ConfigValue", "ConfigKey")
-      .join(broadcast(adGroupPolicy.select("ConfigValue", "ConfigKey", "DataAggKey", "DataAggValue")), Seq("DataAggKey","DataAggValue"), "inner")
+      .join(broadcast(adGroupPolicy.select("ConfigKey", "ConfigValue")), Seq("ConfigKey", "ConfigValue"), "left_semi")
 
     // Don't bother with config items with no positives in the trainset.
     val preFilteredPolicy = adGroupPolicy
@@ -95,7 +94,7 @@ object GenerateTrainSetRevenue extends KongmingBaseJob {
       .withColumn("Weight", lit(1))  // placeholder: 1. assign format with positive 2. we might weight for negative in the future, TBD.
       .withColumn("Revenue", lit(0))
 
-    val window = Window.partitionBy($"DataAggValue")
+    val window = Window.partitionBy($"ConfigKey", $"ConfigValue")
     // cap on the valid positives (where Revenue>1)
     val cappedPositive = aggregatedPositiveSet.filter($"Revenue">lit(1))
       .withColumn("LogRevenue", log(col("Revenue")))
@@ -109,7 +108,7 @@ object GenerateTrainSetRevenue extends KongmingBaseJob {
 
     // 1. exclude positives from negative; balance neg:pos; remain pos and neg that have both train and val
     val negativeExcludePos = aggregatedNegativeSet.join(
-      broadcast(aggregatedPositiveSet.select("DataAggValue").distinct), Seq("DataAggValue"), "left_semi")
+      broadcast(aggregatedPositiveSet.select("ConfigKey", "ConfigValue").distinct), Seq("ConfigKey", "ConfigValue"), "left_semi")
       .join(aggregatedPositiveSetHist, Seq("ConfigValue", "ConfigKey", "BidRequestId"), "left_anti")
 
 
