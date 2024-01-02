@@ -25,7 +25,7 @@ final case class MetadataSchema(
                                )
 
 case class MetadataDataset(version: Int = 1) extends LightWritableDataset[MetadataSchema](
-  s"/${ttdEnv}/audience/RSM/metadata/v=${version.toString}", S3Roots.ML_PLATFORM_ROOT, 1)
+  s"/${ttdEnv}/audience/RSM/metadata/v=${version.toString}", S3Roots.ML_PLATFORM_ROOT, 1,dateFormat = audienceVersionDateFormat)
 {
   /**
    * Save metadata for each run. It serves as changelog, given the timestamp is also recorded
