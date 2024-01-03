@@ -44,7 +44,7 @@ philo:push_bits_merge_request:
   script:
     - pushd ./philo/
     - sbt "set test in assembly := {}" clean assembly
-    - DEST=${PHILO_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - DEST=${PHILO_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}
     - aws s3 cp ${PHILO_ASSEMBLY_OUT} ${DEST}/${PHILO_JAR_NAME}
     - popd
     - echo "ran PHILO_push_bits_merge_request"

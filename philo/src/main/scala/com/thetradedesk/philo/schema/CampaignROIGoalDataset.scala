@@ -1,6 +1,6 @@
 package com.thetradedesk.philo.schema
 
-case class CampaignROIGoalRecord(CampaignId: String, ROIGoalTypeId: String)
+case class CampaignROIGoalRecord(CampaignId: String, ROIGoalTypeId: String, Priority: Integer)
 
 object CampaignROIGoalDataset {
   val CAMPAIGNROIGOALS3: String = "s3://thetradedesk-useast-qubole/warehouse.external/thetradedesk.db/provisioning/campaignroigoal/v=1"

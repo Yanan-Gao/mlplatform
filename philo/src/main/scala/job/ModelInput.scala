@@ -2,9 +2,10 @@ package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{loadModelFeaturesSplit, loadParquetData}
-import com.thetradedesk.philo.schema.{AdGroupPerformanceModelValueDataset, AdGroupPerformanceModelValueRecord,
+import com.thetradedesk.philo.schema.{
+  AdGroupPerformanceModelValueDataset, AdGroupPerformanceModelValueRecord,
   ClickTrackerDataset, ClickTrackerRecord, AdGroupDataset, AdGroupRecord,
-  CreativeLandingPageRecord, CreativeLandingPageDataset
+  CreativeLandingPageRecord, CreativeLandingPageDataset, CampaignROIGoalRecord, CampaignROIGoalDataset
 }
 import com.thetradedesk.philo.transform.ModelInputTransform
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -14,7 +15,8 @@ import com.thetradedesk.philo.writeData
 import com.thetradedesk.spark.TTDSparkContext
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.io.FSUtils.fileExists
-import org.apache.spark.sql.DataFrame
+import org.apache.spark.sql.{DataFrame, Dataset}
+import org.apache.spark.sql.functions.coalesce
 
 import java.time.LocalDate
 
@@ -30,8 +32,43 @@ object ModelInput {
   val filteredPartitions = config.getInt("filteredPartitions", 200)
   val countryFilePath = config.getString("filterFilePath", "") // previously defined as fiterFilePath, use this instead to minimize change for airflow
   val filterBy = config.getString("filterBy", "AdGroupId")
-  val keptCols = config.getStringSeq("keptColumns", Seq("CampaignId", "AdGroupId", "Country")) // columns to keep for debugging purpose
-  val featuresJson = config.getString("featuresJson", default="s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/schemas/features.json")
+  val keptCols = config.getStringSeq("keptColumns", Seq("AdGroupId", "Country")) // columns to keep for debugging purpose
+  val featuresJson = config.getString("featuresJson", default = "s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/schemas/features.json")
+
+  def getAdGroupFilter(date: LocalDate, adgroup: Dataset[AdGroupRecord],
+                       roi_types: Seq[Int]): Dataset[AdGroupRecord] = {
+    val campaignGoal = loadParquetData[CampaignROIGoalRecord](CampaignROIGoalDataset.CAMPAIGNROIGOALS3, date)
+      // get primary goal only
+      .filter($"Priority" === 1)
+    adgroup.as("ag").join(campaignGoal.as("cg"), Seq("CampaignId"), "left")
+      // consider campaign goal first, fall back to adgroup goal if not defined
+      .withColumn("goal", coalesce($"cg.ROIGoalTypeId", $"ag.ROIGoalTypeId"))
+      .filter($"goal".isin(roi_types: _*))
+      // this statement I'm not sure of... check it
+      .select("ag.*")
+      .as[AdGroupRecord]
+  }
+
+  def getCountryFilter(countryFilePath: String): Dataset[CountryFilterRecord] = {
+    // currently adgroup filter are moved into the pipeline without the csv adgorup list
+    // it is reflected in ROI goals set to CPC and CTR in roi_types
+    // Therefore, if the coutryFilePath is not empty and it is adgroup based filtering
+    // then it will select the CPC and CTR adgroups within the given countries
+    // otherwise, it will be just based on country
+    if (!countryFilePath.isEmpty) {
+      if (fileExists(countryFilePath)(spark)) {
+        spark.read.format("csv")
+          .load(countryFilePath)
+          // single column is unnamed
+          .withColumn("Country", $"_c0")
+          .select("Country").as[CountryFilterRecord]
+      } else {
+        throw new Exception(f"Country filter file does not exist at ${countryFilePath}")
+      }
+    } else {
+      throw new Exception(f"Country file path is empty")
+    }
+  }
 
   def main(args: Array[String]): Unit = {
     val readEnv = if (ttdEnv == "prodTest") "prod" else ttdEnv
@@ -44,44 +81,26 @@ object ModelInput {
     val roi_types = Seq(3, 4) // 3, 4 for cpc and ctr
     val performanceModelValues = loadParquetData[AdGroupPerformanceModelValueRecord](AdGroupPerformanceModelValueDataset.AGPMVS3, date)
     val adgroup = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, date)
-
     val modelFeaturesSplit = loadModelFeaturesSplit(featuresJson)
 
     val modelFeatures = modelFeaturesSplit.bidRequest ++ modelFeaturesSplit.adGroup
 
     if (filterResults) {
-      var countryFilter : DataFrame = null;
-      // currently adgroup filter are moved into the pipeline without the csv adgorup list
-      // it is reflected in ROI goals set to CPC and CTR in roi_types
-      // Therefore, if the coutryFilePath is not empty and it is adgroup based filtering
-      // then it will select the CPC and CTR adgroups within the given countries
-      // otherwise, it will be just based on country
-      if (!countryFilePath.isEmpty) {
-        if (fileExists(countryFilePath)(spark)) {
-          countryFilter = spark.read.format("csv")
-            .load(countryFilePath)
-            // single column is unnamed
-            .withColumn("Country", $"_c0")
-            .select("Country")
-        } else {
-          throw new Exception(f"Country filter file does not exist at ${countryFilePath}")
-        }
-      }
       val (filteredData, labelCounts) = filterBy match {
         // should switch to campaign if we are not doing filtering on the adgroup level
         case "AdGroupId" => ModelInputTransform.transform(
-          clicks, adgroup, bidsImpressions, performanceModelValues,
+          clicks, getAdGroupFilter(date, adgroup, roi_types), bidsImpressions, performanceModelValues,
           // adgroupid filtering is essentially use country and adgroup roi type to find a list of adgroups for namer
           // therefore, if the roi_types are passed in here for filtering, we don't need a separate csv file
-          Some(roi_types),
+          true,
           None,
-          Some(countryFilter.as[CountryFilterRecord]), true, keptCols, modelFeatures)
-        case "Country" => ModelInputTransform.transform(clicks, adgroup, bidsImpressions, performanceModelValues, None, None,
-          Some(countryFilter.as[CountryFilterRecord]), true, keptCols, modelFeatures)
+          Some(getCountryFilter(countryFilePath)), true, keptCols, modelFeatures)
+        case "Country" => ModelInputTransform.transform(clicks, adgroup, bidsImpressions, performanceModelValues, false, None,
+          Some(getCountryFilter(countryFilePath)), true, keptCols, modelFeatures)
         case "LandingPage" => ModelInputTransform.transform(
           clicks, adgroup, bidsImpressions, performanceModelValues,
           // if change to campaign, this part need to be revised
-          Some(roi_types),
+          true,
           // TODO: add actual landing page loading code, then it will have to use the given day
           Some(spark.read.format("csv").option("header", true).load(CreativeLandingPageDataset.CREATIVELANDINGPAGES3).as[CreativeLandingPageRecord]),
           None, true, keptCols, modelFeatures
@@ -94,7 +113,7 @@ object ModelInput {
     }
 
     if (!filterResults) {
-      val (trainingData, labelCounts) = ModelInputTransform.transform(clicks, adgroup, bidsImpressions, performanceModelValues, None, None, None, false, keptCols, modelFeatures)
+      val (trainingData, labelCounts) = ModelInputTransform.transform(clicks, adgroup, bidsImpressions, performanceModelValues, false, None, None, false, keptCols, modelFeatures)
       //write to csv to dev for production job
       writeData(trainingData, outputPath, writeEnv, outputPrefix, date, partitions, false)
       writeData(labelCounts, outputPath, writeEnv, "metadata", date, 1, false)

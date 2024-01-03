@@ -77,4 +77,12 @@ package object philo {
     )
   }
 
+  def addOriginalCols(keptCols: Seq[String], data: DataFrame): (DataFrame, Seq[String]) = {
+    // add unhashed columns to output data
+    val newData = keptCols.foldLeft(data) { (tempDF, colName) =>
+      tempDF.withColumn(s"original$colName", col(colName))
+    }
+    val newColNames = keptCols.map(colName => s"original$colName")
+    (newData, newColNames)
+  }
 }
