@@ -4,7 +4,7 @@ import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.geronimo.shared.{FLOAT_FEATURE_TYPE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, loadModelFeatures}
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import com.thetradedesk.logging.Logger
-import com.thetradedesk.philo.{flattenData, schema, shiftModUdf}
+import com.thetradedesk.philo.{flattenData, schema, shiftModUdf, addOriginalCols}
 import com.thetradedesk.philo.schema.{AdGroupPerformanceModelValueRecord, ClickTrackerRecord, ModelInputRecord,
   CampaignROIGoalDataset, CampaignROIGoalRecord, AdGroupDataset, AdGroupRecord, CreativeLandingPageRecord}
 import com.thetradedesk.spark.sql.SQLFunctions._
@@ -28,22 +28,22 @@ object ModelInputTransform extends Logger {
                 adgroup: Dataset[AdGroupRecord],
                 bidsImpsDat: Dataset[BidsImpressionsSchema],
                 performanceModelValues: Dataset[AdGroupPerformanceModelValueRecord],
-                roiFilter: Option[Seq[Int]],
+                filterAdGroup: Boolean = false,
                 creativeLandingPage: Option[Dataset[CreativeLandingPageRecord]],
                 countryFilter: Option[Dataset[CountryFilterRecord]],
                 filterResults: Boolean = false,
                 keptCols: Seq[String] = Seq("CampaignId", "AdGroupId", "Country"),
                 modelFeatures: Seq[ModelFeature]): (DataFrame, DataFrame) = {
     val (clickLabels, bidsImpsPreJoin) = hashBidAndClickLabels(clicks, bidsImpsDat)
-    val preFilteredData = preFilterJoin(clickLabels, adgroup, bidsImpsPreJoin, performanceModelValues, keptCols)
+    val preFilteredData = preFilterJoin(clickLabels, bidsImpsPreJoin, performanceModelValues, keptCols)
     val filteredData = preFilteredData
-      .transform(ds => if (filterResults) {filterDataset(ds, roiFilter, countryFilter)} else ds)
+      .transform(ds => if (filterResults) {filterDataset(ds, adgroup, filterAdGroup, countryFilter)} else ds)
       .transform(ds => creativeLandingPage.map(clp => ModelInputTransform.matchLandingPage(ds, clp)).getOrElse(ds))
-    val flatten = flattenData(filteredData.toDF, flatten_set)
-      .selectAs[ModelInputRecord]
+    val (addKeptCols, originalColNames) = addOriginalCols(keptCols, filteredData.toDF)
+    val flatten = flattenData(addKeptCols, flatten_set).selectAs[ModelInputRecord]
     // Get the unique labels with count for each.
     val label_counts = flatten.groupBy("label").count()
-    val hashedData = getHashedData(flatten, modelFeatures)
+    val hashedData = getHashedData(flatten, modelFeatures, originalColNames)
     (hashedData, label_counts)
   }
 
@@ -71,11 +71,16 @@ object ModelInputTransform extends Logger {
   }
 
   def filterDataset(preFilterDataset: DataFrame,
-                    roiFilter: Option[Seq[Int]],
+                    adgroup: Dataset[AdGroupRecord],
+                    filterAdGroup: Boolean = false,
                     countryFilter: Option[Dataset[CountryFilterRecord]]
                    ): DataFrame = {
     preFilterDataset
-      .transform(ds => roiFilter.map(filter => ds.filter(col("ROIGoalTypeId").isin(filter: _*))).getOrElse(ds))
+      .transform(
+        ds => // if filterAdGroup, adgroup is not just additional info, it is also used to filter adgroup for the training data set
+        if (filterAdGroup) {ds.join(adgroup, Seq("AdGroupId", "CampaignId"), "inner")}
+        else {ds.join(adgroup, Seq("AdGroupId", "CampaignId"), "leftouter")}
+      )
       .transform(ds => countryFilter.map(filter => ds.join(filter, Seq("Country"))).getOrElse(ds))
   }
 
@@ -88,26 +93,21 @@ object ModelInputTransform extends Logger {
 
 
   def preFilterJoin(clickLabels: DataFrame,
-                    adgroup: Dataset[AdGroupRecord],
                     bidsImpsPreJoin: DataFrame,
                     performanceModelValues: Dataset[AdGroupPerformanceModelValueRecord],
                     keptCols: Seq[String]): DataFrame = {
-    val baseJoin = bidsImpsPreJoin.join(clickLabels, Seq("BidRequestIdHash"), "leftouter")
+    bidsImpsPreJoin.join(clickLabels, Seq("BidRequestIdHash"), "leftouter")
       .join(performanceModelValues, Seq("AdGroupId"), "leftouter")
-      .join(adgroup, Seq("AdGroupId"), "leftouter")
       .withColumn("label", when(col("label").isNull, 0).otherwise(1))
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
       .withColumn("IsTestAdGroup", when(col("ModelType") === 1 && col("ModelVersion") == 1, 1).otherwise(0))
-    // add unhashed columns to output data
-    val addKeptCols = keptCols.foldLeft(baseJoin) { (tempDF, colName) =>
-      tempDF.withColumn(s"original$colName", col(colName))
-    }
-    addKeptCols
   }
 
-  def getHashedData(flatten: Dataset[ModelInputRecord], modelFeatures: Seq[ModelFeature]): DataFrame ={
+  def getHashedData(flatten: Dataset[ModelInputRecord], modelFeatures: Seq[ModelFeature],
+                    originalColNames: Seq[String]): DataFrame ={
+    val additionalCols = Seq("label", "BidRequestId", "IsTestAdGroup") ++ originalColNames
     // todo: we need a better way to track these fields
-    val selectionQuery = intModelFeaturesCols(modelFeatures) ++ Seq("label", "BidRequestId", "OriginalAdGroupId", "OriginalCountry", "IsTestAdGroup").map(col)
+    val selectionQuery = intModelFeaturesCols(modelFeatures) ++ additionalCols.map(col)
 
     flatten.select(selectionQuery: _*)
   }
