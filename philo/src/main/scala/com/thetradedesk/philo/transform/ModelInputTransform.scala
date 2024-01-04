@@ -37,7 +37,8 @@ object ModelInputTransform extends Logger {
     val (clickLabels, bidsImpsPreJoin) = hashBidAndClickLabels(clicks, bidsImpsDat)
     val preFilteredData = preFilterJoin(clickLabels, bidsImpsPreJoin, performanceModelValues, keptCols)
     val filteredData = preFilteredData
-      .transform(ds => if (filterResults) {filterDataset(ds, adgroup, filterAdGroup, countryFilter)} else ds)
+      // if not filterResults, filterAdGroup will be false and countryFilter will be None, it will just left join adgroup
+      .transform(ds => filterDataset(ds, adgroup, filterAdGroup, countryFilter))
       .transform(ds => creativeLandingPage.map(clp => ModelInputTransform.matchLandingPage(ds, clp)).getOrElse(ds))
     val (addKeptCols, originalColNames) = addOriginalCols(keptCols, filteredData.toDF)
     val flatten = flattenData(addKeptCols, flatten_set).selectAs[ModelInputRecord]
