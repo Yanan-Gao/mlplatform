@@ -91,7 +91,7 @@ object OutOfSampleGenerateJob {
           }
         }
         val resultTransformed = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](dataset)
-        AudienceModelInputDataset(AudienceModelInputGeneratorConfig.model.toString, s"${typePolicyTable._1._1}_${typePolicyTable._1._2}_${RSM_OOS_Config.workTask}").writePartition(
+        AudienceModelInputDataset(AudienceModelInputGeneratorConfig.model.toString, s"${typePolicyTable._1._1}_${typePolicyTable._1._2}").writePartition(
           resultTransformed.as[AudienceModelInputRecord],
           dateTime,
           subFolderKey = Some(RSM_OOS_Config.subFolder),
