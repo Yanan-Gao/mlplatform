@@ -54,6 +54,33 @@ kongming:push_bits_merge_request:
     - popd
     - echo "ran KONGMING_push_bits_merge_request"
 
+  artifacts:
+    paths:
+      - ${KONGMING_ASSEMBLY_OUT}
+    expire_in: 7 days
+
+kongming:generate_pyspark_dev:
+  stage: assembly_upload
+  image: production.docker.adsrvr.org/ttd-base/mlops/ttd_pyspark:0.3.0
+  needs: [ "kongming:push_bits_merge_request" ]
+  dependencies: [ "kongming:push_bits_merge_request" ]
+  allow_failure: true
+  script:
+    - pushd ./kongming/
+    - python3 -m ttd_pyspark --jar ${KONGMING_ASSEMBLY_OUT} --name kongming_jar --version 0.2.0
+    - pushd generated
+    - poetry build
+    - poetry publish -r dev_ttd_pypi-upload -u ${PYPI_DEV_USER} -p ${PYPI_DEV_PASS}
+    - popd
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "kongming/src/main/scala/**/*"
+        - "kongming/build.sbt"
+  artifacts:
+    paths:
+      - kongming/generated
+
 kongming:push_bits_master_snapshot:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
   stage: assembly_upload
