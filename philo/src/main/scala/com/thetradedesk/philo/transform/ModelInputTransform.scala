@@ -28,14 +28,13 @@ object ModelInputTransform extends Logger {
                 adgroup: Dataset[AdGroupRecord],
                 bidsImpsDat: Dataset[BidsImpressionsSchema],
                 performanceModelValues: Dataset[AdGroupPerformanceModelValueRecord],
-                filterAdGroup: Boolean = false,
+                filterAdGroup: Boolean,
                 creativeLandingPage: Option[Dataset[CreativeLandingPageRecord]],
                 countryFilter: Option[Dataset[CountryFilterRecord]],
-                filterResults: Boolean = false,
-                keptCols: Seq[String] = Seq("CampaignId", "AdGroupId", "Country"),
+                keptCols: Seq[String],
                 modelFeatures: Seq[ModelFeature]): (DataFrame, DataFrame) = {
     val (clickLabels, bidsImpsPreJoin) = hashBidAndClickLabels(clicks, bidsImpsDat)
-    val preFilteredData = preFilterJoin(clickLabels, bidsImpsPreJoin, performanceModelValues, keptCols)
+    val preFilteredData = preFilterJoin(clickLabels, bidsImpsPreJoin, performanceModelValues)
     val filteredData = preFilteredData
       // if not filterResults, filterAdGroup will be false and countryFilter will be None, it will just left join adgroup
       .transform(ds => filterDataset(ds, adgroup, filterAdGroup, countryFilter))
@@ -96,7 +95,7 @@ object ModelInputTransform extends Logger {
   def preFilterJoin(clickLabels: DataFrame,
                     bidsImpsPreJoin: DataFrame,
                     performanceModelValues: Dataset[AdGroupPerformanceModelValueRecord],
-                    keptCols: Seq[String]): DataFrame = {
+                    ): DataFrame = {
     bidsImpsPreJoin.join(clickLabels, Seq("BidRequestIdHash"), "leftouter")
       .join(performanceModelValues, Seq("AdGroupId"), "leftouter")
       .withColumn("label", when(col("label").isNull, 0).otherwise(1))
