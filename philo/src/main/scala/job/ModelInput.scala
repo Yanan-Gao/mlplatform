@@ -24,16 +24,25 @@ case class CountryFilterRecord(Country: String)
 
 object ModelInput {
   val date = config.getDate("date", LocalDate.now())
-  val outputPath = config.getString("outputPath", "s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=3/")
+  val outputPath = config.getStringRequired("outputPath")
   val outputPrefix = config.getStringRequired("outputPrefix")
   val ttdEnv = config.getString("ttd.env", "dev")
-  val partitions = config.getInt("partitions", 2000)
-  val filterResults = config.getBoolean("filterResults", false)
-  val filteredPartitions = config.getInt("filteredPartitions", 200)
-  val countryFilePath = config.getString("filterFilePath", "") // previously defined as fiterFilePath, use this instead to minimize change for airflow
-  val filterBy = config.getString("filterBy", "AdGroupId")
+  val partitions = config.getInt("partitions", 200)
+  // if landingPage is true, will read landing page and merge the info into main dataset
+  // if roiFilter is true, will use campaign roi goal to filter the adgroups
+  // if countryFilePath is provided, will add the country filter
+  // for the current process, for apac and emea, only country file will be provided, and for namer, roiFilter will be
+  // set to true, country file will also be provided
+  // in the future, if we are using landingpage, landingPage will be set to true and roiFilter will be set to true
+  // if we only have one region, country filter will be removed
+  val landingPage = config.getBoolean("landingPage", false)
+  val roiFilter = config.getBoolean("roiFilter", false)
+  val countryFilePath = config.getStringOption("filterFilePath") // previously defined as fiterFilePath, use this instead to minimize change for airflow
   val keptCols = config.getStringSeq("keptColumns", Seq("AdGroupId", "Country")) // columns to keep for debugging purpose
-  val featuresJson = config.getString("featuresJson", default = "s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/prod/schemas/features.json")
+  val featuresJson = config.getStringRequired("featuresJson")
+  println(s"landing page $landingPage")
+  println(s"roi filter $roiFilter")
+  println(s"country filter $countryFilePath")
 
   def getAdGroupFilter(date: LocalDate, adgroup: Dataset[AdGroupRecord],
                        roi_types: Seq[Int]): Dataset[AdGroupRecord] = {
@@ -44,7 +53,6 @@ object ModelInput {
       // consider campaign goal first, fall back to adgroup goal if not defined
       .withColumn("goal", coalesce($"cg.ROIGoalTypeId", $"ag.ROIGoalTypeId"))
       .filter($"goal".isin(roi_types: _*))
-      // this statement I'm not sure of... check it
       .select("ag.*")
       .as[AdGroupRecord]
   }
@@ -80,43 +88,21 @@ object ModelInput {
     val clicks = loadParquetData[ClickTrackerRecord](ClickTrackerDataset.CLICKSS3, date)
     val roi_types = Seq(3, 4) // 3, 4 for cpc and ctr
     val performanceModelValues = loadParquetData[AdGroupPerformanceModelValueRecord](AdGroupPerformanceModelValueDataset.AGPMVS3, date)
-    val adgroup = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, date)
+    // if roiFilter, filter use the adgroup as a filter, else just left join to get the adgroup info
+    val adgroup = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, date).transform(
+      ds => if (roiFilter) {getAdGroupFilter(date, ds, roi_types)} else ds)
     val modelFeaturesSplit = loadModelFeaturesSplit(featuresJson)
-
+    val creativeLandingPage = if (landingPage) {
+      Some(loadParquetData[CreativeLandingPageRecord](CreativeLandingPageDataset.CREATIVELANDINGPAGES3, date))
+    } else None
+    val countryFilter = countryFilePath.map(getCountryFilter)
     val modelFeatures = modelFeaturesSplit.bidRequest ++ modelFeaturesSplit.adGroup
-
-    if (filterResults) {
-      val (filteredData, labelCounts) = filterBy match {
-        // should switch to campaign if we are not doing filtering on the adgroup level
-        case "AdGroupId" => ModelInputTransform.transform(
-          clicks, getAdGroupFilter(date, adgroup, roi_types), bidsImpressions, performanceModelValues,
-          // adgroupid filtering is essentially use country and adgroup roi type to find a list of adgroups for namer
-          // therefore, if the roi_types are passed in here for filtering, we don't need a separate csv file
-          true,
-          None,
-          Some(getCountryFilter(countryFilePath)), true, keptCols, modelFeatures)
-        case "Country" => ModelInputTransform.transform(clicks, adgroup, bidsImpressions, performanceModelValues, false, None,
-          Some(getCountryFilter(countryFilePath)), true, keptCols, modelFeatures)
-        case "LandingPage" => ModelInputTransform.transform(
-          clicks, adgroup, bidsImpressions, performanceModelValues,
-          // if change to campaign, this part need to be revised
-          true,
-          // TODO: add actual landing page loading code, then it will have to use the given day
-          Some(spark.read.format("csv").option("header", true).load(CreativeLandingPageDataset.CREATIVELANDINGPAGES3).as[CreativeLandingPageRecord]),
-          None, true, keptCols, modelFeatures
-        )
-        case _ => throw new Exception(f"Cannot filter by property ${filterBy}")
-      }
-
-      writeData(filteredData, outputPath, writeEnv, outputPrefix, date, filteredPartitions, false)
-      writeData(labelCounts, outputPath, writeEnv, outputPrefix + "metadata", date, 1, false)
-    }
-
-    if (!filterResults) {
-      val (trainingData, labelCounts) = ModelInputTransform.transform(clicks, adgroup, bidsImpressions, performanceModelValues, false, None, None, false, keptCols, modelFeatures)
-      //write to csv to dev for production job
-      writeData(trainingData, outputPath, writeEnv, outputPrefix, date, partitions, false)
-      writeData(labelCounts, outputPath, writeEnv, "metadata", date, 1, false)
-    }
+    val (trainingData, labelCounts) = ModelInputTransform.transform(
+      clicks, adgroup, bidsImpressions, performanceModelValues, roiFilter,
+      creativeLandingPage, countryFilter, keptCols, modelFeatures
+    )
+    //write to csv to dev for production job
+    writeData(trainingData, outputPath, writeEnv, outputPrefix, date, partitions, false)
+    writeData(labelCounts, outputPath, writeEnv, "metadata", date, 1, false)
   }
 }
