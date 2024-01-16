@@ -5,7 +5,7 @@ import org.scalatest._
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers._
 
-import java.time.LocalDate
+import java.time.{LocalDate, LocalDateTime}
 
 class packageTest extends AnyFlatSpec {
 
@@ -35,9 +35,9 @@ class packageTest extends AnyFlatSpec {
   }
 
   "parquetDataPaths" should "create a list of paths with a lookback ignoring order" in {
-    val expected = Seq("s3_path/date=20210101", "s3_path/date=20210102", "s3_path/date=20210103")
+    val expected = Vector("s3_path/date=20210101", "s3_path/date=20210102", "s3_path/date=20210103")
     val result = parquetDataPaths("s3_path", LocalDate.of(2021, 1, 3), lookBack = Some(2))
-    result == expected
+    expected should contain theSameElementsAs (result)
   }
 
   "cleansedDataPaths" should "create paths with s3/yyyy/mm/dd/*/*/*.gz" in {
@@ -51,16 +51,17 @@ class packageTest extends AnyFlatSpec {
     val result = parquetDataPaths("s3_path", date=LocalDate.of(2021, 1, 1), source = Some(PLUTUS_DATA_SOURCE))
     assertResult(expected)(result)
   }
+
   "parquetDataPaths for Plutus" should "create multiple paths with s3/year=yyyy/month=mm/day=dd" in {
     val expected = Seq("s3_path/year=2021/month=01/day=01", "s3_path/year=2020/month=12/day=31", "s3_path/year=2020/month=12/day=30")
     val result = parquetDataPaths("s3_path", date=LocalDate.of(2021, 1, 1), source = Some(PLUTUS_DATA_SOURCE), lookBack = Some(2))
-    result == expected
+    expected should contain theSameElementsAs result
   }
 
   "plutusDataPath" should "return the path to s3 for clean data" in {
-    val expected = "s3://bucket/env/prefix/google/year=2021/month=01/day=01/"
+    val expected = "s3://bucket/env/raw/google/year=2021/month=01/day=01"
     val result = plutusDataPath(s3Path = "s3://bucket", ttdEnv = "env", prefix = "raw", svName = Some("google"), date = LocalDate.of(2021, 1, 1))
-    expected == result
+    assertResult(expected)(result)
   }
 
   "plutusDataPaths" should "return list of path to s3 for clean data" in {
@@ -76,6 +77,7 @@ class packageTest extends AnyFlatSpec {
     val result = plutusDataPaths(s3Path = "s3://bucket", ttdEnv = "env", prefix = "raw", svName = Some("google"), date = LocalDate.of(2021, 1, 1))
     result should contain theSameElementsAs Seq(f"s3://bucket/$env/$prefix/google/year=2021/month=01/day=01")
   }
+
   "modulo" should "return positive values" in {
 //    https://stackoverflow.com/questions/70353631/rabin-karp-algorithm-negative-hash
     val expected = 5
@@ -99,6 +101,31 @@ class packageTest extends AnyFlatSpec {
     // UNK allowed gives 2^30 = 1,073,741,824
 
   }
+
+  "parquetDataPathsHourly" should "create a single paths with s3/date=yyyymmdd/hour=h" in {
+    val expected = Seq("s3_path/date=20210101/hour=2")
+    val result = parquetHourlyDataPaths(
+      "s3_path",
+      dateTime=LocalDateTime.of(2021, 1, 1, 2, 30),
+      source = None,
+      lookBack = None
+    )
+    expected should contain theSameElementsAs result
+  }
+
+
+  "parquetDataPathsHourly" should "create multiple paths with s3/year=yyyy/month=mm/day=dd/hour=h" in {
+    val expected = Seq("s3_path/year=2021/month=01/day=01/hourPart=1", "s3_path/year=2021/month=01/day=01/hourPart=0", "s3_path/year=2020/month=12/day=31/hourPart=23")
+    val result = parquetHourlyDataPaths(
+      "s3_path",
+      dateTime=LocalDateTime.of(2021, 1, 1, 1, 30),
+      source = Some(IMPLICIT_DATA_SOURCE),
+      lookBack = Some(2)
+    )
+    expected should contain theSameElementsAs result
+  }
+
+
 
   "isOkay" should "return false when stageStat is less than prodStat" in {
     isOkay(10.0, 8.0) should be(false)

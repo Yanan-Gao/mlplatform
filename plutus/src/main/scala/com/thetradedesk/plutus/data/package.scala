@@ -1,21 +1,17 @@
 package com.thetradedesk.plutus
 
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
-import com.thetradedesk.geronimo.shared.{FLOAT_FEATURE_TYPE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, shiftMod, shiftModUdf}
+import com.thetradedesk.geronimo.shared.{FLOAT_FEATURE_TYPE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE}
 import com.thetradedesk.plutus.data.schema.ModelTarget
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
-import com.thetradedesk.spark.sql.SQLFunctions.DataFrameExtensions
-import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
-import job.RawInputDataProcessor.date
 import org.apache.spark.ml.linalg.{SparseVector, Vector}
 import org.apache.spark.sql.expressions.UserDefinedFunction
-import org.apache.spark.sql.functions.{col, lit, udf, when, xxhash64}
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.StructType
-import org.apache.spark.sql.{Column, Dataset, Encoder, SparkSession}
+import org.apache.spark.sql.{Column, Dataset, Encoder}
 
-import java.time.{LocalDate, ZonedDateTime}
+import java.time.{LocalDate, LocalDateTime}
 import java.time.temporal.TemporalAmount
 import java.util.UUID
 import scala.collection.mutable.ArrayBuffer
@@ -103,7 +99,11 @@ package object data {
     }
   }
 
-  def explicitDateTimePart(date: ZonedDateTime): String = {
+  def paddedDateTimePart(dateTime: LocalDateTime, separator: Option[String] = None): String = {
+    f"date=${paddedDatePart(dateTime.toLocalDate, separator)}/hour=${dateTime.getHour}"
+  }
+
+  def explicitDateTimePart(date: LocalDateTime): String = {
     f"year=${date.getYear}/month=${date.getMonthValue}%02d/day=${date.getDayOfMonth}%02d/hourPart=${date.getHour}"
   }
 
@@ -118,17 +118,13 @@ package object data {
     }
   }
 
-  def parquetHourlyDataPaths(s3path: String, date: LocalDate, source: Option[String] = None, hours: Seq[Int]): Seq[String] = {
-    var paddedHours: ArrayBuffer[String] = ArrayBuffer.empty[String]
-    hours.map { i =>
-      if (i < 10) {
-        paddedHours += (f"0${i}")
-      }
-      else {
-        paddedHours += i.toString
-      }
+  def parquetHourlyDataPaths(s3path: String, dateTime: LocalDateTime, source: Option[String] = None, lookBack: Option[Int] = None, sep: Option[String] = None): Seq[String] = {
+    source match {
+      case Some(PLUTUS_DATA_SOURCE | IMPLICIT_DATA_SOURCE) =>
+        (0 to lookBack.getOrElse(0)).map(i => f"$s3path/${explicitDateTimePart(dateTime.minusHours(i))}")
+      case None =>
+        (0 to lookBack.getOrElse(0)).map(i => f"$s3path/${paddedDateTimePart(dateTime.minusHours(i))}")
     }
-    paddedHours.map(i => f"$s3path/date=${paddedDatePart(date)}/hour=${i}")
   }
 
   def cleansedDataPaths(basePath: String, date: LocalDate, lookBack: Option[Int] = None): Seq[String] = {
@@ -153,7 +149,7 @@ package object data {
       .selectAs[T]
   }
 
-  def dateRange(start: ZonedDateTime, end: ZonedDateTime, step: TemporalAmount): Iterator[ZonedDateTime] =
+  def dateRange(start: LocalDateTime, end: LocalDateTime, step: TemporalAmount): Iterator[LocalDateTime] =
     Iterator.iterate(start)(_.plus(step)).takeWhile(x => !(x.isEqual(end) || x.isAfter(end)))
 
   def loadCsvData[T: Encoder](s3path: String, date: LocalDate, schema: StructType): Dataset[T] = {
@@ -168,8 +164,8 @@ package object data {
   }
 
 
-  def loadParquetDataHourly[T: Encoder](s3path: String, date: LocalDate, hours: Seq[Int], source: Option[String] = None): Dataset[T] = {
-    val paths = parquetHourlyDataPaths(s3path, date, source, hours)
+  def loadParquetDataHourly[T: Encoder](s3path: String, date: LocalDateTime, lookBack: Option[Int], source: Option[String] = None): Dataset[T] = {
+    val paths = parquetHourlyDataPaths(s3path, date, source, lookBack)
     spark.read.parquet(paths: _*)
       .selectAs[T]
   }
@@ -191,4 +187,98 @@ package object data {
   val vec_size: UserDefinedFunction = udf((v: Vector) => v.size)
   val vec_indices: UserDefinedFunction = udf((v: SparseVector) => v.indices)
   val vec_values: UserDefinedFunction = udf((v: SparseVector) => v.values)
+
+  // Copied from TTD/DB/Provisioning/TTD.DB.Provisioning.Primitives/Finance/MarketType.cs
+  object MarketType extends Enumeration {
+    val Unknown = "Unknown"
+    val OpenMarket = "Open Market"
+    val UnknownPMP = "Unknown PMP"
+    val AccuenFixedPrice = "Accuen Fixed Price"
+    val DirectTagNonGuaranteedFixedPrice = "Direct Tag Non Guaranteed Fixed Price"
+    val DirectTagGuaranteed = "Direct Tag Guaranteed"
+    val PrivateAuctionVariablePrice = "Private Auction Variable Price"
+    val ProgrammaticGuaranteed = "Programmatic Guaranteed"
+    val PrivateAuctionFixedPrice = "Private Auction Fixed Price"
+
+    type MarketType = String
+  }
+
+  // Copied from TTD/Domain/Shared/TTD.Domain.Shared.PlatformModels/PlatformModels/ChannelType.cs
+  object ChannelType extends Enumeration {
+    val Unknown = "Unknown"
+    val MobileVideoStandard = "Mobile Video Standard"
+    val ConnectedTV = "Connected TV"
+    val MobileVideoInApp = "Mobile Video InApp"
+    val Video = "Video"
+    val MobileVideoOptimizedWeb = "Mobile Video Optimized Web"
+    val MobileStandardWeb = "Mobile Standard Web"
+    val MobileInApp = "Mobile InApp"
+    val DigitalOutOfHome = "Digital Out Of Home"
+    val Display = "Display"
+    val MobileOptimizedWeb = "Mobile Optimized Web"
+    val NativeVideo = "Native Video"
+    var Native = "Native"
+    val Audio = "Audio"
+
+    type ChannelType = String
+  }
+
+  // Copied from TTD/DB/Provisioning/TTD.DB.Provisioning.Primitives/Creatives/MediaType.cs
+  object MediaTypeId extends Enumeration {
+    val Unknown = 0
+    val Display = 1
+    val Video = 2
+    val Native = 3
+    val Audio = 4
+    val NativeVideo = 5
+
+    type MediaTypeId = Int
+  }
+
+  // Copied from C:\dev\adplatform\TTD\DB\Provisioning\TTD.DB.Provisioning.Primitives\Bidding\DeviceType.cs
+  object DeviceTypeId extends Enumeration {
+    val Unknown = 0
+    val Other = 1
+    val PC = 2
+    val Tablet = 3
+    val Mobile = 4
+    val Roku = 5
+    val ConnectedTV = 6
+    val OutOfHome = 7
+    val HomeAssistant = 8
+
+    type DeviceType = Int
+  }
+
+  // Copied from TTD/Domain/Shared/TTD.Domain.Shared/PlatformModels/PublisherRelationshipType.cs
+  object PublisherRelationshipType extends Enumeration
+  {
+    val Unknown = '0'
+    val Indirect = '1'
+    val Direct= '2'
+    // Deprecated: 2022-01-11
+    val IndirectFixedPrice = '3'
+
+    type PublisherRelationshipType = String
+  }
+
+  // Copied from TTD/DB/Provisioning/TTD.DB.Provisioning.Primitives/Bidding/RenderingContext.cs
+  object RenderingContext extends Enumeration {
+    val Other = 0 // All Web
+    val InApp = 1
+    val MobileOptimizedWeb = 2
+
+    type RenderingContext = Int
+  }
+
+  // Copied from TTD/Domain/Bidding/TTD.Domain.Bidding.Public.RTB/Enums.cs
+  object AuctionType extends Enumeration {
+    val UnDeclared = '0'
+    val FirstPrice = '1'
+    val SecondPrice = '2'
+    val FixedPrice = '3'
+
+    type AuctionType = String
+  }
+
 }

@@ -27,7 +27,7 @@ object PcResultsGeronimoJob {
     val pcResultsPath = f"${S3Roots.IDENTITY_ROOT}/prod/pcresultslog/v=2/date=${paddedDatePart(dateTime.toLocalDate)}/hour=${dateTime.getHour}"
 
     // sample geronimoPath: s3: //thetradedesk-mlplatform-us-east-1/features/data/koav4/v=1/prod/bidsimpressions/year=2023/month=10/day=25/hourPart=1
-    val geronimoPath = f"${BidsImpressions.BIDSIMPRESSIONSS3}prod/bidsimpressions/${explicitDateTimePart(dateTime.atZone(ZoneId.of("UTC")))}"
+    val geronimoPath = f"${BidsImpressions.BIDSIMPRESSIONSS3}prod/bidsimpressions/${explicitDateTimePart(dateTime)}"
 
     // sample outputPath: s3://ttd-identity/datapipeline/test/pcresultsgeronimo/v=2/date=20231025/hour=1
     val outputPath = f"${S3Roots.IDENTITY_ROOT}/${environment}/pcresultsgeronimo/v=2/date=${paddedDatePart(dateTime.toLocalDate)}/hour=${dateTime.getHour}"

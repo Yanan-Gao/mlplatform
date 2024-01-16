@@ -3,6 +3,7 @@ package com.thetradedesk.plutus.data
 import com.thetradedesk.geronimo.bidsimpression.schema._
 import com.thetradedesk.geronimo.shared.schemas._
 import com.thetradedesk.plutus.data.schema._
+import com.thetradedesk.spark.datasets.sources.{AdFormatRecord, PrivateContractRecord}
 import com.thetradedesk.streaming.records.rtb._
 
 import java.sql.Timestamp
@@ -41,9 +42,9 @@ object MockData {
 
                                     UIID = Option("000"),
 
-                                    AdjustedBidCPMInUSD = 10.0,
-                                    BidsFirstPriceAdjustment = Some(1.0),
-                                    FloorPriceInUSD = Some(1.0),
+                                    AdjustedBidCPMInUSD = 10000.0,
+                                    BidsFirstPriceAdjustment = Some(0.9),
+                                    FloorPriceInUSD = Some(5000.0),
 
                                     PartnerId = Some(""),
                                     AdvertiserId = Some(""),
@@ -56,8 +57,8 @@ object MockData {
                                     SupplyVendorSiteId = Some(""),
                                     Site = Some(""),
                                     ImpressionPlacementId = Some(""),
-                                    AdWidthInPixels = 1,
-                                    AdHeightInPixels = 10,
+                                    AdWidthInPixels = 250,
+                                    AdHeightInPixels = 250,
 
                                     MatchedCategoryList =  Some(List("")),
                                     MatchedFoldPosition = 1,
@@ -102,11 +103,11 @@ object MockData {
 
                                     // bidfeedback cols
 
-                                    MediaCostCPMInUSD = Some(1.0),
+                                    MediaCostCPMInUSD = Some(9000.0),
                                     DiscrepancyAdjustmentMultiplier = Some(1.0),
 
                                     SubmittedBidAmountInUSD = 10.0,
-                                    ImpressionsFirstPriceAdjustment = Some(1.0),
+                                    ImpressionsFirstPriceAdjustment = Some(0.9),
 
                                     IsImp = true,
 
@@ -121,7 +122,7 @@ object MockData {
 
                                     DoNotTrack =  Option(DoNotTrackLookupRecord()),
                                     CreativeId =  Some(""),
-                                    PrivateContractId =  "",
+                                    PrivateContractId =  "5416475",
                                     // advertiser columns
                                     AdvertiserIndustryCategoryId = Some(math.BigInt.long2bigInt(1l)),
 
@@ -142,5 +143,56 @@ object MockData {
 
   )
 
+  val privateContractsMock = PrivateContractRecord(
+    PrivateContractId = "5416475",
+    OwnerPartnerId = "asdkmads",
+    Name = "TestPCid",
+    Description = None,
+    StartDateUtc = None,
+    EndDateUtc = None,
+    LogoUrl = None,
+    AreGuaranteedTermsAllowed = false,
+    IsArchived = false,
+    PublisherRelationshipTypeId = 1,
+    PublisherDirectPrivateContractId = None,
+    IsAvailableToRecommendationEngine = false,
+    CreatedBy = None,
+    CreatedOn = None,
+    ApprovedBy = None,
+    ApprovedOn = None,
+    PrivateContractBillsTTD = false,
+    TTDBillingApprovalStateId = 2,
+    PMPMarketplaceOrderId = None,
+    HasFillRateGoal = false,
+    CurrencyCodeId = "USD",
+    IsProgrammaticGuaranteedContract = false,
+    BiddingPriority = None,
+    GdprExemptionFlags = None,
+    IsProgrammaticGuaranteedV2 = false,
+    IsDecisionedProgrammaticGuaranteed = false,
+    TimeZoneId = "UTC",
+    IsLiveEvent = false
+  )
+
+  val adFormatMock = AdFormatRecord(
+    AdFormatId = "2",
+    IABName = "Square Pop-Up",
+    WidthInPixels = 250,
+    HeightInPixels = 250,
+    IsRtbEligible = true,
+    IsDisplaySupported = true,
+    IsVideoSupported = false,
+    DisplayNameShort = Some("250x250"),
+    IsOutlookEligible = false,
+    IsFacebookRightHandSideSupported = false,
+    IsFacebookPagePostSupported = false,
+    IsFacebookEligible = Some(false),
+    IsMobileSupported = false,
+    IsAppleIAdSupported = false,
+    IsTvSupported = false,
+    IsCommonFormat = false,
+    MediaTypeId = 1,
+    UserFriendlyLabel = None
+  ) 
 
 }
