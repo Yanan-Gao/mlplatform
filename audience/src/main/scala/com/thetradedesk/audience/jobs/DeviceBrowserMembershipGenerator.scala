@@ -1,15 +1,14 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.{date, shouldConsiderTDID2, ttdEnv}
-import com.thetradedesk.audience.datasets.{FirstPartyPixelModelInputRecord, S3Roots, SeenInBiddingV2DeviceDataSet}
-import com.thetradedesk.audience.transform.ModelFeatureTransform
+import com.thetradedesk.audience.{date, featuresJsonPath, shouldConsiderTDID2, ttdEnv}
+import com.thetradedesk.audience.datasets.{S3Roots, SeenInBiddingV2DeviceDataSet}
+import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, shiftMod}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.io.FSUtils
-import com.thetradedesk.spark.sql.SQLFunctions._
 import org.apache.spark.sql.{DataFrame, Dataset, SaveMode}
 import org.apache.spark.sql.functions._
 
@@ -27,9 +26,10 @@ object OSFamily extends Enumeration {
 }
 
 object Utils {
-  def downSampleByBrowserOperatingSystemFamily(df: Dataset[_], numBuckets: Int, sampledBuckets: Int, isDataHashed: Boolean) = {
-    val chrome = if (isDataHashed) shiftMod(Browser.Chrome.id, ModelFeatureTransform.tryGetFeatureCardinality[FirstPartyPixelModelInputRecord]("Browser")) else Browser.Chrome.id
-    val android = if (isDataHashed) shiftMod(OSFamily.Android.id, ModelFeatureTransform.tryGetFeatureCardinality[FirstPartyPixelModelInputRecord]("OperatingSystemFamily")) else OSFamily.Android.id
+  def downSampleByBrowserOperatingSystemFamily(df: Dataset[_], numBuckets: Int, sampledBuckets: Int, isDataHashed: Boolean, featuresJson: String) = {
+    val cardinality = ModelFeatureTransform.getCardinalityMap(featuresJson)
+    val chrome = if (isDataHashed) shiftMod(Browser.Chrome.id, cardinality.getOrElse("Browser", 0)) else Browser.Chrome.id
+    val android = if (isDataHashed) shiftMod(OSFamily.Android.id, cardinality.getOrElse("OperatingSystemFamily", 0)) else OSFamily.Android.id
 
     df.withColumn("Unaffected", 'Browser =!= lit(chrome) && 'OperatingSystemFamily =!= lit(android))
       .filter('Unaffected || abs(xxhash64(concat('TDID, lit("AeDecemberTest")))) % numBuckets < lit(sampledBuckets))
@@ -76,7 +76,11 @@ object DeviceBrowserMembershipGenerator {
       .distinct
       .cache
 
-    Config.idRetentionSampledBuckets.map(sampledBucket => (sampledBucket, Utils.downSampleByBrowserOperatingSystemFamily(bidsImpressions, Config.idRetentionNumBuckets, sampledBucket, false).select('TDID))).toMap
+    Config.idRetentionSampledBuckets.map(sampledBucket => (
+      sampledBucket,
+      Utils.downSampleByBrowserOperatingSystemFamily(bidsImpressions, Config.idRetentionNumBuckets, sampledBucket, false, featuresJsonPath)
+        .select('TDID)
+    )).toMap
   }
 
   def downSamplePixels(date: LocalDate, multiverse: Map[Int, DataFrame]) = {
@@ -127,6 +131,6 @@ object DeviceBrowserModelInputSampler {
   }
 
   def run(modelInput: DataFrame) = {
-    Utils.downSampleByBrowserOperatingSystemFamily(modelInput, Config.idRetentionNumBuckets, Config.idRetentionSampledBuckets, true)
+    Utils.downSampleByBrowserOperatingSystemFamily(modelInput, Config.idRetentionNumBuckets, Config.idRetentionSampledBuckets, true, featuresJsonPath)
   }
 }

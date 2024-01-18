@@ -1,12 +1,10 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.datasets.{ConversionDataset, FirstPartyPixelModelInputDataset, FirstPartyPixelModelInputRecord, LightCrossDeviceGraphDataset, LightTrackingTagDataset, SampledCrossDeviceGraphDataset, SeenInBiddingV3DeviceDataSet, TargetingDataDataset, UniversalPixelDataset, UniversalPixelTrackingTagDataset}
-import com.thetradedesk.audience.{date, sampleHit, shouldConsiderTDID, shouldConsiderTDID2, trainSetDownSampleFactor}
-import com.thetradedesk.audience.sample.DownSample.hashSampleV2
-import com.thetradedesk.audience.transform.{FirstPartyDataTransform, ModelFeatureTransform}
+import com.thetradedesk.audience.{date, featuresJsonPath, sampleHit, shouldConsiderTDID, shouldConsiderTDID2, trainSetDownSampleFactor}
+import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
-import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.io.FSUtils
@@ -229,13 +227,13 @@ abstract class FirstPartyPixelDailyModelInputGenerator {
       sampledBidsImpressionsKeys.filter('Date >= date),
       bidsImpressionsLong,
       selectedSIB
-    ))
+    ), featuresJsonPath)
 
     val trainingSet = ModelFeatureTransform.modelFeatureTransform[FirstPartyPixelModelInputRecord](generateDataSet(
       sampledBidsImpressionsKeys.filter('Date < date),
       bidsImpressionsLong,
       selectedSIB
-    ))
+    ), featuresJsonPath)
 
     (trainingSet, validationSet)
   }

@@ -1,49 +1,26 @@
 package com.thetradedesk.audience.datasets
 
 import com.thetradedesk.audience.ttdEnv
-import com.thetradedesk.geronimo.shared.{FLOAT_FEATURE_TYPE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE}
-import com.thetradedesk.audience.transform.FeatureDesc
-
-import java.sql.Timestamp
 
 final case class FirstPartyPixelModelInputRecord(
-                                                  @FeatureDesc("SupplyVendor", "string", 102)
                                                   SupplyVendor: Option[Int],
-                                                  @FeatureDesc("SupplyVendorPublisherId", "string", 200002)
                                                   SupplyVendorPublisherId: Option[Int],
-                                                  @FeatureDesc("AliasedSupplyPublisherId", "int", 200002)
                                                   AliasedSupplyPublisherId: Option[Int],
-                                                  @FeatureDesc("Site", "string", 500002)
                                                   Site: Option[Int],
-                                                  @FeatureDesc("Country", "string", 252)
                                                   Country: Option[Int],
-                                                  @FeatureDesc("Region", "string", 4002)
                                                   Region: Option[Int],
-                                                  @FeatureDesc("City", "string", 150002)
                                                   City: Option[Int],
-                                                  @FeatureDesc("Zip", "string", 90002)
                                                   Zip: Option[Int],
-                                                  @FeatureDesc("DeviceMake", "string", 6002)
                                                   DeviceMake: Option[Int],
-                                                  @FeatureDesc("DeviceModel", "string", 40002)
                                                   DeviceModel: Option[Int],
-                                                  @FeatureDesc("RequestLanguages", "string", 5002)
                                                   RequestLanguages: Int,
-                                                  @FeatureDesc("RenderingContext", "int", 6)
                                                   RenderingContext: Option[Int],
-                                                  @FeatureDesc("DeviceType", "int", 9)
                                                   DeviceType: Option[Int],
-                                                  @FeatureDesc("OperatingSystemFamily", "int", 8)
                                                   OperatingSystemFamily: Option[Int],
-                                                  @FeatureDesc("OperatingSystem", "int", 72)
                                                   OperatingSystem: Option[Int],
-                                                  @FeatureDesc("MatchedFoldPosition", "int", 5)
                                                   MatchedFoldPosition: Option[Int],
-                                                  @FeatureDesc("InternetConnectionType", "int", 10)
                                                   InternetConnectionType: Option[Int],
-                                                  @FeatureDesc("Browser", "int", 16)
                                                   Browser: Option[Int],
-                                                  @FeatureDesc("TargetingDataId", "long", 2000003)
                                                   TargetingDataId: Int,
                                                   AdWidthInPixels: Double,
                                                   AdHeightInPixels: Double,
@@ -64,7 +41,6 @@ final case class FirstPartyPixelModelInputRecord(
 
                                                   TDID: String,
                                                   BidRequestId: String,
-                                                  @FeatureDesc("AdvertiserId", "string", 200002)
                                                   AdvertiserId: Option[Int],
                                                   CampaignId: String,
                                                   AdGroupId: String,
