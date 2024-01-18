@@ -6,9 +6,9 @@ import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.jobs.AudienceModelInputGeneratorJob.clusterTargetingData
 import com.thetradedesk.audience.sample.RandomSampling.negativeSampleUDFGenerator
 import com.thetradedesk.audience.sample.WeightSampling.{getLabels, zipAndGroupUDFGenerator}
-import com.thetradedesk.audience.transform.{ContextualTransform, ModelFeatureTransform}
-import com.thetradedesk.audience.utils.S3Utils
-import com.thetradedesk.audience.{dateTime, shouldConsiderTDID3}
+import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
+import com.thetradedesk.audience.transform.ContextualTransform
+import com.thetradedesk.audience.{dateTime, featuresJsonPath, shouldConsiderTDID3}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.{DataFrame, SaveMode}
@@ -90,7 +90,7 @@ object OutOfSampleGenerateJob {
             case _ => throw new Exception(s"unsupported Model[${AudienceModelInputGeneratorConfig.model}]")
           }
         }
-        val resultTransformed = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](dataset)
+        val resultTransformed = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](dataset, featuresJsonPath)
         AudienceModelInputDataset(AudienceModelInputGeneratorConfig.model.toString, s"${typePolicyTable._1._1}_${typePolicyTable._1._2}").writePartition(
           resultTransformed.as[AudienceModelInputRecord],
           dateTime,

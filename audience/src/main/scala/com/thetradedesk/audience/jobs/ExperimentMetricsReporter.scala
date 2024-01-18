@@ -1,13 +1,11 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.{date, sampleHit, trainSetDownSampleFactor}
-import com.thetradedesk.audience.datasets.{AudienceExtensionSeedSettingsDataset, ExperimentEventDataset, ExperimentEventRecord, ExperimentHitDataset, ExperimentHitStage, ExperimentHitType, FirstPartyPixelModelInputDataset, SeenInBiddingV3DeviceDataSet}
-import com.thetradedesk.audience.transform.ModelFeatureTransform
+import com.thetradedesk.audience.datasets.{AudienceExtensionSeedSettingsDataset, ExperimentEventDataset, ExperimentEventRecord, ExperimentHitDataset, ExperimentHitStage, ExperimentHitType, SeenInBiddingV3DeviceDataSet}
 import com.thetradedesk.geronimo.shared.shiftModUdf
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-
-import org.apache.spark.sql.{Column, DataFrame, Dataset, SaveMode}
+import org.apache.spark.sql.{Dataset, SaveMode}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 
@@ -94,7 +92,7 @@ object ExperimentMetricsReporter {
 
     val taggedEvents = events.join(sib, Seq("TDID"), "inner")
       .withColumn("TrueLabel", array_contains('FirstPartyTargetingDataIds, 'TargetingDataId))
-      .withColumn("TargetingDataId", shiftModUdf('TargetingDataId, lit(ModelFeatureTransform.tryGetFeatureCardinality[FirstPartyPixelModelInputDataset]("TargetingDataId"))))
+      .withColumn("TargetingDataId", shiftModUdf('TargetingDataId, lit(2000003)))
       .withColumn("WasHeldOut", abs(hash(concat('TDID, 'TargetingDataId))) % trainSetDownSampleFactor =!= lit(sampleHit))
       .select('AvailableBidRequestId, 'TDID, 'TargetingDataId, 'LookalikeLabel, 'ModelLabel, 'TrueLabel, 'WasHeldOut)
       .as[ExperimentEventRecord]

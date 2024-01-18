@@ -2,26 +2,22 @@ package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
 import com.thetradedesk.audience.datasets.CrossDeviceVendor.CrossDeviceVendor
-import com.thetradedesk.audience.datasets.SeedTagOperations.dataSourceCheck
-import com.thetradedesk.audience.datasets.{CrossDeviceVendor, ExtendedSeedReadableDataset, _}
-import com.thetradedesk.audience.jobs.AudienceModelInputGeneratorJob.prometheus
+import com.thetradedesk.audience.datasets.{CrossDeviceVendor, _}
 import com.thetradedesk.audience.sample.WeightSampling.{getLabels, negativeSampleUDFGenerator, positiveSampleUDFGenerator, zipAndGroupUDFGenerator}
 import com.thetradedesk.audience.transform.ContextualTransform.generateContextualFeatureTier1
 import com.thetradedesk.audience.transform.ExtendArrayTransforms.seedIdToSyntheticIdMapping
-import com.thetradedesk.audience.utils.S3Utils
-import com.thetradedesk.audience.{dateTime, seedCoalesceAfterFilter, shouldConsiderTDID3, ttdEnv}
+import com.thetradedesk.audience.{dateTime, featuresJsonPath, shouldConsiderTDID3, ttdEnv}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
+import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
-import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.{Column, DataFrame, Row, SaveMode}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
-import com.thetradedesk.audience.transform._
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -76,7 +72,7 @@ object AudienceModelInputGeneratorJob {
         result
       }
 
-      val resultSet = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](dataset)
+      val resultSet = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](dataset, featuresJsonPath)
         .withColumn("SplitRemainder", xxhash64(concat('GroupId, lit(AudienceModelInputGeneratorConfig.saltToSplitDataset))) % AudienceModelInputGeneratorConfig.validateDatasetSplitModule)
         .withColumn("SubFolder",
           when('SplitRemainder === lit(SubFolder.Val.id), SubFolder.Val.id)

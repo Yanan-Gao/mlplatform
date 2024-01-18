@@ -23,7 +23,7 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-mllib" % sparkVersion % "provided",
 
   "com.typesafe" % "config" % "1.3.0",
-  "com.thetradedesk" %% "geronimo" % "0.2.6-SNAPSHOT",
+  "com.thetradedesk" %% "geronimo" % "0.2.10-SNAPSHOT",
   "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
 
   "io.prometheus" % "simpleclient" % prometheusVersion,
@@ -31,7 +31,8 @@ libraryDependencies ++= Seq(
   "io.prometheus" % "simpleclient_pushgateway" % prometheusVersion,
 
   "org.scalatest" %% "scalatest" % "3.2.9" % "test",
-  "org.scalatest" %% "scalatest-funsuite" % "3.2.10" % Test
+  "org.scalatest" %% "scalatest-funsuite" % "3.2.10" % Test,
+  "com.github.mrpowers" %% "spark-fast-tests" % "1.2.0" % Test
 )
 
 assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)

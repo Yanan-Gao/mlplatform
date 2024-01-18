@@ -38,6 +38,8 @@ package object audience {
 
   val dryRun = config.getBoolean("dryRun", false)
 
+  val featuresJsonPath = config.getString("featuresJsonPath", default = "s3://thetradedesk-mlplatform-us-east-1/features/data/RSM/v=1/prod/schemas/features.json")
+
   def shouldConsiderTDID(symbol: Symbol) = {
     shouldTrackTDID(symbol) && substring(symbol, 9, 1) === lit("-") && userIsInSampleUDF(symbol, lit(userDownSampleBasePopulation), lit(userDownSampleHitPopulation))
   }
