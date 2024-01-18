@@ -18,11 +18,12 @@ import java.time.LocalDate
  * object to join conversion data with last touches in bidrequest dataset.
  */
 object PositiveLabelGenerator extends KongmingBaseJob {
-  //TODO: ideally policy level lookback would be based on attribution window. This below value will set a cap.
-  //TODO: based on research yuehan did: https://atlassian.thetradedesk.com/jira/browse/AUDAUTO-284 plus a buffer
-  val bidLookback = config.getInt("bidLookback", default = 20)
-  //TODO: longer conv lookback will add more white space. For now, we settle on daily processing.
-  val convLookback = config.getInt("convLookback", default=1)
+  object Config {
+    //TODO: ideally policy level lookback would be based on attribution window. This below value will set a cap.
+    //TODO: based on research yuehan did: https://atlassian.thetradedesk.com/jira/browse/AUDAUTO-284 plus a buffer
+    var bidLookback = config.getInt("bidLookback", default=15)
+    var maxNumConversion = config.getInt("maxNumConversion", default=5)
+  }
 
   override def jobName: String = "PositiveLabeling"
 
@@ -38,7 +39,7 @@ object PositiveLabelGenerator extends KongmingBaseJob {
 
     // resolve for maxLookback
     val maxPolicyLookbackInDays = adGroupPolicy.agg(max($"DataLookBack")).head.getAs[Int](0)
-    val lookback = math.min(maxPolicyLookbackInDays, bidLookback) - 1 //the -1 is to account for the given date is partial
+    val lookback = math.min(maxPolicyLookbackInDays, Config.bidLookback) - 1 //the -1 is to account for the given date is partial
 
     // previous multiday data
     val rawMultiDayBidRequestDS = DailyBidRequestDataset().readRange(date.minusDays(lookback+1), date, isInclusive=false).selectAs[DailyBidRequestRecord]
@@ -71,7 +72,8 @@ object PositiveLabelGenerator extends KongmingBaseJob {
 
     //union same day bidrequest with previous many days
     val unionedPositiveBidRequestDS = sameDayPositiveBidRequestDS.union(multiDayPositiveBidRequestDS)
-    PositiveLabelDailyTransform.positiveLabelAggTransform(unionedPositiveBidRequestDS, preFilteredPolicy)
+    val pos = PositiveLabelDailyTransform.positiveLabelAggTransform(unionedPositiveBidRequestDS, preFilteredPolicy)
+    PositiveLabelDailyTransform.dropExcessConversions(pos, Config.maxNumConversion)
   }
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {

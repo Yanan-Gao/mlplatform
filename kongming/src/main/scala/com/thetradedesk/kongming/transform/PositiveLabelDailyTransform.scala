@@ -122,6 +122,23 @@ object PositiveLabelDailyTransform {
 //  }
 
   /**
+   * Remove repeated conversions in excess of `maxNumConversion` not accompanied by new bid requests
+   * @param pos positive records generated from that day's conversions
+   * @param maxNumConversion cap on the number of conversions that can be matched against identical sets of impressions
+   * @return .
+   */
+  def dropExcessConversions(pos: Dataset[DailyPositiveLabelRecord], maxNumConversion: Int): Dataset[DailyPositiveLabelRecord] = {
+    val conversionColumns = Seq("ConfigKey", "ConfigValue", "UIID", "TrackingTagId", "ConversionTime")
+    val convsToKeep = pos.groupBy(conversionColumns.head, conversionColumns.tail: _*)
+      .agg(min('LogEntryTime).as("FirstImpressionTime"), max('LogEntryTime).as("LastImpressionTime"))
+      .withColumn("rand", rand())
+      .withColumn("rank", rank().over(Window.partitionBy("ConfigKey", "ConfigValue", "UIID", "TrackingTagId", "FirstImpressionTime", "LastImpressionTime").orderBy("rand")))
+      .filter('rank <= maxNumConversion)
+    pos.join(convsToKeep, conversionColumns, "left_semi")
+      .selectAs[DailyPositiveLabelRecord]
+  }
+
+  /**
    * Aggregate data across all bids prior to the conversion.
    * @param unionedMultidayPositive
    * @param adGroupPolicy

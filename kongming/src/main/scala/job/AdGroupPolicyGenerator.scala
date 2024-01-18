@@ -272,7 +272,7 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
 
   def generateSkeletalPolicyTableAndMappings(adgroups: Dataset[PolicyTableAdGroup], yesterdaysMapping: Dataset[AdGroupPolicyMappingRecord]): (Dataset[SkeletalPolicyTable], Dataset[AdGroupPolicyMappingRecord]) = {
     // Pick a random config value from yesterdays mapping table if available (there should only be one, but just in case), and pick a random ad group from todays active ad groups if it's a new campaign.
-    // TODO: the ranks here is required when one policy table row can collate multiple multiple campaigns. Remove after everything is stable
+    // TODO: the rank here is required when one policy table row can collate multiple multiple campaigns. Remove after everything is stable
     val activeMappingsFromYesterday = yesterdaysMapping.select("ConfigValue").distinct
       .join(adgroups.select('AdGroupId.as("ConfigValue"), 'CampaignId), Seq("ConfigValue"), "inner")
       .withColumn("rank", rank().over(Window.partitionBy("CampaignId").orderBy("ConfigValue")))
