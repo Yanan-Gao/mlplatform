@@ -103,6 +103,7 @@ object ModelInput {
     )
     //write to csv to dev for production job
     writeData(trainingData, outputPath, writeEnv, outputPrefix, date, partitions, false)
-    writeData(labelCounts, outputPath, writeEnv, outputPrefix + "metadata", date, 1, false)
+    val metadataName = if (outputPrefix == "processed") {"metadata"} else {outputPrefix + "metadata"}
+    writeData(labelCounts, outputPath, writeEnv, metadataName, date, 1, false)
   }
 }
