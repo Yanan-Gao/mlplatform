@@ -57,6 +57,11 @@ case class BidsImpressionsSchema(
                                   // contextual cols
                                   ContextualCategories: Option[Seq[Long]],
 
+                                  // cold storage total segments
+                                  UserSegmentCount: Option[Int],
+                                  // hotcache x selected segments log
+                                  MatchedSegments: Option[Seq[Long]]
+
                                   // uncomment for online test backtesting set generation
                                   // ExpectedValue: Option[BigDecimal],
                                   // RPacingValue: Option[BigDecimal],
