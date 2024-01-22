@@ -130,8 +130,9 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
   }
 
   def generateAttributionSet(scoreDate: LocalDate)(implicit prometheus: PrometheusClient): Dataset[OutOfSampleAttributionRecord] = {
+    val adGroupPolicy = AdGroupPolicyDataset().readDate(scoreDate)
     val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(scoreDate)
-    val policy = AdGroupPolicyDataset().readDate(scoreDate)
+    val policy = getMinimalPolicy(adGroupPolicy, adGroupPolicyMapping).cache()
 
     val scoringSet = DailyOfflineScoringDataset().readRange(scoreDate.plusDays(1), scoreDate.plusDays(Config.ImpressionLookBack), isInclusive=true)
     val impressionsToScore = multiLevelJoinWithPolicy[BidRequestsWithConfigValue](
