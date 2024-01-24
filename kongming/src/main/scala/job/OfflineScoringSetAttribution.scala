@@ -1,7 +1,7 @@
 package job
 
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, AdGroupPolicyMappingDataset, CampaignCvrForScalingDataset, ImpressionForIsotonicRegDataset, UnifiedAdGroupDataSet}
-import com.thetradedesk.kongming.{date, samplingSeed}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyDataset, AdGroupPolicyMappingDataset, CvrForScalingDataset, ImpressionForIsotonicRegDataset, UnifiedAdGroupDataSet}
+import com.thetradedesk.kongming.{date, partCount, samplingSeed}
 import com.thetradedesk.kongming.transform.TrainSetTransformation.getWeightsForTrackingTags
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -23,6 +23,9 @@ object OfflineScoringSetAttribution extends KongmingBaseJob {
 
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date).cache()
     val adgroupBaseAssociateMapping = AdGroupPolicyMappingDataset().readDate(date).cache()
+
+    val pixelMapping = getPixelMappings(date, with_graph_info = true)
+
     // prerequisite:
     // 1. the model used to score impressions should be the same as model in production, which has modelDate
     // modelDate can be earlier than date.
@@ -50,12 +53,16 @@ object OfflineScoringSetAttribution extends KongmingBaseJob {
     val impressionLevelPerformance =  getOfflineScoreImpressionAndPiecePerformance(offlineScoreLabel)(getPrometheus).cache()
 
     // 5. get inputs for isotonic regression and bias tuning
-    val inputForCalibration = getInputForCalibrationAndScaling(impressionLevelPerformance, IsotonicRegPositiveLabelCountThreshold, IsotonicRegNegCap, IsotonicRegNegMaxSampleRate, samplingSeed)(getPrometheus)
+    val inputForCalibration = getInputForCalibrationAndScaling(
+      impressionLevelPerformance,
+      pixelMapping,
+      IsotonicRegPositiveLabelCountThreshold, IsotonicRegNegCap, IsotonicRegNegMaxSampleRate,
+      samplingSeed)(getPrometheus)
 
-    val isotonicRegRows = ImpressionForIsotonicRegDataset().writePartition(inputForCalibration._1, date, Some(1000))
-    val campaigncvrScalingRows = CampaignCvrForScalingDataset().writePartition(inputForCalibration._2, date, Some(1))
+    val isotonicRegRows = ImpressionForIsotonicRegDataset().writePartition(inputForCalibration._1, date, Some(partCount.ImpressionForIsoReg))
+    val cvrScalingRows = CvrForScalingDataset().writePartition(inputForCalibration._2, date, Some(partCount.CvrRescaling))
 
-    Array(isotonicRegRows, campaigncvrScalingRows)
+    Array(isotonicRegRows, cvrScalingRows)
 
   }
 }
