@@ -16,6 +16,8 @@ import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions._
 
+import java.time.LocalDate
+
 
 object OfflineAttributionTransform {
 
@@ -49,19 +51,42 @@ object OfflineAttributionTransform {
                                                   ImpressionWeightForCalibrationModel: Double
   )
 
-  final case class OfflineScoreAttributionResultPerAdGroupRecord(
-                                                        AdGroupId: String,
-                                                        Score: Double,
-                                                        Label:Int,
-                                                        ImpressionWeightForCalibrationModel: Double
-                                                      )
 
-  final case class OfflineScoreAttributionResultPerCampaignRecord(
-                                                                  CampaignId: String,
-                                                                  Score: Double,
-                                                                  Label:Int,
-                                                                  ImpressionWeightForCalibrationModel: Double
-                                                                )
+  final case class PixelMappingRecord(
+                                CampaignId: String,
+                                TrackingTagId: String,
+                                )
+
+
+  def getPixelMappings(
+                      date: LocalDate,
+                      with_graph_info: Boolean = false,
+                      ): Dataset[PixelMappingRecord] = {
+    val campaignDS = CampaignDataSet().readLatestPartitionUpTo(date, isInclusive = true)
+    val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartitionUpTo(date, isInclusive = true)
+    var ccrcProcessed = ccrc.join(
+        broadcast(campaignDS.select($"CampaignId", $"CustomCPATypeId", $"CustomCPAClickWeight", $"CustomCPAViewthroughWeight")),
+        Seq("CampaignId"), "left"
+      ).filter(($"CustomCPATypeId" === 0 && $"ReportingColumnId" === 1) || ($"CustomCPATypeId" > 0 && $"IncludeInCustomCPA"))
+
+    if (with_graph_info) {
+      ccrcProcessed = ccrcProcessed
+        //  only use IAv2 and IAv2HH, other graphs will be replaced by IAv2
+        .withColumn("CrossDeviceAttributionModelId",
+          when(
+            ($"CrossDeviceAttributionModelId".isNotNull) && !($"CrossDeviceAttributionModelId".isin(List("IdentityAllianceWithHousehold", "IdentityAlliance"): _*)),
+            lit("IdentityAlliance")
+          ).otherwise($"CrossDeviceAttributionModelId"))
+          .withColumn("TrackingTagId", concat(
+          col("TrackingTagId"),
+          lit("_"),
+          coalesce(col("CrossDeviceAttributionModelId"), lit("0"))
+          )
+        )
+    }
+    ccrcProcessed.selectAs[PixelMappingRecord]
+  }
+
 
   def getAttributedEventAndResult(
                                  adGroupPolicyMapping: Dataset[AdGroupPolicyMappingRecord],
@@ -175,90 +200,119 @@ object OfflineAttributionTransform {
 
   }
 
+  private def getImpressionForIsotonic(
+                              impressionLevelPerformance: Dataset[_],
+                              level: String,
+                              isotonicRegPositiveThreshold: Int,
+                              isotonicRegNegativeCap: Int,
+                              isotonicRegMaxSampleRate: Double,
+                              samplingSeed: Long
+                     ): Dataset[ImpressionForIsotonicRegRecord] = {
+
+    val convertedImpressions = impressionLevelPerformance.filter(($"Label"===lit(1)) && ($"ImpressionWeightForCalibrationModel">0)).cache()
+
+    // filter impressions that has conversions more than threshold.
+    val idsToKeep = convertedImpressions.groupBy(col(level)).count()
+      .filter($"count" > isotonicRegPositiveThreshold)
+      .select(level).distinct()
+
+    // keep ids that has enough conversions
+    val feedToIsotonicRegressionImpressions = impressionLevelPerformance.join(
+      idsToKeep, Seq(level), "left_semi"
+    ).cache()
+
+    // subsample negatives by cap
+    val feedToIsotonicRegressionImpressionsNeg = feedToIsotonicRegressionImpressions.filter($"Label" === lit(0)).cache()
+    val negCount = feedToIsotonicRegressionImpressionsNeg.groupBy(col(level)).count()
+      .withColumn("NegSampleRate", least(lit(isotonicRegNegativeCap) / col("count"), lit(isotonicRegMaxSampleRate)))
+    val feedToIsotonicRegressionImpressionsNegSampled = feedToIsotonicRegressionImpressionsNeg.join(
+        negCount, Seq(level), "inner"
+      ).filter(rand(seed = samplingSeed) < col("NegSampleRate"))
+      .withColumn("ImpressionWeightForCalibrationModel", $"ImpressionWeightForCalibrationModel" / $"NegSampleRate")
+      .select(level, "Score", "Label", "ImpressionWeightForCalibrationModel")
+
+    // union negative and positive
+    feedToIsotonicRegressionImpressionsNegSampled.union(
+        feedToIsotonicRegressionImpressions.filter($"Label" === lit(1))
+          .select(level, "Score", "Label", "ImpressionWeightForCalibrationModel")
+      ).select(col(level).as("Id"), $"Score", $"Label", $"ImpressionWeightForCalibrationModel")
+      .withColumn("Level", lit(level))
+      .as[ImpressionForIsotonicRegRecord]
+  }
+
+
   def getInputForCalibrationAndScaling(
-                                       impressionLevelPerformance: Dataset[OfflineScoreAttributionResultRecord] ,
-                                       IsotonicRegPositiveLabelCountThreshold: Int,
-                                       IsotonicRegNegCap: Int,
-                                       IsotonicRegNegMaxSampleRate: Double,
-                                       samplingSeed:Long
-                                      )(implicit prometheus:PrometheusClient): (Dataset[ImpressionForIsotonicRegRecord], Dataset[CampaignCvrForScalingRecord]) = {
-    val convertedImpressions = impressionLevelPerformance.filter($"Label"===lit(1)).filter($"ImpressionWeightForCalibrationModel">0).cache()
+                                           impressionLevelPerformance: Dataset[OfflineScoreAttributionResultRecord],
+                                           pixelMappings: Dataset[PixelMappingRecord],
+                                           IsotonicRegPositiveLabelCountThreshold: Int,
+                                           IsotonicRegNegCap: Int,
+                                           IsotonicRegNegMaxSampleRate: Double,
+                                           samplingSeed:Long
+                                         )(implicit prometheus:PrometheusClient): (Dataset[ImpressionForIsotonicRegRecord], Dataset[CvrForScalingRecord]) = {
 
-    // 1. prepare adgroup data for isotonic regression
-    // filter in adgroups impressions that has conversions more than threshold.
-    val adGroupsHaveEnoughConversion = convertedImpressions
-      .groupBy($"AdGroupId").count()
-      .filter($"count">IsotonicRegPositiveLabelCountThreshold)
-      .select($"AdGroupId").distinct()
-
-    val feedToIsotonicRegressionImpressions = impressionLevelPerformance
-      .join(
-        adGroupsHaveEnoughConversion,
-        Seq("AdGroupId"), "left_semi"
-      ).cache()
-
-    // subsample negatives by cap
-    val feedToIsotonicRegressionImpressionsNeg = feedToIsotonicRegressionImpressions.filter($"Label"===lit(0)).cache()
-    val negCount = feedToIsotonicRegressionImpressionsNeg.groupBy($"AdGroupId").count()
-      .withColumn("NegSampleRate", least(lit(IsotonicRegNegCap)/col("count"), lit(IsotonicRegNegMaxSampleRate)))
-    val feedToIsotonicRegressionImpressionsNegSampled = feedToIsotonicRegressionImpressionsNeg.join(negCount, Seq("AdGroupId"), "inner")
-      .filter(rand(seed=samplingSeed)<col("NegSampleRate"))
-      .withColumn("ImpressionWeightForCalibrationModel", $"ImpressionWeightForCalibrationModel"/$"NegSampleRate")
-      .selectAs[OfflineScoreAttributionResultPerAdGroupRecord]
-
-    // union negative and positive
-    val feedToIsotonicRegressionSampled = feedToIsotonicRegressionImpressionsNegSampled.union(
-        feedToIsotonicRegressionImpressions.filter($"Label"===lit(1)).selectAs[OfflineScoreAttributionResultPerAdGroupRecord]
-      )
-      .select($"AdGroupId".as("Id"),$"Score",$"Label",$"ImpressionWeightForCalibrationModel")
-      .withColumn("Level", lit("AdGroup"))
-      .as[ImpressionForIsotonicRegRecord]
-
-    // 2. prepare campaign data for isotonic regression.
-    val campaignsHaveEnoughConversion = convertedImpressions
-      .groupBy($"CampaignId").count()
-      .filter($"count">IsotonicRegPositiveLabelCountThreshold*2)
-      .select($"CampaignId").distinct()
-
-    val feedToCampaignIsotonicRegressionImpressions = impressionLevelPerformance
-      .join(
-        campaignsHaveEnoughConversion,
-        Seq("CampaignId"), "left_semi"
-      ).cache()
-
-    // subsample negatives by cap
-    val feedToCampaignIsotonicRegressionImpressionsNeg = feedToCampaignIsotonicRegressionImpressions.filter($"Label"===lit(0)).cache()
-    val negCountCampaign = feedToCampaignIsotonicRegressionImpressionsNeg.groupBy($"CampaignId").count()
-      .withColumn("NegSampleRate", least(lit(IsotonicRegNegCap*2)/col("count"), lit(IsotonicRegNegMaxSampleRate)))
-    val feedToCampaignIsotonicRegressionImpressionsNegSampled = feedToCampaignIsotonicRegressionImpressionsNeg.join(negCountCampaign, Seq("CampaignId"), "inner")
-      .filter(rand(seed=samplingSeed)<col("NegSampleRate"))
-      .withColumn("ImpressionWeightForCalibrationModel", $"ImpressionWeightForCalibrationModel"/$"NegSampleRate")
-      .selectAs[OfflineScoreAttributionResultPerCampaignRecord]
-
-    // union negative and positive
-    val feedToCampaignIsotonicRegressionSampled = feedToCampaignIsotonicRegressionImpressionsNegSampled.union(
-      feedToCampaignIsotonicRegressionImpressions.filter($"Label"===lit(1)).selectAs[OfflineScoreAttributionResultPerCampaignRecord]
+    // 1. prepare impression data for isotonic regression in adgroup, campaign and pixel level
+    val adGroupIsotonicRegSampled = getImpressionForIsotonic(
+      impressionLevelPerformance,
+      level = "AdGroupId",
+      isotonicRegPositiveThreshold = IsotonicRegPositiveLabelCountThreshold,
+      isotonicRegNegativeCap = IsotonicRegNegCap,
+      isotonicRegMaxSampleRate = IsotonicRegNegMaxSampleRate,
+      samplingSeed = samplingSeed
     )
-      .select($"CampaignId".as("Id"),$"Score",$"Label",$"ImpressionWeightForCalibrationModel")
-      .withColumn("Level", lit("Campaign"))
-      .as[ImpressionForIsotonicRegRecord]
-    // 3. prepare campaign data for scaled cvr, every campaign will have a conversion rate to be calculated. In the calibration job if isotonic regression's quality isn't good, falls back to scaled cvr
+    val campaignIsotonicRegSampled = getImpressionForIsotonic(
+      impressionLevelPerformance,
+      level = "CampaignId",
+      isotonicRegPositiveThreshold = IsotonicRegPositiveLabelCountThreshold * 2,
+      isotonicRegNegativeCap = IsotonicRegNegCap * 2,
+      isotonicRegMaxSampleRate = IsotonicRegNegMaxSampleRate,
+      samplingSeed = samplingSeed
+    ).cache()
 
-    // CVR: when $"TotalConversions"/$"TotalImpressions">0, meaning the ratio is neither null nor 0. It could be zero when impression label is 1, but  weight is set to zero by client
+    // pixel level data is based on sampled campaign data. each pixel uses impressions of all campaigns it links to
+    val pixelIsotonicRegSampled = getImpressionForIsotonic(
+      impressionLevelPerformance.join(
+        pixelMappings, Seq("CampaignId"), "inner"
+      ),
+      level = "TrackingTagId",
+      isotonicRegPositiveThreshold = IsotonicRegPositiveLabelCountThreshold * 2,
+      isotonicRegNegativeCap = IsotonicRegNegCap * 2,
+      isotonicRegMaxSampleRate = IsotonicRegNegMaxSampleRate,
+      samplingSeed = samplingSeed
+    )
+
+    val impressionIsoRegSampled = adGroupIsotonicRegSampled.union(campaignIsotonicRegSampled).union(pixelIsotonicRegSampled).selectAs[ImpressionForIsotonicRegRecord]
+
+    // 2. prepare cvr data for rescaling in campaign and pixel level
+    // CVR corner cases:
+    // when $"TotalConversions"/$"TotalImpressions">0, meaning the ratio is neither null nor 0. It could be zero when impression label is 1, but weight is set to zero by client
     // when $"TotalConversions"/$"TotalImpressions">1, usually there are too less impressions and some impression converted many times. It's better to fall back to default.
-    val campaignCVR = impressionLevelPerformance.groupBy("CampaignId").count().withColumnRenamed("count","TotalImpressions")
+    val campaignCVR = impressionLevelPerformance.groupBy("CampaignId").count()
+      .withColumnRenamed("count","TotalImpressions")
       .join(
-        convertedImpressions.groupBy("CampaignId").agg(sum($"ImpressionWeightForCalibrationModel").as("TotalConversions")),
+        impressionLevelPerformance.filter(
+          ($"Label"===lit(1)) && ($"ImpressionWeightForCalibrationModel">0)
+        ).groupBy("CampaignId").agg(sum($"ImpressionWeightForCalibrationModel").as("TotalConversions")),
         Seq("CampaignId"),
         "inner"
       )
       .withColumn("CVR", $"TotalConversions"/$"TotalImpressions")
+
+    // pixel CVR is calculated based on all campaigns it links to
+    val pixelCVR = campaignCVR.join(pixelMappings, Seq("CampaignId"), "inner")
+      .groupBy("TrackingTagId").agg(
+        sum($"TotalConversions").as("TotalConversions"), sum($"TotalImpressions").as("TotalImpressions")
+      ).withColumn("CVR", $"TotalConversions" / $"TotalImpressions")
+      .withColumn("Level", lit("TrackingTagId"))
+      .withColumnRenamed("TrackingTagId", "Id")
+      .selectAs[CvrForScalingRecord]
+
+    val scalingCVR = campaignCVR.withColumn("Level", lit("CampaignId"))
+      .withColumnRenamed("CampaignId", "Id").selectAs[CvrForScalingRecord]
+      .union(pixelCVR)
       .filter(($"CVR">0)&&($"CVR"<1))
-      .select($"CampaignId".as("CampaignIdStr"),$"CVR")
-      .selectAs[CampaignCvrForScalingRecord]
+      .selectAs[CvrForScalingRecord]
 
-
-    (feedToIsotonicRegressionSampled.union(feedToCampaignIsotonicRegressionSampled).selectAs[ImpressionForIsotonicRegRecord], campaignCVR)
+    (impressionIsoRegSampled, scalingCVR)
   }
 
 }

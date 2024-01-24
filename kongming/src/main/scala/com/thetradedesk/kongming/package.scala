@@ -105,7 +105,8 @@ package object kongming {
     var DailyPositiveCountSummary = 1
     var WatchlistTrainset = 100
     var WatchlistOOS = 100
-
+    var ImpressionForIsoReg = 1000
+    var CvrRescaling = 1
   }
 
   val partCount = task match {
