@@ -23,10 +23,11 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
-    val scoreDate = date.minusDays(Config.ImpressionLookBack + Config.AttributionLookBack)
+    val delayNDays = Config.ImpressionLookBack + Config.AttributionLookBack
+    val scoreDate = date.minusDays(delayNDays)
 
     val attributionSet = generateAttributionSet(scoreDate)(getPrometheus)
-    val numRows = OutOfSampleAttributionDataset().writePartition(attributionSet, scoreDate, Some(200))
+    val numRows = OutOfSampleAttributionDataset(delayNDays).writePartition(attributionSet, scoreDate, Some(200))
 
     Array(numRows)
 
