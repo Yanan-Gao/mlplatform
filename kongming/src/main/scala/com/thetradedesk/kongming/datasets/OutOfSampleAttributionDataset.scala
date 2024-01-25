@@ -83,9 +83,9 @@ final case class OutOfSampleAttributionRecord(
                                                longitude: Option[Double],
                                              )
 
-case class OutOfSampleAttributionDataset(experimentOverride: Option[String] = None)
+case class OutOfSampleAttributionDataset(delay_n_days: Int, experimentOverride: Option[String] = None)
   extends KongMingDataset[OutOfSampleAttributionRecord](
-    s3DatasetPath =  s"outofsampleattributionset/v=1",
+    s3DatasetPath =  s"outofsampleattributionset/v=1/delay=${delay_n_days}D",
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
 )
