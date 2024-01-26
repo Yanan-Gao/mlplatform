@@ -16,8 +16,7 @@ object GenerateWatchlistData extends KongmingBaseJob {
 
   override def jobName: String = "GenerateWatchlistData"
 
-
-  val policySampleRate = config.getDouble("policySampleRate", 0.03)
+  val policySampleRate = config.getDouble("policySampleRate", 0.01)
   val maxAdgroupImpCnt = config.getInt("maxAdgroupImpCnt", 100000)
   val maxCampaignImpCnt = config.getInt("maxCampaignImpCnt", 500000)
   val minCampaignImpCnt = config.getInt("minCampaignImpCnt", 1000)
@@ -26,13 +25,13 @@ object GenerateWatchlistData extends KongmingBaseJob {
   val incTrain = config.getBoolean("incTrain", true)
   val defaultDate = LocalDate.of(2022, 3, 15)
 
-  def generate_mappings(date: LocalDate): Dataset[_] = {
+  def generate_mappings(date: LocalDate, sampleRate: Double = policySampleRate): Dataset[_] = {
     // get mappings from all adgroups under the advertiser
     val watchlistManual = WatchListDataset().readDate(defaultDate)
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
     val policyMappings = AdGroupPolicyMappingDataset().readDate(date)
     // sample full policy table
-    val sampledPolicy = adGroupPolicy.filter(rand(seed = samplingSeed) < lit(policySampleRate))
+    val sampledPolicy = adGroupPolicy.filter(rand(seed = samplingSeed) < lit(sampleRate))
       .select("ConfigKey", "ConfigValue")
 
     val watchlistDF = sampledPolicy.union(
@@ -50,7 +49,7 @@ object GenerateWatchlistData extends KongmingBaseJob {
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
     // get train & validation: use today policy table
-    val watchlistMappingToDate = generate_mappings(date)
+    val watchlistMappingToDate = generate_mappings(date, policySampleRate*3)
 
     val splits = Seq("train", "val")
     val csvDS = if (incTrain) DataIncCsvForModelTrainingDataset() else DataCsvForModelTrainingDataset()
