@@ -271,7 +271,7 @@ object OfflineAttributionTransform {
     // pixel level data is based on sampled campaign data. each pixel uses impressions of all campaigns it links to
     val pixelIsotonicRegSampled = getImpressionForIsotonic(
       impressionLevelPerformance.join(
-        pixelMappings, Seq("CampaignId"), "inner"
+        broadcast(pixelMappings), Seq("CampaignId"), "inner"
       ),
       level = "TrackingTagId",
       isotonicRegPositiveThreshold = IsotonicRegPositiveLabelCountThreshold * 2,
