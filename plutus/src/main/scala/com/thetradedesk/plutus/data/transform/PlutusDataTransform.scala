@@ -8,13 +8,14 @@ import com.thetradedesk.plutus.data._
 import com.thetradedesk.plutus.data.schema._
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.datasets.core.S3Roots
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions, DataSetExtensions}
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{DoubleType, IntegerType, StringType}
 import org.apache.spark.sql.{Column, DataFrame, Dataset, SaveMode}
 
-import java.time.LocalDate
+import java.time.{LocalDate, LocalDateTime}
 
 object PlutusDataTransform extends Logger {
 
@@ -287,6 +288,24 @@ object PlutusDataTransform extends Logger {
     s"$outputPath/$ttdEnv/$labelType/$outputPrefix/${explicitDatePart(date)}"
   }
 
+  def loadRawMbtwData(dateTime: LocalDateTime): (Dataset[MinimumBidToWinData]) = {
+    val rawMbtwData = loadCsvData[RawLostBidData](
+      RawLostBidDataset.S3PATH,
+      RawLostBidDataset.S3PATH_GEN,
+      dateTime,
+      RawLostBidDataset.SCHEMA
+    )
+
+    rawMbtwData.select(
+      col("BidRequestId").cast(StringType),
+      col("SupplyVendorLossReason").cast(IntegerType),
+      col("LossReason").cast(IntegerType),
+      col("WinCPM").cast(DoubleType),
+      col("mbtw").cast(DoubleType)
+    ).as[MinimumBidToWinData]
+  }
+
+
   def loadMbtwData(date: LocalDate): (Dataset[MinimumBidToWinData], Seq[String]) = {
     val rawMbtwData = loadCsvData[RawLostBidData](RawLostBidDataset.S3PATH, date, RawLostBidDataset.SCHEMA)
       .filter(col("mbtw") =!= 0.0)
@@ -314,12 +333,27 @@ object PlutusDataTransform extends Logger {
   }
 
   def loadPlutusLogData(date: LocalDate): Dataset[PlutusLogsData] = {
-    loadParquetData[PlutusLogsData](PlutusLogsDataset.S3PATH, date, lookBack = Some(1))
+    loadParquetData[PcResultsRawLogSchema](PlutusLogsDataset.S3PATH, date, lookBack = Some(1))
       .select(
         "PlutusLog.*",
         "PredictiveClearingStrategy.*",
         "*"
       ).drop(
+      "PlutusLog",
+      "PredictiveClearingStrategy"
+    ).as[PlutusLogsData]
+  }
+
+  def loadPlutusLogData(dateTime: LocalDateTime): Dataset[PlutusLogsData] = {
+    loadParquetDataHourlyV2[PcResultsRawLogSchema](
+      PlutusLogsDataset.S3PATH,
+      PlutusLogsDataset.S3PATH_GEN,
+      dateTime
+    ).select(
+      "PlutusLog.*",
+      "PredictiveClearingStrategy.*",
+      "*"
+    ).drop(
       "PlutusLog",
       "PredictiveClearingStrategy"
     ).as[PlutusLogsData]

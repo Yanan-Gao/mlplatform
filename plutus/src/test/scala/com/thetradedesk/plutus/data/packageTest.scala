@@ -1,5 +1,5 @@
 package com.thetradedesk.plutus.data
-import com.thetradedesk.geronimo.shared.shiftMod
+import com.thetradedesk.plutus.data.schema.{PlutusLogsDataset, RawLostBidDataset}
 import org.apache.spark.unsafe.types.UTF8String
 import org.scalatest._
 import org.scalatest.flatspec.AnyFlatSpec
@@ -102,7 +102,7 @@ class packageTest extends AnyFlatSpec {
 
   }
 
-  "parquetDataPathsHourly" should "create a single paths with s3/date=yyyymmdd/hour=h" in {
+  "parquetHourlyDataPaths" should "create a single paths with s3/date=yyyymmdd/hour=h" in {
     val expected = Seq("s3_path/date=20210101/hour=2")
     val result = parquetHourlyDataPaths(
       "s3_path",
@@ -114,13 +114,36 @@ class packageTest extends AnyFlatSpec {
   }
 
 
-  "parquetDataPathsHourly" should "create multiple paths with s3/year=yyyy/month=mm/day=dd/hour=h" in {
+  "parquetHourlyDataPaths" should "create three paths with s3/date=yyyymmdd/hour=h" in {
+    val expected = Seq("s3_path/date=20210101/hour=1", "s3_path/date=20210101/hour=0", "s3_path/date=20201231/hour=23", "s3_path/date=20201231/hour=22")
+    val result = generateDataPathsHourly(
+      "s3_path/",
+      PlutusLogsDataset.S3PATH_GEN,
+      dateTime=LocalDateTime.of(2021, 1, 1, 1, 30),
+      lookBack = Some(3)
+    )
+    expected should contain theSameElementsAs result
+  }
+
+
+  "parquetHourlyDataPaths" should "create multiple paths with s3/year=yyyy/month=mm/day=dd/hour=h" in {
     val expected = Seq("s3_path/year=2021/month=01/day=01/hourPart=1", "s3_path/year=2021/month=01/day=01/hourPart=0", "s3_path/year=2020/month=12/day=31/hourPart=23")
     val result = parquetHourlyDataPaths(
       "s3_path",
       dateTime=LocalDateTime.of(2021, 1, 1, 1, 30),
       source = Some(IMPLICIT_DATA_SOURCE),
       lookBack = Some(2)
+    )
+    expected should contain theSameElementsAs result
+  }
+
+  "cleansedDataPathsHourly" should "create multiple paths with s3/year=yyyy/month=mm/day=dd/hour=h" in {
+
+    val expected = Seq("s3://thetradedesk-useast-logs-2/lostbidrequest/cleansed/2024/01/01/23/*/*.gz")
+    val result = generateDataPathsHourly(
+      RawLostBidDataset.S3PATH,
+      RawLostBidDataset.S3PATH_GEN,
+      dateTime=LocalDateTime.of(2024, 1, 1, 23, 0)
     )
     expected should contain theSameElementsAs result
   }

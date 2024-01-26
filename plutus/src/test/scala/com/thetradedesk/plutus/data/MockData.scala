@@ -193,6 +193,49 @@ object MockData {
     IsCommonFormat = false,
     MediaTypeId = 1,
     UserFriendlyLabel = None
-  ) 
+  )
 
+  val pcResultsLogMock = PlutusLogsData(
+    BidRequestId = "1",
+    InitialBid = 10,
+    FinalBidPrice = 9,
+    Discrepancy = 0.1,
+    BaseBidAutoOpt = 0.3,
+    LegacyPcPushdown = 0,
+    Mu = 0.2f,
+    Sigma = 0.1f,
+    GSS = 3.0,
+    AlternativeStrategyPush = 1.0,
+    Model = "plutus",
+    Strategy = 0,
+    OptOutDueToFloor = false,
+    FloorPrice = 1,
+    PartnerSample = false,
+    BidBelowFloorExceptedSource = 0,
+    FullPush = false
+  )
+
+  val pcResultsRawLogMock = PcResultsRawLogSchema(
+    BidRequestId = "1",
+    InitialBid = 10,
+    FinalBidPrice = 9,
+    Discrepancy = 0.1,
+    BaseBidAutoOpt = 0.3,
+    LegacyPcPushdown = 0,
+    PlutusLog = PlutusLog (0.2f, 0.1f, 3, 1),
+    PredictiveClearingStrategy = PredictiveClearingStrategy ("plutus", 0),
+    OptOutDueToFloor = false,
+    FloorPrice = 1,
+    PartnerSample = false,
+    BidBelowFloorExceptedSource = 0,
+    FullPush = false
+  )
+
+  val mbtwDataMock = MinimumBidToWinData(
+    BidRequestId = "1",
+    SupplyVendorLossReason = 2,
+    LossReason = 2,
+    WinCPM = 2.2,
+    mbtw = 2
+  )
 }

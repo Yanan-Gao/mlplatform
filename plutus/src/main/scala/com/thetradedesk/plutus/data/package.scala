@@ -46,6 +46,7 @@ package object data {
     }.toArray
   }
 
+  // Duplicated by com.thetradedesk.geronimo.shared.shiftMod
   def shiftMod(hashValue: Long, cardinality: Int, shift: Int = 1): Int = {
     val modulo = math.min(cardinality - shift, Int.MaxValue - shift)
     val index = (hashValue % modulo).toInt
@@ -131,6 +132,10 @@ package object data {
     (0 to lookBack.getOrElse(0)).map(i => f"${basePath}/${paddedDatePart(date.minusDays(i), separator = Some("/"))}/*/*/*.gz")
   }
 
+  def generateDataPathsHourly(basePath: String, extGenerator: LocalDateTime => String, dateTime: LocalDateTime, lookBack: Option[Int] = None): Seq[String] = {
+    (0 to lookBack.getOrElse(0)).map(i => f"$basePath${extGenerator(dateTime.minusHours(i))}")
+  }
+
   def implicitDataPath(s3Path: String, ttdEnv: String, prefix: Option[String] = None): String = {
     s"$s3Path/$ttdEnv/${prefix.getOrElse(DEFAULT_IMPLICIT_PREFIX)}"
   }
@@ -163,9 +168,25 @@ package object data {
       .selectAs[T]
   }
 
+  def loadCsvData[T: Encoder](basePath: String, extGenerator: LocalDateTime => String, dateTime: LocalDateTime, schema: StructType): Dataset[T] = {
+    spark.read.format("csv")
+      .option("sep", "\t")
+      .option("header", "false")
+      .option("inferSchema", "false")
+      .option("mode", "DROPMALFORMED")
+      .schema(schema)
+      .load(generateDataPathsHourly(basePath, extGenerator, dateTime): _*)
+      .selectAs[T]
+  }
 
-  def loadParquetDataHourly[T: Encoder](s3path: String, date: LocalDateTime, lookBack: Option[Int], source: Option[String] = None): Dataset[T] = {
-    val paths = parquetHourlyDataPaths(s3path, date, source, lookBack)
+  def loadParquetDataHourly[T: Encoder](s3path: String, dateTime: LocalDateTime, lookBack: Option[Int] = None, source: Option[String] = None): Dataset[T] = {
+    val paths = parquetHourlyDataPaths(s3path, dateTime, source, lookBack)
+    spark.read.parquet(paths: _*)
+      .selectAs[T]
+  }
+
+  def loadParquetDataHourlyV2[T: Encoder](basePath: String, extGenerator: LocalDateTime => String, dateTime: LocalDateTime, lookBack: Option[Int] = None): Dataset[T] = {
+    val paths = generateDataPathsHourly(basePath, extGenerator, dateTime, lookBack)
     spark.read.parquet(paths: _*)
       .selectAs[T]
   }

@@ -2,6 +2,8 @@ package com.thetradedesk.plutus.data.schema
 
 import org.apache.spark.sql.types.{DoubleType, IntegerType, StringType, StructType}
 
+import java.time.LocalDateTime
+
 final case class MinimumBidToWinData(BidRequestId: String,
                                      SupplyVendorLossReason: Int,
                                      LossReason: Int,
@@ -49,6 +51,9 @@ trait RawLostBidSchema {
 }
 
 object RawLostBidDataset extends RawLostBidSchema {
-  def S3PATH = "s3://thetradedesk-useast-logs-2/lostbidrequest/cleansed/"
+  val S3PATH = "s3://thetradedesk-useast-logs-2/lostbidrequest/cleansed/"
+  def S3PATH_GEN = (dateTime: LocalDateTime) => {
+    f"${dateTime.getYear}/${dateTime.getMonthValue}%02d/${dateTime.getDayOfMonth}%02d/${dateTime.getHour}%02d/*/*.gz"
+  }
 }
 
