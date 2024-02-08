@@ -257,6 +257,7 @@ abstract class AudienceModelInputGenerator(name: String) {
         'TDID,
         'LogEntryTime,
         'ContextualCategories,
+        'MatchedSegments,
       )
       // they saved in struct type
       .withColumn("OperatingSystemFamily", 'OperatingSystemFamily("value"))

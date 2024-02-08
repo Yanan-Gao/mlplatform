@@ -22,6 +22,7 @@ final case class AudienceModelInputRecord(
                                                   InternetConnectionType: Option[Int],
                                                   Browser: Option[Int],
                                                   ContextualCategoriesTier1: Array[Int],
+                                                  MatchedSegments: Array[Long],
                                                   AdWidthInPixels: Double,
                                                   AdHeightInPixels: Double,
 
