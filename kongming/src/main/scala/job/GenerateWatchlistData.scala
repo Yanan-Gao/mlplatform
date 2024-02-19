@@ -16,7 +16,8 @@ object GenerateWatchlistData extends KongmingBaseJob {
 
   override def jobName: String = "GenerateWatchlistData"
 
-  val policySampleRate = config.getDouble("policySampleRate", 0.01)
+  val policyTrainsetSampleRate = config.getDouble("policyTrainsetSampleRate", 0.01)
+  val policyOosSampleRate = config.getDouble("policyOosSampleRate", 0.02)
   val maxAdgroupImpCnt = config.getInt("maxAdgroupImpCnt", 100000)
   val maxCampaignImpCnt = config.getInt("maxCampaignImpCnt", 500000)
   val minCampaignImpCnt = config.getInt("minCampaignImpCnt", 1000)
@@ -25,7 +26,7 @@ object GenerateWatchlistData extends KongmingBaseJob {
   val incTrain = config.getBoolean("incTrain", true)
   val defaultDate = LocalDate.of(2022, 3, 15)
 
-  def generate_mappings(date: LocalDate, sampleRate: Double = policySampleRate): Dataset[_] = {
+  def generate_mappings(date: LocalDate, sampleRate: Double): Dataset[_] = {
     // get mappings from all adgroups under the advertiser
     val watchlistManual = WatchListDataset().readDate(defaultDate)
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
@@ -49,7 +50,7 @@ object GenerateWatchlistData extends KongmingBaseJob {
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
     // get train & validation: use today policy table
-    val watchlistMappingToDate = generate_mappings(date, policySampleRate*3)
+    val watchlistMappingToDate = generate_mappings(date, policyTrainsetSampleRate)
 
     val splits = Seq("train", "val")
     val csvDS = if (incTrain) DataIncCsvForModelTrainingDataset() else DataCsvForModelTrainingDataset()
@@ -72,7 +73,7 @@ object GenerateWatchlistData extends KongmingBaseJob {
     val oosRows = delays.par.map { case (delay, split) =>
 
       val dDate = date.minusDays(delay)
-      val watchlistMappings = generate_mappings(dDate)
+      val watchlistMappings = generate_mappings(dDate, policyOosSampleRate)
 
       val watchlistData = OutOfSampleAttributionDataset(delay).readDate(dDate).join(
         broadcast(watchlistMappings),
