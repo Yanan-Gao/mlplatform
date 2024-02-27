@@ -1,7 +1,7 @@
 package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, FLOAT_FEATURE_TYPE, GERONIMO_DATA_SOURCE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, loadParquetData, shiftModUdf}
+import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, FLOAT_FEATURE_TYPE, GERONIMO_DATA_SOURCE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, loadParquetData, shiftModArray, shiftModUdf}
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
 import com.thetradedesk.kongming.{CustomGoalTypeId, IncludeInCustomGoal, date, task}
@@ -272,16 +272,17 @@ object TrainSetTransformation {
     }
   }
 
-
+  // will use this function and retire the one above once we switch on daily trainset gen.
   def attachTrainsetWithFeature(
-                          trainset: Dataset[PreFeatureJoinRecord],
-                          lookbackDays: Int
-                          )(implicit prometheus:PrometheusClient): Dataset[TrainSetFeaturesRecord] ={
-    val bidsImpressions = DailyBidsImpressionsDataset().readRange(date.minusDays(lookbackDays), date, isInclusive = true)
+                                      trainset: Dataset[PreFeatureJoinRecord],
+                                      date: LocalDate,
+                                      lookbackDays: Int
+                                      )(implicit prometheus: PrometheusClient): Dataset[TrainSetFeaturesRecord] = {
+    val bidimpression = DailyBidsImpressionsDataset().readRange(date.minusDays(lookbackDays), date, isInclusive = true)
 
-    // TODO: Selecting columns hard coded, maybe need some additions to feature.json to remove hard coded values
-    val df = trainset.join(bidsImpressions.drop("AdGroupId"), Seq("BidRequestId"), joinType =  "inner")
-      .withColumn("AdFormat",concat(col("AdWidthInPixels"),lit('x'), col("AdHeightInPixels")))
+    // attachTrainsetWithFeature function
+    val df = trainset.join(bidimpression.drop("AdGroupId", "LogEntryTime"), Seq("BidRequestId"), joinType = "inner")
+      .withColumn("AdFormat", concat(col("AdWidthInPixels"), lit('x'), col("AdHeightInPixels")))
       .withColumn("RenderingContext", $"RenderingContext.value")
       .withColumn("DeviceType", $"DeviceType.value")
       .withColumn("OperatingSystem", $"OperatingSystem.value")
@@ -291,14 +292,12 @@ object TrainSetTransformation {
       .withColumn("IsUID2", when(substring($"UIID", 9, 1) =!= lit("-"), lit(1)).otherwise(0))
       .withColumnRenamed("ConfigValue", "AdGroupId")
 
-    // TODO: Job will fail if ContextualData does not align with feature.json. Maybe we need some sort of schema validation for feature.json?
     val bidsImpContextual = ContextualTransform
       .generateContextualFeatureTier1(
         df.select("BidRequestId", "ContextualCategories")
           .dropDuplicates("BidRequestId").selectAs[ContextualData]
       )
 
-    // TODO: Job will fail if TrainSetFeaturesRecord does not align with feature.json. See above comment
     df
       .join(bidsImpContextual, Seq("BidRequestId"), "left")
       .selectAs[TrainSetFeaturesRecord]

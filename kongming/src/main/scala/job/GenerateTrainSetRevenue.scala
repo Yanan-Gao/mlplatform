@@ -156,7 +156,7 @@ object GenerateTrainSetRevenue extends KongmingBaseJob {
     val tensorflowSelectionTabular = intModelFeaturesCols(hashFeatures) ++ aliasedModelFeatureCols(seqFields) ++ modelTargetCols(modelTargets) ++ splitColumn
     val parquetSelectionTabular = aliasedModelFeatureCols(keptFields) ++ tensorflowSelectionTabular
 
-    val trainDataWithFeature = attachTrainsetWithFeature(preFeatureJoinTrainSet, maxLookback)(getPrometheus)
+    val trainDataWithFeature = attachTrainsetWithFeature(preFeatureJoinTrainSet, date, maxLookback)(getPrometheus)
       .withColumn("split", when($"IsInTrainSet"===lit(true), "train").otherwise("val"))
       .select(parquetSelectionTabular: _*)
       // TODO: temp set ImpressionPlacementId to empty string
