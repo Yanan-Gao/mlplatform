@@ -105,6 +105,8 @@ package object kongming {
     var DailyPositiveCountSummary = 1
     var WatchlistTrainset = 50
     var WatchlistOOS = 50
+    var TrainsetBalanced = 50
+    var DailyTrainsetWithFeature = 50
     var ImpressionForIsoReg = 1000
     var CvrRescaling = 1
   }

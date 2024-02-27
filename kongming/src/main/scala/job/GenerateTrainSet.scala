@@ -1,15 +1,15 @@
 package job
 
-import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, STRING_FEATURE_TYPE, intModelFeaturesCols}
-import com.thetradedesk.kongming.features.Features._
+import com.thetradedesk.geronimo.shared.{STRING_FEATURE_TYPE, intModelFeaturesCols}
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
+import com.thetradedesk.kongming.features.Features.{ModelTarget, aliasedModelFeatureCols, aliasedModelFeatureNames, keptFields, modelDimensions, modelFeatures, modelTargetCols, modelTargets, modelWeights, rawModelFeatureNames, seqFields}
 import com.thetradedesk.kongming.transform.NegativeTransform.aggregateNegatives
 import com.thetradedesk.kongming.transform.TrainSetTransformation._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.config
+import com.thetradedesk.spark.datasets.core.DefaultTimeFormatStrings
 import com.thetradedesk.spark.sql.SQLFunctions._
-
+import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
@@ -59,22 +59,21 @@ object GenerateTrainSet extends KongmingBaseJob {
   val negativeWeightThreshold = config.getInt("negativeWeightThreshold", 3000)
 
   val saveParquetData = config.getBoolean("saveParquetData", false)
-  val saveTrainingDataAsTFRecord = config.getBoolean("saveTrainingDataAsTFRecord", false)
   val saveTrainingDataAsCSV = config.getBoolean("saveTrainingDataAsCSV", true)
   val addBidRequestId = config.getBoolean("addBidRequestId", false)
   val trainSetPartitionCount = config.getInt("trainSetPartitionCount", partCount.trainSet)
   val valSetPartitionCount = config.getInt("valSetPartitionCount", partCount.valSet)
 
-  def generateData(date: LocalDate): Dataset[ValidationDataForModelTrainingRecord] = {
-    // test only adgroups in the policy table. since aggKey are all adgroupId, we filter by adgroup id
-    val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
-    val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(date)
+  val trainsetBalancedCount = config.getInt("trainsetBalancedCount", partCount.TrainsetBalanced)
+  val dailyTrainSetWithFeatureCount = config.getInt("dailyTrainSetWithFeatureCount", partCount.DailyTrainsetWithFeature)
 
-    // maximum lookback from adgroup's policy
-    val maxLookback = adGroupPolicy.agg(max("DataLookBack")).first.getInt(0)
-
+  def balancedData(
+                    date: LocalDate,
+                    adGroupPolicy: Dataset[AdGroupPolicyRecord],
+                    adGroupPolicyMapping: Dataset[AdGroupPolicyMappingRecord],
+                    maxLookback: Int
+                  ): Dataset[PreFeatureJoinRecord] = {
     // 0. load aggregated negatives
-    //    load aggregated positives
     val aggregatedPositiveSetHist = DailyPositiveBidRequestDataset().readRange(date.minusDays(conversionLookback-1), date, true)
     val aggregatedPositiveSet = (if (incTrain) DailyPositiveBidRequestDataset().readDate(date) else aggregatedPositiveSetHist)
       .withColumn("IsInTrainSet", abs(hash($"UIID") % 100) <= trainRatio * 100)
@@ -105,7 +104,7 @@ object GenerateTrainSet extends KongmingBaseJob {
       negativeExcludePos.withColumn("Revenue", lit(0)).selectAs[TrainSetRecord],
       desiredNegOverPos,
       maxPositiveCount,
-//      if (incTrain) maxPositiveCount/maxLookback else maxPositiveCount,
+      //      if (incTrain) maxPositiveCount/maxLookback else maxPositiveCount,
       maxNegativeCount,
       balanceMethod = Some(balanceMethod),
       sampleValSet = sampleValSet,
@@ -165,69 +164,97 @@ object GenerateTrainSet extends KongmingBaseJob {
     //adjust weight in trainset
     val adjustedWeightDataset = adjustWeightForTrainset(preFeatureJoinTrainSet,desiredNegOverPos)
 
-    // 5. join all these dataset with bidimpression to get features
+    adjustedWeightDataset
+  }
+
+  def generateData(date: LocalDate, bidDate: LocalDate): Dataset[ValidationDataForModelTrainingRecord] = {
+    // Read the balanced data set of given biddate.
+    val adjustedWeightDataset =  IntermediateTrainDataBalancedDataset()
+      .readPartition(date, "biddate", bidDate.format(DefaultTimeFormatStrings.dateTimeFormatter)).as[PreFeatureJoinRecord]
+
+    // 6. split train and val
     val splitColumn = modelTargetCols(Array(ModelTarget("split", STRING_FEATURE_TYPE, false)))
 
     // features to hash, including everyone except seq
     var hashFeatures = modelDimensions ++ modelFeatures ++ modelWeights
     hashFeatures = hashFeatures.filter(x => !(seqFields).contains(x))
     val tensorflowSelectionTabular = intModelFeaturesCols(hashFeatures) ++ aliasedModelFeatureCols(seqFields) ++ modelTargetCols(modelTargets) ++ splitColumn
-//    hashFeatures = hashFeatures.filter(x => !(seqFields ++ directFields).contains(x))
-//    val tensorflowSelectionTabular = intModelFeaturesCols(hashFeatures) ++ rawModelFeatureCols(directFields) ++ aliasedModelFeatureCols(seqFields) ++ modelTargetCols(modelTargets) ++ splitColumn
+    //    hashFeatures = hashFeatures.filter(x => !(seqFields ++ directFields).contains(x))
+    //    val tensorflowSelectionTabular = intModelFeaturesCols(hashFeatures) ++ rawModelFeatureCols(directFields) ++ aliasedModelFeatureCols(seqFields) ++ modelTargetCols(modelTargets) ++ splitColumn
 
     val parquetSelectionTabular = aliasedModelFeatureCols(keptFields) ++ tensorflowSelectionTabular
 
-    val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, maxLookback)(getPrometheus)
+    // split train and val
+    val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, bidDate, 0)(getPrometheus)
       .withColumn("split", when($"IsInTrainSet"===lit(true), "train").otherwise("val"))
       .select(parquetSelectionTabular: _*)
       .selectAs[ValidationDataForModelTrainingRecord](nullIfAbsent=true)
-
     trainDataWithFeature
   }
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
-    val trainDataWithFeature = generateData(date)
+    // test only adgroups in the policy table. since aggKey are all adgroupId, we filter by adgroup id
+    val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
+    val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(date)
+    // maximum lookback from adgroup's policy
+    val maxLookback = adGroupPolicy.agg(max("DataLookBack")).first.getInt(0)
 
-    // 6. split train and val
-    val adjustedTrainParquet = trainDataWithFeature.filter($"split"===lit("train"))
-    val adjustedValParquet = trainDataWithFeature.filter($"split"===lit("val"))
+    // Step A: save the balancedData by date and bidDate. Biddate has to be string type to make the write work.
+    val trainDataBalanced = balancedData(date, adGroupPolicy, adGroupPolicyMapping, maxLookback)
+      .withColumn("biddate", date_format(col("LogEntryTime"), "yyyyMMdd")).selectAs[TrainDataBalancedRecord]
 
-    // 7. save as parquet and tfrecord
-    if (saveParquetData) {
-      val parquetTrainRows = ValidationDataForModelTrainingDataset().writePartition(adjustedTrainParquet, date, "train", Some(trainSetPartitionCount))
-      val parquetValRows = ValidationDataForModelTrainingDataset().writePartition(adjustedValParquet, date, "val", Some(valSetPartitionCount))
-    }
+    IntermediateTrainDataBalancedDataset().writePartition(trainDataBalanced, date, "biddate" ,Some(trainsetBalancedCount))
 
-    var tfDropColumnNames = if (addBidRequestId) {
-      rawModelFeatureNames(seqFields)
-    } else {
-      aliasedModelFeatureNames(keptFields) ++ rawModelFeatureNames(seqFields)
-    }
+    // Step B: join feature by bidDate
+    (0 to maxLookback).par.foreach(
+      lookBackDay => {
+        val bidDate = date.minusDays(lookBackDay)
+        val trainDataWithFeature = generateData(date, bidDate)
+
+        val adjustedTrainParquet = trainDataWithFeature.filter($"split"===lit("train"))
+        val adjustedValParquet = trainDataWithFeature.filter($"split"===lit("val"))
+
+        // save raw parquet when needed
+        if (saveParquetData){
+          val parquetTrainRows = IntermediateValidationDataForModelTrainingDataset(split = "train").writePartition(adjustedTrainParquet, date, bidDate, Some(dailyTrainSetWithFeatureCount))
+          val parquetValRows = IntermediateValidationDataForModelTrainingDataset(split = "val").writePartition(adjustedValParquet, date, bidDate, Some(dailyTrainSetWithFeatureCount))
+
+        }
+
+        var tfDropColumnNames = if (addBidRequestId) {
+          rawModelFeatureNames(seqFields)
+        } else {
+          aliasedModelFeatureNames(keptFields) ++ rawModelFeatureNames(seqFields)
+        }
+
+        // save relevant columns by date and biddate
+        IntermediateTrainDataWithFeatureDataset(split="train").writePartition(adjustedTrainParquet.drop(tfDropColumnNames: _*)
+          .selectAs[DataForModelTrainingRecord](nullIfAbsent = true), date, bidDate, Some(dailyTrainSetWithFeatureCount))
+
+        IntermediateTrainDataWithFeatureDataset(split="val").writePartition(adjustedValParquet.drop(tfDropColumnNames: _*)
+          .selectAs[DataForModelTrainingRecord](nullIfAbsent = true), date, bidDate, Some(dailyTrainSetWithFeatureCount))
+
+      }
+    )
+
+    // Step C
+    // load train & val parquet of all biddates
+    val traindataWithFeatureAllBidDate = IntermediateTrainDataWithFeatureDataset(split = "train").readPartition(date)
+    val valdataWithFeatureAllBidDate = IntermediateTrainDataWithFeatureDataset(split = "val").readPartition(date)
 
     var trainsetRows = Array.fill(2)("", 0L)
 
-    if (saveTrainingDataAsTFRecord) {
-      val tfDS = if (incTrain) DataIncForModelTrainingDataset() else DataForModelTrainingDataset()
-      val tfTrainRows = tfDS.writePartition(
-        adjustedTrainParquet.drop(tfDropColumnNames: _*).selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
-        date, "train", Some(trainSetPartitionCount))
-      val tfValRows = tfDS.writePartition(
-        adjustedValParquet.drop(tfDropColumnNames: _*).selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
-        date, "val", Some(valSetPartitionCount))
-      trainsetRows = Array(tfTrainRows, tfValRows)
-    }
-
+    // save as csv
     if (saveTrainingDataAsCSV) {
       val csvDS = if (incTrain) DataIncCsvForModelTrainingDataset() else DataCsvForModelTrainingDataset()
       val csvTrainRows = csvDS.writePartition(
-        adjustedTrainParquet.drop(tfDropColumnNames: _*).selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
+        traindataWithFeatureAllBidDate.orderBy(rand()).drop("v","split","date","biddate").selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
         date, "train", Some(trainSetPartitionCount))
       val csvValRows = csvDS.writePartition(
-        adjustedValParquet.drop(tfDropColumnNames: _*).selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
+        valdataWithFeatureAllBidDate.orderBy(rand()).drop("v","split","date","biddate").selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
         date, "val", Some(valSetPartitionCount))
       trainsetRows = Array(csvTrainRows, csvValRows)
     }
-
     trainsetRows
   }
 
