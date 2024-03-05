@@ -291,15 +291,16 @@ object TrainSetTransformation {
       .withColumn("IsTracked", when($"UIID".isNotNullOrEmpty && $"UIID" =!= lit("00000000-0000-0000-0000-000000000000"), lit(1)).otherwise(0))
       .withColumn("IsUID2", when(substring($"UIID", 9, 1) =!= lit("-"), lit(1)).otherwise(0))
       .withColumnRenamed("ConfigValue", "AdGroupId")
+      .cache()
 
-    val bidsImpContextual = ContextualTransform
-      .generateContextualFeatureTier1(
-        df.select("BidRequestId", "ContextualCategories")
-          .dropDuplicates("BidRequestId").selectAs[ContextualData]
-      )
+    val bidsImpContextual = df.select("BidRequestId", "ContextualCategories")
+      .dropDuplicates("BidRequestId").selectAs[ContextualData]
+
+    val bidsImpContextualTransformed = ContextualTransform
+      .generateContextualFeatureTier1(bidsImpContextual)
 
     df
-      .join(bidsImpContextual, Seq("BidRequestId"), "left")
+      .join(bidsImpContextualTransformed, Seq("BidRequestId"), "left")
       .selectAs[TrainSetFeaturesRecord]
   }
 
