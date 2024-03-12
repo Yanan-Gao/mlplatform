@@ -348,7 +348,7 @@ abstract class AudienceModelInputGenerator(name: String) {
     // val labelDatasetSize = (labels.count()*(1000000.0/config.getInt(s"userDownSampleHitPopulation${name}", default = 1000000))).toLong
  
     val aboveThresholdPolicyTable = policyTable
-      .filter(e => e.ActiveSize >= AudienceModelInputGeneratorConfig.positiveSampleLowerThreshold)
+      .filter(e => e.ActiveSize * downSampleFactor >= AudienceModelInputGeneratorConfig.positiveSampleLowerThreshold)
 
     val negativeSampleUDF = negativeSampleUDFGenerator(
       aboveThresholdPolicyTable,
