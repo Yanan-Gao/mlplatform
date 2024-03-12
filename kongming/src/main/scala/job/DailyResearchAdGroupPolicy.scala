@@ -20,9 +20,10 @@ object DailyResearchAdGroupPolicy extends KongmingBaseJob {
     val latestAdGroupPolicy = AdGroupPolicyDataset().readLatestPartitionUpTo(date)
     val mappings = AdGroupPolicyMappingDataset().readLatestPartitionUpTo(date)
 
-    val researchMapping = multiLevelJoinWithPolicy[AdGroupPolicyMappingRecord](mappings, historicalAdGroupPolicy, "left_semi").distinct
-    val researchPolicy = latestAdGroupPolicy.join(researchMapping.select("ConfigKey", "ConfigValue").distinct, Seq("ConfigKey", "ConfigValue"), "inner")
-      .selectAs[AdGroupPolicyRecord]
+    val researchPolicy = latestAdGroupPolicy.join(
+      historicalAdGroupPolicy, Seq("ConfigKey", "ConfigValue"), "left_semi").selectAs[AdGroupPolicyRecord]
+    val researchMapping = mappings.join(
+      historicalAdGroupPolicy, Seq("ConfigKey", "ConfigValue"), "left_semi").selectAs[AdGroupPolicyMappingRecord]
 
     val adGroupPolicyRows = AdGroupPolicyDataset(JobExperimentName).writePartition(researchPolicy, date, Some(1))
     val adGroupPolicyMappingRows = AdGroupPolicyMappingDataset(JobExperimentName).writePartition(researchMapping, date, Some(1))
