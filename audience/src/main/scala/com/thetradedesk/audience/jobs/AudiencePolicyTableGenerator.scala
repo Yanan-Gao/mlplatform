@@ -8,6 +8,7 @@ import com.thetradedesk.audience.utils.Logger.Log
 import com.thetradedesk.audience.utils.{BitwiseOrAgg, S3Utils}
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.jobs.AudiencePolicyTableGeneratorJob.prometheus
+import com.thetradedesk.audience.jobs.RSMPolicyTableGenerator.getBidImpUniqueTDIDs
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -23,8 +24,9 @@ import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode, SparkSession}
 
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
-import java.time.{LocalDate, LocalDateTime}
+import java.time.{LocalDate, LocalDateTime, ZoneOffset}
 import scala.util.Random
+import java.sql.Timestamp
 
 object AudiencePolicyTableGeneratorJob {
   val prometheus = new PrometheusClient("AudienceModelJob", "AudiencePolicyTableGeneratorJob")
@@ -70,7 +72,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     val seedRawDataRecentVersion = config.getString("seedRawDataRecentVersion", null)
     val policyTableResetSyntheticId = config.getBoolean("policyTableResetSyntheticId", false)
     // conversion data look back days
-    val conversionLookBack = config.getInt("conversionLookBack", 1)
+    val conversionLookBack = config.getInt("conversionLookBack", 5)
     val expiredDays = config.getInt("expiredDays", default = 7)
     val policyTableLookBack = config.getInt("policyTableLookBack", default = 3)
     val policyS3Bucket = S3Utils.refinePath(config.getString("policyS3Bucket", "thetradedesk-mlplatform-us-east-1"))
@@ -86,6 +88,10 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     val seedProcessUpperThreshold = config.getLong("seedProcessUpperThreshold", 100000000)
     val seedExtendGraphUpperThreshold = config.getLong("seedExtendGraphUpperThreshold", 3000000)
     val activeUserRatio = config.getDouble("activeUserRatio", 0.4)
+    val aemPixelLimit = config.getInt("aemPixelLimit", 5000)
+    var selectedPixelsConfigPath = config.getString("selectedPixelsConfigPath", "s3a://thetradedesk-mlplatform-us-east-1/configdata/prodTest/audience/other/AEM/selectedPixelTrackingTagIds/")
+    var useSelectedPixel = config.getBoolean("useSelectedPixel", false)
+
   }
 
   private val policyTableDateFormatter = DateTimeFormatter.ofPattern(audienceVersionDateFormat)
@@ -519,22 +525,96 @@ object AEMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.AEM, p
     retrieveConversionData(date: LocalDate)
   }
 
+  private def retrieveActiveCampaignConversionTrackerTagIds(): DataFrame = {
+    // prepare dataset
+    val Campaign = CampaignDataSet().readLatestPartition()
+    val AdGroup = AdGroupDataSet().readLatestPartition()
+    val Partner = PartnerDataSet().readLatestPartition()
+    val CampConv = CampaignConversionReportingColumnDataset().readLatestPartition()
+
+    // calculate active campaign time range
+    val now = LocalDateTime.now(ZoneOffset.UTC)
+    val endDateThreshold = now.minusHours(48)
+    val startDateThreshold = now.plusHours(48)
+    val startTimestamp = Timestamp.valueOf(startDateThreshold)
+    val endTimestamp = Timestamp.valueOf(endDateThreshold)
+
+    val activeCampaignConversionTrackerTagIds = AdGroup
+    .join(Campaign, AdGroup("CampaignId") === Campaign("CampaignId"))
+    .join(Partner, Campaign("PartnerId") === Partner("PartnerId"))
+    .join(CampConv, Campaign("CampaignId") === CampConv("CampaignId"))
+    .filter(
+      AdGroup("IsEnabled") === 1 &&
+        Campaign("StartDate").lt(startTimestamp) &&
+        (Campaign("EndDate").isNull || Campaign("EndDate").gt(endTimestamp)) &&
+        Partner("SpendDisabled") === 0
+    )
+    .select(CampConv("TrackingTagId")).distinct()
+
+    activeCampaignConversionTrackerTagIds
+  }
   private def retrieveConversionData(date: LocalDate): DataFrame = {
+    val uniqueTDIDsFromBidImp = getBidImpUniqueTDIDs(date)
+
     // conversion
-    val conversionSize = ConversionDataset(defaultCloudProvider)
+    val activeConversionTrackerTagId = retrieveActiveCampaignConversionTrackerTagIds();
+
+    var conversionDataset = ConversionDataset(defaultCloudProvider)
       .readRange(date.minusDays(Config.conversionLookBack).atStartOfDay(), date.plusDays(1).atStartOfDay())
       .select('TDID, 'TrackingTagId)
-      .filter(conversionSamplingFunction('TDID))
+      .filter(samplingFunction('TDID))
+
+    conversionDataset.cache();
+
+    val trackingTagDataset = LightTrackingTagDataset().readPartition(date)
+      .select("TrackingTagId", "TargetingDataId")
+
+    if (Config.useSelectedPixel) {
+      val selectedTrackingTagIds = spark.read.parquet(Config.selectedPixelsConfigPath)
+        .join(trackingTagDataset, "TargetingDataId").select("TrackingTagId")
+
+      conversionDataset =
+        conversionDataset.join(selectedTrackingTagIds, "TrackingTagId")
+          .join(activeConversionTrackerTagId, "TrackingTagId")
+
+    } else {
+      conversionDataset =
+        conversionDataset.join(activeConversionTrackerTagId, "TrackingTagId")
+    }
+
+    val conversionSize = conversionDataset
       .groupBy('TrackingTagId)
       .agg(
         countDistinct('TDID)
           .alias("Size"))
 
-    val policyTable = conversionSize
-      .withColumn("TargetingDataId", lit(-1))
+    val conversionActiveSize = conversionDataset.join(uniqueTDIDsFromBidImp, "TDID")
+      .groupBy('TrackingTagId)
+      .agg(
+        countDistinct('TDID)
+          .alias("ActiveSize"))
+      .select(('ActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ActiveSize"), 'TrackingTagId)
+
+    var conversionFinal:DataFrame = null
+
+    if (Config.useSelectedPixel) {
+      conversionFinal = conversionSize
+        .join(trackingTagDataset, "TrackingTagId")
+        .join(conversionActiveSize, "TrackingTagId")
+    } else {
+      conversionFinal = conversionSize
+        .join(conversionActiveSize, "TrackingTagId")
+        .join(trackingTagDataset, "TrackingTagId")
+        .orderBy(desc("ActiveSize"))
+        .limit(Config.aemPixelLimit)
+    }
+
+    val policyTable = conversionFinal
       .withColumn("Source", lit(DataSource.Conversion.id))
       .withColumn("GoalType", lit(GoalType.CPA.id))
       .withColumn("CrossDeviceVendorId", lit(CrossDeviceVendor.None.id))
+      .withColumnRenamed("TrackingTagId", "SourceId")
+
 
     policyTable
   }
