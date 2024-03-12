@@ -1,5 +1,5 @@
 package com.thetradedesk.kongming.datasets
-import com.thetradedesk.kongming.{BaseFolderPath, MLPlatformS3Root, getExperimentVersion}
+import com.thetradedesk.kongming.{BaseFolderPath, MLPlatformS3Root, getExperimentVersion, writeThroughHdfs}
 import com.thetradedesk.spark.datasets.core.{ColumnExistsInDataSet, DefaultTimeFormatStrings, GeneratedDataSet, Parquet, PartitionedS3DataSet2}
 
 import java.time.LocalDate
@@ -11,7 +11,8 @@ case class IntermediateValidationDataForModelTrainingDataset(split:String, exper
   "date" -> ColumnExistsInDataSet,
   "biddate" -> ColumnExistsInDataSet,
   fileFormat = Parquet,
-  experimentOverride = experimentOverride
+  experimentOverride = experimentOverride,
+  writeThroughHdfs = writeThroughHdfs
 ){
   override def toStoragePartition1(value1: LocalDate): String = value1.format(DefaultTimeFormatStrings.dateTimeFormatter)
   override def toStoragePartition2(value2: LocalDate): String = value2.format(DefaultTimeFormatStrings.dateTimeFormatter)

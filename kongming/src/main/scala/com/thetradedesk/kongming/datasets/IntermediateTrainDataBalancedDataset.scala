@@ -1,6 +1,6 @@
 package com.thetradedesk.kongming.datasets
 
-import com.thetradedesk.kongming.{BaseFolderPath, MLPlatformS3Root}
+import com.thetradedesk.kongming.{BaseFolderPath, MLPlatformS3Root, writeThroughHdfs}
 import com.thetradedesk.spark.datasets.core.PartitionedS3DataSet
 import com.thetradedesk.spark.datasets.core.SchemaPolicy.{DefaultUseFirstFileSchema, SchemaPolicyType}
 import org.apache.spark.sql.{Column, DataFrame, Dataset}
@@ -34,7 +34,8 @@ case class IntermediateTrainDataBalancedDataset(experimentOverride: Option[Strin
   rootFolderPath = s"${BaseFolderPath}/intermediatetraindatabalanceddataset/v=1",
   Seq(),
     fileFormat = Parquet,
-    experimentOverride = experimentOverride
+    experimentOverride = experimentOverride,
+  writeThroughHdfs = writeThroughHdfs
 )  {
   // intermediate dataset of trainset gen, generate this dataset only for speeding job up purpose
   def dateTimeFormat: DateTimeFormatter = DefaultTimeFormatStrings.dateTimeFormatter
