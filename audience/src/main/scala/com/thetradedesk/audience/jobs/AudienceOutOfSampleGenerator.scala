@@ -73,9 +73,9 @@ object OutOfSampleGenerateJob {
                 val outSeedOOS = bidsImpressionsLong.drop("CampaignId", "LogEntryTime")
                   .filter(samplingFunction('TDID))
                   .join(
-                    refinedOutSeedLabels
+                    refinedOutSeedLabels.filter(samplingFunction('TDID))
                       .join(
-                        sampledBidsImpressionsKeys, Seq("TDID"), "inner"),
+                        sampledBidsImpressionsKeys.filter(samplingFunction('TDID)), Seq("TDID"), "inner"),
                     Seq("TDID", "BidRequestId"), "inner")
 
                 var OOS: DataFrame = inSeedOOS.union(outSeedOOS)

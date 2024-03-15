@@ -466,6 +466,7 @@ case class RSMSeedInputGenerator(crossDeviceVendor: CrossDeviceVendor) extends A
   DataFrame = {
     val seedData = AggregatedSeedReadableDataset()
       .readPartition(date)(spark)
+      .filter(samplingFunction('TDID))
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .cache()
 
