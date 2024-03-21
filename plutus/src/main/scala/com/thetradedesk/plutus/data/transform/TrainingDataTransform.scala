@@ -11,7 +11,7 @@ import org.apache.spark.sql.functions.{coalesce, col}
 
 import java.time.LocalDate
 import com.thetradedesk.plutus.data.schema.{CleanInputData, MetaData, ModelTarget}
-import com.thetradedesk.plutus.data.{plutusDataPath, plutusDataPaths, plutusFeaturesCols}
+import com.thetradedesk.plutus.data.{DEFAULT_SHIFT, plutusDataPath, plutusDataPaths, hashedModMaxIntFeaturesCols}
 
 object TrainingDataTransform {
   val STRING_FEATURE_TYPE = "string"
@@ -65,7 +65,7 @@ object TrainingDataTransform {
     
     // convert to int (hash)
     val selectionTabular = intModelFeaturesCols(modelFeatures) ++ modelTargetCols(modelTargets)
-    val selectionTabMaxMod = plutusFeaturesCols(modelFeatures, 3) ++ modelTargetCols(modelTargets)
+    val selectionTabMaxMod = hashedModMaxIntFeaturesCols(modelFeatures, DEFAULT_SHIFT) ++ modelTargetCols(modelTargets)
 
     // single day
     val singleDay = loadInputData(Seq(paths.head))
