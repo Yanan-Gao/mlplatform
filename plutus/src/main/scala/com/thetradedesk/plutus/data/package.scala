@@ -38,7 +38,11 @@ package object data {
 
   val MISSING_DATA_VALUE: Int = 0
 
-  def plutusFeaturesCols(inputColAndDims: Seq[ModelFeature], shift: Int): Array[Column] = {
+  //  Reserve Spaces for values
+  //  NOTE: this is a breaking change as previously only 0 was reserved
+  val DEFAULT_SHIFT = 3
+
+  def hashedModMaxIntFeaturesCols(inputColAndDims: Seq[ModelFeature], shift: Int): Array[Column] = {
     inputColAndDims.map {
       case ModelFeature(name, STRING_FEATURE_TYPE, _, _) => when(col(name).isNotNullOrEmpty, shiftModMaxValueUDF(xxhash64(col(name)), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
       case ModelFeature(name, INT_FEATURE_TYPE, _, _) => when(col(name).isNotNull, shiftModMaxValueUDF(col(name), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)

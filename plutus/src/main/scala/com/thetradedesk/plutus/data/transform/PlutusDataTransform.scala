@@ -71,7 +71,7 @@ object PlutusDataTransform extends Logger {
     val cleanExplicitDataset = cleanExplicitData(rawExplicitData).repartition(partitions).persist()
 
     mbtwSv.foreach {
-      case sv =>
+      sv =>
         cleanExplicitDataset
           .filter(col("SupplyVendor") === sv)
           .write
@@ -81,13 +81,23 @@ object PlutusDataTransform extends Logger {
         cleanExplicitDataset
           .filter(col("SupplyVendor") === sv)
           .select(intModelFeaturesCols(PlutusTrainingDataset.DATA_FEATURES) ++ modelTargeCols(PlutusTrainingDataset.DATA_TARGETS): _*)
+          .na.fill(0)
           .write
           .mode(SaveMode.Overwrite)
           .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/explicit/${cleanOutputPrefix}-hashed/$sv/${explicitDatePart(date)}")
 
         cleanExplicitDataset
           .filter(col("SupplyVendor") === sv)
+          .select(hashedModMaxIntFeaturesCols(PlutusTrainingDataset.DATA_FEATURES, DEFAULT_SHIFT) ++ modelTargeCols(PlutusTrainingDataset.DATA_TARGETS): _*)
+          .na.fill(0)
+          .write
+          .mode(SaveMode.Overwrite)
+          .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/explicit/${cleanOutputPrefix}-hashed-mod-maxint/$sv/${explicitDatePart(date)}")
+
+        cleanExplicitDataset
+          .filter(col("SupplyVendor") === sv)
           .select(intModelFeaturesCols(PlutusTrainingDataset.DATA_FEATURES) ++ modelTargeCols(PlutusTrainingDataset.DATA_TARGETS): _*)
+          .na.fill(0)
           .write
           .option("header", "true")
           .mode(SaveMode.Overwrite)
@@ -100,7 +110,7 @@ object PlutusDataTransform extends Logger {
 
   def checkColumnCoverage(modelCols: Seq[ModelFeature], dataCols: Array[String]): Seq[String] = {
     modelCols.map(_.name.toLowerCase).diff(dataCols.map(_.toLowerCase))
-//    modelCols.map(c => c.name).map(c => dataCols.contains(c)).forall(_ == true)
+    //    modelCols.map(c => c.name).map(c => dataCols.contains(c)).forall(_ == true)
   }
 
   def checkFeatureCoverage(modelCols: Seq[ModelFeature], dataCols: Seq[ModelFeature]): Seq[String] = {
@@ -166,6 +176,13 @@ object PlutusDataTransform extends Logger {
       .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/implicit/${cleanOutputPrefix}-hashed/${explicitDatePart(date)}")
 
     cleanImplicitDataset
+      .select(hashedModMaxIntFeaturesCols(PlutusTrainingDataset.DATA_FEATURES, DEFAULT_SHIFT) ++ modelTargeCols(PlutusTrainingDataset.DATA_TARGETS): _*)
+      .na.fill(0)
+      .write
+      .mode(SaveMode.Overwrite)
+      .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/implicit/${cleanOutputPrefix}-hashed-mod-maxint/${explicitDatePart(date)}")
+
+    cleanImplicitDataset
       .select(intModelFeaturesCols(PlutusTrainingDataset.DATA_FEATURES) ++ modelTargeCols(PlutusTrainingDataset.DATA_TARGETS): _*)
       .na.fill(0)
       .write
@@ -214,8 +231,8 @@ object PlutusDataTransform extends Logger {
               ((col("mbtw") > col("FloorPriceInUSD")) || (col("FloorPriceInUSD").isNullOrEmpty)), true)
           .otherwise(false)
       ).filter(
-      col("valid") === true
-    )
+        col("valid") === true
+      )
       .drop(
         "valid"
       ).selectAs[PlutusTrainingDataset]
@@ -339,9 +356,9 @@ object PlutusDataTransform extends Logger {
         "PredictiveClearingStrategy.*",
         "*"
       ).drop(
-      "PlutusLog",
-      "PredictiveClearingStrategy"
-    ).as[PlutusLogsData]
+        "PlutusLog",
+        "PredictiveClearingStrategy"
+      ).as[PlutusLogsData]
   }
 
   def loadPlutusLogData(dateTime: LocalDateTime): Dataset[PlutusLogsData] = {
@@ -465,7 +482,7 @@ object PlutusDataTransform extends Logger {
       // only select variable priced deals
       // This Filter does not make sense anymore since the "IsVariablePrice" is only suggestive and should not be used
       // Anything that is Auction type == 1 is valid training data.
-//      .filter(col("DealId").isNullOrEmpty || col("IsVariablePrice") === true)
+      //      .filter(col("DealId").isNullOrEmpty || col("IsVariablePrice") === true)
 
       .withColumn(
         "AuctionBidPrice",
