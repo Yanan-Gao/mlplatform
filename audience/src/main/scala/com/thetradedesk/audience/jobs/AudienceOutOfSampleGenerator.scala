@@ -68,12 +68,12 @@ object OutOfSampleGenerateJob {
                     Seq("TDID", "BidRequestId"), "inner")
 
                 // out seed oos
-                val filteredOutSeedLabels = uniqueTDIDs.join(rawLabels, Seq("TDID"), "left_anti")
-                val refinedOutSeedLabels = OOSSampling.outSeedSampleLabels(filteredOutSeedLabels, subPolicyTable, samplingFunction)
+                val filteredOutSeedLabels = uniqueTDIDs.filter(samplingFunction('TDID)).join(rawLabels.filter(samplingFunction('TDID)), Seq("TDID"), "left_anti")
+                val refinedOutSeedLabels = OOSSampling.outSeedSampleLabels(filteredOutSeedLabels, subPolicyTable)
                 val outSeedOOS = bidsImpressionsLong.drop("CampaignId", "LogEntryTime")
                   .filter(samplingFunction('TDID))
                   .join(
-                    refinedOutSeedLabels.filter(samplingFunction('TDID))
+                    refinedOutSeedLabels
                       .join(
                         sampledBidsImpressionsKeys.filter(samplingFunction('TDID)), Seq("TDID"), "inner"),
                     Seq("TDID", "BidRequestId"), "inner")
@@ -127,14 +127,13 @@ object OOSSampling {
     labelResult
 }
 
-  def outSeedSampleLabels(labels: DataFrame, policyTable: Array[AudienceModelPolicyRecord], samplingMethod: Symbol => org.apache.spark.sql.Column): 
+  def outSeedSampleLabels(labels: DataFrame, policyTable: Array[AudienceModelPolicyRecord]):
   DataFrame = {
     val negativeSampleUDF = negativeSampleUDFGenerator(
       policyTable
       )
     // downsample positive labels to keep # of positive labels among targets balanced
     val labelResult = labels
-      .filter(samplingMethod('TDID))
       .withColumn("SyntheticIds", negativeSampleUDF(lit(RSM_OOS_Config.outSeedNegSamples)))
       .withColumn("Targets", getLabels(0f)(size(col("SyntheticIds"))))
       .select('TDID, 'SyntheticIds, 'Targets)
