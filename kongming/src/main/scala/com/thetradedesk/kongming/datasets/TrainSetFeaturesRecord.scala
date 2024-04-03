@@ -48,5 +48,7 @@ final case class TrainSetFeaturesRecord (
                                           sin_minute_hour: Double,
                                           cos_minute_hour: Double,
                                           latitude: Option[Double],
-                                          longitude: Option[Double]
+                                          longitude: Option[Double],
+                                          IndustryCategoryId: Option[Int],
+                                          AudienceId: Array[Int]
                                         )
