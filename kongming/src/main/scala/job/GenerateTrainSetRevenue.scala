@@ -62,7 +62,6 @@ object GenerateTrainSetRevenue extends KongmingBaseJob {
 
   val trainsetBalancedCount = config.getInt("trainsetBalancedCount", partCount.TrainsetBalanced)
   val dailyTrainSetWithFeatureCount = config.getInt("dailyTrainSetWithFeatureCount", partCount.DailyTrainsetWithFeature)
-
   def balancedData(
                     date: LocalDate,
                     adGroupPolicy: Dataset[AdGroupPolicyRecord],
@@ -178,7 +177,6 @@ object GenerateTrainSetRevenue extends KongmingBaseJob {
       .withColumn("ImpressionPlacementId",lit(""))
       .as[ValidationDataForModelTrainingRecord]
       .persist(StorageLevel.DISK_ONLY)
-
     trainDataWithFeature
   }
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
@@ -218,7 +216,6 @@ object GenerateTrainSetRevenue extends KongmingBaseJob {
           val parquetTrainRows = IntermediateValidationDataForModelTrainingDataset(split = "train").writePartition(adjustedTrainParquet, date, bidDate, Some(dailyTrainSetWithFeatureCount))
           val parquetValRows = IntermediateValidationDataForModelTrainingDataset(split = "val").writePartition(adjustedValParquet, date, bidDate, Some(dailyTrainSetWithFeatureCount))
         }
-
         // save relevant columns by date and biddate
         IntermediateTrainDataWithFeatureDataset(split="train").writePartition(adjustedTrainParquet.drop(tfDropColumnNames: _*)
          .selectAs[DataForModelTrainingRecord](nullIfAbsent = true), date, bidDate, Some(dailyTrainSetWithFeatureCount))
@@ -227,6 +224,7 @@ object GenerateTrainSetRevenue extends KongmingBaseJob {
            .selectAs[DataForModelTrainingRecord](nullIfAbsent = true), date, bidDate, Some(dailyTrainSetWithFeatureCount))
       }
     )
+
 
     // Step C
     // load train & val parquet of all biddates
@@ -254,9 +252,9 @@ object GenerateTrainSetRevenue extends KongmingBaseJob {
       val csvValRows = csvDS.writePartition(
         valdataWithFeatureAllBidDate.drop(tfDropColumnNames: _*).selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
         date, "val", Some(valSetPartitionCount))
+
       trainsetRows = Array(csvTrainRows, csvValRows)
     }
-
     trainsetRows
 
   }

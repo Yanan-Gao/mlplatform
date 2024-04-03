@@ -39,6 +39,8 @@ object Features {
     ModelFeature("AdvertiserId", STRING_FEATURE_TYPE, None, 0),
     ModelFeature("IsTracked", INT_FEATURE_TYPE, None, 0),
     ModelFeature("IsUID2", INT_FEATURE_TYPE, None, 0),
+    ModelFeature("IndustryCategoryId",INT_FEATURE_TYPE,None,0),
+    ModelFeature("AudienceId",ARRAY_INT_FEATURE_TYPE,Some(30),0 )
   )
 
   val modelWeights: Array[ModelFeature] = Array(ModelFeature("Weight", FLOAT_FEATURE_TYPE, None, 0))

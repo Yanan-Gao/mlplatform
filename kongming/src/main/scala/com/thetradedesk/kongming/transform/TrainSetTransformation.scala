@@ -4,6 +4,7 @@ import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImp
 import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, FLOAT_FEATURE_TYPE, GERONIMO_DATA_SOURCE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, loadParquetData, shiftModArray, shiftModUdf}
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
+import com.thetradedesk.kongming.transform.AudienceIdTransform.AudienceFeature
 import com.thetradedesk.kongming.{CustomGoalTypeId, IncludeInCustomGoal, date, task}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
@@ -298,10 +299,16 @@ object TrainSetTransformation {
 
     val bidsImpContextualTransformed = ContextualTransform
       .generateContextualFeatureTier1(bidsImpContextual)
-
-    df
+    val dimAudienceId = AudienceIdTransform.generateAudiencelist(df.select("AdvertiserId", "CampaignId").selectAs[AudienceFeature], date).dropDuplicates().cache()
+    val dimIndustryCategoryId = AdvertiserFeatureDataSet().readLatestPartitionUpTo(date, isInclusive = true).select("AdvertiserId", "IndustryCategoryId")
+      .withColumn("IndustryCategoryId", col("IndustryCategoryId").cast("Int")).cache()
+    val finalDataframe = df
       .join(bidsImpContextualTransformed, Seq("BidRequestId"), "left")
-      .selectAs[TrainSetFeaturesRecord]
+      .join(bidsImpContextual, Seq("BidRequestId"), "left")
+      .join(dimAudienceId, Seq("AdvertiserId", "CampaignId"), "left")
+      .join(dimIndustryCategoryId, Seq("AdvertiserId"), "left")
+      .selectAs[TrainSetFeaturesRecord](nullIfAbsent = true)
+    finalDataframe
   }
 
   def balancePosNeg(

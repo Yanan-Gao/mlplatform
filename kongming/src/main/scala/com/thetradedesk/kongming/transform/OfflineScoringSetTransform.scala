@@ -1,10 +1,11 @@
 package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.spark.sql.SQLFunctions._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, BidsImpressionsSchema, DailyOfflineScoringRecord, UnifiedAdGroupDataSet}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, BidsImpressionsSchema, DailyOfflineScoringRecord, UnifiedAdGroupFeatureDataSet,AdvertiserFeatureDataSet}
 import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import com.thetradedesk.kongming.transform.AudienceIdTransform.AudienceFeature
 import org.apache.spark.sql.{Column, Dataset}
 import org.apache.spark.sql.functions.{col, concat, lit, substring, when}
 
@@ -42,8 +43,14 @@ object OfflineScoringSetTransform {
         .dropDuplicates("BidRequestId").selectAs[ContextualData]
     )
 
+    val dimAudienceId = AudienceIdTransform.generateAudiencelist(bidsImp.selectAs[AudienceFeature],date).cache()
+    val dimIndustryCategoryId = AdvertiserFeatureDataSet().readLatestPartitionUpTo(date, isInclusive = true).select("AdvertiserId","IndustryCategoryId")
+      .withColumn("IndustryCategoryId", col("IndustryCategoryId").cast("Int")).cache()
+
     bidsImp
       .join(bidsImpContextual, Seq("BidRequestId"), "left")
+      .join(dimAudienceId, Seq("CampaignId", "AdvertiserId"), "left")
+      .join(dimIndustryCategoryId, Seq("AdvertiserId"), "left")
       .select(selectionTabular: _*)
       .as[DailyOfflineScoringRecord]
   }
