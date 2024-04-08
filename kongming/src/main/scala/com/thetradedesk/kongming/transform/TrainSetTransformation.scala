@@ -307,7 +307,7 @@ object TrainSetTransformation {
       .join(bidsImpContextual, Seq("BidRequestId"), "left")
       .join(dimAudienceId, Seq("AdvertiserId", "CampaignId"), "left")
       .join(dimIndustryCategoryId, Seq("AdvertiserId"), "left")
-      .selectAs[TrainSetFeaturesRecord](nullIfAbsent = true)
+      .selectAs[TrainSetFeaturesRecord]
     finalDataframe
   }
 
