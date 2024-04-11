@@ -3,9 +3,8 @@ package job
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{loadModelFeaturesSplit, loadParquetData}
 import com.thetradedesk.philo.schema.{
-  AdGroupPerformanceModelValueDataset, AdGroupPerformanceModelValueRecord,
-  ClickTrackerDataset, ClickTrackerRecord, AdGroupDataset, AdGroupRecord,
-  CreativeLandingPageRecord, CreativeLandingPageDataset, CampaignROIGoalRecord, CampaignROIGoalDataset
+  ClickTrackerDataSet, ClickTrackerRecord, UnifiedAdGroupDataSet, AdGroupRecord,
+  CreativeLandingPageRecord, CreativeLandingPageDataSet, CampaignROIGoalRecord, CampaignROIGoalDataSet
 }
 import com.thetradedesk.philo.transform.ModelInputTransform
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -46,7 +45,7 @@ object ModelInput {
 
   def getAdGroupFilter(date: LocalDate, adgroup: Dataset[AdGroupRecord],
                        roi_types: Seq[Int]): Dataset[AdGroupRecord] = {
-    val campaignGoal = loadParquetData[CampaignROIGoalRecord](CampaignROIGoalDataset.CAMPAIGNROIGOALS3, date)
+    val campaignGoal = CampaignROIGoalDataSet().readLatestPartitionUpTo(date, isInclusive = true)
       // get primary goal only
       .filter($"Priority" === 1)
     adgroup.as("ag").join(campaignGoal.as("cg"), Seq("CampaignId"), "left")
@@ -85,20 +84,19 @@ object ModelInput {
     val brBfLoc = BidsImpressions.BIDSIMPRESSIONSS3 + f"${readEnv}/bidsimpressions/"
 
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](brBfLoc, date, source = Some("geronimo"))
-    val clicks = loadParquetData[ClickTrackerRecord](ClickTrackerDataset.CLICKSS3, date)
+    val clicks = loadParquetData[ClickTrackerRecord](ClickTrackerDataSet.CLICKSS3, date)
     val roi_types = Seq(3, 4) // 3, 4 for cpc and ctr
-    val performanceModelValues = loadParquetData[AdGroupPerformanceModelValueRecord](AdGroupPerformanceModelValueDataset.AGPMVS3, date)
     // if roiFilter, filter use the adgroup as a filter, else just left join to get the adgroup info
-    val adgroup = loadParquetData[AdGroupRecord](AdGroupDataset.ADGROUPS3, date).transform(
+    val adgroup = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, isInclusive = true).select($"AdGroupId",$"AudienceId",$"IndustryCategoryId",$"ROIGoalTypeId",$"CampaignId").as[AdGroupRecord].transform(
       ds => if (roiFilter) {getAdGroupFilter(date, ds, roi_types)} else ds)
     val modelFeaturesSplit = loadModelFeaturesSplit(featuresJson)
     val creativeLandingPage = if (landingPage) {
-      Some(loadParquetData[CreativeLandingPageRecord](CreativeLandingPageDataset.CREATIVELANDINGPAGES3, date))
+      Some(CreativeLandingPageDataSet().readLatestPartitionUpTo(date, isInclusive = true))
     } else None
     val countryFilter = countryFilePath.map(getCountryFilter)
     val modelFeatures = modelFeaturesSplit.bidRequest ++ modelFeaturesSplit.adGroup
     val (trainingData, labelCounts) = ModelInputTransform.transform(
-      clicks, adgroup, bidsImpressions, performanceModelValues, roiFilter,
+      clicks, adgroup, bidsImpressions, roiFilter,
       creativeLandingPage, countryFilter, keptCols, modelFeatures
     )
     //write to csv to dev for production job

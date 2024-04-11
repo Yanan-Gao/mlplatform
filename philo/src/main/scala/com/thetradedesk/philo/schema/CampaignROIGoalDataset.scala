@@ -1,7 +1,8 @@
 package com.thetradedesk.philo.schema
 
+import com.thetradedesk.spark.datasets.core.ProvisioningS3DataSet
 case class CampaignROIGoalRecord(CampaignId: String, ROIGoalTypeId: String, Priority: Integer)
 
-object CampaignROIGoalDataset {
-  val CAMPAIGNROIGOALS3: String = "s3://thetradedesk-useast-qubole/warehouse.external/thetradedesk.db/provisioning/campaignroigoal/v=1"
-}
+case class CampaignROIGoalDataSet() extends ProvisioningS3DataSet[CampaignROIGoalRecord]("campaignroigoal/v=1", true) {}
+
+
