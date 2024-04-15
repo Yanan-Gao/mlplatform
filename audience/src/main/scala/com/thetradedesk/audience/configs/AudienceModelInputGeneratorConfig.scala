@@ -68,5 +68,5 @@ object AudienceModelInputGeneratorConfig {
 
   // the way to determine the n tdid selection->
   // 0: last n tdid; 1: even stepwise selection for n tdid; 2 and other: random select n tdid
-  val tdidTouchSelection = config.getInt("tdidTouchSelection", default = 0)
+  val tdidTouchSelection = config.getInt("tdidTouchSelection", default = 1)
 }
