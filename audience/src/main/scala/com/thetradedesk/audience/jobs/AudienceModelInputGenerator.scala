@@ -300,7 +300,7 @@ abstract class AudienceModelInputGenerator(name: String) {
       .drop('row)
     } else if (tdidTouchSelection==1) {
       touchSample = sampledBidsImpressionsKeys
-      .withColumn("row", row_number().over(stepWindow))
+      .withColumn("row", row_number().over(lastWindow))
       .withColumn("TDIDCount", count("TDID").over(stepWindow))
       .filter('row % ceil('TDIDCount/Ntouch.toDouble) === lit(1.0))
       .drop('LogEntryTime)
