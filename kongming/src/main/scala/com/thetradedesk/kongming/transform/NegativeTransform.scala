@@ -100,11 +100,13 @@ object NegativeTransform {
                           adGroupPolicy: Dataset[AdGroupPolicyRecord],
                           mapping: Dataset[AdGroupPolicyMappingRecord])
                         (implicit prometheus:PrometheusClient): Dataset[AggregateNegativesRecord] = {
+    val maxLookback = adGroupPolicy.agg(max("DataLookBack")).first.getInt(0)
+
     // Temporary hack. Do not duplicate a bid request by more than 50 times.
     val campaignConfigGroupMembership = multiLevelJoinWithPolicy[CampaignInConfigGroupDataRecord](mapping.select("AdGroupId", "CampaignId", "AdvertiserId"), adGroupPolicy, "inner")
       .groupBy("CampaignId").agg(collect_set("ConfigValue").as("ConfigValues"))
 
-    dailyNegativeSampledBids.filter(date_add('LogEntryTime, lit(15)) >= date)
+    dailyNegativeSampledBids.filter(date_add('LogEntryTime, lit(maxLookback)) >= date)
       .join(campaignConfigGroupMembership, Seq("CampaignId"), "inner")
       .withColumn("ConfigValues", when(size('ConfigValues) <= 20, 'ConfigValues).otherwise(slice(shuffle('ConfigValues), 1, 20)))
       .withColumn("ConfigKey", lit("AdGroupId"))
