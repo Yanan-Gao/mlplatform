@@ -129,15 +129,29 @@ object ConversionDataDailyTransform {
     //TODO: we will move adding weight to later stage when we finished getting the positive labels.
     // Daily job on conversion will be just collection converison data.
 
-    val ccrcProcessed = ccrc
-      .join(broadcast(campaignDS.select($"CampaignId", col(CustomGoalTypeId.get(task).get))), Seq("CampaignId"), "inner")
-      .filter((col(CustomGoalTypeId.get(task).get) === 0 && $"ReportingColumnId"===1) || (col(CustomGoalTypeId.get(task).get)>0 && col(IncludeInCustomGoal.get(task).get)))
+    val customGoalTypeId = CustomGoalTypeId.get(task).get
+    val includeInCustomGoal = IncludeInCustomGoal.get(task).get
+
+    val ccrcPreProcessed = ccrc
+      .join(broadcast(campaignDS.select($"CampaignId", col(customGoalTypeId))), Seq("CampaignId"), "inner")
+      .filter((col(customGoalTypeId) === 0 && $"ReportingColumnId"===1) || (col(customGoalTypeId)>0 && col(includeInCustomGoal)))
       // will only use IAv2 and IAv2HH, other graphs will be replaced by IAv2
       .withColumn("CrossDeviceAttributionModelId",
         when(($"CrossDeviceAttributionModelId".isNotNull) && !($"CrossDeviceAttributionModelId".isin(List("IdentityAllianceWithHousehold", "IdentityAlliance"): _*)), lit("IdentityAlliance"))
           .otherwise($"CrossDeviceAttributionModelId")
       )
-      .select("CampaignId","TrackingTagId", "AdvertiserId", "CrossDeviceAttributionModelId")
+
+    val ccrcProcessed = task match {
+      case "roas" => {
+        ccrcPreProcessed.filter(col(customGoalTypeId) === 0 && $"ReportingColumnId"===1).union(
+          ccrcPreProcessed.filter(col(customGoalTypeId)>0 && col(includeInCustomGoal))
+            .filter((col(customGoalTypeId) === lit(1)) && ($"CustomROASWeight" =!= lit(0))
+              or (col(customGoalTypeId) === lit(2)) && ($"CustomROASClickWeight" + $"CustomROASViewthroughWeight" =!= lit(0))
+              or (col(customGoalTypeId) === lit(3)) && ($"CustomROASWeight" * ($"CustomROASClickWeight" + $"CustomROASViewthroughWeight") =!= lit(0))))
+          .select("CampaignId","TrackingTagId", "AdvertiserId", "CrossDeviceAttributionModelId")
+      }
+      case _  => ccrcPreProcessed.select("CampaignId","TrackingTagId", "AdvertiserId", "CrossDeviceAttributionModelId")
+    }
 
     val trackingTagWithSettings = adGroupPolicy
       .join(broadcast(adGroupMapping.select("ConfigKey", "ConfigValue", "CampaignId").distinct), Seq("ConfigKey", "ConfigValue"), "inner")

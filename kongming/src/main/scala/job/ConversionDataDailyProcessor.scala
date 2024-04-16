@@ -11,6 +11,7 @@ import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 
 object ConversionDataDailyProcessor extends KongmingBaseJob {

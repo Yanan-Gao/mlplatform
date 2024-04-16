@@ -21,7 +21,7 @@ object PositiveLabelGenerator extends KongmingBaseJob {
   object Config {
     //TODO: ideally policy level lookback would be based on attribution window. This below value will set a cap.
     //TODO: based on research yuehan did: https://atlassian.thetradedesk.com/jira/browse/AUDAUTO-284 plus a buffer
-    var bidLookback = config.getInt("bidLookback", default=15)
+    var bidLookback = config.getInt("bidLookback", default=20)
     var maxNumConversion = config.getInt("maxNumConversion", default=5)
   }
 
