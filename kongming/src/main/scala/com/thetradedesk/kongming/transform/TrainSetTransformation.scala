@@ -298,7 +298,11 @@ object TrainSetTransformation {
                                       date: LocalDate,
                                       lookbackDays: Int
                                       )(implicit prometheus: PrometheusClient): Dataset[TrainSetFeaturesRecord] = {
-    val bidimpression = DailyBidsImpressionsDataset().readRange(date.minusDays(lookbackDays), date, isInclusive = true)
+    val bidimpression = if (lookbackDays == 0) {
+      DailyBidsImpressionsDataset().readDate(date)
+    } else {
+      DailyBidsImpressionsDataset().readRange(date.minusDays(lookbackDays), date, isInclusive = true)
+    }
 
     // attachTrainsetWithFeature function
     val df = trainset.join(bidimpression.drop("AdGroupId", "LogEntryTime"), Seq("BidRequestId"), joinType = "inner")
@@ -318,14 +322,15 @@ object TrainSetTransformation {
 
     val bidsImpContextualTransformed = ContextualTransform
       .generateContextualFeatureTier1(bidsImpContextual)
-    val dimAudienceId = AudienceIdTransform.generateAudiencelist(df.select("AdvertiserId", "CampaignId").selectAs[AudienceFeature], date).dropDuplicates().cache()
-    val dimIndustryCategoryId = AdvertiserFeatureDataSet().readLatestPartitionUpTo(date, isInclusive = true).select("AdvertiserId", "IndustryCategoryId")
-      .withColumn("IndustryCategoryId", col("IndustryCategoryId").cast("Int")).cache()
+    val dimAudienceId = AudienceIdTransform.generateAudiencelist(df.select("AdvertiserId", "CampaignId").distinct.selectAs[AudienceFeature], date)
+    val dimIndustryCategoryId = AdvertiserFeatureDataSet().readLatestPartitionUpTo(date, isInclusive = true)
+      .select("AdvertiserId", "IndustryCategoryId")
+      .withColumn("IndustryCategoryId", col("IndustryCategoryId").cast("Int"))
     val finalDataframe = df
       .join(bidsImpContextualTransformed, Seq("BidRequestId"), "left")
       .join(bidsImpContextual, Seq("BidRequestId"), "left")
-      .join(dimAudienceId, Seq("AdvertiserId", "CampaignId"), "left")
-      .join(dimIndustryCategoryId, Seq("AdvertiserId"), "left")
+      .join(broadcast(dimAudienceId), Seq("AdvertiserId", "CampaignId"), "left")
+      .join(broadcast(dimIndustryCategoryId), Seq("AdvertiserId"), "left")
       .selectAs[TrainSetFeaturesRecord]
     finalDataframe
   }

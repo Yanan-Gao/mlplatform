@@ -27,26 +27,19 @@ object AudienceIdTransform {
 
   // consider joining trainset here first or later. might need to consider whether it is efficient to join all campaign data.
   def generateAudiencelist (
-                             preFeatureJoinRecord: Dataset[AudienceFeature],
+                             uniqueCampaign: Dataset[AudienceFeature],
                              date: LocalDate
                            ) : Dataset[AudienceList] = {
 
-    val adgroupTable = UnifiedAdGroupFeatureDataSet().readLatestPartitionUpTo(date, isInclusive = true).select("CampaignId","AudienceId")
-    val uniqueCampaign= preFeatureJoinRecord.select("CampaignId", "AdvertiserId").dropDuplicates()
-    val modifiedDataset = uniqueCampaign.join(adgroupTable, Seq("CampaignId"), "left")
+    val adgroupTable = UnifiedAdGroupFeatureDataSet().readLatestPartitionUpTo(date, isInclusive = true).select("CampaignId", "AudienceId")
+    val modifiedDataset = broadcast(uniqueCampaign).join(adgroupTable, Seq("CampaignId"), "left")
     val hashedTrain = modifiedDataset
       .withColumn("AudienceId", when(col("AudienceId").isNotNull, shiftModUdf(xxhash64(col("AudienceId")), lit(CARDINALITY_AUDIENCEID_CATEGORY))).otherwise(0))
-    val windowSpec = Window.partitionBy("CampaignId", "AdvertiserId").orderBy("AudienceId")
-    val rowDataframe = hashedTrain.withColumn("row_num", row_number().over(windowSpec)).filter(col("row_num")<SHAPE_AUDIENCEID_CATEGORY)
-    val audienceList = rowDataframe.groupBy("CampaignId","AdvertiserId").agg(collect_set("AudienceId").alias("AudienceId")).selectAs[AudienceList]
+    val audienceList = hashedTrain.groupBy("CampaignId","AdvertiserId").agg(collect_set("AudienceId").alias("AudienceId"))
+      .withColumn("AudienceId", slice(array_sort($"AudienceId"), 1, SHAPE_AUDIENCEID_CATEGORY))
+      .selectAs[AudienceList]
 
     audienceList
 
   }
-
-
-
-
-
-
 }
