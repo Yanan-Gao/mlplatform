@@ -121,7 +121,7 @@ object TrainSetTransformation {
     val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartitionUpTo(endDate, true)
 
     val ccrcPreProcessed = ccrc
-      .join(broadcast(campaignDS.select($"CampaignId", col(customGoalTypeId))), Seq("CampaignId"), "left")
+      .join(broadcast(campaignDS.select($"CampaignId", col(customGoalTypeId), $"CustomCPAClickWeight", $"CustomCPAViewthroughWeight")), Seq("CampaignId"), "left")
 
     val ccrcProcessed = task match {
       case "roas" => {
