@@ -1,5 +1,6 @@
 package com.thetradedesk.audience.datasets
 
+import com.thetradedesk.audience.datasets.Model.Model
 import com.thetradedesk.audience.{audienceVersionDateFormat, ttdEnv}
 import com.thetradedesk.audience.datasets.S3Roots.ML_PLATFORM_ROOT
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -24,8 +25,8 @@ final case class MetadataSchema(
                                  Timestamp: java.sql.Timestamp,
                                )
 
-case class MetadataDataset(version: Int = 1) extends LightWritableDataset[MetadataSchema](
-  s"/${ttdEnv}/audience/RSM/metadata/v=${version.toString}", S3Roots.ML_PLATFORM_ROOT, 1,dateFormat = audienceVersionDateFormat)
+case class MetadataDataset(model: Model, version: Int = 1) extends LightWritableDataset[MetadataSchema](
+  s"/${ttdEnv}/audience/${model}/metadata/v=${version.toString}", S3Roots.ML_PLATFORM_ROOT, 1,dateFormat = audienceVersionDateFormat)
 {
   /**
    * Save metadata for each run. It serves as changelog, given the timestamp is also recorded

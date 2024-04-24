@@ -1,0 +1,20 @@
+package com.thetradedesk.featurestore.constants
+
+object FeatureConstants {
+  val UserIDKey: String = "TDID"
+  val FeatureDataKey: String = "data"
+  val AlphaNumericRegex: String = "[A-Za-z0-9]+"
+  val MaxArrayLength = 255
+  val BitsOfByte: Int = 8
+
+  val WIDTH_8 = 0
+  val WIDTH_16 = 1
+  val WIDTH_32 = 2
+  val WIDTH_64 = 3
+
+  val BytesToKeepAddress = 2
+
+  val DefaultMaxDataSizePerRecord = 1024
+  val UserFeatureDataPartitionNumbers = 1024
+  val MetaFolder = ".meta"
+}

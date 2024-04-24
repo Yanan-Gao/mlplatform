@@ -1,0 +1,57 @@
+{
+  "dataSetPath": "s3",
+  "featureSourceDefinitions": [
+    {
+      "dataSetPath": "s1",
+      "features": [
+        {
+          "dtype": 4,
+          "name": "f1"
+        },
+        {
+          "dtype": 4,
+          "arrayLength": 3,
+          "name": "fd2"
+        }
+      ],
+      "name": "fs1",
+      "rootPath": "p1"
+    },
+    {
+      "dataSetPath": "s2",
+      "features": [
+        {
+          "dtype": 7,
+          "arrayLength": 1,
+          "name": "fd3"
+        },
+        {
+          "dtype": 8,
+          "arrayLength": 1,
+          "name": "fd4"
+        }
+      ],
+      "name": "fs2",
+      "rootPath": "p2"
+    },
+    {
+      "dataSetPath": "s3",
+      "features": [
+        {
+          "dtype": 7,
+          "arrayLength": 1,
+          "name": "fd3"
+        },
+        {
+          "dtype": 8,
+          "arrayLength": 1,
+          "name": "fd4"
+        }
+      ],
+      "name": "fs3",
+      "rootPath": "p2"
+    }
+  ],
+  "name": "test",
+  "rootPath": "p3"
+}

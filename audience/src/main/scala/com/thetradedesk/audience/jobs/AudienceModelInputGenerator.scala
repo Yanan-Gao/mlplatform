@@ -6,7 +6,7 @@ import com.thetradedesk.audience.datasets.{CrossDeviceVendor, _}
 import com.thetradedesk.audience.sample.WeightSampling.{getLabels, negativeSampleUDFGenerator, positiveSampleUDFGenerator, zipAndGroupUDFGenerator}
 import com.thetradedesk.audience.transform.ContextualTransform.generateContextualFeatureTier1
 import com.thetradedesk.audience.transform.ExtendArrayTransforms.seedIdToSyntheticIdMapping
-import com.thetradedesk.audience.{dateTime, featuresJsonPath, shouldConsiderTDID3, ttdEnv}
+import com.thetradedesk.audience.{dateTime, featuresJsonPath, shouldConsiderTDID3, ttdEnv, userDownSampleBasePopulation}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
@@ -125,8 +125,8 @@ object AudienceModelInputGeneratorJob {
       resultDF.cache()
       val total = resultDF.select(sum("total")).cache().head().getLong(0)
       val pos_ratio = resultDF.select(sum("pos")).head().getDouble(0) / total
-      MetadataDataset().writeRecord(total, dateTime,"metadata", "Count")
-      MetadataDataset().writeRecord(pos_ratio, dateTime,"metadata", "PosRatio")
+      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(total, dateTime,"metadata", "Count")
+      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(pos_ratio, dateTime,"metadata", "PosRatio")
       posRatioGauge.labels(AudienceModelInputGeneratorConfig.model.toString.toLowerCase).set(pos_ratio)
 
       resultDF.unpersist()
@@ -331,7 +331,7 @@ abstract class AudienceModelInputGenerator(name: String) {
 
     val labelDatasetSize = labels.count()
     // the default sampling ratio is 10%
-    val downSampleFactor = config.getInt(s"userDownSampleHitPopulation${name}", default = 100000)/1000000.0
+    val downSampleFactor = config.getInt(s"userDownSampleHitPopulation${name}", default = 100000)  * 1.0 / userDownSampleBasePopulation
 
     val syntheticIdToPolicy = policyTable
       .map(e => (e.SyntheticId, e))

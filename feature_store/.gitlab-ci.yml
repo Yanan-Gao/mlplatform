@@ -1,0 +1,86 @@
+variables:
+  SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+  FEATURE_STORE_JAR_NAME: "feature_store.jar"
+  FEATURE_STORE_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/feature_store/jars/mergerequests"
+  FEATURE_STORE_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/feature_store/jars/snapshots"
+  FEATURE_STORE_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/feature_store/jars/prod"
+  FEATURE_STORE_ASSEMBLY_OUT: "$CI_PROJECT_DIR/feature_store/target/scala-2.12/feature_store.jar"
+  FEATURE_STORE_SCRIPTS_SOURCE: "src/main/bash/"
+  FEATURE_STORE_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/feature_store/scripts/"
+  FEATURE_STORE_RESOURCES_SOURCE: "resources/"
+  FEATURE_STORE_RESOURCES_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/feature_store/resources/"
+
+feature_store:test:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: test
+  cache:
+    policy: pull
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "feature_store/src/main/scala/**/*"
+        - "feature_store/build.sbt"
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "feature_store/src/**/*"
+        - "feature_store/build.sbt"
+  before_script:
+    # we don't need to set up the machine for S3 in order to run tests
+    - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
+  script:
+    - pushd ./feature_store/
+    - sbt test
+    - popd
+    - echo "ran FEATURE_STORE_test"
+
+feature_store:push_bits_merge_request:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: assembly_upload
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "feature_store/src/main/scala/**/*"
+        - "feature_store/build.sbt"
+  script:
+    - pushd ./feature_store/
+    - sbt "set test in assembly := {}" clean assembly
+    - DEST=${FEATURE_STORE_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - DEST_FIXED=${FEATURE_STORE_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/latest
+    - aws s3 cp ${FEATURE_STORE_ASSEMBLY_OUT} ${DEST}/${FEATURE_STORE_JAR_NAME}
+    - aws s3 cp ${FEATURE_STORE_ASSEMBLY_OUT} ${DEST_FIXED}/${FEATURE_STORE_JAR_NAME}
+    - popd
+    - echo "ran FEATURE_STORE_push_bits_merge_request"
+
+
+feature_store:push_bits_master_snapshot:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: assembly_upload
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "feature_store/src/main/scala/**/*"
+        - "feature_store/build.sbt"
+  script:
+    - pushd ./feature_store/
+    - sbt "set test in assembly := {}" clean assembly
+    - DEST=${FEATURE_STORE_SNAPSHOTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - aws s3 cp ${FEATURE_STORE_ASSEMBLY_OUT} ${DEST}/${FEATURE_STORE_JAR_NAME}
+    - popd
+    - echo "ran FEATURE_STORE_push_bits_master_snapshot"
+
+feature_store:deploy_release:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "feature_store/src/main/scala/**/*"
+        - "feature_store/build.sbt"
+      when: manual
+      allow_failure: false
+  script:
+    - pushd ./feature_store/
+    - sbt "set test in assembly := {}" clean assembly
+    - aws s3 cp ${FEATURE_STORE_ASSEMBLY_OUT} ${FEATURE_STORE_PROD_JAR_FOLDER}/${FEATURE_STORE_JAR_NAME}
+    - popd
+    - echo "ran FEATURE_STORE_deploy_release"

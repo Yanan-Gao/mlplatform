@@ -8,13 +8,13 @@ import com.thetradedesk.audience.sample.RandomSampling.negativeSampleUDFGenerato
 import com.thetradedesk.audience.sample.WeightSampling.{getLabels, zipAndGroupUDFGenerator}
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.audience.transform.ContextualTransform
-import com.thetradedesk.audience.{dateTime, featuresJsonPath, shouldConsiderTDID3}
+import com.thetradedesk.audience.{dateTime, featuresJsonPath, shouldConsiderTDID3, userDownSampleBasePopulation}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.{DataFrame, SaveMode}
 import org.apache.spark.sql.functions._
 
-object RSM_OOS_Config {
+object AudienceModel_OOS_Config {
     val negativeSampleRatio = config.getInt("negativeSampleRatio", default = 10)
 
     val supportedDataSources = config.getString("supportedDataSources", "Seed").split(',')
@@ -44,10 +44,10 @@ object OutOfSampleGenerateJob {
   }
 
   def runETLPipeline(): Unit = {
-      val policyTable = clusterTargetingData(AudienceModelInputGeneratorConfig.model, RSM_OOS_Config.supportedDataSources, AudienceModelInputGeneratorConfig.seedSizeLowerScaleThreshold, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold)
+      val policyTable = clusterTargetingData(AudienceModelInputGeneratorConfig.model, AudienceModel_OOS_Config.supportedDataSources, AudienceModelInputGeneratorConfig.seedSizeLowerScaleThreshold, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold)
       val date = dateTime.toLocalDate
       // 10% more downsampling on the original 10% downsampling to make the size of out of seed tdid smaller
-      var samplingFunction = shouldConsiderTDID3((RSM_OOS_Config.outSeedSampleRatio*1000000).toInt, RSM_OOS_Config.saltSampleOutSeed)(_)
+      var samplingFunction = shouldConsiderTDID3((AudienceModel_OOS_Config.outSeedSampleRatio*userDownSampleBasePopulation).toInt, AudienceModel_OOS_Config.saltSampleOutSeed)(_)
       val (sampledBidsImpressionsKeys, bidsImpressionsLong, uniqueTDIDs) = new RSMSeedInputGenerator(CrossDeviceVendor.None).getBidImpressions(date, AudienceModelInputGeneratorConfig.lastTouchNumberInBR,
         AudienceModelInputGeneratorConfig.tdidTouchSelection)
 
@@ -79,8 +79,8 @@ object OutOfSampleGenerateJob {
                     Seq("TDID", "BidRequestId"), "inner")
 
                 var OOS: DataFrame = inSeedOOS.union(outSeedOOS)
-                if (RSM_OOS_Config.extraSampleRatio != 1.0) {
-                  var extraSampling = shouldConsiderTDID3((RSM_OOS_Config.extraSampleRatio*1000000).toInt, RSM_OOS_Config.extraSaltSample)(_)
+                if (AudienceModel_OOS_Config.extraSampleRatio != 1.0) {
+                  var extraSampling = shouldConsiderTDID3((AudienceModel_OOS_Config.extraSampleRatio*userDownSampleBasePopulation).toInt, AudienceModel_OOS_Config.extraSaltSample)(_)
                   OOS = OOS.filter(extraSampling('TDID))
                 }
                 ContextualTransform.generateContextualFeatureTier1(OOS.withColumn("GroupID", 'TDID))
@@ -94,8 +94,8 @@ object OutOfSampleGenerateJob {
         AudienceModelInputDataset(AudienceModelInputGeneratorConfig.model.toString, s"${typePolicyTable._1._1}_${typePolicyTable._1._2}").writePartition(
           resultTransformed.as[AudienceModelInputRecord],
           dateTime,
-          subFolderKey = Some(RSM_OOS_Config.subFolder),
-          subFolderValue = Some(RSM_OOS_Config.workTask),
+          subFolderKey = Some(AudienceModel_OOS_Config.subFolder),
+          subFolderValue = Some(AudienceModel_OOS_Config.workTask),
           format = Some("tfrecord"),
           saveMode = SaveMode.Overwrite
         )
@@ -112,7 +112,7 @@ object OOSSampling {
     // downsample positive labels to keep # of positive labels among targets balanced
     val labelResult = labels
         .withColumn("PositiveSamples", 'PositiveSyntheticIds)
-        .withColumn("NegativeSamples", negativeSampleUDF(lit(RSM_OOS_Config.negativeSampleRatio) * size(col("PositiveSamples"))))
+        .withColumn("NegativeSamples", negativeSampleUDF(lit(AudienceModel_OOS_Config.negativeSampleRatio) * size(col("PositiveSamples"))))
         .withColumn("NegativeSamples", array_except(col("NegativeSamples"), 'PositiveSyntheticIds))
         .withColumn("PositiveTargets", getLabels(1f)(size(col("PositiveSamples"))))
         .withColumn("NegativeTargets", getLabels(0f)(size(col("NegativeSamples"))))
@@ -134,7 +134,7 @@ object OOSSampling {
       )
     // downsample positive labels to keep # of positive labels among targets balanced
     val labelResult = labels
-      .withColumn("SyntheticIds", negativeSampleUDF(lit(RSM_OOS_Config.outSeedNegSamples)))
+      .withColumn("SyntheticIds", negativeSampleUDF(lit(AudienceModel_OOS_Config.outSeedNegSamples)))
       .withColumn("Targets", getLabels(0f)(size(col("SyntheticIds"))))
       .select('TDID, 'SyntheticIds, 'Targets)
 
