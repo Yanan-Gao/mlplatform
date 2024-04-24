@@ -53,6 +53,7 @@ object ModelPromotionTransform {
       lookBack = Some(lookback)
     ).where($"LogEntryTime" >= Timestamp.from(startDateTime.toInstant(ZoneOffset.UTC))
         and $"LogEntryTime" <= Timestamp.from(endDateTime.toInstant(ZoneOffset.UTC))
+        and $"JanusVariantMap".isNull
         and $"PredictiveClearingMode.value" === 3)
 
 
