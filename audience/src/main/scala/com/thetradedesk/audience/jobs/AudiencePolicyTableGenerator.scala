@@ -283,7 +283,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
 object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM, prometheus: PrometheusClient) {
 
   val bitwiseOrAgg = udaf(BitwiseOrAgg)
-  val rsmSeedProcessCount = prometheus.createCounter(s"rsm_policy_table_job_seed_process_count", "RSM policy table job seed process record", "seedId", "success")
+  val rsmSeedProcessCount = prometheus.createCounter("rsm_policy_table_job_seed_process_count", "RSM policy table job seed process record", "seedId", "success")
 
   override def retrieveSourceData(date: LocalDate): DataFrame = {
 
