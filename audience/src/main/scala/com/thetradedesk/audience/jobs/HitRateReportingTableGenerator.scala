@@ -1,9 +1,9 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
-import com.thetradedesk.audience.datasets.{CampaignSeedDataset,HitRateReadableDataset,AggregatedSeedReadableDataset,HitRateRecord,HitRateWritableDataset}
+import com.thetradedesk.audience.datasets.{AggregatedSeedReadableDataset, CampaignSeedDataset, HitRateReadableDataset, HitRateRecord, HitRateWritableDataset}
 import com.thetradedesk.audience.utils.Logger.Log
-import com.thetradedesk.audience._
+import com.thetradedesk.audience.{shouldConsiderTDID3, _}
 import com.thetradedesk.audience.jobs.HitRateReportingTableGeneratorJob.prometheus
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
@@ -32,7 +32,7 @@ object HitRateReportingTableGeneratorJob {
 
   def runETLPipeline(): Unit = {
     HitRateReportingTableGenerator.generateHitRateTable()
- 
+
   }
 }
 
@@ -41,15 +41,16 @@ abstract class HitRateTableGenerator(prometheus: PrometheusClient) {
 
   val jobRunningTime = prometheus.createGauge(s"audience_hitrate_table_job_running_time", "HitRateReportingTableGenerator running time", "date")
   val hitRateTableSize = prometheus.createGauge(s"audience_hitrate_table_size", "HitRateReportingTableGenerator table size", "date")
+  val sampleUDF = shouldConsiderTDID3(config.getInt("hitRateUserDownSampleHitPopulation", default = 1000000), config.getString("saltToSampleHitRate", default = "0BgGCE"))(_)
 
 
   def generateHitRateTable(): Unit = {
-    
+
     val start = System.currentTimeMillis()
 
     val isStringInArray = udf((str: String, arr: Seq[String]) => {
       Option(arr).exists(_.contains(str))
-      })
+    })
 
     val campaignSeed = CampaignSeedDataset().readPartition(dateTime.toLocalDate)
 
@@ -59,33 +60,34 @@ abstract class HitRateTableGenerator(prometheus: PrometheusClient) {
       .cache()
 
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
-    val bidsImpressions= loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack=Some(0), source = Some(GERONIMO_DATA_SOURCE))
-    .withColumnRenamed("UIID", "TDID")
-    .withColumn("ReportDate", to_date('LogEntryTime))
-    .select('BidRequestId, // use to connect with bidrequest, to get more features
-      'AdvertiserId,
-      'CampaignId,
-      'AdGroupId,
-      'ReportDate,
-      'TDID
-    )
-    .filter('IsImp)
-    .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
-    .cache()
+    val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))
+      .withColumnRenamed("UIID", "TDID")
+      .where(sampleUDF('TDID))
+      .withColumn("ReportDate", to_date('LogEntryTime))
+      .select('BidRequestId, // use to connect with bidrequest, to get more features
+        'AdvertiserId,
+        'CampaignId,
+        'AdGroupId,
+        'ReportDate,
+        'TDID
+      )
+      .filter('IsImp)
+      .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
+      .cache()
 
     val result = bidsImpressions
-        .join(campaignSeed.select('CampaignId,'SeedId), Seq("CampaignId"),"left")
-        .join(seedData.filter(size('SeedIds)>0).select('TDID,'SeedIds),Seq("TDID"),"left")
-        .withColumn("hit", isStringInArray($"SeedId",$"SeedIds").cast("integer"))
-    
-    val hitRate = result.groupBy('CampaignId,'AdGroupId,'SeedId,'ReportDate)
-        .agg(
-            count('hit).alias("ImpressionCount")
-            ,sum(when(size('SeedIds)>0,1).otherwise(0)).alias("SeedImpressionCount")
-            ,sum('hit).alias("HitCount")
-            )
-        .withColumn("HitRate",'HitCount/'ImpressionCount)
-        .as[HitRateRecord]
+      .join(campaignSeed.select('CampaignId, 'SeedId), Seq("CampaignId"), "left")
+      .join(seedData.filter(size('SeedIds) > 0).select('TDID, 'SeedIds), Seq("TDID"), "left")
+      .withColumn("hit", isStringInArray($"SeedId", $"SeedIds").cast("integer"))
+
+    val hitRate = result.groupBy('CampaignId, 'AdGroupId, 'SeedId, 'ReportDate)
+      .agg(
+        count('hit).alias("ImpressionCount")
+        , sum(when(size('SeedIds) > 0, 1).otherwise(0)).alias("SeedImpressionCount")
+        , sum('hit).alias("HitCount")
+      )
+      .withColumn("HitRate", 'HitCount / 'ImpressionCount)
+      .as[HitRateRecord]
 
     HitRateWritableDataset()
       .writePartition(hitRate,
