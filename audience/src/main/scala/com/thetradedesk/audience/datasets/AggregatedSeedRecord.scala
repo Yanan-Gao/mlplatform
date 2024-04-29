@@ -12,4 +12,4 @@ final case class AggregatedSeedRecord(TDID: String,
 
 case class AggregatedSeedReadableDataset() extends LightReadableDataset[AggregatedSeedRecord](s"${ttdEnv}/audience/aggregatedSeed/v=1", ML_PLATFORM_ROOT)
 
-case class AggregatedSeedWritableDataset() extends LightWritableDataset[AggregatedSeedRecord](s"${ttdEnv}/audience/aggregatedSeed/v=1", ML_PLATFORM_ROOT, 1024)
+case class AggregatedSeedWritableDataset() extends LightWritableDataset[AggregatedSeedRecord](s"${ttdEnv}/audience/aggregatedSeed/v=1", ML_PLATFORM_ROOT, 128)
