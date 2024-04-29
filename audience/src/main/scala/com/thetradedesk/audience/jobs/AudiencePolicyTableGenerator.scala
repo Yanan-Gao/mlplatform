@@ -91,7 +91,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     val aemPixelLimit = config.getInt("aemPixelLimit", 5000)
     var selectedPixelsConfigPath = config.getString("selectedPixelsConfigPath", "s3a://thetradedesk-mlplatform-us-east-1/configdata/prodTest/audience/other/AEM/selectedPixelTrackingTagIds/")
     var useSelectedPixel = config.getBoolean("useSelectedPixel", false)
-
+    var campaignFlightStartingBufferInDays = config.getInt("campaignFlightStartingBufferInDays", 14)
   }
 
   private val policyTableDateFormatter = DateTimeFormatter.ofPattern(audienceVersionDateFormat)
@@ -264,12 +264,12 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     }
   }
 
-  protected def activeUserRatio(dateTime: LocalDateTime) : Double = {
+  protected def activeUserRatio(dateTime: LocalDateTime): Double = {
     val recentVersionOption = if (Config.seedMetaDataRecentVersion != null) Some(LocalDateTime.parse(Config.seedMetaDataRecentVersion.split("=")(1), DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSS")).toLocalDate.atStartOfDay())
     else availablePolicyTableVersions.find(_.isBefore(dateTime))
 
     if (recentVersionOption.isEmpty || Config.policyTableResetSyntheticId) {
-        Config.activeUserRatio
+      Config.activeUserRatio
     } else {
       val previousPolicyTable = AudienceModelPolicyReadableDataset(model)
         .readSinglePartition(recentVersionOption.get)(spark).cache()
@@ -315,7 +315,27 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM, p
       .join(sampledHouseholdGraph, Seq("TDID"), "outer")
       .cache()
 
+    val startDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.plusDays(Config.campaignFlightStartingBufferInDays))
+    val endDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date)
+
+    val campaignFlight = CampaignFlightDataSet()
+      .readPartition(date)
+      .where('IsDeleted === false
+        && 'StartDateInclusiveUTC.leq(startDateTimeStr)
+        && ('EndDateExclusiveUTC.isNull || 'EndDateExclusiveUTC.gt(endDateTimeStr)))
+      .select('CampaignId)
+      .distinct()
+
+    val campaignSeed = CampaignSeedDataset()
+      .readPartition(date)
+
+    val optInSeed = campaignSeed
+      .join(campaignFlight, Seq("CampaignId"), "inner")
+      .select('SeedId)
+      .distinct()
+
     val seedMeta = spark.read.parquet(seedDataFullPath)
+      .join(optInSeed, Seq("SeedId"), "inner")
       .select('SeedId, 'TargetingDataId, coalesce('Count, lit(-1)).alias("Count"), 'Path)
       .withColumn("TargetingDataId", coalesce('TargetingDataId, lit(-1)))
       .cache()
@@ -417,7 +437,7 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM, p
   }
 
   private def retrieveSeedData(policyMetaTable: Array[SeedDetail], isSample: Boolean): DataFrame = {
-    val TDID2Seeds = policyMetaTable.flatMap(record => {
+    val TDID2Seeds = policyMetaTable.map(record => {
         try {
           Log(() => s"reading seed: ${record.SeedId}")
 
@@ -442,7 +462,7 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM, p
             None
           }
         }
-      }).reduce(_ unionAll _)
+      }).filter(_.nonEmpty).map(_.get).reduce(_ unionAll _)
       .repartition(Config.bidImpressionRepartitionNum, 'TDID)
       .groupBy('TDID)
       .agg(collect_set('SeedId).alias("SeedIds"))
@@ -540,19 +560,20 @@ object AEMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.AEM, p
     val endTimestamp = Timestamp.valueOf(endDateThreshold)
 
     val activeCampaignConversionTrackerTagIds = AdGroup
-    .join(Campaign, AdGroup("CampaignId") === Campaign("CampaignId"))
-    .join(Partner, Campaign("PartnerId") === Partner("PartnerId"))
-    .join(CampConv, Campaign("CampaignId") === CampConv("CampaignId"))
-    .filter(
-      AdGroup("IsEnabled") === 1 &&
-        Campaign("StartDate").lt(startTimestamp) &&
-        (Campaign("EndDate").isNull || Campaign("EndDate").gt(endTimestamp)) &&
-        Partner("SpendDisabled") === 0
-    )
-    .select(CampConv("TrackingTagId")).distinct()
+      .join(Campaign, AdGroup("CampaignId") === Campaign("CampaignId"))
+      .join(Partner, Campaign("PartnerId") === Partner("PartnerId"))
+      .join(CampConv, Campaign("CampaignId") === CampConv("CampaignId"))
+      .filter(
+        AdGroup("IsEnabled") === 1 &&
+          Campaign("StartDate").lt(startTimestamp) &&
+          (Campaign("EndDate").isNull || Campaign("EndDate").gt(endTimestamp)) &&
+          Partner("SpendDisabled") === 0
+      )
+      .select(CampConv("TrackingTagId")).distinct()
 
     activeCampaignConversionTrackerTagIds
   }
+
   private def retrieveConversionData(date: LocalDate): DataFrame = {
     val uniqueTDIDsFromBidImp = getBidImpUniqueTDIDs(date)
 
@@ -595,7 +616,7 @@ object AEMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.AEM, p
           .alias("ActiveSize"))
       .select(('ActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ActiveSize"), 'TrackingTagId)
 
-    var conversionFinal:DataFrame = null
+    var conversionFinal: DataFrame = null
 
     if (Config.useSelectedPixel) {
       conversionFinal = conversionSize
