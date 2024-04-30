@@ -349,9 +349,8 @@ object PlutusDataTransform extends Logger {
       ).as[InvalidLossData]
   }
 
-  def loadPlutusLogData(date: LocalDate): Dataset[PlutusLogsData] = {
-    loadParquetData[PcResultsRawLogSchema](PlutusLogsDataset.S3PATH, date, lookBack = Some(1))
-      .select(
+  def transformPcResultsRawLog(value: Dataset[PcResultsRawLogs]) = {
+    value.select(
         "PlutusLog.*",
         "PredictiveClearingStrategy.*",
         "*"
@@ -361,19 +360,18 @@ object PlutusDataTransform extends Logger {
       ).as[PlutusLogsData]
   }
 
+  def loadPlutusLogData(date: LocalDate): Dataset[PlutusLogsData] = {
+    val dataset = loadParquetData[PcResultsRawLogs](PlutusLogsDataset.S3PATH, date, lookBack = Some(1))
+    transformPcResultsRawLog(dataset)
+  }
+
   def loadPlutusLogData(dateTime: LocalDateTime): Dataset[PlutusLogsData] = {
-    loadParquetDataHourlyV2[PcResultsRawLogSchema](
+    val dataset = loadParquetDataHourlyV2[PcResultsRawLogs](
       PlutusLogsDataset.S3PATH,
       PlutusLogsDataset.S3PATH_GEN,
       dateTime
-    ).select(
-      "PlutusLog.*",
-      "PredictiveClearingStrategy.*",
-      "*"
-    ).drop(
-      "PlutusLog",
-      "PredictiveClearingStrategy"
-    ).as[PlutusLogsData]
+    )
+    transformPcResultsRawLog(dataset)
   }
 
   def dealData(svb: Dataset[Svb], deals: Dataset[Deals]): DataFrame = {

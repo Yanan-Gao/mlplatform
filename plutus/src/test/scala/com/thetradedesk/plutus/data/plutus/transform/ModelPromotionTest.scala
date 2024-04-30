@@ -11,7 +11,7 @@ import org.scalactic.TolerantNumerics
 class ModelPromotionTest extends TTDSparkTest {
 
   test("Raw Data Transform test for schema/column correctness") {
-    val bidsImpressionsData = Seq(bidsImpressionsMock.copy()).toDS().as[BidsImpressionsSchema]
+    val bidsImpressionsData = Seq(bidsImpressionsMock()).toDS().as[BidsImpressionsSchema]
     val privateContractsData = Seq(privateContractsMock.copy()).toDS().as[PrivateContractRecord]
     val adFormatData = Seq(adFormatMock.copy()).toDS().as[AdFormatRecord]
 

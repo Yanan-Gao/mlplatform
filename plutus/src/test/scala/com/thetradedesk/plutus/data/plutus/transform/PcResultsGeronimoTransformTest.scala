@@ -2,38 +2,67 @@ package com.thetradedesk.plutus.data.plutus.transform
 
 import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
-import com.thetradedesk.plutus.data.MockData.{bidsImpressionsMock, mbtwDataMock, pcResultsLogMock, pcResultsRawLogMock}
-import com.thetradedesk.plutus.data.schema.{MinimumBidToWinData, PcResultsRawLogSchema, PlutusLogsData}
+import com.thetradedesk.plutus.data.{ChannelType, MarketType}
+import com.thetradedesk.plutus.data.MockData._
+import com.thetradedesk.plutus.data.schema.{MinimumBidToWinData, PcResultsRawLogs, PlutusLogsData, ProductionAdgroupBudgetData}
 import com.thetradedesk.plutus.data.transform.PcResultsGeronimoTransform.joinGeronimoPcResultsLog
+import com.thetradedesk.plutus.data.transform.PlutusDataTransform.transformPcResultsRawLog
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.datasets.sources.{AdFormatRecord, PrivateContractRecord}
+import com.thetradedesk.streaming.records.rtb.FeeFeatureUsageLogBackingData
 
 class PcResultsGeronimoTransformTest extends TTDSparkTest {
 
   test("PcResults + Geronimo Transform test for schema/column correctness") {
-    val geronimoDataset = Seq(bidsImpressionsMock.copy()).toDS().as[BidsImpressionsSchema]
+    val geronimoDataset = Seq (
+      bidsImpressionsMock(),
+      bidsImpressionsMock(null),
+      bidsImpressionsMock(Seq {feeFeatureUsageLogMock})
+    ).toDS().as[BidsImpressionsSchema]
     val pcResultsDataset = Seq(pcResultsLogMock.copy()).toDS().as[PlutusLogsData]
     val mbtwDataset = Seq(mbtwDataMock.copy()).toDS().as[MinimumBidToWinData]
+    val privateContractDataSet = Seq(privateContractsMock.copy()).toDS().as[PrivateContractRecord]
+    val adFormatDataSet = Seq(adFormatMock.copy()).toDS().as[AdFormatRecord]
+    val productionAdgroupBudgetDataset = Seq(productionAdgroupBudgetMock.copy()).toDS().as[ProductionAdgroupBudgetData]
 
-    val joinCols = Seq("BidRequestId")
-    val (mergedDataset, pcResultsAbsentDataset, mbtwAbsentDataset) = joinGeronimoPcResultsLog(geronimoDataset, pcResultsDataset, mbtwDataset, joinCols)
+    val (mergedDataset, pcResultsAbsentDataset, mbtwAbsentDataset) =
+      joinGeronimoPcResultsLog(geronimoDataset, pcResultsDataset, mbtwDataset,
+        privateContractDataSet, adFormatDataSet, productionAdgroupBudgetDataset)
 
-    assert(mergedDataset.count() == 1, "Output rows")
+    assert(mergedDataset.count() == 3, "Output rows")
     assert(pcResultsAbsentDataset.count() == 0, "Absent rows (from PCResultsLog)")
     assert(mbtwAbsentDataset.count() == 0, "Absent rows (from MBTW Dataset)")
-    assert(mergedDataset.collectAsList().get(0).SupplyVendorLossReason == mbtwDataMock.SupplyVendorLossReason, "Validating mbtw Join")
+
+    val res = mergedDataset.collectAsList().get(0)
+    assert(res.LossReason == mbtwDataMock.LossReason, "Validating mbtw Join")
+
+    // test for channel
+    assert(res.Channel == ChannelType.MobileInApp, "Validating Channel Join")
+
+    // test for Value Pacing Column
+    assert(res.IsValuePacing == Some(true), "Validating ProductionAdgroupBudgetData Join")
+    assert(res.IsUsingPIDController == Some(false), "Validating ProductionAdgroupBudgetData Join")
+
+    // test for DetailedMarketType
+    assert(res.DetailedMarketType == MarketType.PrivateAuctionVariablePrice, "Validating DetailedMarketType Join")
+
+    // Test for AspSvpId
+    assert(res.AspSvpId == "asp_1", "Validating DetailedMarketType Join")
+
+    // Test for IsUsingJanus
+    assert(res.IsUsingJanus == false, "Validating Janus fields")
+
+    // Test for Fee Amount column
+    assert(res.FeeAmount == None, "Validating that an empty feeFeatureUsage list results in a none value")
+
+    assert(mergedDataset.collectAsList().get(1).FeeAmount == None, "Validating that null feeFeatureUsage results in a none value\"")
+    assert(mergedDataset.collectAsList().get(2).FeeAmount == Some(feeFeatureUsageLogMock.FeeAmount), "Validating that the actual feeFeatureUsage.FeeAmount value is propogated")
   }
 
   test("PcResultsRawLogSchema -> PlutusLogsData test") {
-    val pcResultsDataset = Seq(pcResultsRawLogMock.copy()).toDS().as[PcResultsRawLogSchema]
-      .select(
-        "PlutusLog.*",
-        "PredictiveClearingStrategy.*",
-        "*"
-      ).drop(
-        "PlutusLog",
-        "PredictiveClearingStrategy"
-      ).as[PlutusLogsData]
+    val rawDataset = Seq(pcResultsRawLogMock.copy()).toDS().as[PcResultsRawLogs]
+    val outputDataset = transformPcResultsRawLog(rawDataset)
 
-    assert(pcResultsDataset.count() == 1, "Output rows")
+    assert(outputDataset.count() == 1, "Output rows")
   }
 }

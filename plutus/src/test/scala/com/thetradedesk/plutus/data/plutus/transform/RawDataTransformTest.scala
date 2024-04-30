@@ -16,7 +16,7 @@ class RawDataTransformTest extends TTDSparkTest {
 
     val date = java.time.LocalDate.parse("2021-12-25")
 
-    val bidsImps = Seq(bidsImpressionsMock.copy()).toDS().as[BidsImpressionsSchema]
+    val bidsImps = Seq(bidsImpressionsMock()).toDS().as[BidsImpressionsSchema]
 
     val rawLostBidData = Seq(createMbToWinRow(BidRequestId = "1", WinCPM =1.0d, mbtw = 0.8d)).toDS().as[RawLostBidData]
 

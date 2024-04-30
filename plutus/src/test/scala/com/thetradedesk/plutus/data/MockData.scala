@@ -35,113 +35,127 @@ object MockData {
     RawLostBidData(LogEntryTime, BidRequestId, CreativeId, AdGroupId, CampaignId, PrivateContractId, PartnerId, AdvertiserId, CampaignFlightId, SupplyVendorLossReason, LossReason, WinCPM, SupplyVendor, BidRequestTime, mbtw)
 
 
-  val bidsImpressionsMock = BidsImpressionsSchema(
-                                    // bidrequest cols
-                                    BidRequestId = "1",
-                                    DealId = "",
+  def bidsImpressionsMock(FeeFeatureUsage: Seq[FeeFeatureUsageLogBackingData] = Seq()) =
+    BidsImpressionsSchema(
+      // bidrequest cols
+      BidRequestId = "1",
+      DealId = "",
 
-                                    UIID = Option("000"),
+      UIID = Option("000"),
 
-                                    AdjustedBidCPMInUSD = 10000.0,
-                                    BidsFirstPriceAdjustment = Some(0.9),
-                                    FloorPriceInUSD = Some(5000.0),
+      AdjustedBidCPMInUSD = 10000.0,
+      BidsFirstPriceAdjustment = Some(0.9),
+      FloorPriceInUSD = Some(5000.0),
 
-                                    PartnerId = Some(""),
-                                    AdvertiserId = Some(""),
-                                    CampaignId = Some(""),
-                                    AdGroupId = Some(""),
+      PartnerId = Some(""),
+      AdvertiserId = Some(""),
+      CampaignId = Some(""),
+      AdGroupId = Some("fakeadgroup123"),
 
-                                    SupplyVendor = Some(""),
-                                    SupplyVendorPublisherId = Some(""),
-                                    AliasedSupplyPublisherId = Some(1),
-                                    SupplyVendorSiteId = Some(""),
-                                    Site = Some(""),
-                                    ImpressionPlacementId = Some(""),
-                                    AdWidthInPixels = 250,
-                                    AdHeightInPixels = 250,
+      SupplyVendor = Some(""),
+      SupplyVendorPublisherId = Some("983"),
+      AliasedSupplyPublisherId = Some(1),
+      SupplyVendorSiteId = Some(""),
+      Site = Some(""),
+      ImpressionPlacementId = Some(""),
+      AdWidthInPixels = 250,
+      AdHeightInPixels = 250,
 
-                                    MatchedCategoryList =  Some(List("")),
-                                    MatchedFoldPosition = 1,
-                                    RenderingContext = Option(RenderingContextLookupRecord()),
-                                    ReferrerCategories = Seq(""),
+      MatchedCategoryList =  Some(List("")),
+      MatchedFoldPosition = 1,
+      RenderingContext = Option(RenderingContextLookupRecord(1)),
+      ReferrerCategories = Seq(""),
 
-                                    VolumeControlPriority = Some(1),
-                                    LogEntryTime = java.sql.Timestamp.valueOf("2020-06-05 18:48:05.123"),
-
-
-                                    AdsTxtSellerType = Option(AdsTxtSellerTypeLookupRecord()),
-                                    PublisherType = InventoryPublisherTypeLookupRecord(),
-                                    AuctionType = Some(1),
+      VolumeControlPriority = Some(1),
+      LogEntryTime = java.sql.Timestamp.valueOf("2020-06-05 18:48:05.123"),
 
 
-
-                                    Country = Some(""),
-                                    Region = Some(""),
-                                    Metro = Some(""),
-                                    City = Some(""),
-                                    Zip = Some(""),
+      AdsTxtSellerType = Option(AdsTxtSellerTypeLookupRecord()),
+      PublisherType = InventoryPublisherTypeLookupRecord(),
+      AuctionType = Some(1),
 
 
-                                    DeviceType = Option(DeviceTypeLookupRecord()),
-                                    DeviceMake = Some(""),
-                                    DeviceModel = Some(""),
-                                    OperatingSystem = Option(OSLookupRecord()),
-                                    OperatingSystemFamily = Option(OSFamilyLookupRecord()),
-                                    Browser = Option(BrowserLookupRecord()),
-                                    InternetConnectionType = Option(InternetConnectionTypeLookupRecord()),
+
+      Country = Some(""),
+      Region = Some(""),
+      Metro = Some(""),
+      City = Some(""),
+      Zip = Some(""),
 
 
-                                    UserHourOfWeek = Some(0),
-                                    RequestLanguages = "",
-                                    MatchedLanguageCode = Some(""),
-                                    Latitude = Some(0.0d),
-                                    Longitude = Some(0.0d),
+      DeviceType = Option(DeviceTypeLookupRecord()),
+      DeviceMake = Some(""),
+      DeviceModel = Some(""),
+      OperatingSystem = Option(OSLookupRecord()),
+      OperatingSystemFamily = Option(OSFamilyLookupRecord()),
+      Browser = Option(BrowserLookupRecord()),
+      InternetConnectionType = Option(InternetConnectionTypeLookupRecord()),
 
-                                    PredictiveClearingMode = Option(PredictiveClearingModeLookupRecord()),
-                                    PredictiveClearingRandomControl = false,
-                                    PlutusTfModel = Some("plutusMock"),
 
-                                    // bidfeedback cols
+      UserHourOfWeek = Some(0),
+      RequestLanguages = "",
+      MatchedLanguageCode = Some(""),
+      Latitude = Some(0.0d),
+      Longitude = Some(0.0d),
 
-                                    MediaCostCPMInUSD = Some(9000.0),
-                                    DiscrepancyAdjustmentMultiplier = Some(1.0),
+      PredictiveClearingMode = Option(PredictiveClearingModeLookupRecord()),
+      PredictiveClearingRandomControl = false,
+      PlutusTfModel = Some("plutusMock"),
 
-                                    SubmittedBidAmountInUSD = 10.0,
-                                    ImpressionsFirstPriceAdjustment = Some(0.9),
+      // bidfeedback cols
 
-                                    IsImp = true,
+      MediaCostCPMInUSD = Some(9000.0),
+      DiscrepancyAdjustmentMultiplier = Some(1.0),
 
-                                    sin_hour_week = 0.0d,
-                                    cos_hour_week = 0.0d,
-                                    sin_hour_day = 0.0d,
-                                    cos_hour_day = 0.0d,
-                                    sin_minute_hour = 0.0d,
-                                    cos_minute_hour = 0.0d,
-                                    sin_minute_day = 0.0d,
-                                    cos_minute_day = 0.0d,
+      SubmittedBidAmountInUSD = 10.0,
+      ImpressionsFirstPriceAdjustment = Some(0.9),
 
-                                    DoNotTrack =  Option(DoNotTrackLookupRecord()),
-                                    CreativeId =  Some(""),
-                                    PrivateContractId =  "5416475",
-                                    // advertiser columns
-                                    AdvertiserIndustryCategoryId = Some(math.BigInt.long2bigInt(1l)),
+      IsImp = true,
 
-                                    // contextual cols
-                                    ReferrerUrl = Some(""),
-                                    ContextualCategories = Some(Seq(1L)),
+      sin_hour_week = 0.0d,
+      cos_hour_week = 0.0d,
+      sin_hour_day = 0.0d,
+      cos_hour_day = 0.0d,
+      sin_minute_hour = 0.0d,
+      cos_minute_hour = 0.0d,
+      sin_minute_day = 0.0d,
+      cos_minute_day = 0.0d,
 
-                                    // seeninbidding columns
-                                    ThirdPartyTargetingDataIds = Option(Array(1L)),
-                                    GroupThirdPartyTargetingDataIds = Option(Array(1L)),
+      DoNotTrack =  Option(DoNotTrackLookupRecord()),
+      CreativeId =  Some(""),
+      PrivateContractId =  "5416475",
+      // advertiser columns
+      AdvertiserIndustryCategoryId = Some(math.BigInt.long2bigInt(1l)),
 
-                                    // adgroupkoaoptimizationsettings
-                                    IsAdFormatOptimizationEnabled = Option(false),
-                                    IsGeoSegmentOptimizationEnabled = Option(false),
-                                    KoaCanBidUpEnabled = Option(false), // assist only with performance
-                                    IsEnabled = Option(false),    //koa always on or always off
-                                    UserSegmentCount = Option(1000)
+      // contextual cols
+      ReferrerUrl = Some(""),
+      ContextualCategories = Some(Seq(1L)),
 
-  )
+      // seeninbidding columns
+      ThirdPartyTargetingDataIds = Option(Array(1L)),
+      GroupThirdPartyTargetingDataIds = Option(Array(1L)),
+
+      // adgroupkoaoptimizationsettings
+      IsAdFormatOptimizationEnabled = Option(false),
+      IsGeoSegmentOptimizationEnabled = Option(false),
+      KoaCanBidUpEnabled = Option(false), // assist only with performance
+      IsEnabled = Option(false),    //koa always on or always off
+      UserSegmentCount = Option(1000),
+
+      VolumeControlPriorityKeepRate = None,
+      MatchedSegments = Seq[Long](),
+      ExpectedValue = Option(200d),
+      RPacingValue = Option(0.5),
+      JanusVariantMap = None,
+      UserAgeInDays = Option(20),
+
+      AdvertiserCostInUSD = None,
+      PartnerCostInUSD = None,
+      TTDCostInUSD = None,
+      AdvertiserCurrencyExchangeRateFromUSD = None,
+      BillingEventId = None,
+      FeeFeatureUsage= FeeFeatureUsage
+    )
 
   val privateContractsMock = PrivateContractRecord(
     PrivateContractId = "5416475",
@@ -191,7 +205,7 @@ object MockData {
     IsAppleIAdSupported = false,
     IsTvSupported = false,
     IsCommonFormat = false,
-    MediaTypeId = 1,
+    MediaTypeId = MediaTypeId.Display,
     UserFriendlyLabel = None
   )
 
@@ -215,7 +229,7 @@ object MockData {
     FullPush = false
   )
 
-  val pcResultsRawLogMock = PcResultsRawLogSchema(
+  val pcResultsRawLogMock = PcResultsRawLogs(
     BidRequestId = "1",
     InitialBid = 10,
     FinalBidPrice = 9,
@@ -238,4 +252,20 @@ object MockData {
     WinCPM = 2.2,
     mbtw = 2
   )
+
+  val productionAdgroupBudgetMock = ProductionAdgroupBudgetData(
+    AdGroupId = "fakeadgroup123",
+    IsValuePacing = Some(true),
+    IsUsingPIDController = Some(false)
+  )
+
+  val feeFeatureUsageLogMock = FeeFeatureUsageLogBackingData(
+      FeeFeatureType = FeeFeatureLookupRecord(41),
+      FeeAmount = 0.000012,
+      MarginType = FeeFeatureMarginTypeLookupRecord(1),
+      PassThroughFeeCardId = None,
+      PassThroughFeeId = None,
+      IsMargin = false
+    )
+
 }

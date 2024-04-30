@@ -34,7 +34,13 @@ case class PlutusLogsData(
    Strategy: Int,
 )
 
-case class PcResultsRawLogSchema(
+
+/**
+ *  This class is used to read the raw pcresults dataset from s3. On reading, its immediately transformed
+ *  into @PlutusLogsData
+  */
+
+case class PcResultsRawLogs(
    BidRequestId: String,
    InitialBid: Double,
    FinalBidPrice: Double,
