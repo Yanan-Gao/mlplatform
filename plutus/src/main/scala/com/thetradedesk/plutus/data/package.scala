@@ -44,9 +44,9 @@ package object data {
 
   def hashedModMaxIntFeaturesCols(inputColAndDims: Seq[ModelFeature], shift: Int): Array[Column] = {
     inputColAndDims.map {
-      case ModelFeature(name, STRING_FEATURE_TYPE, _, _) => when(col(name).isNotNullOrEmpty, shiftModMaxValueUDF(xxhash64(col(name)), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
-      case ModelFeature(name, INT_FEATURE_TYPE, _, _) => when(col(name).isNotNull, shiftModMaxValueUDF(col(name), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
-      case ModelFeature(name, FLOAT_FEATURE_TYPE, _, _) => col(name).alias(name)
+      case ModelFeature(name, STRING_FEATURE_TYPE, _, _, _) => when(col(name).isNotNullOrEmpty, shiftModMaxValueUDF(xxhash64(col(name)), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
+      case ModelFeature(name, INT_FEATURE_TYPE, _, _, _) => when(col(name).isNotNull, shiftModMaxValueUDF(col(name), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
+      case ModelFeature(name, FLOAT_FEATURE_TYPE, _, _, _) => col(name).alias(name)
     }.toArray
   }
 
@@ -278,13 +278,13 @@ package object data {
   // Copied from TTD/Domain/Shared/TTD.Domain.Shared/PlatformModels/PublisherRelationshipType.cs
   object PublisherRelationshipType extends Enumeration
   {
-    val Unknown = '0'
-    val Indirect = '1'
-    val Direct= '2'
+    val Unknown = 0
+    val Indirect = 1
+    val Direct= 2
     // Deprecated: 2022-01-11
-    val IndirectFixedPrice = '3'
+    val IndirectFixedPrice = 3
 
-    type PublisherRelationshipType = String
+    type PublisherRelationshipType = Int
   }
 
   // Copied from TTD/DB/Provisioning/TTD.DB.Provisioning.Primitives/Bidding/RenderingContext.cs
@@ -298,12 +298,19 @@ package object data {
 
   // Copied from TTD/Domain/Bidding/TTD.Domain.Bidding.Public.RTB/Enums.cs
   object AuctionType extends Enumeration {
-    val UnDeclared = '0'
-    val FirstPrice = '1'
-    val SecondPrice = '2'
-    val FixedPrice = '3'
+    val UnDeclared = 0
+    val FirstPrice = 1
+    val SecondPrice = 2
+    val FixedPrice = 3
 
-    type AuctionType = String
+    type AuctionType = Int
+  }
+
+  // Selected codes from https://gitlab.adsrvr.org/thetradedesk/adplatform/-/blob/master/TTD/DB/Provisioning/TTD.DB.Provisioning.Primitives/LossReason.cs
+  object LossReason extends Enumeration {
+    val Win = -1
+    val BidBelowAuctionFloor = 100
+    val BidLostHigherBid = 102
   }
 
 }
