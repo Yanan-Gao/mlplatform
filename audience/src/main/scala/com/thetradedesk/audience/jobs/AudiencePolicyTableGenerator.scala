@@ -13,6 +13,7 @@ import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImp
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.datasets.core.AnnotatedSchemaBuilder
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -68,7 +69,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     val seedMetadataS3Bucket = S3Utils.refinePath(config.getString("seedMetadataS3Bucket", "ttd-datprd-us-east-1"))
     val seedMetadataS3Path = S3Utils.refinePath(config.getString("seedMetadataS3Path", "prod/data/SeedDetail/v=1/"))
     val seedRawDataS3Bucket = S3Utils.refinePath(config.getString("seedRawDataS3Bucket", "ttd-datprd-us-east-1"))
-    val seedRawDataS3Path = S3Utils.refinePath(config.getString("seedRawDataS3Path", "prod/data/Seed/v=1/SeedId="))
+    val seedRawDataS3Path = S3Utils.refinePath(config.getString("seedRawDataS3Path", "prod/data/Seed/v=1"))
     val seedRawDataRecentVersion = config.getString("seedRawDataRecentVersion", null)
     val policyTableResetSyntheticId = config.getBoolean("policyTableResetSyntheticId", false)
     // conversion data look back days
@@ -92,6 +93,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     var selectedPixelsConfigPath = config.getString("selectedPixelsConfigPath", "s3a://thetradedesk-mlplatform-us-east-1/configdata/prodTest/audience/other/AEM/selectedPixelTrackingTagIds/")
     var useSelectedPixel = config.getBoolean("useSelectedPixel", false)
     var campaignFlightStartingBufferInDays = config.getInt("campaignFlightStartingBufferInDays", 14)
+    var allRSMSeed = config.getBoolean("allRSMSeed", false)
   }
 
   private val policyTableDateFormatter = DateTimeFormatter.ofPattern(audienceVersionDateFormat)
@@ -315,30 +317,38 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM, p
       .join(sampledHouseholdGraph, Seq("TDID"), "outer")
       .cache()
 
-    val startDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.plusDays(Config.campaignFlightStartingBufferInDays))
-    val endDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date)
+    val seedMeta =
+    if (!Config.allRSMSeed) {
+      val startDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.plusDays(Config.campaignFlightStartingBufferInDays))
+      val endDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date)
 
-    val campaignFlight = CampaignFlightDataSet()
-      .readPartition(date)
-      .where('IsDeleted === false
-        && 'StartDateInclusiveUTC.leq(startDateTimeStr)
-        && ('EndDateExclusiveUTC.isNull || 'EndDateExclusiveUTC.gt(endDateTimeStr)))
-      .select('CampaignId)
-      .distinct()
+      val campaignFlight = CampaignFlightDataSet()
+        .readPartition(date)
+        .where('IsDeleted === false
+          && 'StartDateInclusiveUTC.leq(startDateTimeStr)
+          && ('EndDateExclusiveUTC.isNull || 'EndDateExclusiveUTC.gt(endDateTimeStr)))
+        .select('CampaignId)
+        .distinct()
 
-    val campaignSeed = CampaignSeedDataset()
-      .readPartition(date)
+      val campaignSeed = CampaignSeedDataset()
+        .readPartition(date)
 
-    val optInSeed = campaignSeed
-      .join(campaignFlight, Seq("CampaignId"), "inner")
-      .select('SeedId)
-      .distinct()
+      val optInSeed = campaignSeed
+        .join(campaignFlight, Seq("CampaignId"), "inner")
+        .select('SeedId)
+        .distinct()
 
-    val seedMeta = spark.read.parquet(seedDataFullPath)
-      .join(optInSeed, Seq("SeedId"), "inner")
-      .select('SeedId, 'TargetingDataId, coalesce('Count, lit(-1)).alias("Count"), 'Path)
-      .withColumn("TargetingDataId", coalesce('TargetingDataId, lit(-1)))
-      .cache()
+      spark.read.parquet(seedDataFullPath)
+        .join(optInSeed, Seq("SeedId"), "inner")
+        .select('SeedId, 'TargetingDataId, coalesce('Count, lit(-1)).alias("Count"), 'Path)
+        .withColumn("TargetingDataId", coalesce('TargetingDataId, lit(-1)))
+        .cache()
+    } else {
+      spark.read.parquet(seedDataFullPath)
+        .select('SeedId, 'TargetingDataId, coalesce('Count, lit(-1)).alias("Count"), 'Path)
+        .withColumn("TargetingDataId", coalesce('TargetingDataId, lit(-1)))
+        .cache()
+    }
 
     val policyMetaTable = seedMeta
       .as[SeedDetail]
@@ -350,8 +360,8 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM, p
       .filter(e => e.Count < Config.seedProcessLowerThreshold || e.Count > Config.seedProcessUpperThreshold)
       .foreach(e => rsmSeedProcessCount.labels(e.SeedId, "Cutoff").inc())
 
-    val largeSeedData = handleLargeSeedData(policyMetaTable.filter(e => e.Count > Config.seedExtendGraphUpperThreshold && e.Count <= Config.seedProcessUpperThreshold))
-    val smallSeedData = handleSmallSeedData(personGraph, householdGraph, policyMetaTable.filter(e => e.Count >= Config.seedProcessLowerThreshold && e.Count <= Config.seedExtendGraphUpperThreshold))
+    val largeSeedData = handleLargeSeedData(policyMetaTable.filter(e => e.Count > Config.seedExtendGraphUpperThreshold && e.Count <= Config.seedProcessUpperThreshold).map(i => i.Path))
+    val smallSeedData = handleSmallSeedData(personGraph, householdGraph, policyMetaTable.filter(e => e.Count >= Config.seedProcessLowerThreshold && e.Count <= Config.seedExtendGraphUpperThreshold).map(i => i.Path))
 
     val allSeedData = largeSeedData
       .union(smallSeedData._1)
@@ -436,54 +446,43 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM, p
       .withColumn("CrossDeviceVendorId", lit(crossDeviceVendor.id))
   }
 
-  private def retrieveSeedData(policyMetaTable: Array[SeedDetail], isSample: Boolean): DataFrame = {
-    val TDID2Seeds = policyMetaTable.map(record => {
-        try {
-          Log(() => s"reading seed: ${record.SeedId}")
-
-          val seedData = if (isSample)
-            spark.read.parquet(record.Path)
-              .where(samplingFunction('UserId))
-          else
-            spark.read.parquet(record.Path)
-
-          val aggregatedSeedData = seedData
-            .coalesce(seedCoalesceAfterFilter)
-            .select('UserId.alias("TDID"))
-            .withColumn("SeedId", lit(record.SeedId))
-
-          rsmSeedProcessCount.labels(record.SeedId, "Success").inc()
-
-          Some(aggregatedSeedData)
-        } catch {
-          case e: Exception => {
-            rsmSeedProcessCount.labels(record.SeedId, "Failed").inc()
-            println(s"Caught exception ${ExceptionUtils.getStackTrace(e)} on seed ${record.SeedId}")
-            None
-          }
-        }
-      }).filter(_.nonEmpty).map(_.get).reduce(_ unionAll _)
+  private def retrieveSeedData(paths: Array[String], isSample: Boolean): (DataFrame, DataFrame) = {
+    val basePath = "s3://" + Config.seedRawDataS3Bucket + "/" + Config.seedRawDataS3Path
+    val seedDataSet =
+      if (isSample) {
+        spark.read.option("basePath", basePath)
+          .schema(AnnotatedSchemaBuilder.schema[SeedRecord])
+          .parquet(paths: _*)
+          .where(samplingFunction('UserId))
+          .select('UserId.alias("TDID"), 'SeedId)
+      } else {
+        spark.read.option("basePath", basePath)
+          .schema(AnnotatedSchemaBuilder.schema[SeedRecord])
+          .parquet(paths: _*)
+          .select('UserId.alias("TDID"), 'SeedId)
+      }
+    val TDID2Seeds = seedDataSet
       .repartition(Config.bidImpressionRepartitionNum, 'TDID)
       .groupBy('TDID)
       .agg(collect_set('SeedId).alias("SeedIds"))
 
-    TDID2Seeds
+    (TDID2Seeds, seedDataSet)
   }
 
   private val seedDataSchema = new StructType()
     .add("TDID", StringType)
     .add("SeedIds", ArrayType(StringType))
 
-  private def handleLargeSeedData(policyMetaTable: Array[SeedDetail]): DataFrame = {
+  private def handleLargeSeedData(policyMetaTable: Array[String]): DataFrame = {
     if (policyMetaTable.isEmpty) {
       return spark.createDataFrame(spark.sparkContext
         .emptyRDD[Row], seedDataSchema)
     }
     val tempPolicyMetaTable = if (dryRun) policyMetaTable.take(10) else policyMetaTable
-    retrieveSeedData(tempPolicyMetaTable, isSample = true)
+    retrieveSeedData(tempPolicyMetaTable, isSample = true)._1
   }
 
-  private def handleSmallSeedData(personGraph: DataFrame, householdGraph: DataFrame, policyMetaTable: Array[SeedDetail]): (DataFrame, DataFrame, DataFrame) = {
+  private def handleSmallSeedData(personGraph: DataFrame, householdGraph: DataFrame, policyMetaTable: Array[String]): (DataFrame, DataFrame, DataFrame) = {
     if (policyMetaTable.isEmpty) {
       return (spark.createDataFrame(spark.sparkContext
         .emptyRDD[Row], seedDataSchema),
@@ -495,12 +494,12 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM, p
 
     val tempPolicyMetaTable = if (dryRun) policyMetaTable.take(10) else policyMetaTable
 
-    val seedData = retrieveSeedData(tempPolicyMetaTable: Array[SeedDetail], isSample = false).cache()
+    val seedData = retrieveSeedData(tempPolicyMetaTable, isSample = false)
 
-    val personGraphSeedData = readGraphDataAndExtendSeed(seedData, personGraph)(spark)
-    val householdGraphSeedData = readGraphDataAndExtendSeed(seedData, householdGraph)(spark)
+    val personGraphSeedData = readGraphDataAndExtendSeed(seedData._2, personGraph)(spark)
+    val householdGraphSeedData = readGraphDataAndExtendSeed(seedData._2, householdGraph)(spark)
 
-    val sampledSeedData = seedData
+    val sampledSeedData = seedData._1
       .where(samplingFunction('TDID))
 
     (sampledSeedData, personGraphSeedData, householdGraphSeedData)
@@ -511,8 +510,7 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM, p
 
     val groupIdToSeedIds = seedWithGraph
       .groupBy('groupId)
-      .agg(collect_set('SeedIds).alias("SeedIds"))
-      .select('groupId, flatten('SeedIds).alias("SeedIds"))
+      .agg(collect_set('SeedId).alias("SeedIds"))
 
     val graphGroup = graph
       .groupBy('groupId)

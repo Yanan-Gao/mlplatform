@@ -6,3 +6,5 @@ final case class SeedDetail(
                              Count: Long,
                              Path: String
                            )
+
+final case class SeedRecord(SeedId: String, UserId: String)
