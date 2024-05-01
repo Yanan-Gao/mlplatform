@@ -136,6 +136,10 @@ package object data {
     (0 to lookBack.getOrElse(0)).map(i => f"${basePath}/${paddedDatePart(date.minusDays(i), separator = Some("/"))}/*/*/*.gz")
   }
 
+  /**
+   * @param lookBack Default is None (equivalent to 0), which returns 1 path exactly at dateTime.
+   *                 If lookback > 0, function will return (lookback + 1) paths.
+   */
   def generateDataPathsHourly(basePath: String, extGenerator: LocalDateTime => String, dateTime: LocalDateTime, lookBack: Option[Int] = None): Seq[String] = {
     (0 to lookBack.getOrElse(0)).map(i => f"$basePath${extGenerator(dateTime.minusHours(i))}")
   }

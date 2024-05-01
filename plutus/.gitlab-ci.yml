@@ -8,7 +8,7 @@ variables:
   PLUTUS_ASSEMBLY_OUT: "$CI_PROJECT_DIR/plutus/target/scala-2.12/plutus.jar"
   PLUTUS_FEATURES_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/features/"
   PLUTUS_MERGEREQUESTS_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/scripts/mergerequests/$CI_COMMIT_REF_SLUG/"
-  SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+  SCALA_BUILD_IMAGE_2_13_0: "proxy.docker.adsrvr.org/hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
 
 plutus:test:
   image: "$SCALA_BUILD_IMAGE_2_13_0"

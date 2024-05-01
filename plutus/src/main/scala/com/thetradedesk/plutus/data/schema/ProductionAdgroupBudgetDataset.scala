@@ -8,7 +8,7 @@ import java.time.LocalDateTime
 object ProductionAdgroupBudgetDataset {
   val S3PATH = f"${S3Roots.VERTICA_EXPORT_ROOT}/ExportProductionAdGroupBudgetSnapshot/VerticaAws/"
   def S3PATH_GEN = (dateTime: LocalDateTime) => {
-    f"date=${paddedDatePart(dateTime.toLocalDate)}/hour=${dateTime.getHour}"
+    f"date=${paddedDatePart(dateTime.toLocalDate)}/hour=${dateTime.getHour}%02d"
   }
 }
 
