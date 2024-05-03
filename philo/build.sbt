@@ -26,7 +26,7 @@ libraryDependencies ++= Seq(
  // "MrPowers" % "spark-fast-tests" % "2.2.0_0.5.0" % "test"
 
   "com.thetradedesk" %% "geronimo" % "0.2.6-SNAPSHOT",
-  "com.thetradedesk" %% "eldorado-core" % "1.0.72-spark-3.2.1"
+  "com.thetradedesk" %% "eldorado-core" % "1.0.135-spark-3.2.1"
 )
 
 assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
@@ -36,6 +36,7 @@ assemblyMergeStrategy in assembly := {
 //  case PathList("org", "apache", "hadoop", _@_*) => MergeStrategy.discard
   case PathList("org", "apache", "scala", _@_*) => MergeStrategy.discard
   case PathList("org", "apache", "spark", "sql", "execution", _@_*) => MergeStrategy.discard
+  case PathList("META-INF", "services", file) if file.startsWith("io.openlineage.client.transports.TransportBuilder") => MergeStrategy.first
   case PathList("META-INF", _@_*) => MergeStrategy.discard
 
   case _ => MergeStrategy.first

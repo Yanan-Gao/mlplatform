@@ -35,6 +35,7 @@ assemblyMergeStrategy in assembly := {
   //  case PathList("org", "apache", "hadoop", _@_*) => MergeStrategy.discard
   case PathList("org", "apache", "scala", _@_*) => MergeStrategy.discard
   case PathList("org", "apache", "spark", "sql", "execution", _@_*) => MergeStrategy.discard
+  case PathList("META-INF", "services", file) if file.startsWith("io.openlineage.client.transports.TransportBuilder") => MergeStrategy.first
   case PathList("META-INF", _@_*) => MergeStrategy.discard
 
   case _ => MergeStrategy.first
