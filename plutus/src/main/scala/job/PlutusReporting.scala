@@ -9,6 +9,7 @@ import job.ModelInputProcessor.prometheus
 
 import java.time.LocalDate
 
+
 object PlutusReporting {
   val date = config.getDate("date" , LocalDate.now()) //TODO: note this can cause bad things. Date should be required and not linked ot current date.
   val lookBack = config.getInt("daysOfDat" , 1)
