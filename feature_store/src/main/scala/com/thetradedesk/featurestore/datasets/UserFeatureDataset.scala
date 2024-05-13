@@ -1,6 +1,7 @@
 package com.thetradedesk.featurestore.datasets
 
 import com.thetradedesk.featurestore.configs.UserFeatureMergeDefinition
+import com.thetradedesk.featurestore.constants.FeatureConstants
 import com.thetradedesk.featurestore.constants.FeatureConstants.UserFeatureDataPartitionNumbers
 import com.thetradedesk.featurestore.ttdEnv
 import com.thetradedesk.featurestore.utils.PathUtils
@@ -19,9 +20,9 @@ case class UserFeatureDataset(
                              )
   extends LightReadableDataset[UserFeature] with LightWritableDataset[UserFeature] {
   val rootPath: String = userFeatureMergeDefinition.rootPath
-  val dataSetPath: String = PathUtils.concatPath(dataSetPath, ttdEnv)
+  val dataSetPath: String = userFeatureMergeDefinition.dataSetPath
   val defaultNumPartitions: Int = userFeatureMergeDefinition.config.defaultNumPartitions
   val enc: Encoder[UserFeature] = Encoders.product[UserFeature]
   val tt: TypeTag[UserFeature] = typeTag[UserFeature]
-  override val dateFormat: String = "yyyyMMddHH"
+  override val dateFormat: String = UserFeatureMergeDefinition.dateFormat
 }

@@ -16,5 +16,10 @@ object FeatureConstants {
 
   val DefaultMaxDataSizePerRecord = 1024
   val UserFeatureDataPartitionNumbers = 1024
-  val MetaFolder = ".meta"
+  val SchemaFileName = "schema.json"
+
+  val ML_PLATFORM_S3_PATH = "s3a://thetradedesk-mlplatform-us-east-1"
+
+  val SecondsPerHour: Int = 3600
+  val SecondsPerDay: Int = SecondsPerHour * 24
 }

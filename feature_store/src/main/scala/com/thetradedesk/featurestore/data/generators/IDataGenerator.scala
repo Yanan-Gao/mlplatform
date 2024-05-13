@@ -17,6 +17,7 @@ import org.apache.spark.sql.{Column, DataFrame, SparkSession}
 import upickle.default._
 
 import java.time.LocalDateTime
+import scala.collection.Seq
 
 abstract class IDataGenerator(implicit sparkSession: SparkSession, telemetry: UserFeatureMergeJobTelemetry) {
   protected val featureDataLoader = new FeatureDataLoader()
@@ -26,7 +27,7 @@ abstract class IDataGenerator(implicit sparkSession: SparkSession, telemetry: Us
     if (!preValidationResult.success) {
       throw new RuntimeException(s"[Data Generator] data pre validation failed, reason: [${preValidationResult.message}]")
     }
-    val dataSource = readFeatureSource(dateTime, userFeatureMergeDefinition)
+    val dataSource = readFeatureSource(dateTime, userFeatureMergeDefinition).cache()
     val (result, features) = generate(dataSource, userFeatureMergeDefinition)
 
     //    println(result.explain(true))
@@ -35,7 +36,7 @@ abstract class IDataGenerator(implicit sparkSession: SparkSession, telemetry: Us
     val featureSchemaJson = write(features)
     println("feature schema json:")
     println(featureSchemaJson)
-    FSUtils.writeStringToFile(userFeatureMergeDefinition.schemaPath, featureSchemaJson)(spark)
+    FSUtils.writeStringToFile(userFeatureMergeDefinition.schemaPath(dateTime), featureSchemaJson)(spark)
 
     val cachedResult = result.cache()
 
@@ -52,7 +53,7 @@ abstract class IDataGenerator(implicit sparkSession: SparkSession, telemetry: Us
 
     val finalResult = cachedResult.where(length(col(FeatureDataKey)) <= userFeatureMergeDefinition.config.maxDataSizePerRecord)
 
-    val postValidationResult = postValidate(dateTime, finalResult, userFeatureMergeDefinition)
+    val postValidationResult = postValidate(dateTime, dataSource, finalResult, features, userFeatureMergeDefinition)
     if (!postValidationResult.success) {
       throw new RuntimeException(s"[Data Generator] data post validation failed, reason: [${postValidationResult.message}]")
     }
@@ -166,7 +167,7 @@ abstract class IDataGenerator(implicit sparkSession: SparkSession, telemetry: Us
    * @param schema
    * @return
    */
-  protected def postValidate(dateTime: LocalDateTime, dataFrame: DataFrame, userFeatureMergeDefinition: UserFeatureMergeDefinition): Result = {
+  protected def postValidate(dateTime: LocalDateTime, dataSource: DataFrame, result: DataFrame, features: Seq[Feature], userFeatureMergeDefinition: UserFeatureMergeDefinition): Result = {
     Result.succeed()
   }
 }

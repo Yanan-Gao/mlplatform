@@ -10,7 +10,7 @@ import com.thetradedesk.spark.util.HashingUtils.userIsInSample
 import org.apache.spark.sql.functions._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 
-import java.time.LocalDate
+import java.time.{LocalDate, LocalDateTime, ZoneOffset}
 
 package object featurestore {
   var date = config.getDate("date", LocalDate.now())
@@ -40,5 +40,14 @@ package object featurestore {
 
   def shouldTrackTDID(column: Column): Column = {
     column.isNotNullOrEmpty && column =!= doNotTrackTDIDColumn
+  }
+
+  def shouldConsiderTDID(column: Column, rotation: Int, salt: String, rotationUnit: Int): Column = {
+    if (rotation <= 1) {
+      shouldTrackTDID(column) && substring(column, 9, 1) === lit("-")
+    } else {
+      val hit = dateTime.toEpochSecond(ZoneOffset.UTC) / rotationUnit % rotation
+      shouldTrackTDID(column) && substring(column, 9, 1) === lit("-") && (abs(xxhash64(concat(column, lit(salt)))) % lit(rotation) === lit(hit))
+    }
   }
 }

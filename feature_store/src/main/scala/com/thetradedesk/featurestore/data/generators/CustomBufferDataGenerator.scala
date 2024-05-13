@@ -2,11 +2,14 @@ package com.thetradedesk.featurestore.data.generators
 
 import com.thetradedesk.featurestore.configs.{DataType, UserFeatureMergeConfiguration, UserFeatureMergeDefinition}
 import com.thetradedesk.featurestore.constants.FeatureConstants
-import com.thetradedesk.featurestore.constants.FeatureConstants.{BitsOfByte, BytesToKeepAddress, FeatureDataKey}
+import com.thetradedesk.featurestore.constants.FeatureConstants.{BitsOfByte, BytesToKeepAddress, FeatureDataKey, UserIDKey}
+import com.thetradedesk.featurestore.data.generators.CustomBufferDataGenerator.refineDataFrame
 import com.thetradedesk.featurestore.data.metrics.UserFeatureMergeJobTelemetry
-import com.thetradedesk.featurestore.dateTime
+import com.thetradedesk.featurestore.{dateTime, shouldConsiderTDID3}
 import com.thetradedesk.featurestore.entities.Result
 import com.thetradedesk.featurestore.udfs.BinaryOperations.binaryToLongArrayUdf
+import com.thetradedesk.featurestore.utils.SchemaComparer
+import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
@@ -365,6 +368,42 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
       data: Array[Byte] => CustomBufferDataGenerator.read(data, feature, lastFeature).asInstanceOf[T]
     })
   }
+
+  /**
+   * validate data and schema generated
+   *
+   * @param dataFrame
+   * @param schema
+   * @return
+   */
+  override protected def postValidate(dateTime: LocalDateTime, dataSource: DataFrame, result: DataFrame, features: Seq[Feature], userFeatureMergeDefinition: UserFeatureMergeDefinition): Result = {
+    val postValidationResult = super.postValidate(dateTime, dataSource, result, features, userFeatureMergeDefinition)
+    if (!postValidationResult.success) {
+      return postValidationResult
+    }
+
+    val shouldConsiderTDIDUDF = shouldConsiderTDID3(config.getInt("postValidationSampleHit", default = 10000), "fpVq")(_)
+
+    val origin = dataSource.where(shouldConsiderTDIDUDF(col(FeatureConstants.UserIDKey)))
+
+    val other = this.readFromDataFrame(result.where(shouldConsiderTDIDUDF(col(FeatureConstants.UserIDKey))), features, true)
+
+    compareSmallDatasets(refineDataFrame(other), refineDataFrame(origin))
+  }
+
+  private def compareSmallDatasets(actualDS: DataFrame, expectedDS: DataFrame):Result = {
+    if (!SchemaComparer.equals(actualDS.schema, expectedDS.schema, false, false)) {
+      Result.failed("schema mismatch")
+    } else {
+      val a = actualDS.collect()
+      val e = expectedDS.collect()
+      if (!a.sameElements(e)) {
+        Result.failed("data mismatch")
+      } else {
+        Result.succeed()
+      }
+    }
+  }
 }
 
 object CustomBufferDataGenerator {
@@ -479,5 +518,23 @@ object CustomBufferDataGenerator {
       case DataType.Double => byteBuffer.getDouble(index)
       case _ => throw new UnsupportedOperationException(s"type ${dataType}  is not supported")
     }
+  }
+
+  def refineDataFrame(df: DataFrame) : DataFrame = {
+    setNullableState(
+      df
+        .select(df.columns.sorted.map(col): _*)
+        .orderBy(col(UserIDKey).asc)
+    )
+  }
+
+  def setNullableState(df: DataFrame, nullable: Boolean = false, containsNull: Boolean = false): DataFrame = {
+    val schema = df.schema
+    val newSchema = StructType(schema.map {
+      case StructField(c, t: ArrayType, _, m) => StructField(c, ArrayType(t.elementType, containsNull = containsNull), nullable = nullable, m)
+      case StructField(c, t, _, m) => StructField(c, t, nullable = nullable, m)
+    })
+
+    df.sqlContext.createDataFrame(df.rdd, newSchema)
   }
 }

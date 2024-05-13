@@ -1,5 +1,6 @@
 package com.thetradedesk.featurestore.configs
 
+import com.thetradedesk.featurestore.constants.FeatureConstants
 import com.thetradedesk.featurestore.constants.FeatureConstants.UserIDKey
 import com.thetradedesk.featurestore.data.rules.DataValidationRule
 import com.thetradedesk.featurestore.entities.Result
@@ -13,13 +14,14 @@ import java.time.format.DateTimeFormatter
 case class FeatureSourceDefinition(
                                     name: String,
                                     dataSetPath: String,
-                                    rootPath: String,
+                                    rootPath: String = FeatureConstants.ML_PLATFORM_S3_PATH,
                                     features: Array[FeatureDefinition],
                                     idKey: String = UserIDKey,
                                     lookBack: Int = 0,
+                                    lookBackOnDay: Boolean = true,
                                     format: String = "parquet",
-                                    dateFormat: String = "yyyyMMdd",
-                                    dataValidationRule: Option[DataValidationRule] = None
+                                    dataValidationRule: Option[DataValidationRule] = None,
+                                    dataSource: DataSource = DataSource.DailyJob
                                   ) {
   lazy val validate: Result = {
     if (name.isEmpty) {
@@ -36,8 +38,7 @@ case class FeatureSourceDefinition(
     }
   }
 
-  lazy val dateFormatter = DateTimeFormatter.ofPattern(dateFormat)
-  def basePath(dateTime: LocalDateTime): String = PathUtils.concatPath(PathUtils.concatPath(rootPath, dataSetPath), s"${ttdEnv}/date=${dateTime.format(dateFormatter)}")
+  def basePath(dateTime: LocalDateTime): String = PathUtils.concatPath(PathUtils.concatPath(rootPath, dataSetPath), DataSource.basePath(this.dataSource, dateTime))
 }
 
 object FeatureSourceDefinition {
