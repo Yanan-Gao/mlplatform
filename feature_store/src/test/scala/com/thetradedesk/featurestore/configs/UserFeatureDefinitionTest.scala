@@ -22,7 +22,25 @@ class UserFeatureDefinitionTest extends TTDSparkTest {
 
     val featureSourceDefinition1 = FeatureSourceDefinition("fs1", "s1", "p1", Array(featureDefinition1, featureDefinition2))
     val featureSourceDefinition2 = FeatureSourceDefinition("fs2", "s2", "p2", Array(featureDefinition3, featureDefinition4))
-    val userFeatureMergeDefinition1 = UserFeatureMergeDefinition("ufmd1", "s3", "p3", Array(featureSourceDefinition1, featureSourceDefinition2))
+    val userFeatureMergeDefinition1 = UserFeatureMergeDefinition("ufmd1", "s3", Array(featureSourceDefinition1, featureSourceDefinition2))
+
+    val json = write(userFeatureMergeDefinition1)
+
+    println(json)
+
+    val userFeatureMergeDefinition2 = read[UserFeatureMergeDefinition](json)
+
+    assert(userFeatureMergeDefinition2.validate.success, userFeatureMergeDefinition2.validate.message)
+  }
+
+  test("Construct user feature merge definition and validate for production") {
+    val featureDefinition1 = FeatureDefinition("seenCount1D", DataType.Int)
+    val featureDefinition2 = FeatureDefinition("avgCost1D", DataType.Float)
+    val featureDefinition3 = FeatureDefinition("totalCost1D", DataType.Float)
+    val featureDefinition4 = FeatureDefinition("maxFloorPrice", DataType.Float)
+
+    val featureSourceDefinition1 = FeatureSourceDefinition("bidimp", s"features/feature_store/prodTest/user_bid_impression_feature/v=1", features = Array(featureDefinition1, featureDefinition2, featureDefinition3, featureDefinition4))
+    val userFeatureMergeDefinition1 = UserFeatureMergeDefinition("userFeatureMergeDef", featureSourceDefinitions = Array(featureSourceDefinition1))
 
     val json = write(userFeatureMergeDefinition1)
 

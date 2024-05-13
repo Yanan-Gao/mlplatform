@@ -24,7 +24,7 @@ class FeatureDataLoader(implicit telemetry: UserFeatureMergeJobTelemetry) {
    */
   def readFeatureSourceData(dateTime: LocalDateTime,
                             userFeatureSourceDefinition: FeatureSourceDefinition)(implicit spark: SparkSession): DataFrame = {
-    var paths = (0 to userFeatureSourceDefinition.lookBack).map(x => userFeatureSourceDefinition.basePath(dateTime.minusDays(x)))
+    var paths = (0 to userFeatureSourceDefinition.lookBack).map(x => userFeatureSourceDefinition.basePath(if (userFeatureSourceDefinition.lookBackOnDay) dateTime.minusDays(x) else dateTime.minusHours(x)))
 
     if (!validatePaths(userFeatureSourceDefinition.name, userFeatureSourceDefinition.dataValidationRule, paths)) {
       throw new RuntimeException(s"[Features Data Loading] ${userFeatureSourceDefinition.name} data is missing")
