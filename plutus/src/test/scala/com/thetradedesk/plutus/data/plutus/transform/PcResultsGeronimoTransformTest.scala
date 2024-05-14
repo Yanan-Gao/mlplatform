@@ -14,10 +14,13 @@ import com.thetradedesk.streaming.records.rtb.FeeFeatureUsageLogBackingData
 class PcResultsGeronimoTransformTest extends TTDSparkTest {
 
   test("PcResults + Geronimo Transform test for schema/column correctness") {
+    val janusVariantMap = Map("model1" -> "variant1")
+
     val geronimoDataset = Seq (
       bidsImpressionsMock(),
       bidsImpressionsMock(null),
-      bidsImpressionsMock(Seq {feeFeatureUsageLogMock})
+      bidsImpressionsMock(Seq {feeFeatureUsageLogMock}),
+      bidsImpressionsMock(JanusVariantMap = Some(janusVariantMap))
     ).toDS().as[BidsImpressionsSchema]
     val pcResultsDataset = Seq(pcResultsLogMock.copy()).toDS().as[PlutusLogsData]
     val mbtwDataset = Seq(mbtwDataMock.copy()).toDS().as[MinimumBidToWinData]
@@ -29,11 +32,12 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
       joinGeronimoPcResultsLog(geronimoDataset, pcResultsDataset, mbtwDataset,
         privateContractDataSet, adFormatDataSet, productionAdgroupBudgetDataset)
 
-    assert(mergedDataset.count() == 3, "Output rows")
+    assert(mergedDataset.count() == 4, "Output rows")
     assert(pcResultsAbsentDataset.count() == 0, "Absent rows (from PCResultsLog)")
     assert(mbtwAbsentDataset.count() == 0, "Absent rows (from MBTW Dataset)")
 
-    val res = mergedDataset.collectAsList().get(0)
+    val resultList = mergedDataset.collectAsList()
+    val res = resultList.get(0)
     assert(res.LossReason == mbtwDataMock.LossReason, "Validating mbtw Join")
 
     // test for channel
@@ -55,8 +59,13 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
     // Test for Fee Amount column
     assert(res.FeeAmount == None, "Validating that an empty feeFeatureUsage list results in a none value")
 
-    assert(mergedDataset.collectAsList().get(1).FeeAmount == None, "Validating that null feeFeatureUsage results in a none value\"")
-    assert(mergedDataset.collectAsList().get(2).FeeAmount == Some(feeFeatureUsageLogMock.FeeAmount), "Validating that the actual feeFeatureUsage.FeeAmount value is propogated")
+    assert(resultList.get(1).FeeAmount == None, "Validating that null feeFeatureUsage results in a none value\"")
+    assert(resultList.get(2).FeeAmount == Some(feeFeatureUsageLogMock.FeeAmount), "Validating that the actual feeFeatureUsage.FeeAmount value is propogated")
+
+    val res4 = resultList.get(3)
+    assert(res4.IsUsingJanus == true)
+    assert(res4.JanusVariantMap.isDefined)
+    assert(res4.JanusVariantMap.get.equals(janusVariantMap))
   }
 
   test("PcResultsRawLogSchema -> PlutusLogsData test") {
