@@ -101,6 +101,7 @@ case class PcResultsMergedSchema(
 
                                   DetailedMarketType: String, // from PrivateContractRecord
 
+                                  JanusVariantMap: Option[Map[String, String]],
                                   IsUsingJanus: Boolean,
 
                                   // Coalesced AliasedSupplyPublisherId and SupplyVendorPublisherId

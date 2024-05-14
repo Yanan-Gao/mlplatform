@@ -35,7 +35,8 @@ object MockData {
     RawLostBidData(LogEntryTime, BidRequestId, CreativeId, AdGroupId, CampaignId, PrivateContractId, PartnerId, AdvertiserId, CampaignFlightId, SupplyVendorLossReason, LossReason, WinCPM, SupplyVendor, BidRequestTime, mbtw)
 
 
-  def bidsImpressionsMock(FeeFeatureUsage: Seq[FeeFeatureUsageLogBackingData] = Seq()) =
+  def bidsImpressionsMock(FeeFeatureUsage: Seq[FeeFeatureUsageLogBackingData] = Seq(),
+                          JanusVariantMap: Option[Map[String, String]] = None) =
     BidsImpressionsSchema(
       // bidrequest cols
       BidRequestId = "1",
@@ -146,7 +147,7 @@ object MockData {
       MatchedSegments = Seq[Long](),
       ExpectedValue = Option(200d),
       RPacingValue = Option(0.5),
-      JanusVariantMap = None,
+      JanusVariantMap = JanusVariantMap,
       UserAgeInDays = Option(20),
 
       AdvertiserCostInUSD = None,
