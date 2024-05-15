@@ -1,10 +1,10 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.{date, featuresJsonPath, shouldConsiderTDID2, ttdEnv}
+import com.thetradedesk.audience.{date, featuresJsonSourcePath, shouldConsiderTDID2, ttdEnv}
 import com.thetradedesk.audience.datasets.{S3Roots, SeenInBiddingV2DeviceDataSet}
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, shiftMod}
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, readModelFeatures, shiftMod}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -27,7 +27,7 @@ object OSFamily extends Enumeration {
 
 object Utils {
   def downSampleByBrowserOperatingSystemFamily(df: Dataset[_], numBuckets: Int, sampledBuckets: Int, isDataHashed: Boolean, featuresJson: String) = {
-    val cardinality = ModelFeatureTransform.getCardinalityMap(featuresJson)
+    val cardinality = ModelFeatureTransform.getCardinalityMap(readModelFeatures(featuresJson))
     val chrome = if (isDataHashed) shiftMod(Browser.Chrome.id, cardinality.getOrElse("Browser", 0)) else Browser.Chrome.id
     val android = if (isDataHashed) shiftMod(OSFamily.Android.id, cardinality.getOrElse("OperatingSystemFamily", 0)) else OSFamily.Android.id
 
@@ -78,7 +78,7 @@ object DeviceBrowserMembershipGenerator {
 
     Config.idRetentionSampledBuckets.map(sampledBucket => (
       sampledBucket,
-      Utils.downSampleByBrowserOperatingSystemFamily(bidsImpressions, Config.idRetentionNumBuckets, sampledBucket, false, featuresJsonPath)
+      Utils.downSampleByBrowserOperatingSystemFamily(bidsImpressions, Config.idRetentionNumBuckets, sampledBucket, false, featuresJsonSourcePath)
         .select('TDID)
     )).toMap
   }
@@ -131,6 +131,6 @@ object DeviceBrowserModelInputSampler {
   }
 
   def run(modelInput: DataFrame) = {
-    Utils.downSampleByBrowserOperatingSystemFamily(modelInput, Config.idRetentionNumBuckets, Config.idRetentionSampledBuckets, true, featuresJsonPath)
+    Utils.downSampleByBrowserOperatingSystemFamily(modelInput, Config.idRetentionNumBuckets, Config.idRetentionSampledBuckets, true, featuresJsonSourcePath)
   }
 }

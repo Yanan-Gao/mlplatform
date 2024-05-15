@@ -6,13 +6,14 @@ import com.thetradedesk.audience.datasets.{CrossDeviceVendor, _}
 import com.thetradedesk.audience.sample.WeightSampling.{getLabels, negativeSampleUDFGenerator, positiveSampleUDFGenerator, zipAndGroupUDFGenerator}
 import com.thetradedesk.audience.transform.ContextualTransform.generateContextualFeatureTier1
 import com.thetradedesk.audience.transform.ExtendArrayTransforms.seedIdToSyntheticIdMapping
-import com.thetradedesk.audience.{dateTime, featuresJsonPath, shouldConsiderTDID3, ttdEnv, userDownSampleBasePopulation}
+import com.thetradedesk.audience.{dateTime, featuresJsonDestPath, featuresJsonSourcePath, shouldConsiderTDID3, ttdEnv, userDownSampleBasePopulation}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, readModelFeatures, loadParquetData}
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
+import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.{Column, DataFrame, Row, SaveMode}
 import org.apache.spark.sql.expressions.Window
@@ -72,7 +73,13 @@ object AudienceModelInputGeneratorJob {
         result
       }
 
-      val resultSet = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](dataset, featuresJsonPath)
+      val rawJson = readModelFeatures(featuresJsonSourcePath)
+      // write the rawJson to destination if present.
+      if (featuresJsonDestPath != null && rawJson != null) {
+        FSUtils.writeStringToFile(featuresJsonDestPath, rawJson)(spark)
+      }
+
+      val resultSet = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](dataset, rawJson)
         .withColumn("SplitRemainder", xxhash64(concat('GroupId, lit(AudienceModelInputGeneratorConfig.saltToSplitDataset))) % AudienceModelInputGeneratorConfig.validateDatasetSplitModule)
         .withColumn("SubFolder",
           when('SplitRemainder === lit(SubFolder.Val.id), SubFolder.Val.id)
@@ -194,7 +201,7 @@ abstract class AudienceModelInputGenerator(name: String) {
       rawLabels.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/rawLabels/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
       refinedLabels.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/refinedLabels/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
       roughResult.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/roughResult/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
-    
+
     }
 
     extendFeatures(refineResult(roughResult))
@@ -278,7 +285,7 @@ abstract class AudienceModelInputGenerator(name: String) {
       .cache()
 
     val sampledBidsImpressionsKeys = ApplyNTouchOnSameTdid(
-      bidsImpressionsLong.select('BidRequestId, 'TDID, 'CampaignId, 'LogEntryTime), 
+      bidsImpressionsLong.select('BidRequestId, 'TDID, 'CampaignId, 'LogEntryTime),
       Ntouch, tdidTouchSelection)
       .cache()
 
@@ -346,7 +353,7 @@ abstract class AudienceModelInputGenerator(name: String) {
       )
 
     // val labelDatasetSize = (labels.count()*(1000000.0/config.getInt(s"userDownSampleHitPopulation${name}", default = 1000000))).toLong
- 
+
     val aboveThresholdPolicyTable = policyTable
       .filter(e => e.ActiveSize * downSampleFactor >= AudienceModelInputGeneratorConfig.positiveSampleLowerThreshold)
 
@@ -379,7 +386,7 @@ abstract class AudienceModelInputGenerator(name: String) {
 /**
  * This class is used to generate model training samples for first party pixel model
  * using seenInBidding dataset
- 
+
  */
 object AEMSIBInputGenerator extends AudienceModelInputGenerator("AEMSIB") {
 

@@ -1,12 +1,12 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.datasets._
-import com.thetradedesk.audience.featuresJsonPath
+import com.thetradedesk.audience.featuresJsonSourcePath
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.audience.utils.OnlineLogsParser
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.schemas.{BidRequestDataset, GeronimoBidRequestRecord}
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, readModelFeatures}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -157,7 +157,7 @@ object RSMMonitoringDataGenerator extends AudienceModelMonitoringDataGenerator {
       .join(bidRequests, Seq("AvailableBidRequestId"), "inner")
       .join(bidImpressions, Seq("BidRequestId"), "inner")
 
-    val dataset = ModelFeatureTransform.modelFeatureTransform[AudienceModelMonitoringRecord](monitoringData, featuresJsonPath)
+    val dataset = ModelFeatureTransform.modelFeatureTransform[AudienceModelMonitoringRecord](monitoringData, readModelFeatures(featuresJsonSourcePath))
 
     (dataset, parsedOnlineLogs)
   }

@@ -11,6 +11,7 @@ import org.apache.spark.sql.catalyst.expressions.XxHash64Function
 import org.apache.spark.sql.functions._
 import org.apache.spark.unsafe.types.UTF8String
 
+import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, LocalDateTime}
 
 package object audience {
@@ -20,6 +21,7 @@ package object audience {
   val trainSetDownSampleFactor = config.getInt("trainSetDownSampleFactor", default = 2)
   val sampleHit = config.getString("sampleHit", "0")
   val s3Client = AmazonS3ClientBuilder.standard.withRegion(Regions.US_EAST_1).build
+  var modelName = config.getString("modelName", "RSM")
 
   val userDownSampleBasePopulation = config.getInt("userDownSampleBasePopulation", default = 1000000)
   val userDownSampleHitPopulation = config.getInt("userDownSampleHitPopulation", default = 10000)
@@ -38,7 +40,8 @@ package object audience {
 
   val dryRun = config.getBoolean("dryRun", false)
 
-  val featuresJsonPath = config.getString("featuresJsonPath", default = "s3://thetradedesk-mlplatform-us-east-1/features/data/RSM/v=1/prod/schemas/features.json")
+  val featuresJsonSourcePath = "/features.json"
+  val featuresJsonDestPath = s"s3://thetradedesk-mlplatform-us-east-1/configdata/${ttdEnv}/audience/schema/${modelName}/v=1/${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}/features.json"
 
   def shouldConsiderTDID(symbol: Symbol) = {
     shouldTrackTDID(symbol) && substring(symbol, 9, 1) === lit("-") && userIsInSampleUDF(symbol, lit(userDownSampleBasePopulation), lit(userDownSampleHitPopulation))
