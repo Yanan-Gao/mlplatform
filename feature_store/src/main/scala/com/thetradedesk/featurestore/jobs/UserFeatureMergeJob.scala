@@ -5,6 +5,7 @@ import com.thetradedesk.featurestore.constants.FeatureConstants
 import com.thetradedesk.featurestore.data.generators.CustomBufferDataGenerator
 import com.thetradedesk.featurestore.data.metrics.UserFeatureMergeJobTelemetry
 import com.thetradedesk.featurestore.datasets.{UserFeature, UserFeatureDataset}
+import com.thetradedesk.featurestore.utils.FileHelper
 import com.thetradedesk.featurestore.{date, dateTime}
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -32,7 +33,7 @@ object UserFeatureMergeJob {
 
   def runETLPipeline(): Unit = {
     // step 1: collect feature definitions
-    val definition = FSUtils.readStringFromFile(getClass.getResource(Config.UserFeatureMergeDefinitionPath).getPath)(spark)
+    val definition = FileHelper.readStringFromFile(Config.UserFeatureMergeDefinitionPath)
     val userFeatureMergeDefinition = read[UserFeatureMergeDefinition](definition)
     // step 2: join features, generate feature data (byte array) <multi data generator supported> and feature schema (verify data length at the same time)
     val (df, schema) = new CustomBufferDataGenerator()(spark, telemetry).generate(dateTime, userFeatureMergeDefinition)
