@@ -1,5 +1,8 @@
 package com.thetradedesk.kongming.datasets
 
+import com.thetradedesk.kongming.{BaseFolderPath, MLPlatformS3Root}
+import com.thetradedesk.spark.datasets.core.{GeneratedDataSet, Parquet}
+
 
 final case class DailyAttributionRecord(
                                         AttributedEventId: String,
@@ -28,3 +31,21 @@ case class DailyAttributionDataset(experimentOverride: Option[String] = None) ex
   s3DatasetPath = "dailyattribution/v=1",
   experimentOverride = experimentOverride
 )
+
+
+final case class DailyAttributionEventsRecord(
+                                               BidRequestId: String,
+                                               AdvertiserId: String,
+                                               CampaignId: String,
+                                               AdGroupId: String,
+                                               Target: Int,
+                                               Revenue: Option[BigDecimal]
+                                       )
+
+case class DailyAttributionEventsDataset(experimentOverride: Option[String] = None)
+  extends DateSplitPartitionedS3Dataset[DailyAttributionEventsRecord](
+    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/dailyattributionevents/v=1",
+    fileFormat = Parquet,
+    experimentOverride = experimentOverride
+  ) {
+}

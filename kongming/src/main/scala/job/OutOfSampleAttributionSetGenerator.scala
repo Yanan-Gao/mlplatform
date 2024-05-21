@@ -33,10 +33,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
   }
 
-  object Config {
-    val ImpressionLookBack = config.getInt("OutOfSampleAttributeSetGenerator.ImpressionLookBack", 3)
-    val AttributionLookBack = config.getInt("OutOfSampleAttributeSetGenerator.AttributionLookBack", 7)
-  }
+
 
   final case class AttributionBidFeedbackRecord(
                                                  BidRequestId: String,

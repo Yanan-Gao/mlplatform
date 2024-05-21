@@ -1,39 +1,26 @@
 package job
 
-import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.geronimo.shared.schemas.BidFeedbackDataset
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
+import com.thetradedesk.geronimo.shared.loadParquetData
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.datalake.ClickTrackerDataSetV5
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
-import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider, environment}
+import com.thetradedesk.spark.util.TTDConfig.defaultCloudProvider
 import com.thetradedesk.spark.sql.SQLFunctions._
-import com.thetradedesk.spark.util.ProdTesting
 import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
 
-object DailyOnlineTestDataset extends KongmingBaseJob {
+object DailyFeedbackSignals extends KongmingBaseJob {
 
-  override def jobName: String = "DailyOnlineTestDataset"
+  override def jobName: String = "DailyFeedbackSignals"
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
-    environment = ProdTesting
-
-    val startDate = config.getDate("startDate" , LocalDate.of(2023,10,16))
-    val endDate = config.getDate("endDate", LocalDate.now())
-
     val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
     val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(date)
     val minimalPolicy = getMinimalPolicy(adGroupPolicy, adGroupPolicyMapping)
-
-    // daily bids impressions
-    val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
-    val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, source = Some(GERONIMO_DATA_SOURCE))
-    val dailyBidsImpressions = multiLevelJoinWithPolicy[BidsImpressionsSchema](bidsImpressions, minimalPolicy, joinType = "left_semi")
-    val impRowCount = DailyBidsImpressionsDataset().writePartition(dailyBidsImpressions, date, Some(partCount.DailyBidsImpressions))
 
     // daily bids feedbacks
     val bidfeedback = loadParquetData[DailyBidFeedbackRecord](
@@ -47,18 +34,16 @@ object DailyOnlineTestDataset extends KongmingBaseJob {
     // daily clicks
     val clicks = ClickTrackerDataSetV5(defaultCloudProvider).readDate(date).selectAs[DailyClickRecord]
     val dailyClicks = multiLevelJoinWithPolicy[DailyClickRecord](clicks, minimalPolicy, joinType = "left_semi")
-    val clickRowCount = DailyClickDataset().writePartition(dailyClicks, date, Some(10))
+    val clickRowCount = DailyClickDataset().writePartition(dailyClicks, date, Some(1))
 
     // daily attributed events and results
     val attributedEvent = AttributedEventDataSet().readDate(date).selectAs[AttributedEventRecord]
     val filteredAttributedEvent = multiLevelJoinWithPolicy[AttributedEventRecord](attributedEvent, minimalPolicy, joinType = "left_semi")
       .filter($"AttributedEventTypeId".isin(List("1", "2"): _*))
       .withColumn("AttributedEventLogEntryTime", to_timestamp(col("AttributedEventLogEntryTime")).as("AttributedEventLogEntryTime"))
-      .filter(to_date($"AttributedEventLogEntryTime") >= lit(startDate))
-      .filter(to_date($"AttributedEventLogEntryTime") <= lit(endDate))
       .selectAs[AttributedEventRecord]
     val attributedEventResult = AttributedEventResultDataSet().readDate(date)
-      .filter($"AttributionMethodId".isin(List("0", "1", "2"): _*))
+      .filter($"AttributionMethodId".isin(List("0", "1"): _*))
       .selectAs[AttributedEventResultRecord]
     val dailyAttribution = filteredAttributedEvent.join(
       attributedEventResult.withColumn("ConversionTrackerLogEntryTime", to_timestamp(col("ConversionTrackerLogEntryTime")).as("ConversionTrackerLogEntryTime")),
@@ -67,7 +52,7 @@ object DailyOnlineTestDataset extends KongmingBaseJob {
     ).selectAs[DailyAttributionRecord]
     val attrRowCount = DailyAttributionDataset().writePartition(dailyAttribution, date, Some(1))
 
-    Array(impRowCount, bfRowCount, clickRowCount, attrRowCount)
+    Array(bfRowCount, clickRowCount, attrRowCount)
 
   }
 }
