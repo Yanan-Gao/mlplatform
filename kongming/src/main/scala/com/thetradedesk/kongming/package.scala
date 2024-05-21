@@ -43,6 +43,11 @@ package object kongming {
   val JobExperimentName = config.getStringOption("jobExperimentName")
   val ExperimentName = config.getStringOption("ttd.experiment")
 
+  object Config {
+    val ImpressionLookBack = config.getInt("OutOfSampleAttributeSetGenerator.ImpressionLookBack", 3)
+    val AttributionLookBack = config.getInt("OutOfSampleAttributeSetGenerator.AttributionLookBack", 7)
+  }
+
   def getJobNameWithExperimentName(jobName: String): String = {
     if (JobExperimentName.isEmpty) jobName else s"Experiment=$JobExperimentName-$jobName"
   }
@@ -121,8 +126,8 @@ package object kongming {
       partCount.DailyConversion = 100
       partCount.DailyNegativeSampledBidRequest = 100
       partCount.DailyPositiveBidRequest = 10
-      partCount.trainSet = 500
-      partCount.valSet = 100
+      partCount.trainSet = 100
+      partCount.valSet = 20
       partCount
     }
     case _ => new PartitionCount
