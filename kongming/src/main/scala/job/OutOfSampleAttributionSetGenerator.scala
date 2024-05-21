@@ -27,10 +27,14 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
     val scoreDate = date.minusDays(delayNDays)
 
     val attributionSet = generateAttributionSet(scoreDate)(getPrometheus)
-    val numRows = OutOfSampleAttributionDataset(delayNDays).writePartition(attributionSet, scoreDate, Some(200))
 
-    Array(numRows)
+    val trackedAttributionSet = attributionSet.filter($"IsTracked" === lit(1)).selectAs[OutOfSampleAttributionRecord]
+    val untrackedAttributionSet = attributionSet.filter($"IsTracked" =!= lit(1)).selectAs[OutOfSampleAttributionRecord]
 
+    val numTrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(trackedAttributionSet, scoreDate, "tracked", Some(200))
+    val numUntrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(untrackedAttributionSet, scoreDate, "untracked", Some(200))
+
+    Array(numTrackedRows, numUntrackedRows)
   }
 
   object Config {
@@ -135,7 +139,8 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
     val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(scoreDate)
     val policy = getMinimalPolicy(adGroupPolicy, adGroupPolicyMapping).cache()
 
-    val scoringSet = DailyOfflineScoringDataset().readRange(scoreDate.plusDays(1), scoreDate.plusDays(Config.ImpressionLookBack), isInclusive=true)
+    val scoringSet = OldDailyOfflineScoringDataset().readRange(scoreDate.plusDays(1), scoreDate.plusDays(Config.ImpressionLookBack), isInclusive=true)
+
     val impressionsToScore = multiLevelJoinWithPolicy[BidRequestsWithConfigValue](
       scoringSet.withColumnRenamed("AdGroupId", "AdGroupIdInt").withColumnRenamed("AdGroupIdStr", "AdGroupId")
         .withColumnRenamed("CampaignId", "CampaignIdInt").withColumnRenamed("CampaignIdStr", "CampaignId")
@@ -154,9 +159,12 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
     val parquetSelectionTabular = rawOOS.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqFields)
 
-    rawOOS
-      .select(parquetSelectionTabular: _*)
-      .selectAs[OutOfSampleAttributionRecord]
+    val testSet = rawOOS
+        .select(parquetSelectionTabular: _*)
+        .selectAs[OutOfSampleAttributionRecord]
 
+    val campaignsWithPosSamples = testSet.filter('Target === lit(1)).select('CampaignId).distinct
+    testSet.join(broadcast(campaignsWithPosSamples), Seq("CampaignId"), "left_semi")
+      .selectAs[OutOfSampleAttributionRecord]
   }
 }

@@ -1,7 +1,7 @@
 package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.spark.sql.SQLFunctions._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyRecord, BidsImpressionsSchema, DailyOfflineScoringRecord, UnifiedAdGroupFeatureDataSet,AdvertiserFeatureDataSet}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyMappingRecord, AdGroupPolicyRecord, BidsImpressionsSchema, OldDailyOfflineScoringRecord, UnifiedAdGroupFeatureDataSet,AdvertiserFeatureDataSet}
 import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -26,7 +26,7 @@ object OfflineScoringSetTransform {
                      bidsImpressions: Dataset[BidsImpressionsSchema],
                      selectionTabular: Array[Column]
                     )
-                    (implicit prometheus: PrometheusClient): Dataset[DailyOfflineScoringRecord] = {
+                    (implicit prometheus: PrometheusClient): Dataset[OldDailyOfflineScoringRecord] = {
     val bidsImp = bidsImpressions.filter('IsImp)
       //Assuming ConfigKey will always be adgroupId.
       .withColumn("AdFormat",concat(col("AdWidthInPixels"),lit('x'), col("AdHeightInPixels")))
@@ -36,7 +36,6 @@ object OfflineScoringSetTransform {
       .withColumn("Browser", $"Browser.value")
       .withColumn("InternetConnectionType", $"InternetConnectionType.value")
       .withColumn("IsTracked", when($"UIID".isNotNullOrEmpty && $"UIID" =!= lit("00000000-0000-0000-0000-000000000000"), lit(1)).otherwise(0))
-      .withColumn("IsUID2", when(substring($"UIID", 9, 1) =!= lit("-"), lit(1)).otherwise(0))
 
     val bidsImpContextual = ContextualTransform.generateContextualFeatureTier1(
       bidsImp.select("BidRequestId","ContextualCategories")
@@ -52,6 +51,6 @@ object OfflineScoringSetTransform {
       .join(dimAudienceId, Seq("CampaignId", "AdvertiserId"), "left")
       .join(dimIndustryCategoryId, Seq("AdvertiserId"), "left")
       .select(selectionTabular: _*)
-      .as[DailyOfflineScoringRecord]
+      .selectAs[OldDailyOfflineScoringRecord]
   }
 }

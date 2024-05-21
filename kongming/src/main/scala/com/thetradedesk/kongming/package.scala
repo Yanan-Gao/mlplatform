@@ -92,7 +92,7 @@ package object kongming {
 
   class PartitionCount {
     var AdGroupPolicy = 1
-    var AdGroupPolicyMapping = 100
+    var AdGroupPolicyMapping = 1
     var DailyConversion = 2000
     var DailyBidRequest = 5000
     var DailyBidsImpressions = 10000

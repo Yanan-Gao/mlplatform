@@ -12,7 +12,6 @@ final case class TrainSetFeaturesRecord (
                                           Revenue: Option[BigDecimal],
                                           IsInTrainSet: Boolean,
                                           IsTracked: Int,
-                                          IsUID2: Int,
 
                                           SupplyVendor: Option[String],
                                           SupplyVendorPublisherId: Option[String],

@@ -34,7 +34,7 @@ libraryDependencies ++= Seq(
  // "MrPowers" % "spark-fast-tests" % "2.2.0_0.5.0" % "test"
 
   "com.thetradedesk" %% "geronimo" % "0.2.6-SNAPSHOT",
-  "com.thetradedesk" %% "eldorado-core" % "1.0.135-spark-3.2.1",
+  "com.thetradedesk" %% "eldorado-core" % "1.0.155-spark-3.2.1",
 )
 
 assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)

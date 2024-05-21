@@ -313,7 +313,6 @@ object TrainSetTransformation {
       .withColumn("Browser", $"Browser.value")
       .withColumn("InternetConnectionType", $"InternetConnectionType.value")
       .withColumn("IsTracked", when($"UIID".isNotNullOrEmpty && $"UIID" =!= lit("00000000-0000-0000-0000-000000000000"), lit(1)).otherwise(0))
-      .withColumn("IsUID2", when(substring($"UIID", 9, 1) =!= lit("-"), lit(1)).otherwise(0))
       .withColumnRenamed("ConfigValue", "AdGroupId")
       .cache()
 

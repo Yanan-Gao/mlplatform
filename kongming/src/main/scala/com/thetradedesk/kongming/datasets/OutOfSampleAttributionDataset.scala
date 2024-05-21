@@ -1,5 +1,6 @@
 package com.thetradedesk.kongming.datasets
 
+import com.thetradedesk.kongming.{BaseFolderPath, MLPlatformS3Root}
 import com.thetradedesk.spark.datasets.core._
 
 final case class OutOfSampleAttributionRecord(
@@ -11,14 +12,13 @@ final case class OutOfSampleAttributionRecord(
                                                CampaignIdStr: String,
                                                AdvertiserIdStr: String,
                                                IsTracked: Int,
-                                               IsUID2: Int,
 
                                                Target: Int,
                                                Revenue: Option[BigDecimal],
 
                                                SupplyVendor: Option[Int],
                                                SupplyVendorPublisherId: Option[Int],
-                                               ImpressionPlacementId: Option[String],
+                                               //ImpressionPlacementId: Option[String],
                                                Site: Option[Int],
                                                AdFormat: Int,
 
@@ -115,8 +115,8 @@ final case class OutOfSampleAttributionRecord(
                                              )
 
 case class OutOfSampleAttributionDataset(delay_n_days: Int, experimentOverride: Option[String] = None)
-  extends KongMingDataset[OutOfSampleAttributionRecord](
-    s3DatasetPath =  s"outofsampleattributionset/v=1/delay=${delay_n_days}D",
+  extends DateSplitPartitionedS3Dataset[OutOfSampleAttributionRecord](
+    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/outofsampleattributionset/v=1/delay=${delay_n_days}D",
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
 )
