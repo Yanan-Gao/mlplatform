@@ -12,7 +12,8 @@ case class IntermediateTrainDataWithFeatureDataset(split:String, experimentOverr
   "biddate" -> ColumnExistsInDataSet,
   fileFormat = Parquet,
   experimentOverride = experimentOverride,
-  writeThroughHdfs = writeThroughHdfs
+  writeThroughHdfs = writeThroughHdfs,
+  throwIfSourceEmpty = split != "untracked"
 ){
   override def toStoragePartition1(value1: LocalDate): String = value1.format(DefaultTimeFormatStrings.dateTimeFormatter)
   override def toStoragePartition2(value2: LocalDate): String = value2.format(DefaultTimeFormatStrings.dateTimeFormatter)

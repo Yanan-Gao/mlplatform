@@ -26,21 +26,20 @@ object Features {
                                                 }
                                               }
 
+  // Useful fields for analysis/offline attribution that will be propagated to the full production trainset
   val directFields = Array(
-    ModelFeature("ImpressionPlacementId", STRING_FEATURE_TYPE, Some(500002), 1)
-  )
-
-  // Useful fields for analysis/offline attribution. Available everywhere except for the production trainset to minimise
-  // data size
-  val keptFields = Array(
-    ModelFeature("BidRequestId", STRING_FEATURE_TYPE, None, 0),
     ModelFeature("AdGroupId", STRING_FEATURE_TYPE, None, 0),
     ModelFeature("CampaignId", STRING_FEATURE_TYPE, None, 0),
     ModelFeature("AdvertiserId", STRING_FEATURE_TYPE, None, 0),
+    //ModelFeature("ImpressionPlacementId", STRING_FEATURE_TYPE, Some(500002), 1)
+  )
+
+  // Useful fields for analysis/offline attribution that will not be propagated to the full production trainset to minimise data size
+  val keptFields = Array(
+    ModelFeature("BidRequestId", STRING_FEATURE_TYPE, None, 0),
     ModelFeature("IsTracked", INT_FEATURE_TYPE, None, 0),
-    ModelFeature("IsUID2", INT_FEATURE_TYPE, None, 0),
-    ModelFeature("IndustryCategoryId",INT_FEATURE_TYPE,None,0),
-    ModelFeature("AudienceId",ARRAY_INT_FEATURE_TYPE,Some(30),0 )
+    ModelFeature("IndustryCategoryId", INT_FEATURE_TYPE, None, 0),
+    ModelFeature("AudienceId", ARRAY_INT_FEATURE_TYPE, Some(30), 0)
   )
 
   val modelWeights: Array[ModelFeature] = Array(ModelFeature("Weight", FLOAT_FEATURE_TYPE, None, 0))

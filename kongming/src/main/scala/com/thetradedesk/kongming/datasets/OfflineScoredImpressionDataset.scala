@@ -12,6 +12,6 @@ final case class OfflineScoredImpressionRecord(
 
 
 case class OfflineScoredImpressionDataset(modelDate: LocalDate) extends KongMingDataset[OfflineScoredImpressionRecord](
-  s3DatasetPath = s"measurement/offline/v=1/model_date=${modelDate.format(DateTimeFormatter.ofPattern("yyyyMMdd"))}",
+  s3DatasetPath = s"measurement/offline/v=1/date=${modelDate.format(DateTimeFormatter.ofPattern("yyyyMMdd"))}",
   partitionField = "scored_date"
 )

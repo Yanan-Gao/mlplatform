@@ -11,8 +11,6 @@ final case class DataForModelTrainingRecord(
                                  AdvertiserIdStr: String,
                                  AdvertiserId: Int,
                                  BidRequestIdStr: String,
-                                 IsTracked: Int,
-                                 IsUID2: Int,
                                  Weight: Double,
                                  Target: Int,
                                  Revenue: Option[BigDecimal],
