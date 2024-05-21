@@ -42,7 +42,7 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
       val ImpDate = startDate.plusDays(i)
       // Attr [T-ConvLB, T]
       val AttrDates = (ImpDate.toEpochDay to date.toEpochDay).map(LocalDate.ofEpochDay)
-      val dailyImp = DailyOfflineScoringDataset().readDate(ImpDate)
+      val dailyImp = OldDailyOfflineScoringDataset().readDate(ImpDate)
       val attr = AttrDates.map(dt => {
         DailyAttributionEventsDataset().readPartition(dt, ImpDate.format(DefaultTimeFormatStrings.dateTimeFormatter))
       }).reduce(_.union(_))
