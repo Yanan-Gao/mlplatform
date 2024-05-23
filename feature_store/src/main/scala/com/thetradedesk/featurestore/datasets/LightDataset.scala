@@ -5,6 +5,7 @@ import com.thetradedesk.geronimo.shared.{loadParquetData, loadParquetDataHourly,
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.io.FSUtils
+import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.{Dataset, Encoder, SaveMode, SparkSession}
 
 import java.time.{LocalDate, LocalDateTime}
@@ -52,6 +53,8 @@ trait LightDataset {
 
 trait LightWritableDataset[T <: Product] extends LightDataset {
   val defaultNumPartitions: Int
+  val repartitionColumn: Option[String] = None
+  val maxRecordsPerFile: Int = 0
 
   def writePartition(dataset: Dataset[T],
                      partition: Any = null,
@@ -63,26 +66,37 @@ trait LightWritableDataset[T <: Product] extends LightDataset {
                     ): Unit = {
 
     val partitionedPath: String = datePartitionedPath(Option.apply(partition), subFolderKey, subFolderValue)
+    val df = if (repartitionColumn.isEmpty) {
+      dataset.coalesce(numPartitions.getOrElse(defaultNumPartitions))
+    }
+    else if (repartitionColumn.get.isEmpty) {
+      dataset.repartition(numPartitions.getOrElse(defaultNumPartitions))
+    } else {
+      dataset.repartition(numPartitions.getOrElse(defaultNumPartitions), col(repartitionColumn.get))
+    }
 
     format match {
 
-      case Some("tfrecord") => dataset
-        .coalesce(numPartitions.getOrElse(defaultNumPartitions))
-        .write.mode(saveMode)
+      case Some("tfrecord") => df
+        .write
+        .mode(saveMode)
         .format("tfrecord")
         .option("recordType", "Example")
         .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
+        .option("maxRecordsPerFile", maxRecordsPerFile)
         .save(partitionedPath)
 
-      case Some("csv") => dataset
-        .coalesce(numPartitions.getOrElse(defaultNumPartitions))
-        .write.mode(saveMode)
+      case Some("csv") => df
+        .write
+        .mode(saveMode)
         .option("header", value = true)
+        .option("maxRecordsPerFile", maxRecordsPerFile)
         .csv(partitionedPath)
 
-      case Some("parquet") => dataset
-        .coalesce(numPartitions.getOrElse(defaultNumPartitions))
-        .write.mode(saveMode)
+      case Some("parquet") => df
+        .write
+        .mode(saveMode)
+        .option("maxRecordsPerFile", maxRecordsPerFile)
         .parquet(partitionedPath)
       case _ => throw new UnsupportedOperationException(s"format ${format} is not supported")
     }

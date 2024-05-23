@@ -22,6 +22,8 @@ case class UserFeatureDataset(
   val rootPath: String = userFeatureMergeDefinition.rootPath
   val dataSetPath: String = userFeatureMergeDefinition.dataSetPath
   val defaultNumPartitions: Int = userFeatureMergeDefinition.config.defaultNumPartitions
+  override val maxRecordsPerFile: Int = userFeatureMergeDefinition.config.maxRecordsPerFile
+  override val repartitionColumn: Option[String] = Some(FeatureConstants.UserIDKey)
   val enc: Encoder[UserFeature] = Encoders.product[UserFeature]
   val tt: TypeTag[UserFeature] = typeTag[UserFeature]
   override val dateFormat: String = UserFeatureMergeDefinition.dateFormat

@@ -15,7 +15,8 @@ object FeatureConstants {
   val BytesToKeepAddress = 2
 
   val DefaultMaxDataSizePerRecord = 1024
-  val UserFeatureDataPartitionNumbers = 1024
+  val UserFeatureDataPartitionNumbers = 2048
+  val DefaultMaxRecordsPerFile = 500000
   val SchemaFileName = "schema.json"
 
   val ML_PLATFORM_S3_PATH = "s3a://thetradedesk-mlplatform-us-east-1"

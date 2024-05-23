@@ -41,7 +41,8 @@ case class UserFeatureMergeDefinition(
 
 case class UserFeatureMergeConfiguration(
                                           maxDataSizePerRecord: Int = DefaultMaxDataSizePerRecord,
-                                          defaultNumPartitions: Int = UserFeatureDataPartitionNumbers
+                                          defaultNumPartitions: Int = UserFeatureDataPartitionNumbers,
+                                          maxRecordsPerFile: Int = DefaultMaxRecordsPerFile
                                         ) {
   lazy val validate: Result = {
     if (maxDataSizePerRecord <= 0) {
