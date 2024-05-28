@@ -15,7 +15,7 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Column, DataFrame, SparkSession}
 
-import java.nio.ByteBuffer
+import java.nio.{ByteBuffer, ByteOrder}
 import java.nio.charset.StandardCharsets
 import java.time.LocalDateTime
 import scala.reflect.ClassTag
@@ -76,7 +76,7 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
       checkBounds(index, userFeatureMergeDefinition.config)
     }
 
-    val features = userFeatureMergeDefinition
+    val featureDefinitions = userFeatureMergeDefinition
       .featureSourceDefinitions
       .flatMap(e => e.features.map((e.name, _)))
       .sortWith((e1, e2) => {
@@ -104,12 +104,17 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
         } else {
           e1._2.name.compareTo(e2._2.name) < 0
         }
-      }).map(
+      })
+
+    val lastFeature = (featureDefinitions.last._1, featureDefinitions.last._2.name)
+
+      val features = featureDefinitions.map(
         e => {
           nextStep(e._2.dtype, e._2.arrayLength)
+          val isLastFeature = e._2.name == lastFeature._2 && e._1 == lastFeature._1
           e._2.dtype match {
-            case DataType.Bool => Feature(e._2.name, e._1, index, offset, DataType.Bool)
-            case _ => Feature(e._2.name, e._1, index, if (e._2.arrayLength > 1) e._2.arrayLength else 0, e._2.dtype, e._2.arrayLength != 0)
+            case DataType.Bool => Feature(e._2.name, e._1, index, offset, DataType.Bool, isLastFeature = isLastFeature)
+            case _ => Feature(e._2.name, e._1, index, if (e._2.arrayLength > 1) e._2.arrayLength else 0, e._2.dtype, isArray = e._2.arrayLength != 0, isLastFeature = isLastFeature)
           }
         }
       )
@@ -187,7 +192,7 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
   private def buildVariableDataAddress(initialOffset: Int, featureLength: Int, maxDataSizePerRecord:Int) = {
     val length = featureLength * BytesToKeepAddress
     udf({ (values: Seq[Int]) => {
-      val byteBuffer = ByteBuffer.allocate(length)
+      val byteBuffer = ByteBuffer.allocate(length).order(ByteOrder.LITTLE_ENDIAN)
       var index = 0
       var offset = initialOffset
       values.foreach(
@@ -209,7 +214,7 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
       assert(dataTypes.length == values.length, "features length is not equal to values length")
 
       var index = 0
-      val byteBuffer = ByteBuffer.allocate(length)
+      val byteBuffer = ByteBuffer.allocate(length).order(ByteOrder.LITTLE_ENDIAN)
       values.zip(dataTypes).foreach {
         case (value: java.lang.Long, DataType.Byte) =>
           byteBuffer.put(index, value.byteValue())
@@ -244,7 +249,7 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
       assert(offset == 0 || offset == values.length, "features length is not equal to values length")
 
       var index = 0
-      val byteBuffer = ByteBuffer.allocate(size * values.length)
+      val byteBuffer = ByteBuffer.allocate(size * values.length).order(ByteOrder.LITTLE_ENDIAN)
       feature.dataType match {
         case DataType.Byte =>
           values.foreach(e => {
@@ -324,38 +329,37 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
     val featureColumns = features.zipWithIndex.map(
       e => {
         val feature = e._1
-        val lastFeature = e._2 == features.length - 1
         (feature.dataType, feature.isArray) match {
-          case (DataType.Bool, false) => readFromDataFrameUdf[Boolean](feature, lastFeature)(TypeTag.Boolean)(col(FeatureDataKey)).alias(feature.fullName)
-          case (DataType.String, false) => readFromDataFrameUdf[String](feature, lastFeature)(typeTag[String])(col(FeatureDataKey)).alias(feature.fullName)
+          case (DataType.Bool, false) => readFromDataFrameUdf[Boolean](feature)(TypeTag.Boolean)(col(FeatureDataKey)).alias(feature.fullName)
+          case (DataType.String, false) => readFromDataFrameUdf[String](feature)(typeTag[String])(col(FeatureDataKey)).alias(feature.fullName)
           case (DataType.Byte, false) =>
-            if (castType) readFromDataFrameUdf[Byte](feature, lastFeature)(TypeTag.Byte)(col(FeatureDataKey)).cast(LongType).alias(feature.fullName)
-            else readFromDataFrameUdf[Byte](feature, lastFeature)(TypeTag.Byte)(col(FeatureDataKey)).alias(feature.fullName)
+            if (castType) readFromDataFrameUdf[Byte](feature)(TypeTag.Byte)(col(FeatureDataKey)).cast(LongType).alias(feature.fullName)
+            else readFromDataFrameUdf[Byte](feature)(TypeTag.Byte)(col(FeatureDataKey)).alias(feature.fullName)
           case (DataType.Short, false) =>
-            if (castType) readFromDataFrameUdf[Short](feature, lastFeature)(TypeTag.Short)(col(FeatureDataKey)).cast(LongType).alias(feature.fullName)
-            else readFromDataFrameUdf[Short](feature, lastFeature)(TypeTag.Short)(col(FeatureDataKey)).alias(feature.fullName)
+            if (castType) readFromDataFrameUdf[Short](feature)(TypeTag.Short)(col(FeatureDataKey)).cast(LongType).alias(feature.fullName)
+            else readFromDataFrameUdf[Short](feature)(TypeTag.Short)(col(FeatureDataKey)).alias(feature.fullName)
           case (DataType.Int, false) =>
-            if (castType) readFromDataFrameUdf[Int](feature, lastFeature)(TypeTag.Int)(col(FeatureDataKey)).cast(LongType).alias(feature.fullName)
-            else readFromDataFrameUdf[Int](feature, lastFeature)(TypeTag.Int)(col(FeatureDataKey)).alias(feature.fullName)
-          case (DataType.Long, false) => readFromDataFrameUdf[Long](feature, lastFeature)(TypeTag.Long)(col(FeatureDataKey)).alias(feature.fullName)
+            if (castType) readFromDataFrameUdf[Int](feature)(TypeTag.Int)(col(FeatureDataKey)).cast(LongType).alias(feature.fullName)
+            else readFromDataFrameUdf[Int](feature)(TypeTag.Int)(col(FeatureDataKey)).alias(feature.fullName)
+          case (DataType.Long, false) => readFromDataFrameUdf[Long](feature)(TypeTag.Long)(col(FeatureDataKey)).alias(feature.fullName)
           case (DataType.Float, false) =>
-            if (castType) readFromDataFrameUdf[Float](feature, lastFeature)(TypeTag.Float)(col(FeatureDataKey)).cast(DoubleType).alias(feature.fullName)
-            else readFromDataFrameUdf[Float](feature, lastFeature)(TypeTag.Float)(col(FeatureDataKey)).alias(feature.fullName)
-          case (DataType.Double, false) => readFromDataFrameUdf[Double](feature, lastFeature)(TypeTag.Double)(col(FeatureDataKey)).alias(feature.fullName)
+            if (castType) readFromDataFrameUdf[Float](feature)(TypeTag.Float)(col(FeatureDataKey)).cast(DoubleType).alias(feature.fullName)
+            else readFromDataFrameUdf[Float](feature)(TypeTag.Float)(col(FeatureDataKey)).alias(feature.fullName)
+          case (DataType.Double, false) => readFromDataFrameUdf[Double](feature)(TypeTag.Double)(col(FeatureDataKey)).alias(feature.fullName)
           case (DataType.Byte, true) =>
-            if (castType) binaryToLongArrayUdf(readFromDataFrameUdf[Array[Byte]](feature, lastFeature)(typeTag[Array[Byte]])(col(FeatureDataKey))).alias(feature.fullName)
-            else readFromDataFrameUdf[Array[Byte]](feature, lastFeature)(typeTag[Array[Byte]])(col(FeatureDataKey)).alias(feature.fullName)
+            if (castType) binaryToLongArrayUdf(readFromDataFrameUdf[Array[Byte]](feature)(typeTag[Array[Byte]])(col(FeatureDataKey))).alias(feature.fullName)
+            else readFromDataFrameUdf[Array[Byte]](feature)(typeTag[Array[Byte]])(col(FeatureDataKey)).alias(feature.fullName)
           case (DataType.Short, true) =>
-            if (castType)readFromDataFrameUdf[Array[Short]](feature, lastFeature)(typeTag[Array[Short]])(col(FeatureDataKey)).cast(ArrayType(LongType)).alias(feature.fullName)
-            else readFromDataFrameUdf[Array[Short]](feature, lastFeature)(typeTag[Array[Short]])(col(FeatureDataKey)).alias(feature.fullName)
+            if (castType)readFromDataFrameUdf[Array[Short]](feature)(typeTag[Array[Short]])(col(FeatureDataKey)).cast(ArrayType(LongType)).alias(feature.fullName)
+            else readFromDataFrameUdf[Array[Short]](feature)(typeTag[Array[Short]])(col(FeatureDataKey)).alias(feature.fullName)
           case (DataType.Int, true) =>
-            if (castType) readFromDataFrameUdf[Array[Int]](feature, lastFeature)(typeTag[Array[Int]])(col(FeatureDataKey)).cast(ArrayType(LongType)).alias(feature.fullName)
-            else readFromDataFrameUdf[Array[Int]](feature, lastFeature)(typeTag[Array[Int]])(col(FeatureDataKey)).alias(feature.fullName)
-          case (DataType.Long, true) => readFromDataFrameUdf[Array[Long]](feature, lastFeature)(typeTag[Array[Long]])(col(FeatureDataKey)).alias(feature.fullName)
+            if (castType) readFromDataFrameUdf[Array[Int]](feature)(typeTag[Array[Int]])(col(FeatureDataKey)).cast(ArrayType(LongType)).alias(feature.fullName)
+            else readFromDataFrameUdf[Array[Int]](feature)(typeTag[Array[Int]])(col(FeatureDataKey)).alias(feature.fullName)
+          case (DataType.Long, true) => readFromDataFrameUdf[Array[Long]](feature)(typeTag[Array[Long]])(col(FeatureDataKey)).alias(feature.fullName)
           case (DataType.Float, true) =>
-            if (castType) readFromDataFrameUdf[Array[Float]](feature, lastFeature)(typeTag[Array[Float]])(col(FeatureDataKey)).cast(ArrayType(DoubleType)).alias(feature.fullName)
-            else readFromDataFrameUdf[Array[Float]](feature, lastFeature)(typeTag[Array[Float]])(col(FeatureDataKey)).alias(feature.fullName)
-          case (DataType.Double, true) => readFromDataFrameUdf[Array[Double]](feature, lastFeature)(typeTag[Array[Double]])(col(FeatureDataKey)).alias(feature.fullName)
+            if (castType) readFromDataFrameUdf[Array[Float]](feature)(typeTag[Array[Float]])(col(FeatureDataKey)).cast(ArrayType(DoubleType)).alias(feature.fullName)
+            else readFromDataFrameUdf[Array[Float]](feature)(typeTag[Array[Float]])(col(FeatureDataKey)).alias(feature.fullName)
+          case (DataType.Double, true) => readFromDataFrameUdf[Array[Double]](feature)(typeTag[Array[Double]])(col(FeatureDataKey)).alias(feature.fullName)
           case _ => throw new UnsupportedOperationException(s"type ${feature.dataType} isArray ${feature.isArray}  is not supported")
         }
       }
@@ -363,9 +367,9 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
     df.select(featureColumns :+ col(FeatureConstants.UserIDKey): _*)
   }
 
-  private def readFromDataFrameUdf[T](feature: Feature, lastFeature: Boolean)(implicit ttag: TypeTag[T]) = {
+  private def readFromDataFrameUdf[T](feature: Feature)(implicit ttag: TypeTag[T]) = {
     udf({
-      data: Array[Byte] => CustomBufferDataGenerator.read(data, feature, lastFeature).asInstanceOf[T]
+      data: Array[Byte] => CustomBufferDataGenerator.read(data, feature).asInstanceOf[T]
     })
   }
 
@@ -407,8 +411,8 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
 }
 
 object CustomBufferDataGenerator {
-  def read(data: Array[Byte], feature: Feature, lastFeature: Boolean): Any = {
-    val byteBuffer = ByteBuffer.wrap(data)
+  def read(data: Array[Byte], feature: Feature): Any = {
+    val byteBuffer = ByteBuffer.wrap(data).order(ByteOrder.LITTLE_ENDIAN)
     if (!feature.isArray && feature.dataType == DataType.Bool) {
       return (byteBuffer.get(feature.index) & (1 << feature.offset)) != 0
     }
@@ -420,7 +424,7 @@ object CustomBufferDataGenerator {
     else byteBuffer.getShort(feature.index).intValue()  // var length feature
 
     val length = if (feature.offset > 1) byteWidthOfArray(feature.dataType, feature.offset) // fixed length array
-    else if (lastFeature) data.length - start  // last var length feature
+    else if (feature.isLastFeature) data.length - start  // last var length feature
     else byteBuffer.getShort(feature.index + BytesToKeepAddress) - start // non-last var length feature
 
     if (!feature.isArray && feature.dataType == DataType.String) {

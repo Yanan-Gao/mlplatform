@@ -13,7 +13,8 @@ case class Feature(
                     // default is 0
                     offset: Int,
                     dataType: DataType,
-                    isArray: Boolean = false
+                    isArray: Boolean = false,
+                    isLastFeature: Boolean = false
                   ) {
   lazy val fullName = s"${dataSourceName}_${name}"
 }
