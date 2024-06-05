@@ -2,9 +2,10 @@ package com.thetradedesk.audience.datasets
 
 import com.thetradedesk.audience.datasets.CrossDeviceVendor.CrossDeviceVendor
 import com.thetradedesk.audience.datasets.S3Roots.ML_PLATFORM_ROOT
-import com.thetradedesk.audience.{seedCoalesceAfterFilter, ttdEnv}
+import com.thetradedesk.audience.{seedCoalesceAfterFilter, ttdEnv, getClassName}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.Column
+import com.thetradedesk.spark.util.TTDConfig.config
 
 final case class ExtendedSeedRecord(TDID: String
                                     , tag: Long,
@@ -12,7 +13,7 @@ final case class ExtendedSeedRecord(TDID: String
                                     householdId: String)
 
 case class ExtendedSeedReadableDataset(seedId: String) extends
-  LightReadableDataset[ExtendedSeedRecord](s"${ttdEnv}/audience/seedData/${seedId}/v=1", ML_PLATFORM_ROOT)
+  LightReadableDataset[ExtendedSeedRecord](s"${config.getString(s"${getClassName(ExtendedSeedReadableDataset)}ReadEnv", ttdEnv)}/audience/seedData/${seedId}/v=1", ML_PLATFORM_ROOT)
 
 case class ExtendedSeedWritableDataset(seedId: String) extends
   LightWritableDataset[ExtendedSeedRecord](s"${ttdEnv}/audience/seedData/${seedId}/v=1", ML_PLATFORM_ROOT, seedCoalesceAfterFilter)

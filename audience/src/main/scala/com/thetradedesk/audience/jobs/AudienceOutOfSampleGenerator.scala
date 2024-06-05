@@ -45,19 +45,21 @@ object OutOfSampleGenerateJob {
   }
 
   def runETLPipeline(): Unit = {
-      val policyTable = clusterTargetingData(AudienceModelInputGeneratorConfig.model, AudienceModel_OOS_Config.supportedDataSources, AudienceModelInputGeneratorConfig.seedSizeLowerScaleThreshold, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold)
       val date = dateTime.toLocalDate
+      // val schedule = if (AudienceModelInputGeneratorConfig.IncrementalTrainingEnabled) DateUtils.getSchedule(date, AudienceModelInputGeneratorConfig.fullTrainDay, AudienceModelInputGeneratorConfig.trainingCadence) else Schedule.Full
+      val policyTable = clusterTargetingData(AudienceModelInputGeneratorConfig.model, AudienceModel_OOS_Config.supportedDataSources, AudienceModelInputGeneratorConfig.seedSizeLowerScaleThreshold, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold, Schedule.Full)
+
       // 10% more downsampling on the original 10% downsampling to make the size of out of seed tdid smaller
       var samplingFunction = shouldConsiderTDID3((AudienceModel_OOS_Config.outSeedSampleRatio*userDownSampleBasePopulation).toInt, AudienceModel_OOS_Config.saltSampleOutSeed)(_)
-      val (sampledBidsImpressionsKeys, bidsImpressionsLong, uniqueTDIDs) = new RSMSeedInputGenerator(CrossDeviceVendor.None).getBidImpressions(date, AudienceModelInputGeneratorConfig.lastTouchNumberInBR,
+      val (sampledBidsImpressionsKeys, bidsImpressionsLong, uniqueTDIDs) = new RSMSeedInputGenerator(CrossDeviceVendor.None, 1.0).getBidImpressions(date, AudienceModelInputGeneratorConfig.lastTouchNumberInBR,
         AudienceModelInputGeneratorConfig.tdidTouchSelection)
 
       policyTable.foreach(typePolicyTable => {
         val dataset = {
           AudienceModelInputGeneratorConfig.model match {
             case Model.RSM => typePolicyTable match {
-              case ((DataSource.Seed, crossDeviceVendor: CrossDeviceVendor), subPolicyTable: Array[AudienceModelPolicyRecord]) => {
-                val rawLabels = new RSMSeedInputGenerator(crossDeviceVendor).generateLabels(date, subPolicyTable)
+              case ((DataSource.Seed, crossDeviceVendor: CrossDeviceVendor, IncrementalTrainingTag.Full), subPolicyTable: Array[AudienceModelPolicyRecord]) => {
+                val rawLabels = new RSMSeedInputGenerator(crossDeviceVendor,1.0).generateLabels(date, subPolicyTable)
                 // in seed oos
                 val filteredInSeedLabels = uniqueTDIDs.join(rawLabels, Seq("TDID"), "inner")
                 val refinedInSeedLabels = OOSSampling.inSeedSampleLabels(filteredInSeedLabels, subPolicyTable)

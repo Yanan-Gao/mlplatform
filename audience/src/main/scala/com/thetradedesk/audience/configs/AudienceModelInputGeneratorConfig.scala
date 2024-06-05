@@ -1,6 +1,7 @@
 package com.thetradedesk.audience.configs
 
 import com.thetradedesk.spark.util.TTDConfig.config
+import java.time.LocalDate
 import com.thetradedesk.audience.datasets.{DataSource, Model}
 import com.thetradedesk.audience.utils.S3Utils;
 
@@ -22,7 +23,7 @@ object AudienceModelInputGeneratorConfig {
 
   val validateDatasetSplitModule = config.getInt("validateDatasetSplitModule", default = 5)
 
-  var subFolder = config.getString("subFolder", "split")
+  var subFolder = config.getString("subFolder", null)
 
   var persistHoldoutSet = config.getBoolean("persistHoldoutSet", default = false)
 
@@ -69,4 +70,13 @@ object AudienceModelInputGeneratorConfig {
   // the way to determine the n tdid selection->
   // 0: last n tdid; 1: even stepwise selection for n tdid; 2 and other: random select n tdid
   val tdidTouchSelection = config.getInt("tdidTouchSelection", default = 1)
+
+  val trainingStartDate = config.getDate("trainingStartDate",  default = LocalDate.parse("2024-05-14"))
+
+  val trainingCadence = config.getInt("trainingCadence", default = 7)
+
+  val IncrementalTrainingEnabled = config.getBoolean("IncrementalTrainingEnabled", default=false)
+
+  val IncrementalTrainingSampleRate = config.getDouble("IncrementalTrainingSampleRate", default=0.1)
+
 }
