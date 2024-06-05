@@ -3,6 +3,8 @@ package com.thetradedesk.audience.jobs
 import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
 import com.thetradedesk.audience.datasets.CrossDeviceVendor.CrossDeviceVendor
 import com.thetradedesk.audience.datasets.{CrossDeviceVendor, _}
+import com.thetradedesk.audience.datasets.{Schedule, IncrementalTrainingTag}
+import com.thetradedesk.audience.utils.DateUtils
 import com.thetradedesk.audience.sample.WeightSampling.{getLabels, negativeSampleUDFGenerator, positiveSampleUDFGenerator, zipAndGroupUDFGenerator}
 import com.thetradedesk.audience.transform.ContextualTransform.generateContextualFeatureTier1
 import com.thetradedesk.audience.transform.ExtendArrayTransforms.seedIdToSyntheticIdMapping
@@ -22,6 +24,7 @@ import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructT
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import scala.util.Try
 
 object AudienceModelInputGeneratorJob {
   val prometheus = new PrometheusClient("AudienceModelJob", "AudienceModelInputGeneratorJob")
@@ -43,27 +46,58 @@ object AudienceModelInputGeneratorJob {
   }
 
   def runETLPipeline(): Unit = {
-    val policyTable = clusterTargetingData(AudienceModelInputGeneratorConfig.model, AudienceModelInputGeneratorConfig.supportedDataSources,
-      AudienceModelInputGeneratorConfig.seedSizeLowerScaleThreshold, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold)
     val date = dateTime.toLocalDate
-
+    val schedule = if (AudienceModelInputGeneratorConfig.IncrementalTrainingEnabled) DateUtils.getSchedule(date, AudienceModelInputGeneratorConfig.trainingStartDate, AudienceModelInputGeneratorConfig.trainingCadence) else Schedule.Full
+    val policyTable = clusterTargetingData(AudienceModelInputGeneratorConfig.model, AudienceModelInputGeneratorConfig.supportedDataSources,
+      AudienceModelInputGeneratorConfig.seedSizeLowerScaleThreshold, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold, schedule)
+    
     policyTable.foreach(typePolicyTable => {
       val dataset = {
         val result = AudienceModelInputGeneratorConfig.model match {
           case Model.AEM =>
-            typePolicyTable match {
-              case ((DataSource.SIB, CrossDeviceVendor.None), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
-                AEMSIBInputGenerator.generateDataset(date, subPolicyTable)
-              case ((DataSource.Conversion, CrossDeviceVendor.None), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
-                AEMConversionInputGenerator.generateDataset(date, subPolicyTable)
-              case _ => throw new Exception(s"unsupported policy settings: Model[${Model.AEM}], Setting[${typePolicyTable._1}]")
-            }
+            schedule match {
+              case Schedule.Full => 
+                typePolicyTable match {
+                  case ((DataSource.SIB, CrossDeviceVendor.None, IncrementalTrainingTag.Full), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
+                    AEMSIBInputGenerator(1.0).generateDataset(date, subPolicyTable)
+                  case ((DataSource.Conversion, CrossDeviceVendor.None, IncrementalTrainingTag.Full), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
+                    AEMConversionInputGenerator(1.0).generateDataset(date, subPolicyTable)
+                  case _ => throw new Exception(s"unsupported policy settings: Model[${Model.AEM}], Setting[${typePolicyTable._1}]")
+                }
+              case Schedule.Incremental => 
+                typePolicyTable match {
+                  case ((DataSource.SIB, CrossDeviceVendor.None, IncrementalTrainingTag.New), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
+                    AEMSIBInputGenerator(1.0).generateDataset(date, subPolicyTable)
+                  case ((DataSource.SIB, CrossDeviceVendor.None, IncrementalTrainingTag.Small), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
+                    AEMSIBInputGenerator(AudienceModelInputGeneratorConfig.IncrementalTrainingSampleRate).generateDataset(date, subPolicyTable)
+                  case ((DataSource.Conversion, CrossDeviceVendor.None, IncrementalTrainingTag.New), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
+                    AEMConversionInputGenerator(1.0).generateDataset(date, subPolicyTable)
+                  case ((DataSource.Conversion, CrossDeviceVendor.None, IncrementalTrainingTag.Small), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
+                    AEMConversionInputGenerator(AudienceModelInputGeneratorConfig.IncrementalTrainingSampleRate).generateDataset(date, subPolicyTable)
+                  case _ => throw new Exception(s"unsupported policy settings: Model[${Model.AEM}], Setting[${typePolicyTable._1}]")
+                }
+              case _ => throw new Exception(s"unsupported training schedule: Model[${Model.AEM}], Schedule[${schedule}]")
+            } 
+            
           case Model.RSM =>
-            typePolicyTable match {
-              case ((DataSource.Seed, crossDeviceVendor: CrossDeviceVendor), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
-                RSMSeedInputGenerator(crossDeviceVendor).generateDataset(date, subPolicyTable)
-              case _ => throw new Exception(s"unsupported policy settings: Model[${Model.RSM}], Setting[${typePolicyTable._1}]")
+            schedule match {
+              case Schedule.Full =>
+                typePolicyTable match {
+                  case ((DataSource.Seed, crossDeviceVendor: CrossDeviceVendor, IncrementalTrainingTag.Full), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
+                    RSMSeedInputGenerator(crossDeviceVendor,1.0).generateDataset(date, subPolicyTable)
+                  case _ => throw new Exception(s"unsupported policy settings: Model[${Model.RSM}], Setting[${typePolicyTable._1}]")
+                }
+              case Schedule.Incremental => 
+                typePolicyTable match {
+                  case ((DataSource.Seed, crossDeviceVendor: CrossDeviceVendor, IncrementalTrainingTag.New), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
+                    RSMSeedInputGenerator(crossDeviceVendor, 1.0).generateDataset(date, subPolicyTable)
+                  case ((DataSource.Seed, crossDeviceVendor: CrossDeviceVendor, IncrementalTrainingTag.Small), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
+                    RSMSeedInputGenerator(crossDeviceVendor, AudienceModelInputGeneratorConfig.IncrementalTrainingSampleRate).generateDataset(date, subPolicyTable)
+                  case _ => throw new Exception(s"unsupported policy settings: Model[${Model.RSM}], Setting[${typePolicyTable._1}]")
+                }
+
             }
+            
           case _ => throw new Exception(s"unsupported Model[${AudienceModelInputGeneratorConfig.model}]")
         }
         jobProcessSize
@@ -88,10 +122,12 @@ object AudienceModelInputGeneratorJob {
 
       resultSet.cache()
 
+      val subFolder = if (AudienceModelInputGeneratorConfig.subFolder != null) AudienceModelInputGeneratorConfig.subFolder else typePolicyTable._1._3.toString
+
       AudienceModelInputDataset(AudienceModelInputGeneratorConfig.model.toString, s"${typePolicyTable._1._1}_${typePolicyTable._1._2}").writePartition(
         resultSet.filter('SubFolder === lit(SubFolder.Val.id)).as[AudienceModelInputRecord],
         dateTime,
-        subFolderKey = Some(AudienceModelInputGeneratorConfig.subFolder),
+        subFolderKey = Some(subFolder),
         subFolderValue = Some(SubFolder.Val.toString),
         format = Some("tfrecord"),
         saveMode = SaveMode.Overwrite
@@ -101,7 +137,7 @@ object AudienceModelInputGeneratorJob {
         AudienceModelInputDataset(AudienceModelInputGeneratorConfig.model.toString, s"${typePolicyTable._1._1}_${typePolicyTable._1._2}").writePartition(
           resultSet.filter('SubFolder === lit(SubFolder.Holdout.id)).as[AudienceModelInputRecord],
           dateTime,
-          subFolderKey = Some(AudienceModelInputGeneratorConfig.subFolder),
+          subFolderKey = Some(subFolder),
           subFolderValue = Some(SubFolder.Holdout.toString),
           format = Some("tfrecord"),
           saveMode = SaveMode.Overwrite
@@ -111,7 +147,7 @@ object AudienceModelInputGeneratorJob {
       AudienceModelInputDataset(AudienceModelInputGeneratorConfig.model.toString, s"${typePolicyTable._1._1}_${typePolicyTable._1._2}").writePartition(
         resultSet.filter('SubFolder === lit(SubFolder.Train.id)).as[AudienceModelInputRecord],
         dateTime,
-        subFolderKey = Some(AudienceModelInputGeneratorConfig.subFolder),
+        subFolderKey = Some(subFolder),
         subFolderValue = Some(SubFolder.Train.toString),
         format = Some("tfrecord"),
         saveMode = SaveMode.Overwrite
@@ -141,8 +177,8 @@ object AudienceModelInputGeneratorJob {
     )
   }
 
-  def clusterTargetingData(model: Model.Value, supportedDataSources: Array[Int], seedSizeLowerScaleThreshold: Int, seedSizeUpperScaleThreshold: Int):
-  Map[(DataSource.DataSource, CrossDeviceVendor.CrossDeviceVendor), Array[AudienceModelPolicyRecord]] = {
+  def clusterTargetingData(model: Model.Value, supportedDataSources: Array[Int], seedSizeLowerScaleThreshold: Int, seedSizeUpperScaleThreshold: Int, schedule: Schedule.Schedule ):
+  Map[(DataSource.DataSource, CrossDeviceVendor.CrossDeviceVendor, IncrementalTrainingTag.IncrementalTrainingTag), Array[AudienceModelPolicyRecord]] = {
     val policyTable = AudienceModelPolicyReadableDataset(model)
       .readSinglePartition(dateTime)(spark)
       .where((length('ActiveSize)>=seedSizeLowerScaleThreshold) && (length('ActiveSize)<seedSizeUpperScaleThreshold))
@@ -151,18 +187,34 @@ object AudienceModelInputGeneratorJob {
       .where('Source.isin(supportedDataSources: _*))
       .collect()
 
-    // todo group records by targeting data size
-    policyTable.groupBy(e => (DataSource(e.Source), CrossDeviceVendor(e.CrossDeviceVendorId)))
+    // Handle incremental training schedule tag
+    val processedPolicyTable = policyTable.map { record =>
+    val tagValue = schedule match {
+      case Schedule.Full => IncrementalTrainingTag.Full // 
+      case Schedule.Incremental => Try(record.Tag match {
+        case 4 => IncrementalTrainingTag.Small
+        case 2 | 6 => IncrementalTrainingTag.New
+        case _ => IncrementalTrainingTag.None 
+      }).getOrElse(IncrementalTrainingTag.None) 
+      case _ => IncrementalTrainingTag.None 
+    }
+    (record, tagValue)
   }
-}
+
+  processedPolicyTable.groupBy { case (e, tag) =>
+    (DataSource(e.Source), CrossDeviceVendor(e.CrossDeviceVendorId), tag)
+  }.mapValues(_.map(_._1)) 
+  }
+  }
 
 /**
  * This is the base class for audience model training data generation
  * including AEM(audience extension model), RSM(relevance score model), etc
  */
-abstract class AudienceModelInputGenerator(name: String) {
+abstract class AudienceModelInputGenerator(name: String, val sampleRate: Double) {
   // set the default sampling ratio as 10%
-  val samplingFunction = shouldConsiderTDID3(config.getInt(s"userDownSampleHitPopulation${name}", default = 100000), config.getString(s"saltToSampleUser${name}", default = "0BgGCE"))(_)
+  // val sampleRate = 1.0
+  val samplingFunction = shouldConsiderTDID3((config.getInt(s"userDownSampleHitPopulation${name}", default = 100000)*sampleRate).toInt, config.getString(s"saltToSampleUser${name}", default = "0BgGCE"))(_)
 
   val mappingFunctionGenerator =
     (dictionary: Map[Any, Int]) =>
@@ -338,6 +390,7 @@ abstract class AudienceModelInputGenerator(name: String) {
 
     val labelDatasetSize = labels.count()
     // the default sampling ratio is 10%
+    // for incremental training, we intentionally keep the down sample factor the same as the full train data then we will have proportional extra sample rate of the full train data
     val downSampleFactor = config.getInt(s"userDownSampleHitPopulation${name}", default = 100000)  * 1.0 / userDownSampleBasePopulation
 
     val syntheticIdToPolicy = policyTable
@@ -388,7 +441,7 @@ abstract class AudienceModelInputGenerator(name: String) {
  * using seenInBidding dataset
 
  */
-object AEMSIBInputGenerator extends AudienceModelInputGenerator("AEMSIB") {
+case class AEMSIBInputGenerator(override val sampleRate: Double) extends AudienceModelInputGenerator("AEMSIB", sampleRate) {
 
   override def generateLabels(date: LocalDate, policyTable: Array[AudienceModelPolicyRecord]): DataFrame = {
     val mappingFunction = mappingFunctionGenerator(
@@ -410,7 +463,7 @@ object AEMSIBInputGenerator extends AudienceModelInputGenerator("AEMSIB") {
  * This class is used to generate model training samples for audience extension model
  * using conversion tracker dataset
  */
-object AEMConversionInputGenerator extends AudienceModelInputGenerator("AEMConversion") {
+case class AEMConversionInputGenerator(override val sampleRate: Double) extends AudienceModelInputGenerator("AEMConversion", sampleRate) {
   private val mappingSchema = StructType(
     Array(
       StructField("TrackingTagId", StringType, nullable = false),
@@ -446,7 +499,7 @@ object AEMConversionInputGenerator extends AudienceModelInputGenerator("AEMConve
  * This class is used to generate model training samples for relevance score model
  * using the dataset provided by seed service
  */
-case class RSMSeedInputGenerator(crossDeviceVendor: CrossDeviceVendor) extends AudienceModelInputGenerator("RSMSeed") {
+case class RSMSeedInputGenerator(crossDeviceVendor: CrossDeviceVendor, override val sampleRate: Double) extends AudienceModelInputGenerator("RSMSeed", sampleRate) {
   lazy val groupColumn: Column = crossDeviceVendor match {
     case CrossDeviceVendor.None => col("TDID")
     case CrossDeviceVendor.IAV2Person => col("personId")

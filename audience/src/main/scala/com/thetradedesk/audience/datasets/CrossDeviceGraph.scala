@@ -1,11 +1,12 @@
 package com.thetradedesk.audience.datasets
 
 import com.thetradedesk.audience.datasets.CrossDeviceVendor.{Adbrain, CrossDeviceVendor}
-import com.thetradedesk.audience.ttdEnv
+import com.thetradedesk.audience.{ttdEnv, getClassName}
 import com.thetradedesk.spark.datasets.core.ProvisioningS3DataSet
 import com.thetradedesk.spark.datasets.core.IdentitySourcesS3DataSet
 import com.thetradedesk.spark.util.io.FSUtils
 import org.apache.spark.sql.{DataFrame, SparkSession}
+import com.thetradedesk.spark.util.TTDConfig.config
 
 import java.time.LocalDate
 
@@ -45,7 +46,7 @@ final case class SampledCrossDeviceGraphRecord(
                                                 deviceType: Byte)
 
 case class SampledCrossDeviceGraphDataset() extends
-  LightReadableDataset[SampledCrossDeviceGraphRecord](s"/${ttdEnv}/audience/sampledCrossDeviceGraph/v=1", S3Roots.ML_PLATFORM_ROOT)
+  LightReadableDataset[SampledCrossDeviceGraphRecord](s"/${config.getString(s"${getClassName(SampledCrossDeviceGraphDataset)}ReadEnv", ttdEnv)}/audience/sampledCrossDeviceGraph/v=1", S3Roots.ML_PLATFORM_ROOT)
 
 object CrossDeviceGraphUtil {
   def readGraphData[T <: Product : Manifest](date: LocalDate, dataset: LightReadableDataset[T])(implicit spark: SparkSession): DataFrame = {

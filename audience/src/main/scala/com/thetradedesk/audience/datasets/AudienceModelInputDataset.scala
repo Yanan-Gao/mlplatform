@@ -1,6 +1,7 @@
 package com.thetradedesk.audience.datasets
 
-import com.thetradedesk.audience.{audienceResultCoalesce, audienceVersionDateFormat, ttdEnv}
+import com.thetradedesk.spark.util.TTDConfig.config
+import com.thetradedesk.audience.{audienceResultCoalesce, audienceVersionDateFormat, ttdEnv, getClassName}
 
 final case class AudienceModelInputRecord(
                                                   SupplyVendor: Option[Int],
@@ -50,3 +51,12 @@ final case class AudienceModelInputRecord(
 
 case class AudienceModelInputDataset(model: String, tag: String, version: Int = 1) extends
   LightWritableDataset[AudienceModelInputRecord](s"/${ttdEnv}/audience/${model}/${tag}/v=${version}", S3Roots.ML_PLATFORM_ROOT, audienceResultCoalesce, dateFormat = audienceVersionDateFormat)
+object Schedule extends Enumeration {
+  type Schedule = Value
+  val None, Full, Incremental = Value
+}
+
+object IncrementalTrainingTag extends Enumeration {
+  type IncrementalTrainingTag = Value
+  val None, Full, Small, New = Value
+}

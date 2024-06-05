@@ -73,4 +73,9 @@ package object audience {
   def shouldTrackTDID(symbol: Symbol): Column = {
     symbol.isNotNullOrEmpty && symbol =!= doNotTrackTDIDColumn
   }
+
+  def getClassName(obj: Any): String = {
+    val className = obj.getClass.getSimpleName
+    className.split("\\$").last.replaceAll("[$.]", "")
+  }
 }

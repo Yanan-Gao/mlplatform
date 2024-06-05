@@ -1,7 +1,8 @@
 package com.thetradedesk.audience.datasets
 
 import com.thetradedesk.audience.datasets.S3Roots.ML_PLATFORM_ROOT
-import com.thetradedesk.audience.{seedCoalesceAfterFilter, ttdEnv}
+import com.thetradedesk.audience.{seedCoalesceAfterFilter, ttdEnv, getClassName}
+import com.thetradedesk.spark.util.TTDConfig.config
 
 final case class AggregatedSeedRecord(TDID: String,
                                       SeedIds: Seq[String],
@@ -10,6 +11,6 @@ final case class AggregatedSeedRecord(TDID: String,
                                       personId: String,
                                       householdId: String)
 
-case class AggregatedSeedReadableDataset() extends LightReadableDataset[AggregatedSeedRecord](s"${ttdEnv}/audience/aggregatedSeed/v=1", ML_PLATFORM_ROOT)
+case class AggregatedSeedReadableDataset() extends LightReadableDataset[AggregatedSeedRecord](s"${config.getString(s"${getClassName(AggregatedSeedReadableDataset)}ReadEnv", ttdEnv)}/audience/aggregatedSeed/v=1", ML_PLATFORM_ROOT)
 
-case class AggregatedSeedWritableDataset() extends LightWritableDataset[AggregatedSeedRecord](s"${ttdEnv}/audience/aggregatedSeed/v=1", ML_PLATFORM_ROOT, 128)
+case class AggregatedSeedWritableDataset() extends LightWritableDataset[AggregatedSeedRecord](s"${ttdEnv}/audience/aggregatedSeed/v=1", ML_PLATFORM_ROOT, 1024)
