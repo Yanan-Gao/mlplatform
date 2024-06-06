@@ -42,6 +42,7 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
 
     // test for channel
     assert(res.Channel == ChannelType.MobileInApp, "Validating Channel Join")
+    assert(res.ChannelSimple == ChannelType.Display, "Validating Channel Simplification")
 
     // test for Value Pacing Column
     assert(res.IsValuePacing == Some(true), "Validating ProductionAdgroupBudgetData Join")

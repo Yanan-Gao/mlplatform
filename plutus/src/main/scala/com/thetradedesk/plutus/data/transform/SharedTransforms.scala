@@ -44,6 +44,11 @@ object SharedTransforms {
               .otherwise(ChannelType.Video)
           )
           .otherwise(ChannelType.Unknown))
+      .withColumn("ChannelSimple",
+        when($"Channel".isin(ChannelType.MobileInApp, ChannelType.MobileOptimizedWeb, ChannelType.MobileStandardWeb), ChannelType.Display)
+          .when($"Channel".isin(ChannelType.MobileVideoInApp, ChannelType.MobileVideoOptimizedWeb, ChannelType.MobileVideoStandard), ChannelType.Video)
+          .when($"Channel".isin(ChannelType.NativeVideo, ChannelType.Native), ChannelType.Native)
+          .otherwise($"Channel"))
   }
 
   def AddMarketType(df: DataFrame, privateContractsData: Dataset[PrivateContractRecord]): DataFrame = {

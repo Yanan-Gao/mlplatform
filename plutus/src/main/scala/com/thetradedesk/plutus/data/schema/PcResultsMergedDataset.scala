@@ -98,6 +98,7 @@ case class PcResultsMergedSchema(
 
                                   MediaTypeId: Int, // from AdFormatDataSet
                                   Channel: String,
+                                  ChannelSimple: String,
 
                                   DetailedMarketType: String, // from PrivateContractRecord
 
