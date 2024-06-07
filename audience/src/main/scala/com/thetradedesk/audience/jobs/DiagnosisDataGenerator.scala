@@ -111,7 +111,7 @@ object DiagnosisDataGenerator {
     val date = dateTime.toLocalDate
     val hour = dateTime.getHour
 
-    DiagnosisDataset().writePartition(
+    DiagnosisWritableDataset().writePartition(
       dataset = getDiagnosisData(date, hour),
       partition = date,
       subFolderKey = Some("hour"),

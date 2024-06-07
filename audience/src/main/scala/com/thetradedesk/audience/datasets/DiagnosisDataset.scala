@@ -11,4 +11,7 @@ final case class DiagnosisRecord(CampaignId: String,
                                  CountMetrics: String
                                 )
 
-case class DiagnosisDataset() extends LightWritableDataset[DiagnosisRecord](s"${ttdEnv}/distributedalgodiagnosis/v=1", ML_PLATFORM_ROOT, 1)
+case class DiagnosisWritableDataset() extends LightWritableDataset[DiagnosisRecord](s"${ttdEnv}/distributedalgodiagnosis/v=1", ML_PLATFORM_ROOT, 1)
+
+case class
+DiagnosisReadableDataset() extends LightReadableDataset[DiagnosisRecord](s"${ttdEnv}/distributedalgodiagnosis/v=1", ML_PLATFORM_ROOT)
