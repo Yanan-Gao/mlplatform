@@ -30,7 +30,7 @@ case class ModelInputRecord(
     Site: String,
     SupplyVendor: String,
     SupplyVendorPublisherId: String,
-    AliasedSupplyPublisherId: String,
+    AliasedSupplyPublisherId: Int,
     SupplyVendorSiteId: String,
     MatchedFoldPosition: Int,
     AdWidthInPixels: String,
