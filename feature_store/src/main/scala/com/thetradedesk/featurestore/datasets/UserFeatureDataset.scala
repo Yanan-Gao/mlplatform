@@ -27,4 +27,5 @@ case class UserFeatureDataset(
   val enc: Encoder[UserFeature] = Encoders.product[UserFeature]
   val tt: TypeTag[UserFeature] = typeTag[UserFeature]
   override val dateFormat: String = UserFeatureMergeDefinition.dateFormat
+  override val writeThroughHdfs: Boolean = true
 }

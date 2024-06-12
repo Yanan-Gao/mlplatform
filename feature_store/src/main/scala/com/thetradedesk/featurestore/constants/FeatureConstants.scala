@@ -15,7 +15,7 @@ object FeatureConstants {
   val BytesToKeepAddress = 2
 
   val DefaultMaxDataSizePerRecord = 1024
-  val UserFeatureDataPartitionNumbers = 2048
+  val UserFeatureDataPartitionNumbers = 4096
   val DefaultMaxRecordsPerFile = 500000
   val SchemaFileName = "schema.json"
 
