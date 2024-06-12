@@ -17,18 +17,15 @@ object DiagnosisDataGenerator {
     val dateStr = date.format(DateTimeFormatter.ofPattern("yyyyMMdd"))
     val reportDateStr = date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
 
-    val campaignpacing = CampaignPacingSettingsDataset().readLatestPartition()
-
-    val adgroups = AdGroupDataSet().readLatestPartition()
+    val adgroups = AdGroupDataSet().readPartition(date)
       .select("CampaignId", "AdGroupId", "ROIGoalTypeId", "MaxBidCPMInAdvertiserCurrency")
-      .join(campaignpacing, Seq("CampaignId"), "left")
-      .filter(col("IsValuePacing") === true)
 
     val auctionlog = spark.read.parquet(s"s3a://ttd-identity/datapipeline/prod/internalauctionresultslog/v=1/date=$dateStr/hour=$hour")
       .select(col("AvailableBidRequestId"), explode(col("AdGroupCandidates")))
       .select(col("AvailableBidRequestId"), col("col.*"))
+      .filter(col("IsValuePacing") === true)
 
-    auctionlog.join(adgroups, Seq("AdGroupId"))
+    auctionlog.join(adgroups, Seq("AdGroupId"), "left")
       .groupBy("CampaignId", "AdGroupId", "ROIGoalTypeId")
       .agg(
         count("*").as("TotalCount"),
