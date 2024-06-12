@@ -2,8 +2,10 @@ package com.thetradedesk.featurestore.datasets
 
 import com.thetradedesk.featurestore.utils.PathUtils
 import com.thetradedesk.geronimo.shared.{loadParquetData, loadParquetDataHourly, parquetDataPaths, parquetHourlyDataPaths}
+import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
+import com.thetradedesk.spark.util.distcp.{AppendFoldersToExisting, CopyToEmpty, DataOutputUtils, OverwriteExisting}
 import com.thetradedesk.spark.util.io.FSUtils
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.{Dataset, Encoder, SaveMode, SparkSession}
@@ -55,6 +57,7 @@ trait LightWritableDataset[T <: Product] extends LightDataset {
   val defaultNumPartitions: Int
   val repartitionColumn: Option[String] = None
   val maxRecordsPerFile: Int = 0
+  val writeThroughHdfs: Boolean = false
 
   def writePartition(dataset: Dataset[T],
                      partition: Any = null,
@@ -93,11 +96,24 @@ trait LightWritableDataset[T <: Product] extends LightDataset {
         .option("maxRecordsPerFile", maxRecordsPerFile)
         .csv(partitionedPath)
 
-      case Some("parquet") => df
-        .write
-        .mode(saveMode)
-        .option("maxRecordsPerFile", maxRecordsPerFile)
-        .parquet(partitionedPath)
+      case Some("parquet") => {
+        // write to hdfs first then copy to s3
+        if (writeThroughHdfs) {
+          val copyType = saveMode match {
+            case SaveMode.Overwrite => OverwriteExisting
+            case SaveMode.ErrorIfExists => CopyToEmpty
+            case _ => AppendFoldersToExisting
+          }
+
+          DataOutputUtils.writeParquetThroughHdfs(df.toDF(), partitionedPath, copyType)(spark)
+        } else {
+          df
+            .write
+            .mode(saveMode)
+            .option("maxRecordsPerFile", maxRecordsPerFile)
+            .parquet(partitionedPath)
+        }
+      }
       case _ => throw new UnsupportedOperationException(s"format ${format} is not supported")
     }
   }

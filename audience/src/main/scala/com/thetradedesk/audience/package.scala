@@ -41,7 +41,7 @@ package object audience {
   val dryRun = config.getBoolean("dryRun", false)
 
   val featuresJsonSourcePath = "/features.json"
-  val featuresJsonDestPath = s"s3://thetradedesk-mlplatform-us-east-1/configdata/${ttdEnv}/audience/schema/${modelName}/v=1/${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}/features.json"
+  val featuresJsonDestPath = s"s3a://thetradedesk-mlplatform-us-east-1/configdata/${ttdEnv}/audience/schema/${modelName}/v=1/${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}/features.json"
 
   def shouldConsiderTDID(symbol: Symbol) = {
     shouldTrackTDID(symbol) && substring(symbol, 9, 1) === lit("-") && userIsInSampleUDF(symbol, lit(userDownSampleBasePopulation), lit(userDownSampleHitPopulation))
