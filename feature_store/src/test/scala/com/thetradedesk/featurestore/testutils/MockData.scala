@@ -712,6 +712,59 @@ object MockData {
     FCapCounterArray = Array[FCapCounter]()
   )
 
+
+  case class TestInputDataSchema(FeatureKey: String,
+                                 CategoricalFeat1: Option[String],
+                                 ArrayCategoricalFeat1: Array[String],
+                                 IntFeat1: Option[Int],
+                                 FloatFeat1: Float,
+                                 DoubleFeat1: Double)
+
+  val inputDfMock1: TestInputDataSchema = TestInputDataSchema(
+    FeatureKey = "a",
+    CategoricalFeat1 = Some("google.com"),
+    ArrayCategoricalFeat1 = Array("111", "222", "333"),
+    IntFeat1 = Some(1.toInt),
+    FloatFeat1 = 1.5.toFloat,
+    DoubleFeat1 = 3.toDouble
+  )
+
+  val inputDfMock2: TestInputDataSchema = TestInputDataSchema(
+    FeatureKey = "a",
+    CategoricalFeat1 = Some("yahoo.com"),
+    ArrayCategoricalFeat1 = Array("111", "222"),
+    IntFeat1 = Some(9.toInt),
+    FloatFeat1 = 7.5.toFloat,
+    DoubleFeat1 = 1.2.toDouble
+  )
+
+  val inputDfMock3: TestInputDataSchema = TestInputDataSchema(
+    FeatureKey = "a",
+    CategoricalFeat1 = Some("foxmail.com"),
+    ArrayCategoricalFeat1 = Array("111", "999"),
+    IntFeat1 = None,
+    FloatFeat1 = 2.5.toFloat,
+    DoubleFeat1 = 0.001.toDouble
+  )
+
+  val inputDfMock4: TestInputDataSchema = TestInputDataSchema(
+    FeatureKey = "b",
+    CategoricalFeat1 = Some("foxmail.com"),
+    ArrayCategoricalFeat1 = Array("123", "999"),
+    IntFeat1 = Some(2.toInt),
+    FloatFeat1 = 2.5.toFloat,
+    DoubleFeat1 = 0.001.toDouble
+  )
+
+  val inputDfMock5: TestInputDataSchema = TestInputDataSchema(
+    FeatureKey = "b",
+    CategoricalFeat1 = None,
+    ArrayCategoricalFeat1 = Array("111", "999"),
+    IntFeat1 = Some(5.toInt),
+    FloatFeat1 = 0.toFloat,
+    DoubleFeat1 = 0.1.toDouble
+  )
+
   def featureSourceSchema(userFeatureMergeDefinition: UserFeatureMergeDefinition) = StructType(
     (userFeatureMergeDefinition
       .featureSourceDefinitions

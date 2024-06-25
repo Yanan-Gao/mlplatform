@@ -13,15 +13,30 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import java.time.{LocalDate, LocalDateTime, ZoneOffset}
 
 package object featurestore {
-  var date = config.getDate("date", LocalDate.now())
-  var dateTime = config.getDateTime("dateTime", date.atStartOfDay())
-  var ttdEnv = config.getString("ttd.env", "dev")
+
+  val FeautureAppName = "OfflineFeatureStore"
+  val RunTimeGaugeName = "run_time_seconds"
+  val OutputRowCountGaugeName = "output_rows_written"
+  val defaultNumPartitions: Int = 10
+  // S3 path
+  val MLPlatformS3Root: String = "s3a://thetradedesk-mlplatform-us-east-1/features/feature_store"
+  val ProfileDataBasePath: String = "profiles"
+  val ProcessedDataBasePath: String = "processed"
+
+  var date: LocalDate = config.getDate("date", LocalDate.now())
+  var dateTime: LocalDateTime = config.getDateTime("dateTime", date.atStartOfDay())
+  var ttdEnv: String = config.getString("ttd.env", "dev")
+  val aggLevel: String = config.getString("aggLevel", "UIID")
+  var writeThroughHdfs: Boolean = config.getBoolean("writeThroughHdfs", true)
   val s3Client = AmazonS3ClientBuilder.standard.withRegion(Regions.US_EAST_1).build
 
   val userDownSampleBasePopulation = config.getInt("userDownSampleBasePopulation", default = 1000000)
   val userDownSampleHitPopulation = config.getInt("userDownSampleHitPopulation", default = 10000)
 
   val userIsInSampleUDF = udf[Boolean, String, Long, Long](userIsInSample)
+
+  val highDimLevels = Set("UIID", "TDID")
+  val isProfileHighDim: Boolean = highDimLevels.contains(aggLevel)
 
   private val doNotTrackTDID = "00000000-0000-0000-0000-000000000000"
   private val doNotTrackTDIDColumn = lit(doNotTrackTDID)
@@ -50,4 +65,21 @@ package object featurestore {
       shouldTrackTDID(column) && substring(column, 9, 1) === lit("-") && (abs(xxhash64(concat(column, lit(salt)))) % lit(rotation) === lit(hit))
     }
   }
+
+  // partition config
+  class PartitionCount {
+    var DailyAttribution = 50
+    var DailyClickBidFeedback = 800
+    var DailyConvertedImpressions = 5
+    var AggResult = 5
+  }
+  val partCount = aggLevel match {
+    case "UIID" => new PartitionCount
+    case _ => {
+      val partCount = new PartitionCount
+      partCount.AggResult = 1
+      partCount
+    }
+  }
+
 }
