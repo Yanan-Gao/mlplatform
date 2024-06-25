@@ -25,6 +25,7 @@ libraryDependencies ++= Seq(
 
   "com.typesafe" % "config" % "1.3.0",
   "com.thetradedesk" %% "geronimo" % "0.2.10-SNAPSHOT",
+  "com.thetradedesk" %% "eldorado-core" % "1.0.163-spark-3.2.1",
   "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
 
   "io.prometheus" % "simpleclient" % prometheusVersion,
