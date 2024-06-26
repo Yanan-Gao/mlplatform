@@ -14,3 +14,7 @@ final case class AggregatedSeedRecord(TDID: String,
 case class AggregatedSeedReadableDataset() extends LightReadableDataset[AggregatedSeedRecord](s"${config.getString(s"${getClassName(AggregatedSeedReadableDataset)}ReadEnv", ttdEnv)}/audience/aggregatedSeed/v=1", ML_PLATFORM_ROOT)
 
 case class AggregatedSeedWritableDataset() extends LightWritableDataset[AggregatedSeedRecord](s"${ttdEnv}/audience/aggregatedSeed/v=1", ML_PLATFORM_ROOT, 1024)
+
+case class AggregatedConversionPixelReadableDataset() extends LightReadableDataset[AggregatedSeedRecord](s"${config.getString(s"${getClassName(AggregatedSeedReadableDataset)}ReadEnv", ttdEnv)}/audience/aggregatedConversionPixel/v=1", ML_PLATFORM_ROOT)
+
+case class AggregatedConversionPixelWritableDataset() extends LightWritableDataset[AggregatedSeedRecord](s"${ttdEnv}/audience/aggregatedConversionPixel/v=1", ML_PLATFORM_ROOT, 1024)
