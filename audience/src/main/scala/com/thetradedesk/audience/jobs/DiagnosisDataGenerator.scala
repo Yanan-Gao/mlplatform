@@ -17,7 +17,7 @@ object DiagnosisDataGenerator {
     val dateStr = date.format(DateTimeFormatter.ofPattern("yyyyMMdd"))
     val reportDateStr = date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
 
-    val adgroups = AdGroupDataSet().readPartition(date)
+    val adgroups = AdGroupDataSet().readLatestPartitionUpTo(date, true)
       .select("CampaignId", "AdGroupId", "ROIGoalTypeId", "MaxBidCPMInAdvertiserCurrency")
 
     val auctionlog = spark.read.parquet(s"s3a://ttd-identity/datapipeline/prod/internalauctionresultslog/v=1/date=$dateStr/hour=$hour")
