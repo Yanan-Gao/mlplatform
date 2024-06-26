@@ -25,7 +25,7 @@ object DiagnosisDataGenerator {
       .select(col("AvailableBidRequestId"), col("col.*"))
       .filter(col("IsValuePacing") === true)
 
-    auctionlog.join(adgroups, Seq("AdGroupId"), "left")
+    auctionlog.join(adgroups, Seq("AdGroupId"), "inner")
       .groupBy("CampaignId", "AdGroupId", "ROIGoalTypeId")
       .agg(
         count("*").as("TotalCount"),
