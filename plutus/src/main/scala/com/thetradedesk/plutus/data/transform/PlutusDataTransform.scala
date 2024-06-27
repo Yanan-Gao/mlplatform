@@ -90,7 +90,7 @@ object PlutusDataTransform extends Logger {
       .repartition(partitions)
       .persist(StorageLevel.MEMORY_ONLY_2)
 
-    val bidsGaugeExplicit = prometheus.createGauge("clean_explicit_v2", "count of clean explicit dataset v2")
+    val bidsGaugeExplicit = prometheus.createGauge("plutus_clean_explicit_v2", "count of clean explicit dataset v2")
     bidsGaugeExplicit.set(cleanExplicitDataset.count())
 
     val mbtwSupplyVendors = cleanExplicitDataset.select("SupplyVendor").distinct().as[String].collect().toSeq
@@ -179,7 +179,8 @@ object PlutusDataTransform extends Logger {
       .drop("AdWidthInPixels", "AdHeightInPixels")
       .repartition(partitions)
       .persist()
-    val bidsGaugeImplicit = prometheus.createGauge("clean_implicit_v2", "count of clean explicit dataset v2")
+
+    val bidsGaugeImplicit = prometheus.createGauge("plutus_clean_implicit_v2", "count of clean explicit dataset v2")
     bidsGaugeImplicit.set(cleanImplicitDataset.count())
 
     cleanImplicitDataset
