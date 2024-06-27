@@ -15,13 +15,14 @@ object PlutusImplicitDataProcessor extends Logger {
   val date = config.getDate("date", LocalDate.now())
   val outputPath = config.getString("outputPath", "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/")
   val dataVersion = config.getInt("dataVersion", DATA_VERSION)
-  val rawOutputPrefix = config.getString("outputPrefix", "raw")
   val cleanOutputPrefix = config.getString("outputPrefix", "clean")
 
   val ttdEnv = config.getString("ttd.env", "dev")
   val outputTtdEnv = config.getStringOption("outputTtd.env")
 
   val partitions = config.getInt("partitions", 500)
+  val facetPartitions = config.getIntOption("facetPartitions")
+
   val implicitSampleRate = config.getDouble("implicitSampleRate", 0.1)
 
   implicit val prometheus = new PrometheusClient("Plutus", "TrainingDataImEtl")
@@ -35,8 +36,8 @@ object PlutusImplicitDataProcessor extends Logger {
     PlutusDataTransform.processImplicit(
       date = date,
       partitions = partitions,
+      maybeFacetPartitions=facetPartitions,
       outputPath = outputPath,
-      rawOutputPrefix = rawOutputPrefix,
       cleanOutputPrefix = cleanOutputPrefix,
       inputTtdEnv = ttdEnv,
       dataVersion = dataVersion,

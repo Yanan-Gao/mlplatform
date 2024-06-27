@@ -11,10 +11,9 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{Column, Dataset, Encoder}
 
-import java.time.{LocalDate, LocalDateTime}
 import java.time.temporal.TemporalAmount
+import java.time.{LocalDate, LocalDateTime}
 import java.util.UUID
-import scala.collection.mutable.ArrayBuffer
 
 package object data {
 
@@ -24,17 +23,7 @@ package object data {
   val IMPLICIT_DATA_SOURCE = "bidsimpressions"
 
   val DEFAULT_SV_NAME = "google"
-  val IMPLICIT_SV_NAME = "implicit"
   val DEFAULT_IMPLICIT_PREFIX = "bidsimpressions"
-
-  val DEFAULT_NUM_CSV_PARTITIONS = 20
-  val DEFAULT_NUM_PARQUET_PARTITIONS = 500
-
-  val LOSS_CODE_WIN = -1
-  val LOSS_CONDITIONAL_WIN = 301
-  val LOSS_CODE_LOST_TO_HIGHER_BIDDER = 102
-
-  val VALID_LOSS_CODES = Seq(LOSS_CODE_WIN, LOSS_CODE_LOST_TO_HIGHER_BIDDER)
 
   val MISSING_DATA_VALUE: Int = 0
 
@@ -47,6 +36,14 @@ package object data {
       case ModelFeature(name, STRING_FEATURE_TYPE, _, _, _) => when(col(name).isNotNullOrEmpty, shiftModMaxValueUDF(xxhash64(col(name)), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
       case ModelFeature(name, INT_FEATURE_TYPE, _, _, _) => when(col(name).isNotNull, shiftModMaxValueUDF(col(name), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
       case ModelFeature(name, FLOAT_FEATURE_TYPE, _, _, _) => col(name).alias(name)
+    }.toArray
+  }
+
+  def hashedModMaxIntCols(datasetDtype: Array[(String, String)], shift: Int, nonFeatureStrings: Seq[String] = Seq(), nonShiftIntegers: Seq[String] = Seq()): Array[Column] = {
+    datasetDtype.map {
+      case (name, "StringType") if !nonFeatureStrings.contains(name) => when(col(name).isNotNullOrEmpty, shiftModMaxValueUDF(xxhash64(col(name)), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
+      case (name, "IntegerType") if !nonShiftIntegers.contains(name) => when(col(name).isNotNull, shiftModMaxValueUDF(col(name), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
+      case (name, _) => col(name).alias(name)
     }.toArray
   }
 
@@ -280,11 +277,10 @@ package object data {
   }
 
   // Copied from TTD/Domain/Shared/TTD.Domain.Shared/PlatformModels/PublisherRelationshipType.cs
-  object PublisherRelationshipType extends Enumeration
-  {
+  object PublisherRelationshipType extends Enumeration {
     val Unknown = 0
     val Indirect = 1
-    val Direct= 2
+    val Direct = 2
     // Deprecated: 2022-01-11
     val IndirectFixedPrice = 3
 
@@ -315,6 +311,7 @@ package object data {
     val Win = -1
     val BidBelowAuctionFloor = 100
     val BidLostHigherBid = 102
+    val ConditionalWin = 301
   }
 
 }

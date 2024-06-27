@@ -4,11 +4,11 @@ import org.apache.spark.sql.types.{DoubleType, IntegerType, StringType, StructTy
 
 import java.time.LocalDateTime
 
-final case class MinimumBidToWinData(BidRequestId: String,
-                                     SupplyVendorLossReason: Int,
-                                     LossReason: Int,
-                                     WinCPM: Double,
-                                     mbtw: Double)
+//final case class MinimumBidToWinData(BidRequestId: String,
+//                                     SupplyVendorLossReason: Int,
+//                                     LossReason: Int,
+//                                     WinCPM: Double,
+//                                     mbtw: Double)
 
 final case class InvalidLossData(BidRequestId: String,
                                  IsInvalidLoss: Boolean)
@@ -55,5 +55,6 @@ object RawLostBidDataset extends RawLostBidSchema {
   def S3PATH_GEN = (dateTime: LocalDateTime) => {
     f"${dateTime.getYear}/${dateTime.getMonthValue}%02d/${dateTime.getDayOfMonth}%02d/${dateTime.getHour}%02d/*/*.gz"
   }
+
 }
 
