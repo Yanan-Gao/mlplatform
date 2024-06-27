@@ -2,24 +2,24 @@ package com.thetradedesk.plutus.data.plutus.transform
 
 import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
-import com.thetradedesk.plutus.data.{ChannelType, MarketType}
 import com.thetradedesk.plutus.data.MockData._
 import com.thetradedesk.plutus.data.schema.{MinimumBidToWinData, PcResultsRawLogs, PlutusLogsData, ProductionAdgroupBudgetData}
 import com.thetradedesk.plutus.data.transform.PcResultsGeronimoTransform.joinGeronimoPcResultsLog
-import com.thetradedesk.plutus.data.transform.PlutusDataTransform.transformPcResultsRawLog
+import com.thetradedesk.plutus.data.{ChannelType, MarketType}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.{AdFormatRecord, PrivateContractRecord}
-import com.thetradedesk.streaming.records.rtb.FeeFeatureUsageLogBackingData
 
 class PcResultsGeronimoTransformTest extends TTDSparkTest {
 
   test("PcResults + Geronimo Transform test for schema/column correctness") {
     val janusVariantMap = Map("model1" -> "variant1")
 
-    val geronimoDataset = Seq (
+    val geronimoDataset = Seq(
       bidsImpressionsMock(),
       bidsImpressionsMock(null),
-      bidsImpressionsMock(Seq {feeFeatureUsageLogMock}),
+      bidsImpressionsMock(Seq {
+        feeFeatureUsageLogMock
+      }),
       bidsImpressionsMock(JanusVariantMap = Some(janusVariantMap))
     ).toDS().as[BidsImpressionsSchema]
     val pcResultsDataset = Seq(pcResultsLogMock.copy()).toDS().as[PlutusLogsData]
@@ -71,7 +71,7 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
 
   test("PcResultsRawLogSchema -> PlutusLogsData test") {
     val rawDataset = Seq(pcResultsRawLogMock.copy()).toDS().as[PcResultsRawLogs]
-    val outputDataset = transformPcResultsRawLog(rawDataset)
+    val outputDataset = PlutusLogsData.transformPcResultsRawLog(rawDataset)
 
     assert(outputDataset.count() == 1, "Output rows")
   }

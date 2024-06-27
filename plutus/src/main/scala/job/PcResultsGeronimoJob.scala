@@ -33,7 +33,7 @@ object PcResultsGeronimoJob {
   def main(args: Array[String]): Unit = {
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
 
-    PcResultsGeronimoTransform.transform(dateTime, fileCount)
+    PcResultsGeronimoTransform.transform(dateTime, fileCount, ttdEnv = Some(ttdEnv))
 
     jobDurationGaugeTimer.setDuration()
     prometheus.pushMetrics()

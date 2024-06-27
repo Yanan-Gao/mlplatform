@@ -2,7 +2,7 @@ package job
 
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.plutus.data.DATA_VERSION
-import com.thetradedesk.plutus.data.transform.{PlutusDataTransform, RawDataTransform}
+import com.thetradedesk.plutus.data.transform.PlutusDataTransform
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -15,13 +15,13 @@ object PlutusExplicitDataProcessor extends Logger {
   val date = config.getDate("date", LocalDate.now())
   val outputPath = config.getString("outputPath", "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/")
   val dataVersion = config.getInt("dataVersion", DATA_VERSION)
-  val rawOutputPrefix = config.getString("outputPrefix", "raw")
   val cleanOutputPrefix = config.getString("outputPrefix", "clean")
 
   val ttdEnv = config.getString("ttd.env", "dev")
   val outputTtdEnv = config.getStringOption("outputTtd.env")
 
   val partitions = config.getInt("partitions", 200)
+  val facetPartitions = config.getIntOption("facetPartitions")
 
   implicit val prometheus = new PrometheusClient("Plutus", "TrainingDataExEtl")
 
@@ -35,8 +35,8 @@ object PlutusExplicitDataProcessor extends Logger {
     PlutusDataTransform.processExplicit(
       date = date,
       partitions = partitions,
+      maybeFacetPartitions = facetPartitions,
       outputPath = outputPath,
-      rawOutputPrefix = rawOutputPrefix,
       cleanOutputPrefix = cleanOutputPrefix,
       inputTtdEnv = ttdEnv,
       dataVersion = dataVersion,

@@ -2,10 +2,11 @@ package com.thetradedesk.plutus.data.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.logging.Logger
+import com.thetradedesk.plutus.data._
 import com.thetradedesk.plutus.data.schema._
-import com.thetradedesk.plutus.data.transform.PlutusDataTransform.{loadPlutusLogData, loadRawMbtwData}
 import com.thetradedesk.plutus.data.transform.SharedTransforms.{AddChannel, AddMarketType}
-import com.thetradedesk.plutus.data.{IMPLICIT_DATA_SOURCE, LossReason, loadParquetDataHourly, loadParquetDataHourlyV2}
+import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.{AdFormatDataSet, AdFormatRecord, PrivateContractDataSet, PrivateContractRecord}
 import com.thetradedesk.spark.listener.WriteListener
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
@@ -21,9 +22,6 @@ object PcResultsGeronimoTransform extends Logger {
   val delta = 0.0001
   val extremeValueThreshold = 0.75
 
-  val spark = job.PcResultsGeronimoJob.spark
-  import spark.implicits._
-
   def joinGeronimoPcResultsLog(geronimo: Dataset[BidsImpressionsSchema],
                                plutusLogs: Dataset[PlutusLogsData],
                                mbtw: Dataset[MinimumBidToWinData],
@@ -31,7 +29,7 @@ object PcResultsGeronimoTransform extends Logger {
                                adFormatData: Dataset[AdFormatRecord],
                                productionAdgroupBudgetData: Dataset[ProductionAdgroupBudgetData],
                                joinCols: Seq[String] = Seq("BidRequestId")
-                              ): (Dataset[PcResultsMergedSchema], sql.DataFrame, sql.DataFrame) = {
+                              ): (Dataset[PcResultsMergedDataset], sql.DataFrame, sql.DataFrame) = {
     var res = geronimo.join(plutusLogs, joinCols, "left").join(mbtw, joinCols, "left")
       .withColumn("AdFormat", concat($"AdWidthInPixels", lit("x"), $"AdHeightInPixels"))
 
@@ -74,19 +72,19 @@ object PcResultsGeronimoTransform extends Logger {
 
     // A more flexible version of the above with a looser bound
     res = res.withColumn("isMbtwValid",
-           when(
-            (col("IsImp") === 1.0) && (col("LossReason") === LossReason.Win) &&
-              ((col("mbtw") / col("FinalBidPrice")) < (1 + delta)) &&
-              ((col("mbtw") / col("FloorPriceInUSD") > (1 - delta)) || col("FloorPriceInUSD").isNullOrEmpty), true)
+      when(
+        (col("IsImp") === 1.0) && (col("LossReason") === LossReason.Win) &&
+          ((col("mbtw") / col("FinalBidPrice")) < (1 + delta)) &&
+          ((col("mbtw") / col("FloorPriceInUSD") > (1 - delta)) || col("FloorPriceInUSD").isNullOrEmpty), true)
 
-            // Bids where MB2W is > bid price AND not an extreme value AND is above floor (if present)
-            .when(
-              (col("IsImp") === 0.0) && (col("LossReason") === LossReason.BidLostHigherBid) &&
-                (col("mbtw") > col("FinalBidPrice")) &&
-                ((col("mbtw") / col("FloorPriceInUSD") > (1 - delta)) || col("FloorPriceInUSD").isNullOrEmpty) &&
-                ((col("FinalBidPrice") / col("mbtw")) > extremeValueThreshold), true)
-            .otherwise(false)
-        )
+        // Bids where MB2W is > bid price AND not an extreme value AND is above floor (if present)
+        .when(
+          (col("IsImp") === 0.0) && (col("LossReason") === LossReason.BidLostHigherBid) &&
+            (col("mbtw") > col("FinalBidPrice")) &&
+            ((col("mbtw") / col("FloorPriceInUSD") > (1 - delta)) || col("FloorPriceInUSD").isNullOrEmpty) &&
+            ((col("FinalBidPrice") / col("mbtw")) > extremeValueThreshold), true)
+        .otherwise(false)
+    )
 
     // Getting Value Pacing fields from productionAdgroupBudgetData
     res = res.alias("df")
@@ -113,28 +111,28 @@ object PcResultsGeronimoTransform extends Logger {
 
     // Adding coalesced AliasedSupplyPublisherId + SupplyVendorPublisherId
     res = res.withColumn("AspSvpId",
-        coalesce(
-          when(col("AliasedSupplyPublisherId").isNotNull, concat(lit("asp_"), col("AliasedSupplyPublisherId"))),
-          when(col("SupplyVendorPublisherId").isNotNull, concat(lit("svp_"), col("SupplyVendorPublisherId")))
-        )
+      coalesce(
+        when(col("AliasedSupplyPublisherId").isNotNull, concat(lit("asp_"), col("AliasedSupplyPublisherId"))),
+        when(col("SupplyVendorPublisherId").isNotNull, concat(lit("svp_"), col("SupplyVendorPublisherId")))
       )
+    )
 
     val pcResultsAbsentDataset = plutusLogs.join(geronimo, joinCols, "leftanti")
     val mbtwAbsentDataset = mbtw.join(geronimo, joinCols, "leftanti")
 
-    (res.selectAs[PcResultsMergedSchema], pcResultsAbsentDataset, mbtwAbsentDataset)
+    (res.selectAs[PcResultsMergedDataset], pcResultsAbsentDataset, mbtwAbsentDataset)
   }
 
 
-  def transform(dateTime: LocalDateTime, fileCount: Int) = {
+  def transform(dateTime: LocalDateTime, fileCount: Int, ttdEnv: Option[String]): Unit = {
     val geronimoDataset = loadParquetDataHourly[BidsImpressionsSchema](
       f"${BidsImpressions.BIDSIMPRESSIONSS3}prod/bidsimpressions",
       dateTime,
       source = Some(IMPLICIT_DATA_SOURCE)
     )
 
-    val pcResultsDataset = loadPlutusLogData(dateTime)
-    val mbtwData = loadRawMbtwData(dateTime)
+    val pcResultsDataset = PlutusLogsData.loadPlutusLogData(dateTime)
+    val mbtwData = MinimumBidToWinData.loadRawMbtwData(dateTime)
 
     val privateContractsData = PrivateContractDataSet().readDate(dateTime.toLocalDate)
     val adFormatData = AdFormatDataSet().readDate(dateTime.toLocalDate)
@@ -167,7 +165,7 @@ object PcResultsGeronimoTransform extends Logger {
     val listener = new WriteListener()
     spark.sparkContext.addSparkListener(listener)
 
-    val outputPath = f"${PcResultsMergedDataset.S3PATH}${PcResultsMergedDataset.S3PATH_GEN.apply(dateTime)}"
+    val outputPath = PcResultsMergedDataset.S3_PATH_HOUR(dateTime, ttdEnv)
     mergedDataset.coalesce(fileCount)
       .write.mode(SaveMode.Overwrite)
       .parquet(outputPath)
