@@ -116,6 +116,7 @@ object AggConvertedImpressions extends FeatureStoreAggJob {
     ContinuousFeatAggSpecs(aggField = "sin_hour_week", aggWindow = 1, aggFunc = AggFunc.Desc),
     ContinuousFeatAggSpecs(aggField = "sin_hour_week", aggWindow = 3, aggFunc = AggFunc.Desc),
     ContinuousFeatAggSpecs(aggField = "sin_hour_week", aggWindow = 7, aggFunc = AggFunc.Desc),
+    ContinuousFeatAggSpecs(aggField = "sin_hour_week", aggWindow = 15, aggFunc = AggFunc.Desc),
     ContinuousFeatAggSpecs(aggField = "cos_hour_week", aggWindow = 1, aggFunc = AggFunc.Desc),
     ContinuousFeatAggSpecs(aggField = "cos_hour_week", aggWindow = 3, aggFunc = AggFunc.Desc),
     ContinuousFeatAggSpecs(aggField = "cos_hour_week", aggWindow = 7, aggFunc = AggFunc.Desc),
