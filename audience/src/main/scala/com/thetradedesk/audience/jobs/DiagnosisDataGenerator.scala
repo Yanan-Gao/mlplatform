@@ -60,6 +60,10 @@ object DiagnosisDataGenerator {
         sum(col("HmrmfpBidFactor") * col("HmrmfpBidFactor")).as("HmrmfpBidFactorSquaredSum"),
         sum(col("UserBaseBidFactor")).as("UserBaseBidFactorSum"),
         sum(col("UserBaseBidFactor") * col("UserBaseBidFactor")).as("UserBaseBidFactorSquaredSum"),
+        sum(col("RValueUsed")).as("RValueUsedSum"),
+        sum(col("RValueUsed") * col("RValueUsed")).as("RValueUsedSquaredSum"),
+        sum(col("SystemAutoBidFactor")).as("SystemAutoBidFactorSum"),
+        sum(col("SystemAutoBidFactor") * col("SystemAutoBidFactor")).as("SystemAutoBidFactorSquaredSum"),
       )
       .select(
         col("CampaignId"),
@@ -98,7 +102,11 @@ object DiagnosisDataGenerator {
           col("HmrmfpBidFactorSum"),
           col("HmrmfpBidFactorSquaredSum"),
           col("UserBaseBidFactorSum"),
-          col("UserBaseBidFactorSquaredSum")
+          col("UserBaseBidFactorSquaredSum"),
+          col("RValueUsedSum"),
+          col("RValueUsedSquaredSum"),
+          col("SystemAutoBidFactorSum"),
+          col("SystemAutoBidFactorSquaredSum")
         )).as("CountMetrics")
       )
       .as[DiagnosisRecord]
