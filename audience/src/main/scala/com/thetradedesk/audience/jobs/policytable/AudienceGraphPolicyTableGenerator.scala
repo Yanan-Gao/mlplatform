@@ -4,6 +4,7 @@ import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets.CrossDeviceVendor.{CrossDeviceVendor, IAV2Person}
 import com.thetradedesk.audience.datasets.DataSource.DataSource
 import com.thetradedesk.audience.datasets.GoalType.GoalType
+import com.thetradedesk.audience.datasets.StorageCloud
 import com.thetradedesk.audience.datasets.Model.Model
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -64,6 +65,7 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, dataSource:
         .select(('ActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ActiveSize"), 'CrossDeviceVendorId, 'SourceId, 'Count.alias("Size"), 'TargetingDataId)
         .withColumn("Source", lit(dataSource.id))
         .withColumn("GoalType", lit(goalType.id))
+        .withColumn("StorageCloud", lit(Config.storageCloud))
         .cache()
 
     policyTable
