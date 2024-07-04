@@ -15,7 +15,7 @@ import org.apache.spark.sql.types.{ArrayType, StringType, StructType}
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-object RSMPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(GoalType.Relevance, DataSource.Seed, Model.RSM, prometheus: PrometheusClient) {
+object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(GoalType.Relevance, DataSource.Seed, Model.RSM, prometheus: PrometheusClient) {
 
   val rsmSeedProcessCount = prometheus.createCounter("rsm_policy_table_job_seed_process_count", "RSM policy table job seed process record", "seedId", "success")
   private val seedDataSchema = new StructType()

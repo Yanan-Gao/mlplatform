@@ -20,7 +20,7 @@ object AudiencePolicyTableGeneratorJob {
   def runETLPipeline(): Unit = {
     Config.model match {
       case Model.RSM =>
-        RSMPolicyTableGenerator.generatePolicyTable()
+        RSMGraphPolicyTableGenerator.generatePolicyTable()
       case Model.AEM =>
         AEMGraphPolicyTableGenerator.generatePolicyTable()
       case _ => throw new Exception(s"unsupported Model[${Config.model}]")

@@ -64,6 +64,8 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
 
 
   object Config {
+    // config to determine which cloud storage source to use
+    val storageCloud = StorageCloud.withName(config.getString("storageCloud", StorageCloud.AWS.toString)).id
     // detect recent seed metadata path in airflow and pass to spark job
     val seedMetaDataRecentVersion = config.getString("seedMetaDataRecentVersion", null)
     val seedMetadataS3Bucket = S3Utils.refinePath(config.getString("seedMetadataS3Bucket", "ttd-datprd-us-east-1"))
@@ -200,12 +202,12 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
 
   private def updateSyntheticId(date: LocalDate, policyTable: DataFrame, previousPolicyTable: Dataset[AudienceModelPolicyRecord], previousPolicyTableDate: LocalDate): DataFrame = {
     // use current date's seed id as active id, should be replaced with other table later
-    val activeIds = policyTable.select('SourceId, 'Source, 'CrossDeviceVendorId).distinct().cache
+    val activeIds = policyTable.select('SourceId, 'Source, 'CrossDeviceVendorId, 'StorageCloud).distinct().cache
     // get retired sourceId
     val policyTableDayChange = ChronoUnit.DAYS.between(previousPolicyTableDate, date).toInt
 
-    val inActiveIds = previousPolicyTable
-      .join(activeIds, Seq("SourceId", "Source", "CrossDeviceVendorId"), "left_anti")
+    val inActiveIds = previousPolicyTable.filter('StorageCloud === Config.storageCloud)
+      .join(activeIds, Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "left_anti")
       .withColumn("ExpiredDays", 'ExpiredDays + lit(policyTableDayChange))
 
     val releasedIds = inActiveIds.filter('ExpiredDays > Config.expiredDays)
@@ -216,7 +218,8 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
       .withColumn("SampleWeight", lit(1.0))
 
     // get new sourceId
-    val newIds = activeIds.join(previousPolicyTable.select('SourceId, 'Source, 'CrossDeviceVendorId), Seq("SourceId", "Source", "CrossDeviceVendorId"), "left_anti")
+    val newIds = activeIds.join(previousPolicyTable.filter('StorageCloud === Config.storageCloud)
+                                                  .select('SourceId, 'Source, 'CrossDeviceVendorId, 'StorageCloud), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "left_anti")
     // get max SyntheticId from previous policy table
     val maxId = previousPolicyTable.agg(max('SyntheticId)).collect()(0)(0).asInstanceOf[Int]
     // generate new synthetic Ids
@@ -226,22 +229,24 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     val getElementAtIndex = udf((index: Long) => allIdsAdded(index.toInt))
     val updatedIds = newIds.withColumn("row_index", (row_number.over(Window.orderBy("SourceId", "CrossDeviceVendorId")) - 1).alias("row_index"))
       .withColumn("SyntheticId", getElementAtIndex($"row_index")).drop("row_index")
-      .join(policyTable.drop("SyntheticId"), Seq("SourceId", "Source", "CrossDeviceVendorId"), "inner")
+      .join(policyTable.drop("SyntheticId"), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "inner")
       .withColumn("ExpiredDays", lit(0))
       .withColumn("IsActive", lit(true))
       .withColumn("Tag", lit(Tag.New.id))
       .withColumn("SampleWeight", lit(1.0)).cache()
 
     val currentActiveIds = policyTable
-      .join(previousPolicyTable.select('SourceId, 'Source, 'CrossDeviceVendorId, 'SyntheticId, 'IsActive), Seq("SourceId", "Source", "CrossDeviceVendorId"), "inner")
+      .join(previousPolicyTable.filter('StorageCloud === Config.storageCloud).select('SourceId, 'Source, 'CrossDeviceVendorId, 'SyntheticId, 'IsActive, 'StorageCloud), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "inner")
       .withColumn("ExpiredDays", lit(0))
       .withColumn("Tag", when('IsActive, lit(Tag.Existing.id)).otherwise(lit(Tag.Recall.id)))
       .withColumn("IsActive", lit(true))
       .withColumn("SampleWeight", lit(1.0)) // todo optimize this with performance/monitoring
 
+    val otherSourcePreviousPolicyTable = previousPolicyTable.filter('StorageCloud =!= Config.storageCloud).toDF()
     val updatedPolicyTable = updatedIds.unionByName(retentionIds).unionByName(currentActiveIds)
+    val finalUpdatedPolicyTable = updatedPolicyTable.unionByName(otherSourcePreviousPolicyTable)
 
-    updatedPolicyTable
+    finalUpdatedPolicyTable
   }
 
   def retrieveSourceData(date: LocalDate): DataFrame
@@ -421,6 +426,7 @@ object RSMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.RSM, p
         .select(('ActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ActiveSize"), 'CrossDeviceVendorId, 'SeedId.alias("SourceId"), 'Count.alias("Size"), 'TargetingDataId)
         .withColumn("Source", lit(DataSource.Seed.id))
         .withColumn("GoalType", lit(GoalType.Relevance.id))
+        .withColumn("StorageCloud", lit(Config.storageCloud))
         .cache()
 
     policyTable

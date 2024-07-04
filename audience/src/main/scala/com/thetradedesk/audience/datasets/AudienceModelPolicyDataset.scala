@@ -43,6 +43,8 @@ final case class AudienceModelPolicyRecord(TargetingDataId: Long,
                                            // Show how many days the sourceId is inactive
                                            // devault value is 0  
                                            ExpiredDays: Int,
+                                           // Source of the cloud storage  
+                                           StorageCloud: Int,
                                           )
 
 case class AudienceModelPolicyWritableDataset(model: Model) extends
@@ -74,4 +76,9 @@ object CrossDeviceVendor extends Enumeration {
 object Tag extends Enumeration {
   type Tag = Value
   val None, UnderPerform, New, Small, Existing, Retention, Recall = Value
+}
+
+object StorageCloud extends Enumeration {
+  type Tag = Value
+  val AWS, AZURE = Value
 }
