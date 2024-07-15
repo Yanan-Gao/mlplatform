@@ -3,7 +3,7 @@ package job
 import com.thetradedesk.geronimo.shared.{STRING_FEATURE_TYPE, intModelFeaturesCols}
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
-import com.thetradedesk.kongming.features.Features.{ModelTarget, aliasedModelFeatureCols, aliasedModelFeatureNames, directFields, keptFields, modelDimensions, modelFeatures, modelTargetCols, modelTargets, modelWeights, rawModelFeatureNames, seqFields}
+import com.thetradedesk.kongming.features.Features.{ModelTarget, aliasedModelFeatureCols, aliasedModelFeatureNames, directFields, keptFields, modelDimensions, modelFeatures, modelTargetCols, modelTargets, modelWeights, rawModelFeatureNames, seqDirectFields, seqHashFields, seqModModelFeaturesCols, userFeatures}
 import com.thetradedesk.kongming.transform.NegativeTransform.aggregateNegatives
 import com.thetradedesk.kongming.transform.TrainSetTransformation._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -17,6 +17,7 @@ import org.apache.spark.sql.types.DoubleType
 import org.apache.spark.storage.StorageLevel
 
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 /*
   Generate train set for conversion model training job
@@ -167,7 +168,7 @@ object GenerateTrainSet extends KongmingBaseJob {
     adjustedWeightDataset
   }
 
-  def generateData(date: LocalDate, bidDate: LocalDate): (Dataset[ValidationDataForModelTrainingRecord], Dataset[ValidationDataForModelTrainingRecord], Dataset[ValidationDataForModelTrainingRecord]) = {
+  def generateData(date: LocalDate, bidDate: LocalDate): (Dataset[UserDataValidationDataForModelTrainingRecord], Dataset[UserDataValidationDataForModelTrainingRecord], Dataset[UserDataValidationDataForModelTrainingRecord]) = {
     // Read the balanced data set of given biddate.
     val adjustedWeightDataset =  IntermediateTrainDataBalancedDataset()
       .readPartition(date, "biddate", bidDate.format(DefaultTimeFormatStrings.dateTimeFormatter)).as[PreFeatureJoinRecord]
@@ -177,21 +178,19 @@ object GenerateTrainSet extends KongmingBaseJob {
 
     // features to hash, including everyone except seq
     var hashFeatures = modelDimensions ++ modelFeatures ++ modelWeights
-    hashFeatures = hashFeatures.filter(x => !(seqFields).contains(x))
-    val tensorflowSelectionTabular = intModelFeaturesCols(hashFeatures) ++ aliasedModelFeatureCols(seqFields) ++ modelTargetCols(modelTargets) ++ splitColumn
-    //    hashFeatures = hashFeatures.filter(x => !(seqFields ++ directFields).contains(x))
-    //    val tensorflowSelectionTabular = intModelFeaturesCols(hashFeatures) ++ rawModelFeatureCols(directFields) ++ aliasedModelFeatureCols(seqFields) ++ modelTargetCols(modelTargets) ++ splitColumn
+    hashFeatures = hashFeatures.filter(x => !(seqDirectFields.contains(x)| seqHashFields.contains(x)))
+    val tensorflowSelectionTabular = intModelFeaturesCols(hashFeatures) ++
+      aliasedModelFeatureCols(seqDirectFields) ++ seqModModelFeaturesCols(seqHashFields) ++ modelTargetCols(modelTargets) ++ splitColumn
 
     val parquetSelectionTabular = aliasedModelFeatureCols(keptFields ++ directFields) ++ tensorflowSelectionTabular
 
     // split train and val
     val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, bidDate, 0)(getPrometheus)
       .withColumn("split", when($"IsInTrainSet", "train").when($"IsTracked" === lit(1), lit("val")).otherwise("untracked"))
-
     (
-      trainDataWithFeature.filter($"split" === lit("train")).select(parquetSelectionTabular: _*).selectAs[ValidationDataForModelTrainingRecord](nullIfAbsent=true),
-      trainDataWithFeature.filter($"split" === lit("val")).select(parquetSelectionTabular: _*).selectAs[ValidationDataForModelTrainingRecord](nullIfAbsent=true),
-      trainDataWithFeature.filter($"split" === lit("untracked")).select(parquetSelectionTabular: _*).selectAs[ValidationDataForModelTrainingRecord](nullIfAbsent=true)
+      trainDataWithFeature.filter($"split" === lit("train")).select(parquetSelectionTabular: _*).selectAs[UserDataValidationDataForModelTrainingRecord](nullIfAbsent=true),
+      trainDataWithFeature.filter($"split" === lit("val")).select(parquetSelectionTabular: _*).selectAs[UserDataValidationDataForModelTrainingRecord](nullIfAbsent=true),
+      trainDataWithFeature.filter($"split" === lit("untracked")).select(parquetSelectionTabular: _*).selectAs[UserDataValidationDataForModelTrainingRecord](nullIfAbsent=true)
     )
   }
 
@@ -202,7 +201,7 @@ object GenerateTrainSet extends KongmingBaseJob {
     // maximum lookback from adgroup's policy
     val maxLookback = adGroupPolicy.agg(max("DataLookBack")).first.getInt(0)
 
-    // Step A: save the balancedData by date and bidDate. Biddate has to be string type to make the write work.
+//     Step A: save the balancedData by date and bidDate. Biddate has to be string type to make the write work.
     val trainDataBalanced = balancedData(date, adGroupPolicy, adGroupPolicyMapping, maxLookback)
       .withColumn("biddate", date_format(col("LogEntryTime"), "yyyyMMdd")).selectAs[TrainDataBalancedRecord]
 
@@ -223,45 +222,64 @@ object GenerateTrainSet extends KongmingBaseJob {
         }
 
         var tfDropColumnNames = if (addBidRequestId) {
-          rawModelFeatureNames(seqFields)
+          rawModelFeatureNames(seqDirectFields)
         } else {
-          aliasedModelFeatureNames(keptFields) ++ rawModelFeatureNames(seqFields)
+          aliasedModelFeatureNames(keptFields) ++ rawModelFeatureNames(seqDirectFields)
         }
 
         // save relevant columns by date and biddate
         IntermediateTrainDataWithFeatureDataset(split="train").writePartition(adjustedTrainParquet.drop(tfDropColumnNames: _*)
-          .selectAs[DataForModelTrainingRecord](nullIfAbsent = true), date, bidDate, Some(dailyTrainSetWithFeatureCount))
+          .selectAs[UserDataForModelTrainingRecord](nullIfAbsent = true), date, bidDate, Some(dailyTrainSetWithFeatureCount))
 
         IntermediateTrainDataWithFeatureDataset(split="val").writePartition(adjustedValParquet.drop(tfDropColumnNames: _*)
-          .selectAs[DataForModelTrainingRecord](nullIfAbsent = true), date, bidDate, Some(dailyTrainSetWithFeatureCount))
+          .selectAs[UserDataForModelTrainingRecord](nullIfAbsent = true), date, bidDate, Some(dailyTrainSetWithFeatureCount))
 
         IntermediateTrainDataWithFeatureDataset(split="untracked").writePartition(adjustedUntrackedParquet.drop(tfDropColumnNames: _*)
-          .selectAs[DataForModelTrainingRecord](nullIfAbsent = true), date, bidDate, Some(dailyTrainSetWithFeatureCount))
+          .selectAs[UserDataForModelTrainingRecord](nullIfAbsent = true), date, bidDate, Some(dailyTrainSetWithFeatureCount))
       }
     )
 
     // Step C
     // load train & val parquet of all biddates
-    val traindataWithFeatureAllBidDate = IntermediateTrainDataWithFeatureDataset(split = "train").readPartition(date)
-    val valdataWithFeatureAllBidDate = IntermediateTrainDataWithFeatureDataset(split = "val").readPartition(date)
-    val untrackeddataWithFeatureAllBidDate = IntermediateTrainDataWithFeatureDataset(split = "untracked").readPartition(date)
+    val traindataWithFeatureAllBidDate = IntermediateTrainDataWithFeatureDataset(split = "train").readPartition(date).orderBy(rand()).drop("v","split","date","biddate").cache()
+    val valdataWithFeatureAllBidDate = IntermediateTrainDataWithFeatureDataset(split = "val").readPartition(date).orderBy(rand()).drop("v","split","date","biddate").cache()
+    val untrackeddataWithFeatureAllBidDate = IntermediateTrainDataWithFeatureDataset(split = "untracked").readPartition(date).orderBy(rand()).drop("v","split","date","biddate").cache()
 
     var trainsetRows = Array.fill(3)("", 0L)
 
     // save as csv
     if (saveTrainingDataAsCSV) {
-      val csvDS = if (incTrain) DataIncCsvForModelTrainingDataset() else DataCsvForModelTrainingDataset()
+      // with userdata trainset
+      val csvDS = if (incTrain) UserDataIncCsvForModelTrainingDataset() else UserDataCsvForModelTrainingDataset()
       val csvTrainRows = csvDS.writePartition(
-        traindataWithFeatureAllBidDate.orderBy(rand()).drop("v","split","date","biddate").selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
+        traindataWithFeatureAllBidDate.selectAs[UserDataForModelTrainingRecord](nullIfAbsent = true),
         date, "train", Some(trainSetPartitionCount))
       val csvValRows = csvDS.writePartition(
-        valdataWithFeatureAllBidDate.orderBy(rand()).drop("v","split","date","biddate").selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
+        valdataWithFeatureAllBidDate.selectAs[UserDataForModelTrainingRecord](nullIfAbsent = true),
         date, "val", Some(valSetPartitionCount))
       val csvUntrackedRows = csvDS.writePartition(
-        untrackeddataWithFeatureAllBidDate.orderBy(rand()).drop("v","split","date","biddate").selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
+        untrackeddataWithFeatureAllBidDate.selectAs[UserDataForModelTrainingRecord](nullIfAbsent = true),
         date, "untracked", Some(valSetPartitionCount))
       trainsetRows = Array(csvTrainRows, csvValRows, csvUntrackedRows)
     }
+
+    if (saveTrainingDataAsCSV) {
+      // no userdata trainset
+      val csvDS = if (incTrain) DataIncCsvForModelTrainingDataset() else DataCsvForModelTrainingDataset()
+      val csvTrainRows = csvDS.writePartition(
+        traindataWithFeatureAllBidDate.drop(aliasedModelFeatureNames(userFeatures):_*).selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
+        date, "train", Some(trainSetPartitionCount))
+      val csvValRows = csvDS.writePartition(
+        valdataWithFeatureAllBidDate.drop(aliasedModelFeatureNames(userFeatures):_*).selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
+        date, "val", Some(valSetPartitionCount))
+      val csvUntrackedRows = csvDS.writePartition(
+        untrackeddataWithFeatureAllBidDate.drop(aliasedModelFeatureNames(userFeatures):_*).selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
+        date, "untracked", Some(valSetPartitionCount))
+      trainsetRows = Array(csvTrainRows, csvValRows, csvUntrackedRows)
+
+    }
+
+
     trainsetRows
   }
 
