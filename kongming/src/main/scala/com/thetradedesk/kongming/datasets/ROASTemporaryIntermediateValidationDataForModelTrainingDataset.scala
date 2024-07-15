@@ -1,10 +1,11 @@
 package com.thetradedesk.kongming.datasets
-import com.thetradedesk.kongming.{BaseFolderPath, MLPlatformS3Root, getExperimentVersion, writeThroughHdfs}
-import com.thetradedesk.spark.datasets.core.{ColumnExistsInDataSet, DefaultTimeFormatStrings, GeneratedDataSet, Parquet, PartitionedS3DataSet2}
+
+import com.thetradedesk.kongming.{BaseFolderPath, MLPlatformS3Root, writeThroughHdfs}
+import com.thetradedesk.spark.datasets.core._
 
 import java.time.LocalDate
 
-case class IntermediateValidationDataForModelTrainingDataset(split:String, experimentOverride: Option[String]=None) extends PartitionedS3DataSet2[UserDataValidationDataForModelTrainingRecord, LocalDate, String, LocalDate, String](
+case class ROASTemporaryIntermediateValidationDataForModelTrainingDataset(split:String, experimentOverride: Option[String]=None) extends PartitionedS3DataSet2[ValidationDataForModelTrainingRecord, LocalDate, String, LocalDate, String](
   GeneratedDataSet,
   MLPlatformS3Root,
   rootFolderPath =  s"${BaseFolderPath}/trainset/parquetbybiddate/v=1/split=${split}",

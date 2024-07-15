@@ -20,8 +20,9 @@ object DailyOfflineScoringSet extends KongmingBaseJob {
       .selectAs[BidsImpressionsSchema]
 
     var hashFeatures = modelDimensions ++ modelFeatures
-    hashFeatures = hashFeatures.filter(x => !(seqFields ++ directFields).contains(x))
-    val selectionTabular = intModelFeaturesCols(hashFeatures) ++ rawModelFeatureCols(seqFields) ++ aliasedModelFeatureCols(keptFields ++ directFields)
+    hashFeatures = hashFeatures.filter(x => !(seqDirectFields ++ directFields ++ userFeatures).contains(x))
+    // todo: temporary - we will not add userFeature for scoring&calibration&metrics in this MR; will do it in the next MR
+    val selectionTabular = intModelFeaturesCols(hashFeatures) ++ rawModelFeatureCols(seqDirectFields) ++ aliasedModelFeatureCols(keptFields ++ directFields)
 
     //val dailyOfflineScoringRows = if (task == "roas") {
     val scoringFeatureDS = OfflineScoringSetTransform.dailyTransform(

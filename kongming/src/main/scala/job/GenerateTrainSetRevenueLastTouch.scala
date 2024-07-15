@@ -81,7 +81,7 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
         sampledImpressions.filter($"Revenue" <= lit(1)).select(cols: _*)
       )
 
-    val parquetSelectionTabular = cappedImpressions.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqFields)
+    val parquetSelectionTabular = cappedImpressions.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqDirectFields)
 
     cappedImpressions
       .select(parquetSelectionTabular: _*)
@@ -106,9 +106,9 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
     }
 
     var tfDropColumnNames = if (addBidRequestId) {
-      rawModelFeatureNames(seqFields)
+      rawModelFeatureNames(seqDirectFields)
     } else {
-      aliasedModelFeatureNames(keptFields) ++ rawModelFeatureNames(seqFields)
+      aliasedModelFeatureNames(keptFields) ++ rawModelFeatureNames(seqDirectFields)
     }
 
     if (saveTrainingDataAsTFRecord) {

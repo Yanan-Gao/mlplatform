@@ -313,6 +313,10 @@ object TrainSetTransformation {
       .withColumn("Browser", $"Browser.value")
       .withColumn("InternetConnectionType", $"InternetConnectionType.value")
       .withColumn("IsTracked", when($"UIID".isNotNullOrEmpty && $"UIID" =!= lit("00000000-0000-0000-0000-000000000000"), lit(1)).otherwise(0))
+      .withColumn("HasUserData", when($"MatchedSegments".isNull||size($"MatchedSegments")===lit(0), lit(0)).otherwise(lit(1)))
+      .withColumn("UserDataLength", when($"UserSegmentCount".isNull, lit(0.0)).otherwise($"UserSegmentCount"*lit(1.0)))
+      .withColumn("UserData", when($"HasUserData"===lit(0), lit(null)).otherwise($"MatchedSegments"))
+      .withColumn("UserDataOptIn", lit(1))
       .withColumnRenamed("ConfigValue", "AdGroupId")
       .cache()
 
@@ -327,7 +331,6 @@ object TrainSetTransformation {
       .withColumn("IndustryCategoryId", col("IndustryCategoryId").cast("Int"))
     val finalDataframe = df
       .join(bidsImpContextualTransformed, Seq("BidRequestId"), "left")
-      .join(bidsImpContextual, Seq("BidRequestId"), "left")
       .join(broadcast(dimAudienceId), Seq("AdvertiserId", "CampaignId"), "left")
       .join(broadcast(dimIndustryCategoryId), Seq("AdvertiserId"), "left")
       .selectAs[TrainSetFeaturesRecord]

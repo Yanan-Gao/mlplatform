@@ -4,7 +4,7 @@ import com.google.protobuf.Field.Cardinality
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.geronimo.shared.schemas.{BidRequestDataset, ModelFeature}
 import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, GERONIMO_DATA_SOURCE, intModelFeaturesCols, loadParquetData, shiftModUdf}
-import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, modelFeatures, rawModelFeatureCols, rawModelFeatureNames, seqFields}
+import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, modelFeatures, rawModelFeatureCols, rawModelFeatureNames, seqDirectFields}
 import com.thetradedesk.kongming.datasets.{BidsImpressionsSchema, OnlineLogsDataset, OnlineLogsDiscrepancyDataset, OnlineLogsDiscrepancyRecord}
 import com.thetradedesk.kongming.{KongmingApplicationName, LogsDiscrepancyCountGaugeName, RunTimeGaugeName, date, getJobNameWithExperimentName}
 import com.thetradedesk.kongming.transform.ContextualTransform
@@ -69,10 +69,10 @@ object OnlineLogsDiscrepancyCheck {
     val bidImpressions = rawBidImpressions.join(contextualFeatures, Seq("BidRequestId"), "left")
 
     val cols = bidImpressions.columns.map(_.toLowerCase).toSet
-    val features = modelFeatures.filter(x => cols.contains(x.name.toLowerCase) && !seqFields.contains(x))
+    val features = modelFeatures.filter(x => cols.contains(x.name.toLowerCase) && !seqDirectFields.contains(x))
     val joinFeatures = Seq("BidRequestId").map(x => ModelFeature(x, "", None, 1))
 
-    val tensorflowSelectionTabular = intModelFeaturesCols(features) ++ rawModelFeatureCols(joinFeatures) ++ aliasedModelFeatureCols(seqFields)
+    val tensorflowSelectionTabular = intModelFeaturesCols(features) ++ rawModelFeatureCols(joinFeatures) ++ aliasedModelFeatureCols(seqDirectFields)
     bidImpressions.select(tensorflowSelectionTabular:_*)
   }
 
@@ -80,7 +80,7 @@ object OnlineLogsDiscrepancyCheck {
     val logs = OnlineLogsDataset.readOnlineLogsDataset(date, modelName)
 
     val joinFeatures = joinCols.map(x => ModelFeature(x, "", None, 1))
-    val tensorflowSelectionTabular = rawModelFeatureNames(modelFeatures).map(x => col(x.toString)) ++ rawModelFeatureCols(joinFeatures) ++ aliasedModelFeatureCols(seqFields)
+    val tensorflowSelectionTabular = rawModelFeatureNames(modelFeatures).map(x => col(x.toString)) ++ rawModelFeatureCols(joinFeatures) ++ aliasedModelFeatureCols(seqDirectFields)
 
     val dfParsedJson = logs.withColumn("ParsedJson", OnlineLogsParser.parseFeatureJsonUDF(col("Features")))
     modelFeatures.foldLeft(dfParsedJson)((df, f) => {

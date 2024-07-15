@@ -40,6 +40,12 @@ final case class TrainSetFeaturesRecord (
                                           ContextualCategoryLengthTier1: Double,
                                           ContextualCategoriesTier1: Array[Int],
 
+
+                                          HasUserData: Int,
+                                          UserData: Array[Long],
+                                          UserDataLength: Double,
+                                          UserDataOptIn: Int,
+
                                           sin_hour_week: Double,
                                           cos_hour_week: Double,
                                           sin_hour_day: Double,

@@ -4,7 +4,7 @@ import com.thetradedesk.geronimo.shared.loadParquetData
 import com.thetradedesk.geronimo.shared.schemas.BidFeedbackDataset
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
-import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, seqFields}
+import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, seqDirectFields}
 import com.thetradedesk.kongming.transform.TrainSetTransformation.getValidTrackingTags
 import com.thetradedesk.kongming.transform._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -154,7 +154,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
       .withColumn("Revenue", coalesce('Revenue, lit(0)))
       .join(scoringSet, Seq("BidRequestIdStr"), "inner")
 
-    val parquetSelectionTabular = rawOOS.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqFields)
+    val parquetSelectionTabular = rawOOS.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqDirectFields)
 
     val testSet = rawOOS
         .select(parquetSelectionTabular: _*)
