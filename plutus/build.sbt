@@ -1,6 +1,6 @@
-import java.time.{Clock, LocalDateTime}
-
-import sbtrelease.Vcs
+import Protobuf.{TTDProtoConfig, generateProtoSource}
+import com.github.os72.protocjar
+import sbt.KeyRanks.BPlusSetting
 
 name := "plutus"
 
@@ -31,7 +31,29 @@ libraryDependencies ++= Seq(
   "com.thetradedesk" %% "eldorado-core" % "1.0.135-spark-3.2.1"
 )
 
+lazy val protoVersion: SettingKey[String] =
+  settingKey[String]("Version of protoc and protobuf lib to use to compile proto files").withRank(BPlusSetting)
 
+inConfig(TTDProtoConfig)(
+  Seq(
+    sourceDirectory := (configuration / sourceDirectory).value / "main/protobuf",
+    sourceDirectories := (sourceDirectory.value :: Nil),
+    includeFilter := "*.proto",
+    javaSource := (configuration / sourceManaged).value / "main/compiled_protobuf",
+    protoVersion := "2.5.0",
+    protobufRunProtoc := {
+      // Workaround for AARH64-based cpu (such as MacBook M1) to be able to run locally.
+      System.setProperty("os.arch", "x86_64")
+      val out = "--java_out=" + (TTDProtoConfig / javaSource).value.getCanonicalPath
+      args =>
+        protocjar.Protoc.runProtoc(s"-v:com.google.protobuf:protoc:${protoVersion.value}" +: out +: args.toArray)
+    }
+  )
+)
+
+cleanFiles += (TTDProtoConfig / javaSource).value
+Compile / sourceGenerators += generateProtoSource.taskValue
+libraryDependencies += ("com.google.protobuf" % "protobuf-java" % (TTDProtoConfig / protoVersion).value)
 
 assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
 assemblyJarName in assembly := "plutus.jar"
