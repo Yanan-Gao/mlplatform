@@ -1,7 +1,14 @@
 package com.thetradedesk.plutus.data.schema
 
-import com.thetradedesk.plutus.data.{loadParquetDataHourlyV2, paddedDatePart}
+import com.thetradedesk.plutus.data.utils.localDatetimeToTicks
+import com.thetradedesk.plutus.data.{paddedDatePart, utils}
+import com.thetradedesk.protologreader.protoformat.PredictiveClearingResults
+import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.sql.SQLFunctions.DataFrameExtensions
+import com.thetradedesk.spark.util.protologreader.S3ObjectFinder.getS3ObjectPathFromDirectory
+import com.thetradedesk.spark.util.protologreader.{ProtoLogReader, S3PathGenerator}
+import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.Dataset
 
 import java.time.LocalDateTime
@@ -37,24 +44,51 @@ case class PlutusLogsData(
                          )
 
 case object PlutusLogsData {
-  def transformPcResultsRawLog(value: Dataset[PcResultsRawLogs]): Dataset[PlutusLogsData] = {
-    value.select(
+  def transformPcResultsRawLog(dataset: Dataset[PcResultsRawLogs], hour: LocalDateTime): Dataset[PlutusLogsData] = {
+    dataset.where(
+        $"LogEntryTime" >= localDatetimeToTicks(hour) and
+          $"LogEntryTime" < localDatetimeToTicks(hour.plusHours(1)))
+    .select(
       "PlutusLog.*",
       "PredictiveClearingStrategy.*",
       "*"
-    ).drop(
-      "PlutusLog",
-      "PredictiveClearingStrategy"
-    ).as[PlutusLogsData]
+    )
+    .selectAs[PlutusLogsData]
   }
 
   def loadPlutusLogData(dateTime: LocalDateTime): Dataset[PlutusLogsData] = {
-    val dataset = loadParquetDataHourlyV2[PcResultsRawLogs](
-      PlutusLogsDataset.S3PATH,
-      PlutusLogsDataset.S3PATH_GEN,
-      dateTime
+    val pathGenerator = new S3PathGenerator("thetradedesk-useast-logs-2" , "predictiveclearingresults/collected")
+    val logReader = new ProtoLogReader[PredictiveClearingResults.PcResultLog](
+      pathGenerator = pathGenerator,
+      parseFunc = PredictiveClearingResults.PcResultLog.parseFrom,
+      sparkSession = spark
     )
-    transformPcResultsRawLog(dataset)
+
+    // An hour h's data is spread between h-1 and h so we get
+    // the files for this hour and the last one so we can filter only this hours data later
+    val jodaDateTime = utils.javaToJoda(dateTime);
+    val files = (pathGenerator.getSpecificHourAvailsStreamFiles(jodaDateTime.minusHours(1)) ++
+      pathGenerator.getSpecificHourAvailsStreamFiles(jodaDateTime)).flatMap(getS3ObjectPathFromDirectory)
+
+    val pcResultData = logReader.readSpecificFiles(files)
+      .map(i => PcResultsRawLogs(
+        utils.uuidFromLongs( i.getBidRequestId.getLo, i.getBidRequestId.getHi),
+        i.getInitialBid,
+        i.getFinalBidPrice,
+        i.getDiscrepancy,
+        i.getBaseBidAutoOpt,
+        i.getLegacyPcPushdown,
+        PlutusLog(i.getPlutusLog.getMu, i.getPlutusLog.getSigma, i.getPlutusLog.getGSS, i.getPlutusLog.getAlternativeStrategyPush),
+        PredictiveClearingStrategy(i.getPredictiveClearingStrategy.getModel, i.getPredictiveClearingStrategy.getStrategy),
+        i.getOptOutDueToFloor,
+        i.getFloorPrice,
+        i.getPartnerSample,
+        i.getBidBelowFloorExceptedSource,
+        i.getFullPush,
+        i.getLogEntryTime
+      )).toDS()
+
+    transformPcResultsRawLog(pcResultData, dateTime)
   }
 }
 
@@ -63,7 +97,6 @@ case object PlutusLogsData {
  * This class is used to read the raw pcresults dataset from s3. On reading, its immediately transformed
  * into @PlutusLogsData
  */
-
 case class PcResultsRawLogs(
                              BidRequestId: String,
                              InitialBid: Double,
@@ -77,7 +110,8 @@ case class PcResultsRawLogs(
                              FloorPrice: Double,
                              PartnerSample: Boolean,
                              BidBelowFloorExceptedSource: Int,
-                             FullPush: Boolean
+                             FullPush: Boolean,
+                             LogEntryTime: Long
                            )
 
 case class PlutusLog(

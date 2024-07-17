@@ -243,7 +243,8 @@ object MockData {
     FloorPrice = 1,
     PartnerSample = false,
     BidBelowFloorExceptedSource = 0,
-    FullPush = false
+    FullPush = false,
+    LogEntryTime = 638560527380000000L
   )
 
   val mbtwDataMock = MinimumBidToWinData(

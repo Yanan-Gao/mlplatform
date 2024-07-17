@@ -1,0 +1,43 @@
+syntax = "proto2";
+option java_package = "com.thetradedesk.protologreader.protoformat";
+
+//  protoformat reader is now build during git pipeline
+
+message PcResultLog {
+  optional Guid BidRequestId=1;
+  optional string SupplyVendor=2;
+  optional string AdgroupId=3;
+  optional double InitialBid=4;
+  optional double FinalBidPrice=5;
+  optional double Discrepancy=6;
+  optional double BaseBidAutoOpt=7;
+  optional double LegacyPcPushdown=8;
+  optional PlutusLog PlutusLog=9;
+  optional PredictiveClearingStrategy PredictiveClearingStrategy=10;
+  optional bool OptOutDueToFloor=11;
+  optional double FloorPrice=12;
+  optional bool PartnerSample=13;
+  optional string PrivateContractId=14;
+  optional int64 LogEntryTime=15;
+  optional int32 BidBelowFloorExceptedSource=16;
+  optional bool FullPush=17;
+
+}
+
+message PlutusLog {
+  optional float Mu=1;
+  optional float Sigma=2;
+  optional double GSS=3;
+  optional double AlternativeStrategyPush=4;
+}
+
+message PredictiveClearingStrategy {
+  optional string Model=1;
+  optional int32 Strategy=2;
+
+}
+
+message Guid {
+  required fixed64 lo = 1; // the first 8 bytes of the guid (note:crazy-endian)
+  required fixed64 hi = 2; // the second 8 bytes of the guid (note:crazy-endian)
+};

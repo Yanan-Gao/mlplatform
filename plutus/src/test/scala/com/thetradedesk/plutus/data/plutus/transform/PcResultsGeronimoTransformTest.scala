@@ -9,6 +9,8 @@ import com.thetradedesk.plutus.data.{ChannelType, MarketType}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.{AdFormatRecord, PrivateContractRecord}
 
+import java.time.LocalDateTime
+
 class PcResultsGeronimoTransformTest extends TTDSparkTest {
 
   test("PcResults + Geronimo Transform test for schema/column correctness") {
@@ -71,7 +73,8 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
 
   test("PcResultsRawLogSchema -> PlutusLogsData test") {
     val rawDataset = Seq(pcResultsRawLogMock.copy()).toDS().as[PcResultsRawLogs]
-    val outputDataset = PlutusLogsData.transformPcResultsRawLog(rawDataset)
+    val localDateTime = LocalDateTime.of(2024, 7, 8, 16, 0, 0)
+    val outputDataset = PlutusLogsData.transformPcResultsRawLog(rawDataset, localDateTime)
 
     assert(outputDataset.count() == 1, "Output rows")
   }
