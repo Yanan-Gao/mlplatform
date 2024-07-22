@@ -3,7 +3,7 @@ package com.thetradedesk.plutus.data
 import com.thetradedesk.geronimo.bidsimpression.schema._
 import com.thetradedesk.geronimo.shared.schemas._
 import com.thetradedesk.plutus.data.schema._
-import com.thetradedesk.spark.datasets.sources.{AdFormatRecord, PrivateContractRecord}
+import com.thetradedesk.spark.datasets.sources.{AdFormatRecord, AdGroupRecord, CampaignRecord, PrivateContractRecord, ROIGoalTypeRecord, SupplyVendorRecord}
 import com.thetradedesk.streaming.records.rtb._
 
 import java.sql.Timestamp
@@ -270,4 +270,220 @@ object MockData {
       IsMargin = false
     )
 
+  def pcResultsMergedMock(dealId: String = "", fpa: Option[Double] = Some(0.73), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, floorPrice: Double = 5, mu: Float = 0.5f, model: String = "plutus", strategy: Int = 100) = PcResultsMergedDataset(
+    BidRequestId = "1",
+    DealId = dealId,
+
+    UIID = Some("000"),
+
+    AdjustedBidCPMInUSD = 50.0,
+    BidsFirstPriceAdjustment = fpa, //Some(0.73),
+    FloorPriceInUSD = Some(5.0),
+
+    PartnerId = Some("abc123"),
+    AdvertiserId = Some("def456"),
+    CampaignId = Some("jkl789"),
+    AdGroupId = Some("mno012"),
+
+    SupplyVendor = supplyVendor,//Some("cafemedia"),
+    SupplyVendorPublisherId = Some("983"),
+    AliasedSupplyPublisherId = Some(1),
+    SupplyVendorSiteId = Some(""),
+    Site = Some(""),
+    ImpressionPlacementId = Some(""),
+    AdWidthInPixels = 250,
+    AdHeightInPixels = 250,
+
+    MatchedCategoryList = Some(List("")),
+    MatchedFoldPosition = 1,
+    RenderingContext = 1,
+    ReferrerCategories = Seq(""),
+
+    VolumeControlPriority = Some(1),
+    VolumeControlPriorityKeepRate = Some(50.0),
+    LogEntryTime = java.sql.Timestamp.valueOf("2020-06-05 18:48:05.123"),
+
+    AdsTxtSellerType = 1,
+    PublisherType = 5,
+    AuctionType = Some(1),
+
+    Country = Some(""),
+    Region = Some(""),
+    Metro = Some(""),
+    City = Some(""),
+    Zip = Some(""),
+
+    DeviceType = 1,
+    DeviceMake = Some(""),
+    DeviceModel = Some(""),
+    OperatingSystem = 1,
+    OperatingSystemFamily = 2,
+    Browser = 2,
+    InternetConnectionType = 1,
+
+    UserHourOfWeek = Some(0),
+    RequestLanguages = "",
+    MatchedLanguageCode = Some(""),
+    Latitude = Some(0.0d),
+    Longitude = Some(0.0d),
+
+    PredictiveClearingMode = pcMode,//3,
+    PredictiveClearingRandomControl = false,
+
+    // bidfeedback cols
+    MediaCostCPMInUSD = Some(37.0),
+    DiscrepancyAdjustmentMultiplier = Some(1.0),
+    AdvertiserCostInUSD = Some(0.1),
+    PartnerCostInUSD = Some(0.1),
+    TTDCostInUSD = Some(0.05),
+    AdvertiserCurrencyExchangeRateFromUSD = None,
+
+    SubmittedBidAmountInUSD = 0.05,
+    ImpressionsFirstPriceAdjustment = Some(0.75),
+
+    // computed columns
+    IsImp = isImp,//true,
+
+    sin_hour_week = 0.0d,
+    cos_hour_week = 0.0d,
+    sin_hour_day = 0.0d,
+    cos_hour_day = 0.0d,
+    sin_minute_hour = 0.0d,
+    cos_minute_hour = 0.0d,
+    sin_minute_day = 0.0d,
+    cos_minute_day = 0.0d,
+
+    DoNotTrack = 1,
+    CreativeId = Some(""),
+
+    PrivateContractId = "5416475",
+
+    FeeAmount = feeAmount,//Some(0.000012), // Fee we charge our users for PC
+
+    MediaTypeId = 1, // from AdFormatDataSet
+    Channel = channel,//"MobileInApp",
+    ChannelSimple = "Display",
+
+    DetailedMarketType = "Open Market", // from PrivateContractRecord
+
+    JanusVariantMap = None,
+    IsUsingJanus = false,
+
+    // Coalesced AliasedSupplyPublisherId and SupplyVendorPublisherId
+    AspSvpId = "1983",
+
+    // Fields from PCResults Log Dataset
+    InitialBid = 50,
+    FinalBidPrice = finalBidPrice,//36,
+    Discrepancy = 1.03,
+    BaseBidAutoOpt = baseBidAutoOpt, //1,
+    OptOutDueToFloor = false,
+    FloorPrice = floorPrice, //5,
+    PartnerSample = false,
+    BidBelowFloorExceptedSource = 0,
+    FullPush = false,
+
+    // Fields From PlutusLog
+    Mu = mu, //0.5f,
+    Sigma = 2.5f,
+    GSS = 0.5,
+    AlternativeStrategyPush = 1.0,
+
+    // Fields from PredictiveClearingStrategy
+    Model = model,
+    Strategy = strategy,//100, // Contains the pushdown reducer value
+
+    LossReason = 1, // from MinimumBidToWin data
+    WinCPM = 1.0d, // from MinimumBidToWin data
+    mbtw = 20.0d,//1.0d, // from MinimumBidToWin data
+
+    isMbtwValidStrict = false,
+    isMbtwValid = false,
+
+    // User Data Fields
+
+    UserSegmentCount = Some(1000),
+    UserAgeInDays = Some(20),
+    MatchedSegments = Seq(1000L),
+
+    // Value Pacing Fields
+
+    ExpectedValue = Some(200),
+    RPacingValue = Some(0.5),
+
+    IsValuePacing = Some(true), // from ProductionAdgroupBudgetData
+    IsUsingPIDController = Some(false)
+  )
+
+  def supplyVendorMock(supplyVendorName: String = "google", openPathEnabled: Boolean = false) = SupplyVendorRecord(
+      SupplyVendorId = 192,
+      SupplyVendorName = supplyVendorName,//"cafemedia",
+      PermissionDefault = true,
+      PermissionOverride = false,
+      AllowNielsenGRPTracking = true,
+      AllowPrivateContracts = true,
+      PrivateDealPatternRegex = Some(""),
+      PrivateDealPatternDescription = Some(""),
+      DefaultSeatId = Some(""),
+      PercentagOfFeedbackEligibleForCookieMapping = 0.0,
+      DefaultCookiePartnerGroupPermission = false,
+      MaxNumberOfTtdInitiatedCookieMappingRedirects = 0,
+      AllowBidRequestDataUsage = false,
+      UseNameOverrideForReporting = true,
+      SupplyVendorNameOverride = Some(""),
+      IsWhiteOpsVerified = true,
+      RequiresCreativeDealApproval = false,
+      PriorityTier = 1,
+      IsProgrammaticGuaranteedCertified = false,
+      IsForAdsTxtMappingOnly = false,
+      AllowInternalDataUsage = true,
+      CanFrequencyCapPGContracts = false,
+      IsTrafficFromChinaDataCenter = false,
+      RequireChinaMSA = false,
+      SupplyPublisherId = Some(1000L),
+      IsAllowedCustomBidder = false,
+      CustomBidderDefaultPercent = 1.0,
+      AvailsStreamLoggingEnabled = true,
+      AvailsStreamLogRate = 1.0,
+      OpenPathEnabled = openPathEnabled
+  )
+
+  val adGroupMock = AdGroupRecord(
+    AdGroupId = "mno012",
+    AdGroupName = "test_ag",
+    CampaignId = "jkl789",
+    AudienceId = Some("12345"),
+    PacingGrainId = 1,
+    ExcludeLowValueUsers = Some(false),
+    TargetHighValueUsers = Some(false),
+    ROIGoalTypeId = 2,
+    BaseBidCPMInAdvertiserCurrency = Some(10.0),
+    MaxBidCPMInAdvertiserCurrency = Some(20.0),
+    TargetPerGrainInAdvertiserCurrency = Some(25.0),
+    ROIGoalValue = Some(50.0),
+    PrivateContractDefaultAdjustment = Some(2.0),
+    PredictiveClearingEnabled = true,
+    AdvertiserId = Some("def456"),
+    PartnerId = Some("abc123")
+  )
+
+  val campaignMock = CampaignRecord(
+    CampaignId = Some("jkl789"),
+    CampaignName = Some("test_cp"),
+    AdvertiserId = Some("def456"),
+    CustomCPATypeId = Some(1),
+    CustomROASTypeId = Some(1),
+    StackRankingEnabled = Some(false),
+    DailyTargetInAdvertiserCurrency = Some(5000.0),
+    CustomCPAClickWeight = Some(5.0),
+    CustomCPAViewthroughWeight = Some(5.0),
+    IsManagedByTTD = Some(false)
+  )
+
+  val roiGoalTypeMock = ROIGoalTypeRecord(
+    ROIGoalTypeId = 2,
+    ROIGoalTypeName = "Reach"
+  )
+
 }
+
