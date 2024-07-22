@@ -1,0 +1,211 @@
+package com.thetradedesk.plutus.data.transform.dashboard
+
+import com.thetradedesk.logging.Logger
+import com.thetradedesk.plutus.data.schema._
+import com.thetradedesk.plutus.data.{envForRead, envForWrite, loadParquetDataDailyV2}
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.datasets.sources.{SupplyVendorDataSet, SupplyVendorRecord}
+import com.thetradedesk.spark.sql.SQLFunctions.DataFrameExtensions
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types.DateType
+import org.apache.spark.sql.{DataFrame, Dataset, Encoders, SaveMode}
+
+import java.time.LocalDate
+
+object PlutusDashboardDataTransform extends Logger {
+
+  def getMarginAttribution(pcResultsMerged: Dataset[PcResultsMergedDataset],
+                           supplyVendorData: Dataset[SupplyVendorRecord]
+                          ): DataFrame = {
+
+    // select necessary columns from PcResultsMerged
+    val df = pcResultsMerged
+      .withColumn("Date", to_date(col("LogEntryTime"), "yyyy-MM-dd'T'HH:mm:ss.SSSZ").cast(DateType))
+      .withColumn("MarketType", when(col("DetailedMarketType") === "Open Market", lit("OM")).otherwise(lit("PMP")))
+      .withColumn("hasParams", col("Mu") =!= 0.0 || col("Mu") =!= 0)
+      .withColumn("hasMBTW", col("mbtw").isNotNull)
+      .withColumn("hasDeal", col("DealId").isNotNull)
+      .drop(col("Channel"))
+
+    /*
+    * Determine PC margin attribution based on how the FinalBid was calculated
+     */
+
+    // Calculate final bid
+    val df_getFinalBid = calculateFinalBidForMarginAttribution(df, supplyVendorData)
+    // Use final bid calculations for FactorCombination column (margin attribution)
+    val df_addedMarginAttribution = createFactorCombination(df_getFinalBid)
+
+    df_addedMarginAttribution
+  }
+
+  def getAggMetrics(df_addedMarginAttribution: DataFrame): Dataset[PlutusDashboardSchema] = {
+    val final_df = df_addedMarginAttribution
+      .withColumnRenamed("ChannelSimple", "Channel")
+      .groupBy(
+        "Date", "Model", "hasParams", "hasMBTW", "hasDeal", "Channel", "SupplyVendor", "MarketType", "DetailedMarketType", "FactorCombination"
+      ).agg(
+        sum(col("MediaCostCPMInUSD")).alias("MediaCostCPMInUSD"),
+        sum(col("PartnerCostInUSD")).alias("PartnerCostInUSD"),
+        sum(col("AdvertiserCostInUSD")).alias("AdvertiserCostInUSD"),
+        sum(col("FeeAmount")).alias("FeeAmount"),
+        count(when(col("IsImp"), "*")).alias("ImpressionCount"),
+        count("*").alias("BidCount"),
+        //sum(count("*")).over().alias("TotalBidCount"),
+        sum(when(
+          col("PredictiveClearingMode") === 3 &&
+            col("FloorPrice") > 0 &&
+            abs(col("FinalBidPrice") - col("FloorPrice")) < 0.001, 1).otherwise(0)
+        ).alias("bidsAtFloorPlutus"),
+        sum(when(
+          col("PredictiveClearingMode") === 3 &&
+            col("IsImp") &&
+            !col("BidBelowFloorExceptedSource").isin(1, 2),
+          greatest(lit(0), round(col("FinalBidPrice") - col("FloorPrice"), scale = 3))).otherwise(0)
+        ).alias("AvailableSurplus"),
+        round(sum(when(
+          col("hasMBTW") &&
+            col("IsImp") &&
+            col("PredictiveClearingMode") === 3,
+          col("FinalBidPrice") - col("mbtw")).otherwise(0)), scale = 3
+        ).alias("overbid_cpm"),
+        round(sum(when(
+          col("hasMBTW") &&
+            col("IsImp") &&
+            col("PredictiveClearingMode") === 3,
+          col("FinalBidPrice")).otherwise(0)), scale = 3
+        ).alias("spend_cpm"),
+        sum(when(
+          col("hasMBTW") &&
+            col("IsImp") &&
+            col("PredictiveClearingMode") === 3
+            && (col("FinalBidPrice") - col("mbtw")) > 0,
+          1).otherwise(0)
+        ).alias("num_overbid"),
+        round(sum(when(
+          col("hasMBTW") &&
+            !col("IsImp") &&
+            col("PredictiveClearingMode") === 3,
+          col("mbtw") - col("FinalBidPrice")).otherwise(0)), scale = 3
+        ).alias("underbid_cpm"),
+        round(sum(when(
+          col("hasMBTW") &&
+            !col("IsImp") &&
+            col("PredictiveClearingMode") === 3,
+          col("FinalBidPrice")).otherwise(0)), scale = 3
+        ).alias("non_spend_cpm"),
+        sum(when(
+          col("hasMBTW") &&
+            !col("IsImp") &&
+            col("PredictiveClearingMode") === 3 &&
+            (col("mbtw") - col("FinalBidPrice")) > 0,
+          1).otherwise(0)
+        ).alias("num_underbid")
+      )
+
+    final_df.selectAs[PlutusDashboardSchema]
+  }
+
+  def calculateFinalBidForMarginAttribution(df: DataFrame, ssp: Dataset[SupplyVendorRecord]): DataFrame = {
+    // Apply adjustments to initial PC pushdown value to manually calculate FinalBid
+    // Manually calculating FinalBid allows us to determine what actual factors were used to get to the FinalBid (MarginAttribution)
+
+    val OpenPathAdjustment = 0.3
+
+    // Get OpenPath SSPs
+    val openpathSSPs: List[String] = ssp
+      .withColumn("SupplyVendorNameLower", lower(col("SupplyVendorName")))
+      .filter(col("OpenPathEnabled") === true)
+      .select("SupplyVendorNameLower").as[String](Encoders.STRING).collect().toList
+
+    val newdf = df.withColumn("OpenPathAdjustment", lit(OpenPathAdjustment))
+      .withColumn("BaseBidAutoOpt", when(col("BaseBidAutoOpt") === 0, 1).otherwise(col("BaseBidAutoOpt")))
+      .withColumn("prePlutusBid", col("AdjustedBidCPMInUSD") * coalesce(col("BaseBidAutoOpt"), lit(1)))
+      .withColumn("GSS", col("GSS") / (col("BaseBidAutoOpt") * col("BaseBidAutoOpt")))
+      .withColumn("TFPcModelBid", col("GSS") * col("prePlutusBid"))
+      .withColumn("plutusPushdown_beforeAdj", col("TFPcModelBid") / col("AdjustedBidCPMInUSD"))
+      // Calculate adjusted pushdown by comparing to discrepancy, openpath adjustment, and platform-wide pc pressure reducer (Strategy)
+      .withColumn("EffectiveDiscrepancy", lit(1) / col("Discrepancy"))
+      .withColumn("plutusPushdown_minpushdown", least(col("plutusPushdown_beforeAdj"), col("EffectiveDiscrepancy")))
+      .withColumn("plutusPushdown_excess", greatest(lit(0), col("EffectiveDiscrepancy") - col("plutusPushdown_beforeAdj")))
+      .withColumn("plutusAdj",
+        when(col("SupplyVendor") === "google" || col("Model").isin("plutusStagefullSample", "plutusfullSample"), 0)
+          .otherwise(lit(1) - (col("Strategy") / lit(100)))
+      )
+      .withColumn("openPathAdj",
+        when(!col("SupplyVendor").isin(openpathSSPs: _*), 0)
+          .otherwise(lit(1) - (col("OpenPathAdjustment") * (col("Strategy") / 100)))
+      )
+      .withColumn("plutusPushdown_afterAdj",
+        greatest((col("plutusPushdown_minpushdown") + col("plutusPushdown_excess") * (greatest(col("plutusAdj"), col("openPathAdj")))), lit(0.00001))
+      )
+      // Calculate FinalBid from adjusted pushdown and compare to floor cap
+      .withColumn("proposedBid", col("AdjustedBidCPMInUSD") * col("plutusPushdown_afterAdj"))
+      .withColumn("calc_FinalBidPrice",
+        when(col("proposedBid") > col("FloorPrice") || col("BidBelowFloorExceptedSource").isin(1, 2), col("proposedBid"))
+          .otherwise(col("FloorPrice"))
+      )
+
+    newdf
+  }
+
+  def createFactorCombination(df: DataFrame): DataFrame = {
+    // Determine MarginAttribution based on how the FinalBid was calculated
+    df.withColumn("UseBBAO",
+        when(col("BaseBidAutoOpt") =!= 1 && col("PredictiveClearingMode") === 3, 1).otherwise(0)
+      )
+      .withColumn("UseDiscrepancy",
+        when(col("plutusPushdown_minpushdown") === col("EffectiveDiscrepancy") && col("PredictiveClearingMode") === 3, 1).otherwise(0)
+      )
+      .withColumn("UsePlutusPressureReducer",
+        when(col("Strategy") =!= 0 && col("plutusAdj") =!= 0 && col("plutusAdj") > col("openPathAdj") && col("PredictiveClearingMode") === 3, 1).otherwise(0)
+      )
+      .withColumn("UseOpenPathDiscrepancy",
+        when(col("openPathAdj") =!= 0 && col("openPathAdj") > col("plutusAdj") && col("PredictiveClearingMode") === 3, 1).otherwise(0)
+      )
+      .withColumn("UseFloor",
+        when(col("proposedBid") < col("FloorPrice") && !col("BidBelowFloorExceptedSource").isin(1, 2) && col("PredictiveClearingMode") === 3, 1).otherwise(0)
+      )
+      .withColumn("UseBBFGauntlet",
+        when(col("BidBelowFloorExceptedSource").isin(1) && col("PredictiveClearingMode") === 3, 1).otherwise(0)
+      )
+      .withColumn("UseBBFPC",
+        when(col("BidBelowFloorExceptedSource").isin(2) && col("PredictiveClearingMode") === 3, 1).otherwise(0)
+      )
+      .withColumn("NoPlutus",
+        when(col("PredictiveClearingMode").isin(0, 1), 1).otherwise(0)
+      )
+      .withColumn("FactorCombination",
+        when(col("UseBBAO") === 0 && col("UseDiscrepancy") === 0 && col("UsePlutusPressureReducer") === 0 && col("UseOpenPathDiscrepancy") === 0 && col("UseFloor") === 0 && col("UseBBFGauntlet") === 0 && col("UseBBFPC") === 0 && col("NoPlutus") === 0, lit("OnlyFullPlutus_NonBBF"))
+          .otherwise(concat(
+            when(col("UseBBAO") === 1, lit("Bbao-")).otherwise(lit("")),
+            when(col("UseDiscrepancy") === 1, lit("Discrep-")).otherwise(lit("")),
+            when(col("UsePlutusPressureReducer") === 1, lit("PressureReducer-")).otherwise(lit("")),
+            when(col("UseOpenPathDiscrepancy") === 1, lit("OpenPath-")).otherwise(lit("")),
+            when(col("UseFloor") === 1, lit("Floor")).otherwise(lit("")),
+            when(col("UseBBFGauntlet") === 1, lit("BBFGauntlet")).otherwise(lit("")),
+            when(col("UseBBFPC") === 1, lit("BBFPC")).otherwise(lit("")),
+            when(col("NoPlutus") === 1, lit("NoPlutus")).otherwise(lit(""))
+          ))
+      )
+  }
+
+  def transform(date: LocalDate, fileCount: Int): Unit = {
+
+    val pcResultsMergedData = loadParquetDataDailyV2[PcResultsMergedDataset](
+      PcResultsMergedDataset.S3_PATH(Some(envForRead)),
+      PcResultsMergedDataset.S3_PATH_DATE_GEN,
+      date
+    )
+
+    val supplyVendorData = SupplyVendorDataSet().readDate(date)
+
+    val df_addedMarginAttribution = getMarginAttribution(pcResultsMergedData, supplyVendorData)
+    val agg_merged_df = getAggMetrics(df_addedMarginAttribution)
+
+    val outputPath = PlutusDashboardDataset.S3_PATH_DATE(date, envForWrite)
+    agg_merged_df.coalesce(fileCount)
+      .write.mode(SaveMode.Overwrite)
+      .parquet(outputPath)
+  }
+}

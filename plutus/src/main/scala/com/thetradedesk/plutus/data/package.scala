@@ -4,6 +4,7 @@ import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import com.thetradedesk.geronimo.shared.{FLOAT_FEATURE_TYPE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE}
 import com.thetradedesk.plutus.data.schema.ModelTarget
 import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
 import org.apache.spark.ml.linalg.{SparseVector, Vector}
 import org.apache.spark.sql.expressions.UserDefinedFunction
@@ -141,6 +142,15 @@ package object data {
     (0 to lookBack.getOrElse(0)).map(i => f"$basePath${extGenerator(dateTime.minusHours(i))}")
   }
 
+
+  /**
+   * @param lookBack Default is None (equivalent to 0), which returns 1 path exactly at dateTime.
+   *                 If lookback > 0, function will return (lookback + 1) paths.
+   */
+  def generateDataPathsDaily(basePath: String, extGenerator: LocalDate => String, date: LocalDate, lookBack: Int = 0): Seq[String] = {
+    (0 to lookBack).map(i => f"$basePath${extGenerator(date.minusDays(i))}")
+  }
+
   def implicitDataPath(s3Path: String, ttdEnv: String, prefix: Option[String] = None): String = {
     s"$s3Path/$ttdEnv/${prefix.getOrElse(DEFAULT_IMPLICIT_PREFIX)}"
   }
@@ -192,6 +202,13 @@ package object data {
 
   def loadParquetDataHourlyV2[T: Encoder](basePath: String, extGenerator: LocalDateTime => String, dateTime: LocalDateTime, lookBack: Option[Int] = None): Dataset[T] = {
     val paths = generateDataPathsHourly(basePath, extGenerator, dateTime, lookBack)
+    spark.read.parquet(paths: _*)
+      .selectAs[T]
+  }
+
+
+  def loadParquetDataDailyV2[T: Encoder](basePath: String, extGenerator: LocalDate => String, date: LocalDate, lookBack: Int = 0): Dataset[T] = {
+    val paths = generateDataPathsDaily(basePath, extGenerator, date, lookBack)
     spark.read.parquet(paths: _*)
       .selectAs[T]
   }
@@ -312,6 +329,17 @@ package object data {
     val BidBelowAuctionFloor = 100
     val BidLostHigherBid = 102
     val ConditionalWin = 301
+  }
+
+  val envForRead = config.getStringOption("ttd.env").map(_.toLowerCase) match {
+    case Some("prod") | Some("production") => "prod"
+    case Some("prodtest") | Some("prodtesting") => "prod"
+    case _ => "test"
+  }
+
+  val envForWrite = config.getStringOption("ttd.env").map(_.toLowerCase) match {
+    case Some("prod") | Some("production") => "prod"
+    case _ => "test"
   }
 
 }

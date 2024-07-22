@@ -7,7 +7,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.DataFrameExtensions
 import com.thetradedesk.spark.util.protologreader.S3ObjectFinder.getS3ObjectPathFromDirectory
-import com.thetradedesk.spark.util.protologreader.{ProtoLogReader, S3PathGenerator}
+import com.thetradedesk.spark.util.protologreader.{ProtoLogReader, S3Client, S3PathGenerator}
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.Dataset
 
@@ -57,9 +57,9 @@ case object PlutusLogsData {
   }
 
   def loadPlutusLogData(dateTime: LocalDateTime): Dataset[PlutusLogsData] = {
-    val pathGenerator = new S3PathGenerator("thetradedesk-useast-logs-2" , "predictiveclearingresults/collected")
+    val pathGenerator = new S3Client("thetradedesk-useast-logs-2" , "predictiveclearingresults/collected")
     val logReader = new ProtoLogReader[PredictiveClearingResults.PcResultLog](
-      pathGenerator = pathGenerator,
+      cloudClient = pathGenerator,
       parseFunc = PredictiveClearingResults.PcResultLog.parseFrom,
       sparkSession = spark
     )
