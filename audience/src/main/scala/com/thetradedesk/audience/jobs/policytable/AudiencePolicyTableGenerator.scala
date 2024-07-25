@@ -80,6 +80,8 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
 
   def generatePolicyTable(): Unit = {
 
+    validateConfig()
+
     val start = System.currentTimeMillis()
 
     val policyTable = retrieveSourceData(dateTime.toLocalDate)
@@ -95,6 +97,12 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
 
     policyTableSize.labels(model.toString.toLowerCase, dateTime.toLocalDate.toString).set(policyTableResult.count())
     jobRunningTime.labels(model.toString.toLowerCase, dateTime.toLocalDate.toString).set(System.currentTimeMillis() - start)
+  }
+
+  private def validateConfig(): Unit = {
+    if (ttdEnv == "prod" && Config.policyTableResetSyntheticId == true) {
+      throw new IllegalArgumentException("Cannot reset synthetic id for prod env")
+    }
   }
 
   def getBidImpUniqueTDIDs(date: LocalDate) = {
