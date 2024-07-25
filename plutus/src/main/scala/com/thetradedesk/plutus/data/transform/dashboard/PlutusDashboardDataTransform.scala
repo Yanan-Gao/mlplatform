@@ -198,7 +198,7 @@ object PlutusDashboardDataTransform extends Logger {
       date
     )
 
-    val supplyVendorData = SupplyVendorDataSet().readDate(date)
+    val supplyVendorData = SupplyVendorDataSet().readLatestPartitionUpTo(date)
 
     val df_addedMarginAttribution = getMarginAttribution(pcResultsMergedData, supplyVendorData)
     val agg_merged_df = getAggMetrics(df_addedMarginAttribution)

@@ -14,7 +14,7 @@ object DAPlutusDashboardDataProcessor {
   val jobDurationGauge = prometheus.createGauge("plutus_dashboard_run_time_seconds", "Job execution time in seconds", labelNames="jobname")
 
   def main(args: Array[String]): Unit = {
-    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
+    val jobDurationGaugeTimer = jobDurationGauge.labels("DAPlutusDashboardDataProcessor").startTimer()
 
     DAPlutusDashboardDataTransform.transform(date, fileCount)
 
