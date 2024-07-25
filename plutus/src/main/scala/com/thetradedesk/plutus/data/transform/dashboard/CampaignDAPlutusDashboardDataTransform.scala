@@ -80,8 +80,8 @@ object CampaignDAPlutusDashboardDataTransform extends Logger {
   }
 
   def get_prov_joineddays[T <: Product : Manifest](dataset: ProvisioningS3DataSet[T], date: LocalDate, id: String): Dataset[T] = {
-    // S3 provisioning takes a snapshot in the beginning of the day so adgroups that get enabled later in the day get excluded in join
-    // Join two days of S3 provisioning data to account for what's missed after the snapshot period
+    // S3 provisioning takes a snapshot in the beginning of the day (1/2 UTC) so changes made to prov settings later in the day get excluded in join
+    // Workaround: joining two days of S3 provisioning data to account for what's missed after the snapshot period
     val sameday = dataset.readDate(date)
     val dayafter = dataset.readDate(date.plusDays(1))
     val joined_df = sameday.alias("same")
