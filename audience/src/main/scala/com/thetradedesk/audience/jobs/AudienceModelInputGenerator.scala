@@ -315,8 +315,8 @@ abstract class AudienceModelInputGenerator(name: String, val sampleRate: Double)
         'CampaignId,
         'TDID,
         'LogEntryTime,
-        'ContextualCategories,
         'MatchedSegments,
+        'ContextualCategories,  
       )
       // they saved in struct type
       .withColumn("OperatingSystemFamily", 'OperatingSystemFamily("value"))

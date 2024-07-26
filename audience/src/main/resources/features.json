@@ -362,6 +362,61 @@
                   1
                ]
             }
+         },
+         {
+            "Name": "MatchedSegments",
+            "Cardinality": 500002,
+            "Encoding": "array_long",
+            "TFType": "variant",
+            "PreprocessingMethod":"simple",
+            "DefaultValue":0,
+            "Shape": {
+               "Dimensions": [
+                  1,200
+               ]
+            },
+            "Switch": 1
+         },
+         {
+            "Name": "MatchedSegmentsLength",
+            "Cardinality": 1,
+            "Encoding": "float",
+            "TFType": "float",
+            "PreprocessingMethod":"simple",
+            "DefaultValue":0.0,
+            "Shape": {
+               "Dimensions": [
+                  1,
+                  1
+               ]
+            }
+         },
+         {
+            "Name": "HasMatchedSegments",
+            "Cardinality": 2,
+            "Encoding": "string",
+            "TFType": "int",
+            "PreprocessingMethod":"simple",
+            "DefaultValue":0,
+            "Shape": {
+               "Dimensions": [
+                  1
+               ]
+            }
+         },
+         {
+            "Name": "UserSegmentCount",
+            "Cardinality": 1,
+            "Encoding": "float",
+            "TFType": "float",
+            "PreprocessingMethod":"simple",
+            "DefaultValue":0.0,
+            "Shape": {
+               "Dimensions": [
+                  1,
+                  1
+               ]
+            }
          }
        ]
     },
