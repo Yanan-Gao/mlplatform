@@ -24,6 +24,9 @@ final case class AudienceModelInputRecord(
                                                   Browser: Option[Int],
                                                   ContextualCategoriesTier1: Array[Int],
                                                   MatchedSegments: Array[Long],
+                                                  MatchedSegmentsLength: Double,
+                                                  HasMatchedSegments: Option[Int],
+                                                  UserSegmentCount: Double,
                                                   AdWidthInPixels: Double,
                                                   AdHeightInPixels: Double,
 

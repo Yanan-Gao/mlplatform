@@ -18,7 +18,7 @@ import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType}
+import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType, DoubleType}
 import org.apache.spark.sql.{Column, DataFrame, Row, SaveMode}
 
 import java.time.LocalDate
@@ -133,6 +133,7 @@ abstract class AudienceModelInputGenerator(name: String, val sampleRate: Double)
         'LogEntryTime,
         'ContextualCategories,
         'MatchedSegments,
+        'UserSegmentCount,
       )
       // they saved in struct type
       .withColumn("OperatingSystemFamily", 'OperatingSystemFamily("value"))
@@ -149,6 +150,9 @@ abstract class AudienceModelInputGenerator(name: String, val sampleRate: Double)
       .withColumn("Latitude", when('Latitude.isNotNull, 'Latitude).otherwise(0))
       .withColumn("Longitude", ('Longitude + lit(180.0)) / lit(360.0)) //-180 - 180
       .withColumn("Longitude", when('Longitude.isNotNull, 'Longitude).otherwise(0))
+      .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(DoubleType)))
+      .withColumn("HasMatchedSegments", when('MatchedSegments.isNull,0).otherwise(1))
+      .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(DoubleType)))
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .cache()
 
