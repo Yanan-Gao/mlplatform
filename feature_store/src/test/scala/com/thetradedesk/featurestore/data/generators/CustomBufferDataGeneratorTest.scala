@@ -3,22 +3,19 @@ package com.thetradedesk.featurestore.data.generators
 import com.github.mrpowers.spark.fast.tests.DatasetComparer
 import com.thetradedesk.featurestore.configs.{DataType, FeatureDefinition, FeatureSourceDefinition, UserFeatureMergeDefinition}
 import com.thetradedesk.featurestore.constants.FeatureConstants.UserIDKey
-import com.thetradedesk.featurestore.data.generators.CustomBufferDataGenerator.refineDataFrame
 import com.thetradedesk.featurestore.data.loader.MockFeatureDataLoader
 import com.thetradedesk.featurestore.data.metrics.UserFeatureMergeJobTelemetry
-import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.featurestore.testutils.{MockData, TTDSparkTest}
+import com.thetradedesk.featurestore.utils.DatasetHelper.refineDataFrame
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.commons.io.FileUtils
-import org.apache.spark.sql.functions.col
-import org.apache.spark.sql.{DataFrame, Row}
-import org.apache.spark.sql.types._
-import upickle.default.{read, write}
+import org.apache.log4j.{Level, Logger}
+import org.apache.spark.sql.DataFrame
+import org.apache.spark.sql.functions._
+import upickle.default.read
 
-import java.nio.file.{Files, Path}
+import java.nio.file.Files
 import java.time.LocalDateTime
-import java.time.format.DateTimeFormatter
 
 class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
   private implicit val prometheus = new PrometheusClient("FeaturesJobTest", "UserFeatureMergeJobTest")
@@ -28,8 +25,17 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
     override val featureDataLoader = mockFeatureDataLoader
   }
 
-  private val userFeatureFolder : String = "user_features"
+  private val tempFolder = Files.createTempDirectory("CustomBufferDataGeneratorTest").toUri.getPath
+  private var tempFolderIndex = 0
+
+  private def subTempFolder(): String = {
+    tempFolderIndex += 1
+    s"${tempFolder}${tempFolderIndex}"
+  }
+
+  private val userFeatureFolder: String = "user_features"
   private var globalInc: Int = 0
+
   def nextIndex() = {
     globalInc += 1
     globalInc
@@ -62,7 +68,24 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
     other.printSchema()
     other.show(10, false)
 
-    assertSmallDatasetEquality(refineDataFrame(other), refineDataFrame(df))
+    assertSmallDatasetEquality(refineDataFrame(other, UserIDKey), refineDataFrame(df, UserIDKey))
+
+    // validate cbuffer format
+    val cbufferPath = subTempFolder()
+    println("cbuffer file path: " + cbufferPath)
+    df
+      .write
+      .format("cbuffer")
+      .option("maxChunkRecordCount", "2")
+      .option("defaultChunkRecordSize", "2")
+      .save(cbufferPath)
+
+    val df2 = spark
+      .read
+      .format("cbuffer")
+      .load(cbufferPath)
+
+    assertSmallDatasetEquality(refineDataFrame(df2, UserIDKey), refineDataFrame(df, UserIDKey))
   }
 
   private def createUserFeatureSourceDataFrame(dateTime: LocalDateTime, df: DataFrame, userFeatureMergeDefinition: UserFeatureMergeDefinition): Unit = {
@@ -74,7 +97,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
             df.columns
               .filter(_.startsWith(s"${e.name}_"))
               .map(c => col(c).alias(c.substring(e.name.length + 1))) :+ col(UserIDKey): _*))
-          )
+      )
   }
 
   test("run generate and validate result - boolean") {
@@ -229,7 +252,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
 
   test("run generate and validate result - string") {
     val userFeatureMergeDefinition = new UserFeatureMergeDefinition(
-      "ufmd1",userFeatureFolder, Array(
+      "ufmd1", userFeatureFolder, Array(
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
             FeatureDefinition(s"f${nextIndex()}", DataType.String),
@@ -553,8 +576,58 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
     testDataGenerationAndValidate(userFeatureMergeDefinition)
   }
 
+  test("run generate and validate result - edge case one boolean feature only") {
+    val userFeatureMergeDefinition = new UserFeatureMergeDefinition(
+      "ufmd1", userFeatureFolder, Array(
+        FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
+          Array(
+            FeatureDefinition(s"f${nextIndex()}", DataType.Byte),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Byte),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Float),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Double),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 3),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Short, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Double, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.String),
+          )),
+        FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
+          Array(
+            FeatureDefinition(s"f${nextIndex()}", DataType.Bool),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Short),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Short),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Int),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Int),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Float),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Short, 5),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Int, 7),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Int, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Float, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Float, 3),
+            FeatureDefinition(s"f${nextIndex()}", DataType.String),
+          )),
+        FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
+          Array(
+            FeatureDefinition(s"f${nextIndex()}", DataType.Int),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Long),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Long),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Double),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Long, 3),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Short, 3),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Long, 9),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Float, 11),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Double, 2),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Double, 13),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Long, 1),
+          )))
+    )
+
+    testDataGenerationAndValidate(userFeatureMergeDefinition)
+  }
+
   override def afterAll(): Unit = {
     super.afterAll()
     FSUtils.deleteDirectory(userFeatureFolder, recursive = true)(spark)
+    FSUtils.deleteDirectory(tempFolder, recursive = true)(spark)
   }
 }

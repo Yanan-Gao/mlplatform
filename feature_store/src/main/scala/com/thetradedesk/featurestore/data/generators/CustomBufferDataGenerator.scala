@@ -2,12 +2,12 @@ package com.thetradedesk.featurestore.data.generators
 
 import com.thetradedesk.featurestore.configs.{DataType, UserFeatureMergeConfiguration, UserFeatureMergeDefinition}
 import com.thetradedesk.featurestore.constants.FeatureConstants
-import com.thetradedesk.featurestore.constants.FeatureConstants.{BitsOfByte, BytesToKeepAddress, FeatureDataKey, UserIDKey}
-import com.thetradedesk.featurestore.data.generators.CustomBufferDataGenerator.refineDataFrame
+import com.thetradedesk.featurestore.constants.FeatureConstants.{BitsOfByte, BytesToKeepAddressInRecord, FeatureDataKey, UserIDKey}
 import com.thetradedesk.featurestore.data.metrics.UserFeatureMergeJobTelemetry
 import com.thetradedesk.featurestore.{dateTime, shouldConsiderTDID3}
 import com.thetradedesk.featurestore.entities.Result
 import com.thetradedesk.featurestore.udfs.BinaryOperations.binaryToLongArrayUdf
+import com.thetradedesk.featurestore.utils.DatasetHelper.{compareSmallDatasets, refineDataFrame, setNullableState}
 import com.thetradedesk.featurestore.utils.SchemaComparer
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -47,6 +47,7 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
    * generate data, convert original features into byte array
    * TODO optimize and extract the data encode/decode logic into a separate class
    * TDOD use stack struct to push items and construct results to reduce duplicated byte array creation anc copy
+   *
    * @param dataSource
    * @param userFeatureMergeDefinition
    * @return
@@ -65,9 +66,9 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
           offset += 1
         }
       } else {
-        if (offset != 0) {
+        if (offset != 7 || index == -1) {
           index += 1
-          offset = 0
+          offset = 7
         }
         index += prevSize
 
@@ -108,7 +109,7 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
 
     val lastFeature = (featureDefinitions.last._1, featureDefinitions.last._2.name)
 
-      val features = featureDefinitions.map(
+    val features = featureDefinitions.map(
         e => {
           nextStep(e._2.dtype, e._2.arrayLength)
           val isLastFeature = e._2.name == lastFeature._2 && e._1 == lastFeature._1
@@ -182,15 +183,15 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
       .foreach(f => variableLengthColumns = variableLengthColumns :+ stringDataToByteArrayUdf(col(f.fullName)))
 
     if (variableLengthColumns.nonEmpty) {
-      val variableDataAddressColumn = buildVariableDataAddress(features.last.index + BytesToKeepAddress, variableLengthColumns.length, maxDataSizePerRecord)(array(variableLengthColumns.map(length): _*))
+      val variableDataAddressColumn = buildVariableDataAddress(features.last.index + BytesToKeepAddressInRecord, variableLengthColumns.length, maxDataSizePerRecord)(array(variableLengthColumns.map(length): _*))
       columns = (columns :+ variableDataAddressColumn) ++ variableLengthColumns
     }
 
     concat(columns: _*)
   }
 
-  private def buildVariableDataAddress(initialOffset: Int, featureLength: Int, maxDataSizePerRecord:Int) = {
-    val length = featureLength * BytesToKeepAddress
+  private def buildVariableDataAddress(initialOffset: Int, featureLength: Int, maxDataSizePerRecord: Int) = {
+    val length = featureLength * BytesToKeepAddressInRecord
     udf({ (values: Seq[Int]) => {
       val byteBuffer = ByteBuffer.allocate(length).order(ByteOrder.LITTLE_ENDIAN)
       var index = 0
@@ -198,7 +199,7 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
       values.foreach(
         e => {
           byteBuffer.putShort(index, offset.asInstanceOf[Short])
-          index += BytesToKeepAddress
+          index += BytesToKeepAddressInRecord
           offset += e
         }
       )
@@ -350,7 +351,7 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
             if (castType) binaryToLongArrayUdf(readFromDataFrameUdf[Array[Byte]](feature)(typeTag[Array[Byte]])(col(FeatureDataKey))).alias(feature.fullName)
             else readFromDataFrameUdf[Array[Byte]](feature)(typeTag[Array[Byte]])(col(FeatureDataKey)).alias(feature.fullName)
           case (DataType.Short, true) =>
-            if (castType)readFromDataFrameUdf[Array[Short]](feature)(typeTag[Array[Short]])(col(FeatureDataKey)).cast(ArrayType(LongType)).alias(feature.fullName)
+            if (castType) readFromDataFrameUdf[Array[Short]](feature)(typeTag[Array[Short]])(col(FeatureDataKey)).cast(ArrayType(LongType)).alias(feature.fullName)
             else readFromDataFrameUdf[Array[Short]](feature)(typeTag[Array[Short]])(col(FeatureDataKey)).alias(feature.fullName)
           case (DataType.Int, true) =>
             if (castType) readFromDataFrameUdf[Array[Int]](feature)(typeTag[Array[Int]])(col(FeatureDataKey)).cast(ArrayType(LongType)).alias(feature.fullName)
@@ -392,21 +393,7 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
 
     val other = this.readFromDataFrame(result.where(shouldConsiderTDIDUDF(col(FeatureConstants.UserIDKey))), features, true)
 
-    compareSmallDatasets(refineDataFrame(other), refineDataFrame(origin))
-  }
-
-  private def compareSmallDatasets(actualDS: DataFrame, expectedDS: DataFrame):Result = {
-    if (!SchemaComparer.equals(actualDS.schema, expectedDS.schema, false, false)) {
-      Result.failed("schema mismatch")
-    } else {
-      val a = actualDS.collect()
-      val e = expectedDS.collect()
-      if (!a.sameElements(e)) {
-        Result.failed("data mismatch")
-      } else {
-        Result.succeed()
-      }
-    }
+    compareSmallDatasets(refineDataFrame(other, UserIDKey), refineDataFrame(origin, UserIDKey))
   }
 }
 
@@ -421,11 +408,11 @@ object CustomBufferDataGenerator {
     }
 
     val start = if (feature.offset > 1) feature.index // fixed length array
-    else byteBuffer.getShort(feature.index).intValue()  // var length feature
+    else byteBuffer.getShort(feature.index).intValue() // var length feature
 
     val length = if (feature.offset > 1) byteWidthOfArray(feature.dataType, feature.offset) // fixed length array
-    else if (feature.isLastFeature) data.length - start  // last var length feature
-    else byteBuffer.getShort(feature.index + BytesToKeepAddress) - start // non-last var length feature
+    else if (feature.isLastFeature) data.length - start // last var length feature
+    else byteBuffer.getShort(feature.index + BytesToKeepAddressInRecord) - start // non-last var length feature
 
     if (!feature.isArray && feature.dataType == DataType.String) {
       return new String(data, start, length, StandardCharsets.UTF_8)
@@ -471,7 +458,7 @@ object CustomBufferDataGenerator {
   def byteWidthOfArray(dataType: DataType, arrayLength: Int) = {
     if (arrayLength == 1) {
       // var length data
-      BytesToKeepAddress
+      BytesToKeepAddressInRecord
     } else {
       val length = math.max(arrayLength, 1)
       dataType match {
@@ -482,7 +469,7 @@ object CustomBufferDataGenerator {
         case DataType.Long => length << 3
         case DataType.Float => length << 2
         case DataType.Double => length << 3
-        case _ => BytesToKeepAddress // extra list to hold address
+        case _ => BytesToKeepAddressInRecord // extra list to hold address
       }
     }
   }
@@ -522,23 +509,5 @@ object CustomBufferDataGenerator {
       case DataType.Double => byteBuffer.getDouble(index)
       case _ => throw new UnsupportedOperationException(s"type ${dataType}  is not supported")
     }
-  }
-
-  def refineDataFrame(df: DataFrame) : DataFrame = {
-    setNullableState(
-      df
-        .select(df.columns.sorted.map(col): _*)
-        .orderBy(col(UserIDKey).asc)
-    )
-  }
-
-  def setNullableState(df: DataFrame, nullable: Boolean = false, containsNull: Boolean = false): DataFrame = {
-    val schema = df.schema
-    val newSchema = StructType(schema.map {
-      case StructField(c, t: ArrayType, _, m) => StructField(c, ArrayType(t.elementType, containsNull = containsNull), nullable = nullable, m)
-      case StructField(c, t, _, m) => StructField(c, t, nullable = nullable, m)
-    })
-
-    df.sqlContext.createDataFrame(df.rdd, newSchema)
   }
 }

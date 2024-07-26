@@ -12,7 +12,8 @@ object FeatureConstants {
   val WIDTH_32 = 2
   val WIDTH_64 = 3
 
-  val BytesToKeepAddress = 2
+  val BytesToKeepAddressInRecord = 2
+  val BytesToKeepAddressInChunk = 4
 
   val DefaultMaxDataSizePerRecord = 1024
   val UserFeatureDataPartitionNumbers = 4096
