@@ -33,7 +33,7 @@ object UserFeatureMergeJob {
 
   def runETLPipeline(): Unit = {
     // step 1: collect feature definitions
-    val definition = FileHelper.readStringFromFile(Config.userFeatureMergeDefinitionPath)
+    val definition = FileHelper.readStringFromFile(Config.userFeatureMergeDefinitionPath,  true)(spark)
     val userFeatureMergeDefinition = read[UserFeatureMergeDefinition](definition)
     // step 2: join features, generate feature data (byte array) <multi data generator supported> and feature schema (verify data length at the same time)
     val (df, schema) = new CustomBufferDataGenerator()(spark, telemetry).generate(dateTime, userFeatureMergeDefinition)

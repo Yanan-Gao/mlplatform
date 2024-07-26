@@ -8,9 +8,9 @@ import com.thetradedesk.featurestore.data.metrics.UserFeatureMergeJobTelemetry
 import com.thetradedesk.featurestore.entities.Result
 import com.thetradedesk.featurestore.shouldConsiderTDID
 import com.thetradedesk.featurestore.udfs.BinaryOperations.binaryToLongArrayUdf
+import com.thetradedesk.featurestore.utils.FileHelper
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.io.FSUtils
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{Column, DataFrame, SparkSession}
@@ -36,7 +36,7 @@ abstract class IDataGenerator(implicit sparkSession: SparkSession, telemetry: Us
     val featureSchemaJson = write(features)
     println("feature schema json:")
     println(featureSchemaJson)
-    FSUtils.writeStringToFile(userFeatureMergeDefinition.schemaPath(dateTime), featureSchemaJson)(spark)
+    FileHelper.writeStringToFile(userFeatureMergeDefinition.schemaPath(dateTime), featureSchemaJson)(spark)
 
     val cachedResult = result.cache()
 

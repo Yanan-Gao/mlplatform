@@ -1,6 +1,7 @@
 package com.thetradedesk.featurestore.testutils
 
 import com.thetradedesk.featurestore.configs.{DataType, FeatureDefinition, FeatureSourceDefinition, UserFeatureMergeDefinition}
+import com.thetradedesk.featurestore.data.cbuffer.CBufferConstants.ArrayLengthKey
 import com.thetradedesk.geronimo.bidsimpression.schema._
 import com.thetradedesk.geronimo.shared.schemas._
 import com.thetradedesk.spark.datasets.generated.SeenInBiddingV2DeviceDataRecord
@@ -776,7 +777,8 @@ object MockData {
     if (featureDefinition.arrayLength == 0) {
       StructField(s"${featureSourceDefinition.name}_${featureDefinition.name}", dataTypeToSparkType(featureDefinition.dtype), false)
     } else {
-      StructField(s"${featureSourceDefinition.name}_${featureDefinition.name}", ArrayType(dataTypeToSparkType(featureDefinition.dtype), false), false)
+      val metadata = new MetadataBuilder().putLong(ArrayLengthKey, if (featureDefinition.arrayLength == 1) 0 else featureDefinition.arrayLength).build()
+      StructField(s"${featureSourceDefinition.name}_${featureDefinition.name}", ArrayType(dataTypeToSparkType(featureDefinition.dtype), false), false, metadata = metadata)
     }
   }
 
@@ -799,7 +801,7 @@ object MockData {
     Row(userFeatureMergeDefinition
       .featureSourceDefinitions
       .flatMap(e => e.features.map(featureDefinitionToStructField))
-      :+ inc.toString : _*)
+      :+ inc.toString: _*)
   }
 
   private def featureDefinitionToStructField(featureDefinition: FeatureDefinition) = {
