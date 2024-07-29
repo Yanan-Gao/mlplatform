@@ -3,7 +3,8 @@ package com.thetradedesk.audience.jobs
 import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
 import com.thetradedesk.audience.datasets.CrossDeviceVendor.CrossDeviceVendor
 import com.thetradedesk.audience.datasets._
-import com.thetradedesk.audience.jobs.AudienceModelInputGeneratorJob.clusterTargetingData
+import com.thetradedesk.audience.jobs.modelinput.AudienceModelInputGeneratorJob.clusterTargetingData
+import com.thetradedesk.audience.jobs.modelinput.RSMSeedInputGenerator
 import com.thetradedesk.audience.sample.RandomSampling.negativeSampleUDFGenerator
 import com.thetradedesk.audience.sample.WeightSampling.{getLabels, zipAndGroupUDFGenerator}
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
