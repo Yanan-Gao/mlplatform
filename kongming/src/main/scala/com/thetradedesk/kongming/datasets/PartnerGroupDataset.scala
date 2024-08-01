@@ -3,12 +3,12 @@ package com.thetradedesk.kongming.datasets
 import com.thetradedesk.spark.datasets.core.ProvisioningS3DataSet
 import com.thetradedesk.spark.datasets.core.SchemaPolicy.MergeAllFilesSchema
 
-final case class PartnerRecord(PartnerId: String,
+final case class PartnerGroupRecord(
                                PartnerGroupId: String,
-                                SpendDisabled: Boolean
+                               TenantId: String
                                )
 
-case class PartnerDataSet() extends ProvisioningS3DataSet[PartnerRecord](
-  "partner/v=1",
+case class PartnerGroupDataSet() extends ProvisioningS3DataSet[PartnerGroupRecord](
+  "partnergroup/v=1",
   schemaPolicy = MergeAllFilesSchema
 )
