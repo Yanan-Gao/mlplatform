@@ -2,14 +2,14 @@ package job
 
 import com.thetradedesk.geronimo.shared.shiftModUdf
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupDataSet, AdGroupPolicyDataset, AdGroupPolicyMappingDataset, AdGroupPolicyMappingRecord, AdGroupPolicyRecord, AdvertiserDataSet, CampaignConversionReportingColumnDataSet, CampaignDataSet, CampaignFlightDataSet, CampaignROIGoalDataSet, DailyPositiveCountSummaryDataset, PartnerDataSet}
+import com.thetradedesk.kongming.datasets.{AdGroupDataSet, AdGroupPolicyDataset, AdGroupPolicyMappingDataset, AdGroupPolicyMappingRecord, AdGroupPolicyRecord, AdvertiserDataSet, CampaignConversionReportingColumnDataSet, CampaignDataSet, CampaignFlightDataSet, CampaignROIGoalDataSet, DailyPositiveCountSummaryDataset, PartnerDataSet, PartnerGroupDataSet}
 import com.thetradedesk.kongming.transform.TrainSetFeatureMappingTransform
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.{Column, Dataset}
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.functions._
+import org.apache.spark.sql.functions.{lit, _}
 
 import java.time.LocalDate
 
@@ -242,9 +242,13 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
 
     val adGroups = AdGroupDataSet().readLatestPartitionUpTo(date, true)
       .select("AdGroupId", "CampaignId", "AdvertiserId", "PartnerId", "ROIGoalTypeId")
-    val campaignROIGoal = CampaignROIGoalDataSet().readLatestPartitionUpTo(date, true)
+    var campaignROIGoal = CampaignROIGoalDataSet().readLatestPartitionUpTo(date, true)
+    campaignROIGoal = task match {
+      case "roas" => campaignROIGoal
+      case _ => campaignROIGoal.filter($"Priority"===lit(1))
+    }
     val activeCampaigns = CampaignDataSet().readLatestPartitionUpTo(date, true)
-      .join(campaignROIGoal.filter('Priority===1), Seq("CampaignId"), "left")
+      .join(campaignROIGoal, Seq("CampaignId"), "left")
       .filter(('StartDate <= lit(date) && ('EndDate.isNull || 'EndDate > lit(date))))
       .filter(('ROIGoalTypeId === lit(roiGoalTypeIdValue)) || ('ROIGoalTypeId.isNull) )
       .select(col("CampaignId"), col(customGoalTypeCol), col("ROIGoalTypeId").as("CampaignROIGoalTypeId"))
@@ -254,6 +258,8 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
       .select("AdvertiserId", "AttributionClickLookbackWindowInSeconds", "AttributionImpressionLookbackWindowInSeconds")
     val spendingPartners = PartnerDataSet().readLatestPartitionUpTo(date, true)
       .filter('SpendDisabled === lit(0))
+    val nonWalmartPartnerGroups = PartnerGroupDataSet().readLatestPartitionUpTo(date, true)
+      .filter('TenantId =!= lit(2))
     val ccrc = CampaignConversionReportingColumnDataSet().readLatestPartitionUpTo(date, true)
       .select("CampaignId", includeInCustomGoalCol, "ReportingColumnId")
 
@@ -263,7 +269,8 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
       .filter(('ROIGoalTypeId === lit(roiGoalTypeIdValue) && 'CampaignROIGoalTypeId.isNull) || ('CampaignROIGoalTypeId === lit(roiGoalTypeIdValue)) )
       .join(activeCampaignFlights, Seq("CampaignId"), "leftsemi")
       .join(advertisers, Seq("AdvertiserId"), "inner")
-      .join(spendingPartners, Seq("PartnerId"), "leftsemi")
+      .join(spendingPartners, Seq("PartnerId"), "inner")
+      .join(nonWalmartPartnerGroups, Seq("PartnerGroupId"), "left_semi")
       .join(ccrc, Seq("CampaignId"), "inner")
       .filter((col(customGoalTypeCol) === lit(0) && 'ReportingColumnId === lit(1)) || (col(customGoalTypeCol) > lit(0) && col(includeInCustomGoalCol)))
       .selectAs[PolicyTableAdGroup]
