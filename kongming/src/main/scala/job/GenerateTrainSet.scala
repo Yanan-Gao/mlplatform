@@ -4,6 +4,8 @@ import com.thetradedesk.geronimo.shared.{STRING_FEATURE_TYPE, intModelFeaturesCo
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.features.Features.{ModelTarget, aliasedModelFeatureCols, aliasedModelFeatureNames, directFields, keptFields, modelDimensions, modelFeatures, modelTargetCols, modelTargets, modelWeights, rawModelFeatureNames, seqDirectFields, seqHashFields, seqModModelFeaturesCols, userFeatures}
+import com.thetradedesk.kongming.transform.AudienceIdTransform
+import com.thetradedesk.kongming.transform.AudienceIdTransform.AudienceFeature
 import com.thetradedesk.kongming.transform.NegativeTransform.aggregateNegatives
 import com.thetradedesk.kongming.transform.TrainSetTransformation._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -62,6 +64,7 @@ object GenerateTrainSet extends KongmingBaseJob {
   val saveParquetData = config.getBoolean("saveParquetData", false)
   val saveTrainingDataAsCSV = config.getBoolean("saveTrainingDataAsCSV", true)
   val addBidRequestId = config.getBoolean("addBidRequestId", false)
+  val saveFeatureTable = config.getBoolean("saveFeatureTable", true)
   val trainSetPartitionCount = config.getInt("trainSetPartitionCount", partCount.trainSet)
   val valSetPartitionCount = config.getInt("valSetPartitionCount", partCount.valSet)
 
@@ -183,8 +186,8 @@ object GenerateTrainSet extends KongmingBaseJob {
       aliasedModelFeatureCols(seqDirectFields) ++ seqModModelFeaturesCols(seqHashFields) ++ modelTargetCols(modelTargets) ++ splitColumn
 
     val parquetSelectionTabular = aliasedModelFeatureCols(keptFields ++ directFields) ++ tensorflowSelectionTabular
-
     // split train and val
+
     val trainDataWithFeature = attachTrainsetWithFeature(adjustedWeightDataset, bidDate, 0)(getPrometheus)
       .withColumn("split", when($"IsInTrainSet", "train").when($"IsTracked" === lit(1), lit("val")).otherwise("untracked"))
     (
@@ -192,6 +195,7 @@ object GenerateTrainSet extends KongmingBaseJob {
       trainDataWithFeature.filter($"split" === lit("val")).select(parquetSelectionTabular: _*).selectAs[UserDataValidationDataForModelTrainingRecord](nullIfAbsent=true),
       trainDataWithFeature.filter($"split" === lit("untracked")).select(parquetSelectionTabular: _*).selectAs[UserDataValidationDataForModelTrainingRecord](nullIfAbsent=true)
     )
+
   }
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
@@ -226,7 +230,6 @@ object GenerateTrainSet extends KongmingBaseJob {
         } else {
           aliasedModelFeatureNames(keptFields) ++ rawModelFeatureNames(seqDirectFields)
         }
-
         // save relevant columns by date and biddate
         IntermediateTrainDataWithFeatureDataset(split="train").writePartition(adjustedTrainParquet.drop(tfDropColumnNames: _*)
           .selectAs[UserDataForModelTrainingRecord](nullIfAbsent = true), date, bidDate, Some(dailyTrainSetWithFeatureCount))
@@ -246,6 +249,18 @@ object GenerateTrainSet extends KongmingBaseJob {
     val untrackeddataWithFeatureAllBidDate = IntermediateTrainDataWithFeatureDataset(split = "untracked").readPartition(date).orderBy(rand()).drop("v","split","date","biddate").cache()
 
     var trainsetRows = Array.fill(3)("", 0L)
+
+    // Step D(optional)
+    // generate feature table to offline feature store
+    if (saveFeatureTable){
+      val dimAudienceId = AudienceIdTransform.generateAudienceTable(date)
+      val dimIndustryCategoryId = broadcast(AdvertiserFeatureDataSet().readLatestPartitionUpTo(date, isInclusive = true).select("AdvertiserId", "IndustryCategoryId")
+        .withColumn("IndustryCategoryId", col("IndustryCategoryId").cast("Int")))
+      val featureTable = dimIndustryCategoryId.join(dimAudienceId, Seq("AdvertiserId"), "inner").selectAs[FeatureTableRecord].cache()
+      val tableRows = FeatureTableDataset().writePartition(featureTable,date,Some(1))
+
+    }
+
 
     // save as csv
     if (saveTrainingDataAsCSV) {
