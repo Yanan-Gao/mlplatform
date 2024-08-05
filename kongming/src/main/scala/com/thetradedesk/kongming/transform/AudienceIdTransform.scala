@@ -42,4 +42,22 @@ object AudienceIdTransform {
     audienceList
 
   }
+
+  def generateAudienceTable(
+                            date: LocalDate
+                          ): Dataset[AudienceList] = {
+
+    val adgroupTable = UnifiedAdGroupFeatureDataSet().readLatestPartitionUpTo(date, isInclusive = true).select("CampaignId", "AudienceId","AdvertiserId")
+    val hashedAudienceId = adgroupTable
+      .withColumn("AudienceId", when(col("AudienceId").isNotNull, shiftModUdf(xxhash64(col("AudienceId")), lit(CARDINALITY_AUDIENCEID_CATEGORY))).otherwise(0))
+    val audienceList = hashedAudienceId
+      .groupBy("CampaignId", "AdvertiserId")
+      .agg(collect_set("AudienceId").alias("AudienceId"))
+      .withColumn("AudienceId", expr(s"concat(slice(array_sort(AudienceId), 1, $SHAPE_AUDIENCEID_CATEGORY), array_repeat(0, $SHAPE_AUDIENCEID_CATEGORY - size(AudienceId)))"))
+      .selectAs[AudienceList]
+
+    audienceList
+
+  }
 }
+
