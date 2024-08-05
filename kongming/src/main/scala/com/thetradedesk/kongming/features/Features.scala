@@ -8,7 +8,7 @@ import org.apache.spark.sql.functions._
 
 object Features {
 
-  val defaultFeaturesJsonS3Location = "s3://thetradedesk-mlplatform-us-east-1/features/data/kongming/v=1/prod/features/feature_userdata_group.json"
+  val defaultFeaturesJsonS3Location = "s3://thetradedesk-mlplatform-us-east-1/features/data/kongming/v=1/prod/features/feature_userdata_group_featuretable.json"
 
   // TODO: set path for roas' feature json file
   val modelFeaturesTargets: ModelFeatureLists = loadModelFeaturesSplit(config.getString("featuresJson", defaultFeaturesJsonS3Location))
