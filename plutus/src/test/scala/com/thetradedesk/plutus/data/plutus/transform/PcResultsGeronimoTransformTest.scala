@@ -15,6 +15,8 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
 
   test("PcResults + Geronimo Transform test for schema/column correctness") {
     val janusVariantMap = Map("model1" -> "variant1")
+    val modelVersionsUsedWithPlutus = Map("plutus" -> 42L)
+    val modelVersionsUsedWithoutPlutus = Map("model1" -> 42L)
 
     val geronimoDataset = Seq(
       bidsImpressionsMock(),
@@ -22,7 +24,9 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
       bidsImpressionsMock(Seq {
         feeFeatureUsageLogMock
       }),
-      bidsImpressionsMock(JanusVariantMap = Some(janusVariantMap))
+      bidsImpressionsMock(JanusVariantMap = Some(janusVariantMap)),
+      bidsImpressionsMock(ModelVersionsUsed = Some(modelVersionsUsedWithoutPlutus)),
+      bidsImpressionsMock(ModelVersionsUsed = Some(modelVersionsUsedWithPlutus)),
     ).toDS().as[BidsImpressionsSchema]
     val pcResultsDataset = Seq(pcResultsLogMock.copy()).toDS().as[PlutusLogsData]
     val mbtwDataset = Seq(mbtwDataMock.copy()).toDS().as[MinimumBidToWinData]
@@ -34,7 +38,7 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
       joinGeronimoPcResultsLog(geronimoDataset, pcResultsDataset, mbtwDataset,
         privateContractDataSet, adFormatDataSet, productionAdgroupBudgetDataset)
 
-    assert(mergedDataset.count() == 4, "Output rows")
+    assert(mergedDataset.count() == 6, "Output rows")
     assert(pcResultsAbsentDataset.count() == 0, "Absent rows (from PCResultsLog)")
     assert(mbtwAbsentDataset.count() == 0, "Absent rows (from MBTW Dataset)")
 
@@ -65,10 +69,19 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
     assert(resultList.get(1).FeeAmount == None, "Validating that null feeFeatureUsage results in a none value\"")
     assert(resultList.get(2).FeeAmount == Some(feeFeatureUsageLogMock.FeeAmount), "Validating that the actual feeFeatureUsage.FeeAmount value is propogated")
 
+    // Test for JanusVariantMap
     val res4 = resultList.get(3)
     assert(res4.IsUsingJanus == true)
     assert(res4.JanusVariantMap.isDefined)
     assert(res4.JanusVariantMap.get.equals(janusVariantMap))
+
+    // Test for PlutusVersionUsed
+    val res5 = resultList.get(4)  // without plutus
+    val res6 = resultList.get(5)  // with plutus
+    assert(res4.PlutusVersionUsed.isDefined == false)
+    assert(res5.PlutusVersionUsed.isDefined == false)
+    assert(res6.PlutusVersionUsed.isDefined)
+    assert(res6.PlutusVersionUsed.get == modelVersionsUsedWithPlutus("plutus"))
   }
 
   test("PcResultsRawLogSchema -> PlutusLogsData test") {

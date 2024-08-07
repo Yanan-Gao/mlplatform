@@ -104,6 +104,8 @@ case class PcResultsMergedDataset(
                                    JanusVariantMap: Option[Map[String, String]],
                                    IsUsingJanus: Boolean,
 
+                                   PlutusVersionUsed: Option[Long], // values are MLFlow Versions, parsed from ModelVersionsUsed
+
                                    // Coalesced AliasedSupplyPublisherId and SupplyVendorPublisherId
                                    AspSvpId: String,
 

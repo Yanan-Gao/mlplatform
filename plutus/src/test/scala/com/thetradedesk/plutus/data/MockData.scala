@@ -36,7 +36,9 @@ object MockData {
 
 
   def bidsImpressionsMock(FeeFeatureUsage: Seq[FeeFeatureUsageLogBackingData] = Seq(),
-                          JanusVariantMap: Option[Map[String, String]] = None) =
+                          JanusVariantMap: Option[Map[String, String]] = None,
+                          ModelVersionsUsed: Option[Map[String, Long]] = None,
+                         ) =
     BidsImpressionsSchema(
       // bidrequest cols
       BidRequestId = "1",
@@ -103,6 +105,9 @@ object MockData {
       PredictiveClearingRandomControl = false,
       PlutusTfModel = Some("plutusMock"),
 
+      AdInfoSpoInventoryIdHash = Some(0L),
+      AdInfoSpoFilteredStatusId = Some(0),
+
       // bidfeedback cols
 
       MediaCostCPMInUSD = Some(9000.0),
@@ -148,6 +153,7 @@ object MockData {
       ExpectedValue = Option(200d),
       RPacingValue = Option(0.5),
       JanusVariantMap = JanusVariantMap,
+      ModelVersionsUsed = ModelVersionsUsed,
       UserAgeInDays = Option(20),
 
       AdvertiserCostInUSD = None,
@@ -368,6 +374,8 @@ object MockData {
 
     JanusVariantMap = None,
     IsUsingJanus = false,
+
+    PlutusVersionUsed = None,
 
     // Coalesced AliasedSupplyPublisherId and SupplyVendorPublisherId
     AspSvpId = "1983",
