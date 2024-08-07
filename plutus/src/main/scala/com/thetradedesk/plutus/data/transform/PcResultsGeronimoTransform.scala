@@ -109,6 +109,13 @@ object PcResultsGeronimoTransform extends Logger {
     // This is a temporary field while we figure out how to populate all the fields properly in a Janus world
     res = res.withColumn("IsUsingJanus", col("JanusVariantMap").isNotNull)
 
+    // PlutusVersionUsed is parsed from the ModelVersionsUsed map column for plutus model name
+    res = res.withColumn("PlutusVersionUsed",
+      map_values(
+        map_filter(col("ModelVersionsUsed"), (k, v) => k === "plutus")
+      )(0) // null safe first element
+    )
+
     // Adding coalesced AliasedSupplyPublisherId + SupplyVendorPublisherId
     res = res.withColumn("AspSvpId",
       coalesce(
