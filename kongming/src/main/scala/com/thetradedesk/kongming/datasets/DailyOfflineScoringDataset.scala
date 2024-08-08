@@ -162,7 +162,11 @@ final case class OldDailyOfflineScoringRecord(
                                            latitude: Option[Double],
                                            longitude: Option[Double],
                                            IndustryCategoryId: Option[Int],
-                                           AudienceId: Array[Int]
+                                           AudienceId: Array[Int],
+
+                                           HasUserData: Int,
+                                           UserDataLength: Double,
+                                           UserData: Array[Int]
                                           )
 
 case class OldDailyOfflineScoringDataset(experimentOverride: Option[String] = None) extends KongMingDataset[OldDailyOfflineScoringRecord](

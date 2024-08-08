@@ -3,11 +3,13 @@ package job
 import com.thetradedesk.geronimo.shared.intModelFeaturesCols
 import com.thetradedesk.kongming.features.Features._
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyMappingDataset, DailyBidsImpressionsDataset, BidsImpressionsSchema, DailyOfflineScoringDataset, DailyOfflineScoringRecord, OldDailyOfflineScoringDataset}
+import com.thetradedesk.kongming.datasets.{AdGroupPolicyMappingDataset, BidsImpressionsSchema, DailyBidsImpressionsDataset, DailyOfflineScoringDataset, DailyOfflineScoringRecord, OldDailyOfflineScoringDataset}
 import com.thetradedesk.kongming.transform.OfflineScoringSetTransform
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import org.apache.spark.sql.functions.col
+
+import java.time.format.DateTimeFormatter
 
 object DailyOfflineScoringSet extends KongmingBaseJob {
 
@@ -20,7 +22,7 @@ object DailyOfflineScoringSet extends KongmingBaseJob {
       .selectAs[BidsImpressionsSchema]
 
     var hashFeatures = modelDimensions ++ modelFeatures
-    hashFeatures = hashFeatures.filter(x => !(seqDirectFields ++ directFields ++ userFeatures).contains(x))
+    hashFeatures = hashFeatures.filter(x => !(seqDirectFields ++ directFields ++ flagFields).contains(x))
     // todo: temporary - we will not add userFeature for scoring&calibration&metrics in this MR; will do it in the next MR
     val selectionTabular = intModelFeaturesCols(hashFeatures) ++ rawModelFeatureCols(seqDirectFields) ++ aliasedModelFeatureCols(keptFields ++ directFields)
 

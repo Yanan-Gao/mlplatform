@@ -4,7 +4,7 @@ import com.thetradedesk.geronimo.shared.loadParquetData
 import com.thetradedesk.geronimo.shared.schemas.BidFeedbackDataset
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
-import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, seqDirectFields}
+import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, seqDirectFields, seqHashFields}
 import com.thetradedesk.kongming.transform.TrainSetTransformation.getValidTrackingTags
 import com.thetradedesk.kongming.transform._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -28,13 +28,20 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
     val attributionSet = generateAttributionSet(scoreDate)(getPrometheus)
 
-    val trackedAttributionSet = attributionSet.filter($"IsTracked" === lit(1)).selectAs[OutOfSampleAttributionRecord]
-    val untrackedAttributionSet = attributionSet.filter($"IsTracked" =!= lit(1)).selectAs[OutOfSampleAttributionRecord]
+    val OptInTrackedAttributionSet = attributionSet._1.filter($"IsTracked" === lit(1)).selectAs[OutOfSampleAttributionRecord]
+    val OptInUntrackedAttributionSet = attributionSet._1.filter($"IsTracked" =!= lit(1)).selectAs[OutOfSampleAttributionRecord]
 
-    val numTrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(trackedAttributionSet, scoreDate, "tracked", Some(200))
-    val numUntrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(untrackedAttributionSet, scoreDate, "untracked", Some(200))
+    val OptOutTrackedAttributionSet = attributionSet._2.filter($"IsTracked" === lit(1)).selectAs[OutOfSampleAttributionRecord]
+    val OptOutUntrackedAttributionSet = attributionSet._2.filter($"IsTracked" =!= lit(1)).selectAs[OutOfSampleAttributionRecord]
+
+    val numTrackedRows = OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 1).writePartition(OptInTrackedAttributionSet, scoreDate, "tracked", Some(200))
+    val numUntrackedRows = OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 1).writePartition(OptInUntrackedAttributionSet, scoreDate, "untracked", Some(200))
+
+    OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 0).writePartition(OptOutTrackedAttributionSet, scoreDate, "tracked", Some(200))
+    OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 0).writePartition(OptOutUntrackedAttributionSet, scoreDate, "untracked", Some(200))
 
     Array(numTrackedRows, numUntrackedRows)
+
   }
 
 
@@ -131,7 +138,8 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
   }
 
-  def generateAttributionSet(scoreDate: LocalDate)(implicit prometheus: PrometheusClient): Dataset[OutOfSampleAttributionRecord] = {
+  def generateAttributionSet(scoreDate: LocalDate)(implicit prometheus: PrometheusClient):
+  (Dataset[OutOfSampleAttributionRecord], Dataset[OutOfSampleAttributionRecord]) = {
     val adGroupPolicy = AdGroupPolicyDataset().readDate(scoreDate)
     val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(scoreDate)
     val policy = getMinimalPolicy(adGroupPolicy, adGroupPolicyMapping).cache()
@@ -153,15 +161,23 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
       .withColumn("Target", coalesce('Target, lit(0)))
       .withColumn("Revenue", coalesce('Revenue, lit(0)))
       .join(scoringSet, Seq("BidRequestIdStr"), "inner")
+      .cache()
 
-    val parquetSelectionTabular = rawOOS.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqDirectFields)
+    val campaignsWithPosSamples = rawOOS.filter('Target === lit(1)).select('CampaignId).distinct
+    val parquetSelectionTabular = rawOOS.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqDirectFields ++ seqHashFields)
 
-    val testSet = rawOOS
-        .select(parquetSelectionTabular: _*)
-        .selectAs[OutOfSampleAttributionRecord]
+    val rawOOSFiltered =  rawOOS.join(broadcast(campaignsWithPosSamples), Seq("CampaignId"), "left_semi")
+      .select(parquetSelectionTabular: _*)
+      .cache()
 
-    val campaignsWithPosSamples = testSet.filter('Target === lit(1)).select('CampaignId).distinct
-    testSet.join(broadcast(campaignsWithPosSamples), Seq("CampaignId"), "left_semi")
+    val rawOOSUserDataOptIn = rawOOSFiltered
+      .withColumn("UserDataOptIn",lit(2)) // hashmod 1 ->2
       .selectAs[OutOfSampleAttributionRecord]
+
+    val rawOOSUserDataOptOut = rawOOSFiltered
+      .withColumn("UserDataOptIn",lit(1)) // hashmod 0 ->1
+      .selectAs[OutOfSampleAttributionRecord]
+
+    (rawOOSUserDataOptIn, rawOOSUserDataOptOut)
   }
 }
