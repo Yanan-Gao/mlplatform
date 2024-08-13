@@ -48,6 +48,8 @@ object DiagnosisDataGenerator {
         sum(col("RelevanceScore") * col("RelevanceScore")).as("RelevanceScoreSquaredSum"),
         sum(col("KpiModelOutput")).as("KpiModelOutputSum"),
         sum(col("KpiModelOutput") * col("KpiModelOutput")).as("KpiModelOutputSquaredSum"),
+        sum(when(col("RValueType") === "DynamicBid", col("KpiModelOutput")).otherwise(0)).as("KpiModelOutputSum2"),
+        sum(when(col("RValueType") === "DynamicBid", col("KpiModelOutput") * col("KpiModelOutput")).otherwise(0)).as("KpiModelOutputSquaredSum2"),
         sum(col("PriorityBidFactor")).as("PriorityBidFactorSum"),
         sum(col("PriorityBidFactor") * col("PriorityBidFactor")).as("PriorityBidFactorSquaredSum"),
         sum(col("FrequencyBidFactor")).as("FrequencyBidFactorSum"),
@@ -64,6 +66,11 @@ object DiagnosisDataGenerator {
         sum(col("RValueUsed") * col("RValueUsed")).as("RValueUsedSquaredSum"),
         sum(col("SystemAutoBidFactor")).as("SystemAutoBidFactorSum"),
         sum(col("SystemAutoBidFactor") * col("SystemAutoBidFactor")).as("SystemAutoBidFactorSquaredSum"),
+        sum(when(col("RValueType") === "DynamicBid", col("RawKpiModelOutput")).otherwise(0)).as("RawKpiModelOutputSum"),
+        sum(when(col("RValueType") === "DynamicBid", col("PerformanceModelScoreBeforeApplyingChangeRatio")).otherwise(0)).as("PerformanceModelScoreBeforeApplyingChangeRatioSum"),
+        sum(col("RelevanceScoreAfterVersionAdjustment")).as("RelevanceScoreAfterVersionAdjustmentSum"),
+        sum(col("AdjustedRelevanceScore")).as("AdjustedRelevanceScoreSum"),
+        max(col("ModelVersion")).as("ModelVersionMax"),
       )
       .select(
         col("CampaignId"),
@@ -91,6 +98,8 @@ object DiagnosisDataGenerator {
           col("RelevanceScoreSquaredSum"),
           col("KpiModelOutputSum"),
           col("KpiModelOutputSquaredSum"),
+          col("KpiModelOutputSum2"),
+          col("KpiModelOutputSquaredSum2"),
           col("PriorityBidFactorSum"),
           col("PriorityBidFactorSquaredSum"),
           col("FrequencyBidFactorSum"),
@@ -106,7 +115,12 @@ object DiagnosisDataGenerator {
           col("RValueUsedSum"),
           col("RValueUsedSquaredSum"),
           col("SystemAutoBidFactorSum"),
-          col("SystemAutoBidFactorSquaredSum")
+          col("SystemAutoBidFactorSquaredSum"),
+          col("RawKpiModelOutputSum"),
+          col("PerformanceModelScoreBeforeApplyingChangeRatioSum"),
+          col("RelevanceScoreAfterVersionAdjustmentSum"),
+          col("AdjustedRelevanceScoreSum"),
+          col("ModelVersionMax")
         )).as("CountMetrics")
       )
       .as[DiagnosisRecord]
