@@ -87,7 +87,7 @@ feature_store:deploy_release:
     - NEXUS_MAVEN_READ_USER=${NEXUS_MAVEN_RELEASE_USER}
     - NEXUS_MAVEN_READ_PASS=${NEXUS_MAVEN_RELEASE_PASS}
     - sbt -d -J-Xss4M -J-Xms512M -J-Xmx2048M -J-XX:+CMSClassUnloadingEnabled "set test in assembly := {}" clean assembly
-    - sbt -J-Xms512M -J-Xss4M -J-Xmx2048M -J-XX:+CMSClassUnloadingEnabled "set version := \"`date '+%Y%m%d%H%M%S'`\"" publish
+    - sbt -J-Xms512M -J-Xss4M -J-Xmx2048M -J-XX:+CMSClassUnloadingEnabled "set version := \"`date '+%Y%m%d%H%M%S'`-SNAPSHOT\"; set isSnapshot := true" publish
     - aws s3 cp ${FEATURE_STORE_ASSEMBLY_OUT} ${FEATURE_STORE_PROD_JAR_FOLDER}/${FEATURE_STORE_JAR_NAME}
     - popd
     - echo "ran FEATURE_STORE_deploy_release"
