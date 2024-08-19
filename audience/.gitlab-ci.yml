@@ -91,7 +91,6 @@ audience:deploy_release:
       changes:
         - "audience/src/main/scala/**/*"
         - "audience/build.sbt"
-      when: manual
       allow_failure: false
   script:
     - pushd ./audience/
