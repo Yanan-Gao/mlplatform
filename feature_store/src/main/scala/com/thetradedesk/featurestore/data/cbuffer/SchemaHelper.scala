@@ -27,6 +27,14 @@ object SchemaHelper {
       })
   }
 
+  /**
+   * change column schema to indicate array length
+   * usage one: withColumn("column name", indicateArrayLength("column name", arrayLength)
+   * usage two: df.select(indicateArrayLength("column name", arrayLength), other columns)
+   * @param columnName column name
+   * @param arrayLength array length to indicate
+   * @return
+   */
   def indicateArrayLength(columnName: String, arrayLength: Int) : Column = {
     val metadata = new MetadataBuilder().putLong(ArrayLengthKey, arrayLength).build()
     col(columnName).as(columnName, metadata=metadata)
