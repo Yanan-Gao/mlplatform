@@ -4,7 +4,7 @@ import sbtrelease.Vcs
 
 name := "feature_store"
 
-version := "0.0.0"
+version := "1.0.0"
 
 scalaVersion := "2.12.15"
 
@@ -18,6 +18,13 @@ credentials += Credentials(
   "Sonatype Nexus Repository Manager", "nexus.adsrvr.org", System.getenv("NEXUS_MAVEN_READ_USER"), System.getenv("NEXUS_MAVEN_READ_PASS"))
 resolvers += "TTDNexusSnapshots" at "https://nexus.adsrvr.org/repository/ttd-snapshot"
 resolvers += "TTDNexusReleases" at "https://nexus.adsrvr.org/repository/ttd-release"
+
+publishTo := {
+  if (isSnapshot.value)
+    Some("TTDNexusSnapshots" at "https://nexus.adsrvr.org/repository/ttd-snapshot")
+  else
+    Some("TTDNexusReleases" at "https://nexus.adsrvr.org/repository/ttd-release")
+}
 
 libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-sql" % sparkVersion % "provided",
