@@ -47,7 +47,13 @@ case class ModelInputRecord(
     longitude: Double,
     label: Int,
     OriginalAdGroupId: String,
-    OriginalCountry: String)
+    OriginalCountry: String,
+
+    UIID: String,
+    LogEntryTime: java.sql.Timestamp
+
+)
+
 
 object ModelInputDataSet {
   val PHILOS3 = (env: String) => f"s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/${env}/processed/"
