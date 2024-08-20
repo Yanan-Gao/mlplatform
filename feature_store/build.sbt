@@ -4,6 +4,10 @@ import sbtrelease.Vcs
 
 name := "feature_store"
 
+organization := "com.thetradedesk"
+
+organizationName := "The TradeDesk"
+
 version := "1.0.3"
 
 scalaVersion := "2.12.15"
