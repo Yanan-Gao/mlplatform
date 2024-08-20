@@ -1,7 +1,7 @@
 package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{loadModelFeaturesSplit, loadParquetData}
+import com.thetradedesk.geronimo.shared.{loadModelFeatures, loadParquetData, parseModelFeaturesSplitFromJson}
 import com.thetradedesk.philo.schema.{
   ClickTrackerDataSet, ClickTrackerRecord, UnifiedAdGroupDataSet, AdGroupRecord,
   CreativeLandingPageRecord, CreativeLandingPageDataSet, CampaignROIGoalRecord, CampaignROIGoalDataSet
@@ -16,6 +16,7 @@ import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.io.FSUtils.fileExists
 import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.functions.coalesce
+import scala.io.Source
 
 import java.time.LocalDate
 
@@ -42,6 +43,11 @@ object ModelInput {
   println(s"landing page $landingPage")
   println(s"roi filter $roiFilter")
   println(s"country filter $countryFilePath")
+
+  // Attributes used for adding user data and for click-bot filtering
+  val filterClickBots = config.getBoolean("filterClickBots", false)
+  val addUserData = config.getBoolean("addUserData", false)
+  val numUserCols = config.getInt("numUserCols", 170)
 
   def getAdGroupFilter(date: LocalDate, adgroup: Dataset[AdGroupRecord],
                        roi_types: Seq[Int]): Dataset[AdGroupRecord] = {
@@ -77,6 +83,24 @@ object ModelInput {
     }
   }
 
+  def readModelFeatures(srcPath: String)(): String = {
+    var rawJson: String = null
+    if (FSUtils.isLocalPath(srcPath)(spark)) {
+      rawJson = Option(getClass.getResourceAsStream(srcPath))
+        .map { inputStream =>
+          try {
+            Source.fromInputStream(inputStream).getLines.mkString("\n")
+          } finally {
+            inputStream.close()
+          }
+        }.getOrElse(throw new IllegalArgumentException(s"Resource not found in JAR: $srcPath"))
+    } else {
+      rawJson = FSUtils.readStringFromFile(srcPath)(spark)
+    }
+    rawJson
+  }
+
+
   def main(args: Array[String]): Unit = {
     val readEnv = if (ttdEnv == "prodTest") "prod" else ttdEnv
     val writeEnv = if (ttdEnv == "prodTest") "dev" else ttdEnv
@@ -89,7 +113,9 @@ object ModelInput {
     // if roiFilter, filter use the adgroup as a filter, else just left join to get the adgroup info
     val adgroup = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, isInclusive = true).select($"AdGroupId",$"AudienceId",$"IndustryCategoryId",$"ROIGoalTypeId",$"CampaignId").as[AdGroupRecord].transform(
       ds => if (roiFilter) {getAdGroupFilter(date, ds, roi_types)} else ds)
-    val modelFeaturesSplit = loadModelFeaturesSplit(featuresJson)
+
+    val parsedJson = readModelFeatures(featuresJson)
+    val modelFeaturesSplit = parseModelFeaturesSplitFromJson(parsedJson)
     val creativeLandingPage = if (landingPage) {
       Some(CreativeLandingPageDataSet().readLatestPartitionUpTo(date, isInclusive = true))
     } else None
@@ -97,7 +123,7 @@ object ModelInput {
     val modelFeatures = modelFeaturesSplit.bidRequest ++ modelFeaturesSplit.adGroup
     val (trainingData, labelCounts) = ModelInputTransform.transform(
       clicks, adgroup, bidsImpressions, roiFilter,
-      creativeLandingPage, countryFilter, keptCols, modelFeatures
+      creativeLandingPage, countryFilter, keptCols, modelFeatures, addUserData, filterClickBots, numUserCols
     )
     //write to csv to dev for production job
     writeData(trainingData, outputPath, writeEnv, outputPrefix, date, partitions, false)
