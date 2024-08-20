@@ -45,8 +45,7 @@ feature_store:push_bits_merge_request:
     - pushd ./feature_store/
     - NEXUS_MAVEN_READ_USER=${NEXUS_MAVEN_SNAPSHOT_USER}
     - NEXUS_MAVEN_READ_PASS=${NEXUS_MAVEN_SNAPSHOT_PASS}
-    - sbt -d -J-Xss4M -J-Xms512M -J-Xmx2048M -J-XX:+CMSClassUnloadingEnabled "set test in assembly := {}" clean assembly
-    - echo "set version := \"${CI_COMMIT_TITLE-SNAPSHOT}\"; set isSnapshot := true"
+    - sbt -J-Xss4M -J-Xms512M -J-Xmx2048M -J-XX:+CMSClassUnloadingEnabled "set test in assembly := {}" clean assembly
     - sbt -J-Xms512M -J-Xss4M -J-Xmx2048M -J-XX:+CMSClassUnloadingEnabled "set version := \"${CI_COMMIT_TITLE}-SNAPSHOT\"; set isSnapshot := true" publish
     - sbt -J-Xms512M -J-Xss4M -J-Xmx2048M -J-XX:+CMSClassUnloadingEnabled "set version := \"${CI_COMMIT_TITLE}-`date '+%Y%m%d%H%M%S'`-SNAPSHOT\"; set isSnapshot := true" publish
     - DEST=${FEATURE_STORE_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
@@ -84,9 +83,9 @@ feature_store:deploy_release:
       allow_failure: false
   script:
     - pushd ./feature_store/
-    - NEXUS_MAVEN_READ_USER=${NEXUS_MAVEN_RELEASE_USER}
-    - NEXUS_MAVEN_READ_PASS=${NEXUS_MAVEN_RELEASE_PASS}
-    - sbt -d -J-Xss4M -J-Xms512M -J-Xmx2048M -J-XX:+CMSClassUnloadingEnabled "set test in assembly := {}" clean assembly
+    - NEXUS_MAVEN_READ_USER=${NEXUS_MAVEN_SNAPSHOT_USER}
+    - NEXUS_MAVEN_READ_PASS=${NEXUS_MAVEN_SNAPSHOT_PASS}
+    - sbt -J-Xss4M -J-Xms512M -J-Xmx2048M -J-XX:+CMSClassUnloadingEnabled "set test in assembly := {}" clean assembly
     - sbt -J-Xms512M -J-Xss4M -J-Xmx2048M -J-XX:+CMSClassUnloadingEnabled "set version := \"`date '+%Y%m%d%H%M%S'`-SNAPSHOT\"; set isSnapshot := true" publish
     - aws s3 cp ${FEATURE_STORE_ASSEMBLY_OUT} ${FEATURE_STORE_PROD_JAR_FOLDER}/${FEATURE_STORE_JAR_NAME}
     - popd
