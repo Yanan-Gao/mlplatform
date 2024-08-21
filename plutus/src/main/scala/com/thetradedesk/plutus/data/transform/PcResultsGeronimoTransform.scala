@@ -141,19 +141,18 @@ object PcResultsGeronimoTransform extends Logger {
     val pcResultsDataset = PlutusLogsData.loadPlutusLogData(dateTime)
     val mbtwData = MinimumBidToWinData.loadRawMbtwData(dateTime)
 
-    val privateContractsData = PrivateContractDataSet().readDate(dateTime.toLocalDate)
-    val adFormatData = AdFormatDataSet().readDate(dateTime.toLocalDate)
+    val privateContractsData = PrivateContractDataSet().readLatestPartitionUpTo(dateTime.toLocalDate)
+    val adFormatData = AdFormatDataSet().readLatestPartitionUpTo(dateTime.toLocalDate)
 
+    // This dataset is used to label if a bid is value pacing or not (whether
+    // the adgroup bidding uses DA or not). We're okay with slightly older data
     // This dataset contains multiple entries with different timestamps.
     // We use aggregation to extract the single entries we need
     // There might be some data lost in cases where these booleans change within
     // the hour but we dont think thats worth the additional computation needed
     // to join using a moving window.
-    val productionAdgroupBudgetData = loadParquetDataHourlyV2[ProductionAdgroupBudgetData](
-      ProductionAdgroupBudgetDataset.S3PATH,
-      ProductionAdgroupBudgetDataset.S3PATH_GEN,
-      dateTime
-    ).groupBy("AdGroupId")
+    val productionAdgroupBudgetData = ProductionAdgroupBudgetDataset().readLatestPartitionUpToDateHour(dateTime)
+      .groupBy("AdGroupId")
       .agg(
         max("IsValuePacing").alias("IsValuePacing"),
         max("IsUsingPIDController").alias("IsUsingPIDController")
