@@ -34,11 +34,19 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
     val OptOutTrackedAttributionSet = attributionSet._2.filter($"IsTracked" === lit(1)).selectAs[OutOfSampleAttributionRecord]
     val OptOutUntrackedAttributionSet = attributionSet._2.filter($"IsTracked" =!= lit(1)).selectAs[OutOfSampleAttributionRecord]
 
+    val TrackedAttributionSet = attributionSet._3.filter($"IsTracked" === lit(1)).selectAs[OldOutOfSampleAttributionRecord]
+    val UntrackedAttributionSet = attributionSet._3.filter($"IsTracked" =!= lit(1)).selectAs[OldOutOfSampleAttributionRecord]
+
+
+
     val numTrackedRows = OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 1).writePartition(OptInTrackedAttributionSet, scoreDate, "tracked", Some(200))
     val numUntrackedRows = OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 1).writePartition(OptInUntrackedAttributionSet, scoreDate, "untracked", Some(200))
 
     OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 0).writePartition(OptOutTrackedAttributionSet, scoreDate, "tracked", Some(200))
     OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 0).writePartition(OptOutUntrackedAttributionSet, scoreDate, "untracked", Some(200))
+
+    OldOutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSet, scoreDate, "tracked", Some(200))
+    OldOutOfSampleAttributionDataset(delayNDays).writePartition(UntrackedAttributionSet, scoreDate, "untracked", Some(200))
 
     Array(numTrackedRows, numUntrackedRows)
 
@@ -139,7 +147,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
   }
 
   def generateAttributionSet(scoreDate: LocalDate)(implicit prometheus: PrometheusClient):
-  (Dataset[OutOfSampleAttributionRecord], Dataset[OutOfSampleAttributionRecord]) = {
+  (Dataset[OutOfSampleAttributionRecord], Dataset[OutOfSampleAttributionRecord], Dataset[OldOutOfSampleAttributionRecord]) = {
     val adGroupPolicy = AdGroupPolicyDataset().readDate(scoreDate)
     val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(scoreDate)
     val policy = getMinimalPolicy(adGroupPolicy, adGroupPolicyMapping).cache()
@@ -178,6 +186,8 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
       .withColumn("UserDataOptIn",lit(1)) // hashmod 0 ->1
       .selectAs[OutOfSampleAttributionRecord]
 
-    (rawOOSUserDataOptIn, rawOOSUserDataOptOut)
+    val rawOOSdata = rawOOSFiltered.selectAs[OldOutOfSampleAttributionRecord]
+
+    (rawOOSUserDataOptIn, rawOOSUserDataOptOut, rawOOSdata)
   }
 }
