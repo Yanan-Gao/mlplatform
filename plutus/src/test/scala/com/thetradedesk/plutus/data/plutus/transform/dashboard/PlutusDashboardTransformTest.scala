@@ -1,7 +1,7 @@
 package com.thetradedesk.plutus.data.plutus.transform.dashboard
 
 import com.thetradedesk.TestUtils.TTDSparkTest
-import com.thetradedesk.plutus.data.MockData._
+import com.thetradedesk.plutus.data.mockdata.MockData._
 import com.thetradedesk.plutus.data.schema.PcResultsMergedDataset
 import com.thetradedesk.plutus.data.transform.dashboard.PlutusDashboardDataTransform.{getAggMetrics, getMarginAttribution}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._

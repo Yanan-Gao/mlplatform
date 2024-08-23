@@ -2,7 +2,7 @@ package com.thetradedesk.plutus.data.plutus.transform
 
 import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
-import com.thetradedesk.plutus.data.MockData._
+import com.thetradedesk.plutus.data.mockdata.MockData._
 import com.thetradedesk.plutus.data.schema.{MinimumBidToWinData, PcResultsRawLogs, PlutusLogsData, ProductionAdgroupBudgetData}
 import com.thetradedesk.plutus.data.transform.PcResultsGeronimoTransform.joinGeronimoPcResultsLog
 import com.thetradedesk.plutus.data.{ChannelType, MarketType}
