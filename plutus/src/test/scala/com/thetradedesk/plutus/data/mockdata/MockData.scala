@@ -1,13 +1,16 @@
-package com.thetradedesk.plutus.data
+package com.thetradedesk.plutus.data.mockdata
 
 import com.thetradedesk.geronimo.bidsimpression.schema._
-import com.thetradedesk.geronimo.shared.schemas._
+import com.thetradedesk.plutus.data.MediaTypeId
+import com.thetradedesk.plutus.data.schema.campaignbackoff._
 import com.thetradedesk.plutus.data.schema._
-import com.thetradedesk.spark.datasets.sources.{AdFormatRecord, AdGroupRecord, CampaignRecord, PrivateContractRecord, ROIGoalTypeRecord, SupplyVendorRecord}
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.datasets.sources.{AdFormatRecord, AdGroupRecord, CampaignRecord, CountryRecord, PrivateContractRecord, ROIGoalTypeRecord, SupplyVendorRecord}
 import com.thetradedesk.streaming.records.rtb._
+import org.apache.spark.sql.Dataset
 
 import java.sql.Timestamp
-import java.time.Instant
+import java.time.{LocalDate, LocalDateTime}
 
 object MockData {
 
@@ -274,9 +277,9 @@ object MockData {
       PassThroughFeeCardId = None,
       PassThroughFeeId = None,
       IsMargin = false
-    )
+  )
 
-  def pcResultsMergedMock(dealId: String = "", fpa: Option[Double] = Some(0.73), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, floorPrice: Double = 5, mu: Float = 0.5f, model: String = "plutus", strategy: Int = 100) = PcResultsMergedDataset(
+  def pcResultsMergedMock(dealId: String = "", fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, floorPrice: Double = 5, mu: Float = 0.5f, model: String = "plutus", strategy: Int = 100) = PcResultsMergedDataset(
     BidRequestId = "1",
     DealId = dealId,
 
@@ -288,7 +291,7 @@ object MockData {
 
     PartnerId = Some("abc123"),
     AdvertiserId = Some("def456"),
-    CampaignId = Some("jkl789"),
+    CampaignId = campaignId,
     AdGroupId = Some("mno012"),
 
     SupplyVendor = supplyVendor,//Some("cafemedia"),
@@ -424,36 +427,36 @@ object MockData {
   )
 
   def supplyVendorMock(supplyVendorName: String = "google", openPathEnabled: Boolean = false) = SupplyVendorRecord(
-      SupplyVendorId = 192,
-      SupplyVendorName = supplyVendorName,//"cafemedia",
-      PermissionDefault = true,
-      PermissionOverride = false,
-      AllowNielsenGRPTracking = true,
-      AllowPrivateContracts = true,
-      PrivateDealPatternRegex = Some(""),
-      PrivateDealPatternDescription = Some(""),
-      DefaultSeatId = Some(""),
-      PercentagOfFeedbackEligibleForCookieMapping = 0.0,
-      DefaultCookiePartnerGroupPermission = false,
-      MaxNumberOfTtdInitiatedCookieMappingRedirects = 0,
-      AllowBidRequestDataUsage = false,
-      UseNameOverrideForReporting = true,
-      SupplyVendorNameOverride = Some(""),
-      IsWhiteOpsVerified = true,
-      RequiresCreativeDealApproval = false,
-      PriorityTier = 1,
-      IsProgrammaticGuaranteedCertified = false,
-      IsForAdsTxtMappingOnly = false,
-      AllowInternalDataUsage = true,
-      CanFrequencyCapPGContracts = false,
-      IsTrafficFromChinaDataCenter = false,
-      RequireChinaMSA = false,
-      SupplyPublisherId = Some(1000L),
-      IsAllowedCustomBidder = false,
-      CustomBidderDefaultPercent = 1.0,
-      AvailsStreamLoggingEnabled = true,
-      AvailsStreamLogRate = 1.0,
-      OpenPathEnabled = openPathEnabled
+    SupplyVendorId = 192,
+    SupplyVendorName = supplyVendorName,//"cafemedia",
+    PermissionDefault = true,
+    PermissionOverride = false,
+    AllowNielsenGRPTracking = true,
+    AllowPrivateContracts = true,
+    PrivateDealPatternRegex = Some(""),
+    PrivateDealPatternDescription = Some(""),
+    DefaultSeatId = Some(""),
+    PercentagOfFeedbackEligibleForCookieMapping = 0.0,
+    DefaultCookiePartnerGroupPermission = false,
+    MaxNumberOfTtdInitiatedCookieMappingRedirects = 0,
+    AllowBidRequestDataUsage = false,
+    UseNameOverrideForReporting = true,
+    SupplyVendorNameOverride = Some(""),
+    IsWhiteOpsVerified = true,
+    RequiresCreativeDealApproval = false,
+    PriorityTier = 1,
+    IsProgrammaticGuaranteedCertified = false,
+    IsForAdsTxtMappingOnly = false,
+    AllowInternalDataUsage = true,
+    CanFrequencyCapPGContracts = false,
+    IsTrafficFromChinaDataCenter = false,
+    RequireChinaMSA = false,
+    SupplyPublisherId = Some(1000L),
+    IsAllowedCustomBidder = false,
+    CustomBidderDefaultPercent = 1.0,
+    AvailsStreamLoggingEnabled = true,
+    AvailsStreamLogRate = 1.0,
+    OpenPathEnabled = openPathEnabled
   )
 
   val adGroupMock = AdGroupRecord(
@@ -493,5 +496,106 @@ object MockData {
     ROIGoalTypeName = "Reach"
   )
 
-}
+  def campaignAdjustmentsPacingMock(campaignId: String = "campaign1", campaignFlightId: Option[Long] = Some(1000000L), adjustment: Double = 0.75, istest: Option[Boolean] = Some(true), enddate: Timestamp = Timestamp.valueOf(LocalDateTime.of(2024, 12, 1, 14, 30)), pacing: Option[Int] = Some(1), improvedNotPacing: Option[Int] = Some(0), worseNotPacing: Option[Int] = Some(0)
+                             ): Dataset[CampaignAdjustmentsPacingSchema] = {
+    Seq(CampaignAdjustmentsPacingSchema(
+      CampaignId = campaignId,
+      CampaignFlightId = campaignFlightId,
+      CampaignPCAdjustment = adjustment,
+      IsTest = istest,
+      AddedDate = Some(LocalDate.of(2024, 5, 10)),
+      EndDateExclusiveUTC = enddate,
+      IsValuePacing = Some(true),
+      Pacing = pacing,
+      ImprovedNotPacing = improvedNotPacing,
+      WorseNotPacing = worseNotPacing,
+      MinCalculatedCampaignCapInUSD = 1000,
+      MaxCalculatedCampaignCapInUSD = 1000,
+      OverdeliveryInUSD = 0,
+      UnderdeliveryInUSD = 10,
+      EstimatedBudgetInUSD = 1000.0,
+      TotalAdvertiserCostFromPerformanceReportInUSD = 1000.0,
+      UnderdeliveryFraction = 0.5
+    )).toDS()
+  }
 
+  def campaignFlightMock(campaignFlightId:Long = 1122330L, campaignId:String = "newcampaign1", enddate: Timestamp = Timestamp.valueOf(LocalDateTime.of(2024, 12, 1, 14, 30)), isCurrent: Int = 1
+                        ): Dataset[CampaignFlightRecord]= {
+    Seq(CampaignFlightRecord(
+      CampaignFlightId = campaignFlightId,
+      CampaignId = campaignId,
+      EndDateExclusiveUTC = enddate,
+      BudgetInAdvertiserCurrency = 2000,
+      IsCurrent = isCurrent
+    )).toDS()
+  }
+
+  def campaignUnderdeliveryMock(date: Timestamp = Timestamp.valueOf(LocalDateTime.of(2024, 6, 25, 0, 0)), campaignId: String = "newcampaign1", campaignFlightId: Integer = 1122330, underdelivery: Double = 4100, spend: Double = 900, cappedpotential:Double = 4500, fraction: Double = 0.8
+                               ): Dataset[CampaignThrottleMetricSchema] = {
+    Seq(CampaignThrottleMetricSchema(
+      Date = date,
+      CampaignId = campaignId,
+      CampaignFlightId = campaignFlightId,
+      IsValuePacing = true,
+      //TestBucket = 100L,
+      MinCalculatedCampaignCapInUSD = 1000,
+      MaxCalculatedCampaignCapInUSD = 1000,
+      OverdeliveryInUSD = 0,
+      UnderdeliveryInUSD = underdelivery,
+      //CappedUnderdeliveryInUSD = cappedunderdelivery,
+      TotalAdvertiserCostFromPerformanceReportInUSD = spend,
+      //DailyAdvertiserCostInUSD = spend,
+      //TargetSpendUSD = target,
+      EstimatedBudgetInUSD = cappedpotential,
+      UnderdeliveryFraction = fraction
+    )).toDS()
+  }
+
+  def platformReportMock(country: Option[String] = Some("Canada"), campaignId: Option[String] = Some("newcampaign1"), imps: Option[Long] = Some(120000), pcsavings: Option[BigDecimal] = Some(5.0)): Dataset[RtbPlatformReportCondensedData] = {
+    Seq(RtbPlatformReportCondensedData(
+      Country = country,
+      RenderingContext = Some("1"),
+      DeviceType = Some("4"),
+      AdFormat = Some("250x250"),
+      CampaignId = campaignId,
+      BidCount = Some(1500000),
+      ImpressionCount = imps,
+      BidAmountInUSD = Some(10.0),
+      MediaCostInUSD = Some(1000),
+      AdvertiserCostInUSD = Some(1000),
+      PartnerCostInUSD = Some(1000),
+      PredictiveClearingSavingsInUSD = pcsavings,
+      TTDMarginInUSD = Some(1000)
+    )).toDS()
+  }
+
+  val platformWideStatsMock = PlatformWideStatsSchema(
+    ContinentalRegionId = Some(1),
+    ChannelSimple = "Display",
+    Avg_WinRate = 0.12672,
+    Med_WinRate = 0.09597,
+    TotalSpend = 1000,
+    TotalPredictiveClearingSavings = 10,
+    Avg_PredictiveClearingSavings = 10,
+    Med_PredictiveClearingSavings = 10,
+    Avg_FirstPriceAdjustment = 0.70629,
+    Med_FirstPriceAdjustment = 0.69913
+  )
+
+  def countryMock(countryid: String = "f5k5pffi9w", short: String = "CA", long: String = "Canada", continentalregionid: Option[Int] = Some(1)
+                 ): Dataset[CountryRecord] = {
+    Seq(CountryRecord(
+      CountryId = countryid,
+      ShortName = short,
+      LongName = long,
+      Targetable = false,
+      MaxMindLocationId = Some(6251999),
+      Iso3 = Some("CAN"),
+      NumCode = Some(124),
+      PhoneCode = Some(1),
+      ContinentalRegionId = continentalregionid,
+      GenerateOpenMarketWinRate = true
+    )).toDS()
+  }
+
+}

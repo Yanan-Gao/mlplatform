@@ -2,7 +2,7 @@ package com.thetradedesk.plutus.data.plutus.transform
 
 import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
-import com.thetradedesk.plutus.data.MockData.{bidsImpressionsMock, createMbToWinRow, partnerSupplyVendorDiscrepancyAdj, supplyVendorBidding, supplyVendorDealRecord}
+import com.thetradedesk.plutus.data.mockdata.MockData.{bidsImpressionsMock, createMbToWinRow, partnerSupplyVendorDiscrepancyAdj, supplyVendorBidding, supplyVendorDealRecord}
 import com.thetradedesk.plutus.data.schema.{Deals, Pda, RawLostBidData, Svb}
 import com.thetradedesk.plutus.data.transform.RawDataTransform
 import com.thetradedesk.spark.util.prometheus.PrometheusClient

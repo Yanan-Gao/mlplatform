@@ -1,7 +1,7 @@
 package com.thetradedesk.plutus.data.plutus.transform.dashboard
 
 import com.thetradedesk.TestUtils.TTDSparkTest
-import com.thetradedesk.plutus.data.MockData.{adGroupMock, pcResultsMergedMock}
+import com.thetradedesk.plutus.data.mockdata.MockData.{adGroupMock, pcResultsMergedMock}
 import com.thetradedesk.plutus.data.schema.PcResultsMergedDataset
 import com.thetradedesk.plutus.data.transform.dashboard.CampaignDAPlutusDashboardDataTransform.getCampaignDAPlutusMetrics
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._

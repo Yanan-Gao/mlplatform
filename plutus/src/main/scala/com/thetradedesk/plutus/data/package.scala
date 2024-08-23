@@ -12,9 +12,12 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.{Column, Dataset, Encoder}
 
+import java.time.format.DateTimeFormatter
 import java.time.temporal.TemporalAmount
 import java.time.{LocalDate, LocalDateTime}
 import java.util.UUID
+import java.util.regex.Pattern
+import scala.util.Try
 
 package object data {
 
@@ -213,6 +216,23 @@ package object data {
       .selectAs[T]
   }
 
+  def extractDateFromPath(path: String): Option[LocalDate] = {
+    val datePattern = Pattern.compile("date=(\\d{8})")
+    val matcher = datePattern.matcher(path)
+    if (matcher.find()) {
+      val dateString = matcher.group(1)
+      Try(LocalDate.parse(dateString, DateTimeFormatter.ofPattern("yyyyMMdd"))).toOption
+    } else {
+      None
+    }
+  }
+
+  def getMaxDate(paths: Seq[String], date: LocalDate): Option[LocalDate] = {
+    // get max date to read latest date partition from the date
+    val dates = paths.flatMap(extractDateFromPath)
+    dates.filter(date => date.isBefore(date) || date.isEqual(date))
+      .reduceOption((d1: LocalDate, d2: LocalDate) => if (d1.isAfter(d2)) d1 else d2)
+  }
 
   def cacheToHDFS[T: Encoder](df: Dataset[T], cacheName: String = "unnamed"): Dataset[T] = {
     if (spark.sparkContext.master.contains("local")) {

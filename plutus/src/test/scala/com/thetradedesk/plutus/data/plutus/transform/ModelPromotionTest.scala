@@ -2,7 +2,7 @@ package com.thetradedesk.plutus.data.plutus.transform
 
 import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
-import com.thetradedesk.plutus.data.MockData.{adFormatMock, bidsImpressionsMock, privateContractsMock}
+import com.thetradedesk.plutus.data.mockdata.MockData.{adFormatMock, bidsImpressionsMock, privateContractsMock}
 import com.thetradedesk.plutus.data.transform.ModelPromotionTransform.getDetailedStats
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.{AdFormatRecord, PrivateContractRecord}
