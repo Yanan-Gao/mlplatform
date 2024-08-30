@@ -10,7 +10,7 @@ import com.thetradedesk.philo.transform.ModelInputTransform
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.TTDSparkContext.spark
-import com.thetradedesk.philo.writeData
+import com.thetradedesk.philo.{writeData, countLinePerFile}
 import com.thetradedesk.spark.TTDSparkContext
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.io.FSUtils.fileExists
@@ -28,6 +28,9 @@ object ModelInput {
   val outputPrefix = config.getStringRequired("outputPrefix")
   val ttdEnv = config.getString("ttd.env", "dev")
   val partitions = config.getInt("partitions", 200)
+  val writeFullData = config.getBoolean("write.data", true)
+  val writeMeta = config.getBoolean("write.meta", true)
+  val writePerFile = config.getBoolean("write.perfile", true)
   // if landingPage is true, will read landing page and merge the info into main dataset
   // if roiFilter is true, will use campaign roi goal to filter the adgroups
   // if countryFilePath is provided, will add the country filter
@@ -100,7 +103,6 @@ object ModelInput {
     rawJson
   }
 
-
   def main(args: Array[String]): Unit = {
     val readEnv = if (ttdEnv == "prodTest") "prod" else ttdEnv
     val writeEnv = if (ttdEnv == "prodTest") "dev" else ttdEnv
@@ -126,8 +128,24 @@ object ModelInput {
       creativeLandingPage, countryFilter, keptCols, modelFeatures, addUserData, filterClickBots, numUserCols
     )
     //write to csv to dev for production job
-    writeData(trainingData, outputPath, writeEnv, outputPrefix, date, partitions, false)
-    val metadataName = if (outputPrefix == "processed") {"metadata"} else {outputPrefix + "metadata"}
-    writeData(labelCounts, outputPath, writeEnv, metadataName, date, 1, false)
+    if (writeFullData) {writeData(trainingData, outputPath, writeEnv, outputPrefix, date, partitions, false)}
+    if (writePerFile) {
+      val lineCountsPerFile = countLinePerFile(outputPath, writeEnv, outputPrefix, date)(spark)
+      val linesPerFileName = if (outputPrefix == "processed") {
+        "linecounts"
+      } else {
+        outputPrefix + "linecounts"
+      }
+      writeData(lineCountsPerFile, outputPath, writeEnv, linesPerFileName, date, 1, false)
+    }
+    if (writeMeta) {
+      val metadataName = if (outputPrefix == "processed") {
+        "metadata"
+      } else {
+        outputPrefix + "metadata"
+      }
+      writeData(labelCounts, outputPath, writeEnv, metadataName, date, 1, false)
+    }
+
   }
 }

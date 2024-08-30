@@ -85,4 +85,20 @@ package object philo {
     val newColNames = keptCols.map(colName => s"original$colName")
     (newData, newColNames)
   }
+
+  def countLinePerFile(outputPath: String, ttdEnv: String, outputPrefix: String, date: LocalDate)(implicit spark: SparkSession): DataFrame = {
+    // even though it says parquet, there's nothing parquet specific in this method
+    val df = spark.read.format("csv")
+            .option("header", "true") // Adjust based on whether the files contain headers
+            .csv(s"$outputPath/$ttdEnv/$outputPrefix/${explicitDatePart(date)}")
+    val dfWithFileName = df.withColumn("full_file_name", input_file_name())
+    val extractFileName = udf((fullPath: String) => {
+      fullPath.split("/").last // Split by "/" and take the last part (the file name)
+    })
+    val dfWithBaseFileName = dfWithFileName.withColumn("file_name", extractFileName(col("full_file_name")))
+    val lineCountsPerFile = dfWithBaseFileName
+                           .groupBy("file_name")
+                           .count()
+    lineCountsPerFile
+  }
 }
