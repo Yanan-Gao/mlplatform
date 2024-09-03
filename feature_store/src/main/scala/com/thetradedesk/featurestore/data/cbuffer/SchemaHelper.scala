@@ -1,11 +1,12 @@
 package com.thetradedesk.featurestore.data.cbuffer
 
 import com.thetradedesk.featurestore.configs.DataType
-import com.thetradedesk.featurestore.data.cbuffer.CBufferConstants.{DefaultMaxRecordSize, ArrayLengthKey}
+import com.thetradedesk.featurestore.data.cbuffer.CBufferConstants.{ArrayLengthKey, DefaultMaxRecordSize}
 import com.thetradedesk.featurestore.data.generators.CustomBufferDataGenerator
-import org.apache.spark.sql.Column
+import org.apache.spark.sql.catalyst.util.CaseInsensitiveMap
 import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.types.{ArrayType, BinaryType, BooleanType, ByteType, DoubleType, FloatType, IntegerType, LongType, MetadataBuilder, ShortType, StringType, StructField, StructType, DataType => SparkDataType}
+import org.apache.spark.sql.{Column, DataFrame, DataFrameReader, DataFrameWriter}
 
 object SchemaHelper {
   def inferFeature(structType: StructType): Array[CBufferFeature] = {
@@ -31,13 +32,14 @@ object SchemaHelper {
    * change column schema to indicate array length
    * usage one: withColumn("column name", indicateArrayLength("column name", arrayLength)
    * usage two: df.select(indicateArrayLength("column name", arrayLength), other columns)
-   * @param columnName column name
+   *
+   * @param columnName  column name
    * @param arrayLength array length to indicate
    * @return
    */
-  def indicateArrayLength(columnName: String, arrayLength: Int) : Column = {
+  def indicateArrayLength(columnName: String, arrayLength: Int): Column = {
     val metadata = new MetadataBuilder().putLong(ArrayLengthKey, arrayLength).build()
-    col(columnName).as(columnName, metadata=metadata)
+    col(columnName).as(columnName, metadata = metadata)
   }
 
   private def toSparkDataType(dataType: DataType) = dataType match {
@@ -135,5 +137,39 @@ object SchemaHelper {
       if dataType >= DataType.Byte && dataType <= DataType.Double && arrayLength < (1 << 16) => (dataType.value << 16) + arrayLength
     case (name: String, dataType: DataType, isArray: Boolean, arrayLength: Int)
     => throw new UnsupportedOperationException(s"name ${name}, dataType ${dataType}, isArray ${isArray}, arrayLength ${arrayLength} is not supported")
+  }
+
+  final implicit class CBufferDataFrameWriter[T](writer: DataFrameWriter[T]) {
+    def cb(path: String): Unit = {
+      val df = readField[DataFrame]("df")
+      val options = readField[CaseInsensitiveMap[String]]("extraOptions")
+      this.writer
+        .format("com.thetradedesk.featurestore.data.cbuffer.CBufferDataSource")
+        .save(path)
+      // update schema file
+      val features = SchemaHelper.inferFeature(df.schema)
+      val cBufferOptions = CBufferOptions(options + ("path" -> path))
+      CBufferDataSource.writeSchema(features, cBufferOptions)(df.sparkSession)
+    }
+
+    private def readField[U](name: String): U = {
+      val field = classOf[DataFrameWriter[T]].getDeclaredField(name)
+      field.setAccessible(true)
+      field.get(writer).asInstanceOf[U]
+    }
+  }
+
+  final implicit class CBufferDataFrameReader(reader: DataFrameReader) {
+    def cb(path: String): DataFrame = {
+      this.reader
+        .format("com.thetradedesk.featurestore.data.cbuffer.CBufferDataSource")
+        .load(path)
+    }
+
+    def cb(paths: String*): DataFrame = {
+      this.reader
+        .format("com.thetradedesk.featurestore.data.cbuffer.CBufferDataSource")
+        .load(paths: _*)
+    }
   }
 }

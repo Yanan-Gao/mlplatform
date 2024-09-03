@@ -10,4 +10,14 @@ object PathUtils {
   def trimPath(path: String): String = {
     path.stripPrefix("/").stripSuffix("/")
   }
+
+  def truncateToParentDirectory(path: String): Option[String] = {
+    val separatorIndex = path.lastIndexOf('/')
+
+    if (separatorIndex != -1) {
+      Some(path.substring(0, separatorIndex))
+    } else {
+      None
+    }
+  }
 }

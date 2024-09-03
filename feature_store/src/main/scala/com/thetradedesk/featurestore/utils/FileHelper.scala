@@ -30,6 +30,27 @@ object FileHelper {
     content
   }
 
+  def deleteFile(filePath: String)(implicit sparkSession: SparkSession): Boolean = {
+    val path = databricksHack(filePath)
+    FSUtils.deleteFile(path)
+  }
+
+  def fileExists(filePath: String)(implicit sparkSession: SparkSession): Boolean = {
+    val path = databricksHack(filePath)
+    FSUtils.fileExists(path)
+  }
+
+  def copyFile(srcFile: String, destFile: String, overwrite: Boolean = true, deleteSrcOnSuccess : Boolean = false) (implicit sparkSession: SparkSession) : Boolean = {
+    val srcPath = databricksHack(srcFile)
+    val destPath = databricksHack(destFile)
+    FSUtils.copyFile(srcPath, destPath, overwrite, deleteSrcOnSuccess)
+  }
+
+  def directoryExists(filePath: String)(implicit sparkSession: SparkSession): Boolean = {
+    val path = databricksHack(filePath)
+    FSUtils.directoryExists(path)
+  }
+
   private def getFileSystem(path: String)(implicit spark: SparkSession): FileSystem = {
     if (spark == null) throw new IllegalArgumentException("Spark session can't be null!")
     if (spark.sparkContext == null) throw new IllegalArgumentException("Spark context can't be null!")
@@ -57,7 +78,7 @@ object FileHelper {
     }
   }
 
-  final private def tryReadFileSystemFlag(fileSystem: FileSystem, name: String) : Boolean = {
+  final private def tryReadFileSystemFlag(fileSystem: FileSystem, name: String): Boolean = {
     if (fileSystem.isInstanceOf[ChecksumFileSystem]) {
       val field = classOf[ChecksumFileSystem].getDeclaredField(name)
       field.setAccessible(true)
@@ -67,11 +88,11 @@ object FileHelper {
     }
   }
 
-    final private def databricksHack(path: String) : String = {
-      if (path.startsWith("dbfs:/")) {
-        "/dbfs/" + path.substring("dbfs:/".length)
-      } else {
-        path
-      }
+  final private def databricksHack(path: String): String = {
+    if (path.startsWith("dbfs:/")) {
+      "/dbfs/" + path.substring("dbfs:/".length)
+    } else {
+      path
     }
+  }
 }

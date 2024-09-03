@@ -24,6 +24,7 @@ import java.nio.ByteBuffer
 case class CBufferFileWriter(path: Path, context: TaskAttemptContext, schema: StructType, features: Array[CBufferFeature], options: CBufferOptions) extends Closeable {
   private val LOG: Logger = LoggerFactory.getLogger(CBufferFileWriter.getClass)
   private var recordCount: Int = 0
+  private var dataSize: Long = 0
   private val intBuffer: ByteBuffer = MemoryHelper.allocateBuffer(BitsInInteger, options.useOffHeap, options.bigEndian)
   private var chunk: CBufferChunk = CBufferChunk(schema, features, options)
   private val fs = path.getFileSystem(context.getConfiguration)
@@ -50,24 +51,40 @@ case class CBufferFileWriter(path: Path, context: TaskAttemptContext, schema: St
 
   // todo support compression codec
   private def flushChunk() = {
-    this.chunk.flush(this.outputStream) // write data
+    val chunkSize = this.chunk.flush(this.outputStream) // write data
+    this.dataSize += chunkSize
+    checkFileSize()
+  }
+
+  private def writeRecordCount(): Unit = {
+    this.intBuffer.putInt(0, this.recordCount)
+    this.outputStream.write(intBuffer.array())
+    this.dataSize += BitsInInteger
   }
 
   private def writeMagic(): Unit = {
-    this.outputStream.write(if (options.encryptedMode) EFMAGIC else MAGIC)
+    val magic = if (options.encryptedMode) EFMAGIC else MAGIC
+    this.outputStream.write(magic)
+    this.dataSize += magic.length
   }
 
   private def complete(): Unit = {
     this.flushChunk()
-    this.intBuffer.putInt(0, this.recordCount)
-    this.outputStream.write(intBuffer.array())
+    this.writeRecordCount()
     this.writeMagic()
+    this.checkFileSize()
     this.flush()
   }
 
   private def flush(): Unit = {
     if (this.outputStream != null) {
       this.outputStream.flush()
+    }
+  }
+
+  private def checkFileSize(): Unit = {
+    if (this.dataSize > options.maxFileSize) {
+      throw new IllegalStateException(s"current output file size ${this.dataSize} is larger than maximal file size ${options.maxFileSize}, you may set maximal file size with `maxFileSize` in options")
     }
   }
 

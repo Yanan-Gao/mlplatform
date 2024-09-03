@@ -25,7 +25,7 @@ case class CBufferTable(
   }
 
   override def inferSchema(files: Seq[FileStatus]): Option[StructType] = {
-    CBufferDataSource.inferSchema(sparkSession, CBufferOptions(options.asScala.toMap), paths)
+    CBufferDataSource.inferSchema(CBufferOptions(options.asScala.toMap), paths)(sparkSession)
   }
 
   override def formatName: String = ShortName

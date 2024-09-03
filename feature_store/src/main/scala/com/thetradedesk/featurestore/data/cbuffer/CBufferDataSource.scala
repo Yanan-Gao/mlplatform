@@ -2,7 +2,6 @@ package com.thetradedesk.featurestore.data.cbuffer
 
 import com.thetradedesk.featurestore.data.cbuffer.CBufferConstants.{DefaultSchemaFileName, ShortName}
 import com.thetradedesk.featurestore.utils.{FileHelper, PathUtils}
-import org.apache.hadoop.fs.FileStatus
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.connector.catalog.Table
 import org.apache.spark.sql.execution.datasources.FileFormat
@@ -35,16 +34,27 @@ class CBufferDataSource extends FileDataSourceV2 {
 
 object CBufferDataSource {
   final def readFeatureSchema(
-                               sparkSession: SparkSession,
                                parsedOptions: CBufferOptions,
-                               paths: Seq[String]): Array[CBufferFeature] = {
+                               paths: Seq[String])
+                             (implicit sparkSession: SparkSession): Array[CBufferFeature] = {
     if (parsedOptions.schemaPath.nonEmpty) {
       tryReadSchema(parsedOptions.schemaPath.get)(sparkSession).get
     } else {
       for (path <- paths) {
-        val featureOption = tryReadSchema(PathUtils.concatPath(path, DefaultSchemaFileName))(sparkSession)
-        if (featureOption.nonEmpty) {
-          return featureOption.get
+        val schemaPath = PathUtils.concatPath(path, DefaultSchemaFileName)
+        if (FileHelper.fileExists(schemaPath)) {
+          val featureOption = tryReadSchema(schemaPath)
+          if (featureOption.nonEmpty) {
+            return featureOption.get
+          }
+        } else if (path.endsWith(".cb")) {
+          val schemaPathOption = PathUtils.truncateToParentDirectory(path)
+          if (schemaPathOption.nonEmpty) {
+            val featureOption = tryReadSchema(PathUtils.concatPath(schemaPathOption.get, DefaultSchemaFileName))
+            if (featureOption.nonEmpty) {
+              return featureOption.get
+            }
+          }
         }
       }
       throw new IllegalStateException("Schema Path must be informed in options for CBuffer format")
@@ -61,20 +71,28 @@ object CBufferDataSource {
     }
   }
 
-  final def inferSchema(sparkSession: SparkSession,
-                        options: CBufferOptions,
-                        paths: Seq[String]): Option[StructType] = {
-    val featureOption = readFeatureSchema(sparkSession, options, paths)
+  final def inferSchema(
+                         options: CBufferOptions,
+                         paths: Seq[String])
+                       (implicit sparkSession: SparkSession): Option[StructType] = {
+    val featureOption = readFeatureSchema(options, paths)
     Some(SchemaHelper.inferSchema(featureOption))
   }
 
-  final def writeSchema(sparkSession: SparkSession,
-                        features: Array[CBufferFeature],
-                        options: CBufferOptions) = {
+  final def writeSchema(
+                         features: Array[CBufferFeature],
+                         options: CBufferOptions,
+                         overrideSchema: Boolean = true)
+                       (implicit sparkSession: SparkSession) = {
     val featureSchemaJson = write(features)
-    println("cbuffer schema: " + featureSchemaJson)
     val schemaPath = if (options.schemaPath.nonEmpty) options.schemaPath.get else PathUtils.concatPath(options.outputPath.get, DefaultSchemaFileName)
 
-    FileHelper.writeStringToFile(schemaPath, featureSchemaJson)(sparkSession)
+    if (overrideSchema) {
+      println("cbuffer schema: " + featureSchemaJson)
+      FileHelper.deleteFile(schemaPath)(sparkSession)
+      FileHelper.writeStringToFile(schemaPath, featureSchemaJson)(sparkSession)
+    } else if (!FileHelper.fileExists(schemaPath)(sparkSession)) {
+      FileHelper.writeStringToFile(schemaPath, featureSchemaJson)(sparkSession)
+    }
   }
 }

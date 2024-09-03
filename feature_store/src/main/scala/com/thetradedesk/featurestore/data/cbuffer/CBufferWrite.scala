@@ -1,10 +1,9 @@
 package com.thetradedesk.featurestore.data.cbuffer
 
-import com.thetradedesk.featurestore.data.cbuffer.CBufferConstants.FileExtension
-import org.apache.hadoop.mapreduce.{Job, TaskAttemptContext}
+import org.apache.hadoop.mapreduce.Job
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.connector.write.LogicalWriteInfo
-import org.apache.spark.sql.execution.datasources.{OutputWriter, OutputWriterFactory}
+import org.apache.spark.sql.execution.datasources.OutputWriterFactory
 import org.apache.spark.sql.execution.datasources.v2.FileWrite
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.types.{DataType, StructType}

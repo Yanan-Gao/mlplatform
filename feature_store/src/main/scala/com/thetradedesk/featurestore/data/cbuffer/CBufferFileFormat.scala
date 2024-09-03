@@ -12,11 +12,11 @@ import org.apache.spark.sql.types.StructType
 class CBufferFileFormat extends FileFormat
   with DataSourceRegister
   with Logging
-  with Serializable{
+  with Serializable {
 
   override def inferSchema(sparkSession: SparkSession, options: Map[String, String], files: Seq[FileStatus]): Option[StructType] = {
     val paths = files.map(e => if (e.isDirectory) e.getPath.toUri.getPath else e.getPath.getParent.toUri.getPath).distinct
-    CBufferDataSource.inferSchema(sparkSession, CBufferOptions(options), paths)
+    CBufferDataSource.inferSchema(CBufferOptions(options), paths)(sparkSession)
   }
 
   override def prepareWrite(sparkSession: SparkSession, job: Job, options: Map[String, String], dataSchema: StructType): OutputWriterFactory = {
@@ -27,4 +27,6 @@ class CBufferFileFormat extends FileFormat
   override def shortName(): String = ShortName
 
   override def toString: String = ShortName
+
+  override def supportBatch(sparkSession: SparkSession, dataSchema: StructType): Boolean = true
 }
