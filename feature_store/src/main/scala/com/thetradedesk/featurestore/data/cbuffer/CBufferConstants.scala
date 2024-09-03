@@ -5,6 +5,7 @@ object CBufferConstants {
   val DefaultRecordSize = 1024
   val DefaultMaxRecordSize = 65535
   val DefaultReadBatch = 1024
+  val DefaultMaxFileSize : Long = Int.MaxValue
 
   val BitsInInteger: Int = 4
 
@@ -14,6 +15,7 @@ object CBufferConstants {
   val DefaultSchemaFileName = "_SCHEMA"
   val MaxChunkRecordCountKey = "maxChunkRecordCount"
   val DefaultChunkRecordSizeKey = "defaultChunkRecordSize"
+  val DefaultMaxFileSizeKey = "maxFileSize"
   val DefaultReadBatchKey = "defaultReadBatch"
   val BigEndianKey = "bigEndian"
   val FixedChunkBufferKey = "fixedChunkBuffer"

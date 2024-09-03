@@ -8,6 +8,7 @@ case class CBufferOptions(schemaPath: Option[String],
                           maxChunkRecordCount: Int,
                           defaultChunkRecordSize: Int,
                           defaultReachBatch: Int,
+                          maxFileSize: Long,
                           bigEndian: Boolean,
                           useOffHeap: Boolean,
                           outputPath: Option[String],
@@ -20,11 +21,12 @@ object CBufferOptions {
     parameters.get(MaxChunkRecordCountKey).map(_.toInt).getOrElse(DefaultMaxChunkRecordCount),
     parameters.get(DefaultChunkRecordSizeKey).map(_.toInt).getOrElse(DefaultRecordSize),
     parameters.get(DefaultReadBatchKey).map(_.toInt).getOrElse(DefaultReadBatch),
+    parameters.get(DefaultMaxFileSizeKey).map(_.toLong).getOrElse(DefaultMaxFileSize),
     "true".equals(parameters.getOrElse(BigEndianKey, "false")),
     "true".equals(parameters.getOrElse(UseOffHeapKey, "false")),
     parameters.get("path"),
     "true".equals(parameters.getOrElse(FixedChunkBufferKey, "false")),
-    false,
+    encryptedMode = false,
     null)
 
   def apply(parameters: Map[String, String]): CBufferOptions = this (CaseInsensitiveMap[String](parameters))

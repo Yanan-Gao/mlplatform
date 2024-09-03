@@ -171,6 +171,7 @@ case class CBufferChunk(schema: StructType, features: Array[CBufferFeature], opt
   }
 
   def flush(outputStream: OutputStream) = {
+    val totalChunkSize = ChunkDataOffset + this.size * BytesToKeepAddressInChunk + this.chunkBuffer.position()
     this.sizeBuffer.putInt(DataStart, this.size)
     this.sizeBuffer.putInt(ChunkDataSizeOffset, this.chunkBuffer.position())
     outputStream.write(this.sizeBuffer.array())
@@ -179,6 +180,7 @@ case class CBufferChunk(schema: StructType, features: Array[CBufferFeature], opt
     outputStream.write(this.chunkBuffer.array(), DataStart, this.chunkBuffer.position())
 
     this.reset()
+    totalChunkSize
   }
 
   private def featureOrdinals(): Array[(CBufferFeature, Int)] = {

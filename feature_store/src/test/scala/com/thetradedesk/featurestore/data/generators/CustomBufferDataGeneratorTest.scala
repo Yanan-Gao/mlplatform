@@ -3,6 +3,7 @@ package com.thetradedesk.featurestore.data.generators
 import com.github.mrpowers.spark.fast.tests.DatasetComparer
 import com.thetradedesk.featurestore.configs.{DataType, FeatureDefinition, FeatureSourceDefinition, UserFeatureMergeDefinition}
 import com.thetradedesk.featurestore.constants.FeatureConstants.UserIDKey
+import com.thetradedesk.featurestore.data.cbuffer.SchemaHelper.{CBufferDataFrameReader, CBufferDataFrameWriter}
 import com.thetradedesk.featurestore.data.loader.MockFeatureDataLoader
 import com.thetradedesk.featurestore.data.metrics.UserFeatureMergeJobTelemetry
 import com.thetradedesk.featurestore.testutils.{MockData, TTDSparkTest}
@@ -75,15 +76,13 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
     println("cbuffer file path: " + cbufferPath)
     df
       .write
-      .format("cbuffer")
       .option("maxChunkRecordCount", "2")
       .option("defaultChunkRecordSize", "2")
-      .save(cbufferPath)
+      .cb(cbufferPath)
 
     val df2 = spark
       .read
-      .format("cbuffer")
-      .load(cbufferPath)
+      .cb(cbufferPath)
 
     assertSmallDatasetEquality(refineDataFrame(df2, UserIDKey), refineDataFrame(df, UserIDKey))
   }

@@ -8,7 +8,7 @@ import org.apache.spark.sql.types.StructType
 
 case class CBufferOutputWriterFactory(sparkSession: SparkSession, options: CBufferOptions, dataSchema: StructType) extends OutputWriterFactory {
   private val features = SchemaHelper.inferFeature(dataSchema)
-  CBufferDataSource.writeSchema(sparkSession, this.features, options)
+  CBufferDataSource.writeSchema(this.features, options)(sparkSession)
 
   // todo support compression codec
   override def getFileExtension(context: TaskAttemptContext): String = FileExtension

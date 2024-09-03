@@ -34,14 +34,24 @@ case class CBufferPartitionReaderFactory(
     .filter(e => readColumns.contains(e.name))
 
   override def buildReader(file: PartitionedFile): PartitionReader[InternalRow] = {
-    val reader = createFileReader(file)
+    val fileReader = if (file.filePath.endsWith(".cb")) {
+      val reader = createFileReader(file)
 
-    val fileReader = new PartitionReader[InternalRow] {
-      override def next(): Boolean = reader.nextKeyValue()
+      new PartitionReader[InternalRow] {
+        override def next(): Boolean = reader.nextKeyValue()
 
-      override def get(): InternalRow = reader.getCurrentValue
+        override def get(): InternalRow = reader.getCurrentValue
 
-      override def close(): Unit = reader.close()
+        override def close(): Unit = reader.close()
+      }
+    } else {
+      new PartitionReader[InternalRow] {
+        override def next(): Boolean = false
+
+        override def get(): InternalRow = null
+
+        override def close(): Unit = {}
+      }
     }
 
     new PartitionReaderWithPartitionValues(fileReader, readDataSchema,
