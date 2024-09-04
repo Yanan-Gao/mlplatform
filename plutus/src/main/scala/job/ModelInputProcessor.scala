@@ -13,7 +13,6 @@ import java.time.LocalDate
 
 object ModelInputProcessor extends Logger {
 
-  val ttdEnv = config.getString("ttd.env" , "dev")
   val date = config.getDate("date" , LocalDate.now())
   val daysOfDat = config.getInt("daysOfDat" , 1)
   val svNames = config.getStringSeq("svNames", Seq("google", "rubicon", "pubmatic"))
@@ -45,7 +44,6 @@ object ModelInputProcessor extends Logger {
     svNames.foreach { svName =>
       TrainingDataTransform.transform(
         s3Path = inputPath,
-        ttdEnv = ttdEnv,
         inputS3Prefix = inputPrefix,
         outputS3Prefix = outputPrefix,
         svName = Some(svName),

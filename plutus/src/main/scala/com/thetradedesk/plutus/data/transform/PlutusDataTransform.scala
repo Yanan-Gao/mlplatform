@@ -68,12 +68,10 @@ object PlutusDataTransform extends Logger {
                       outputPath: String,
                       dataVersion: Int,
                       cleanOutputPrefix: String,
-                      inputTtdEnv: String,
-                      maybeOutputTtdEnv: Option[String] = None,
                       featuresJson: String)(implicit prometheus: PrometheusClient): Unit = {
 
     val versionedOutputPath = s"$outputPath/v=$dataVersion"
-    val mergedDataset: Dataset[PcResultsMergedDataset] = loadParquetData[PcResultsMergedDataset](PcResultsMergedDataset.S3_PATH(Some(inputTtdEnv)), date)
+    val mergedDataset: Dataset[PcResultsMergedDataset] = loadParquetData[PcResultsMergedDataset](PcResultsMergedDataset.S3_PATH(Some(envForRead)), date)
 
     // should just check that the data contains these rather than filtering to this list
     val modelFeatures = loadModelFeatures(featuresJson)
@@ -102,7 +100,7 @@ object PlutusDataTransform extends Logger {
           .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
           .write
           .mode(SaveMode.Overwrite)
-          .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/explicit/sv/$sv/${cleanOutputPrefix}/${explicitDatePart(date)}")
+          .parquet(s"$versionedOutputPath/${envForWrite}/explicit/sv/$sv/${cleanOutputPrefix}/${explicitDatePart(date)}")
 
         cleanExplicitDataset
           .filter(col("SupplyVendor") === sv)
@@ -111,7 +109,7 @@ object PlutusDataTransform extends Logger {
           .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
           .write
           .mode(SaveMode.Overwrite)
-          .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/explicit/sv/$sv/${cleanOutputPrefix}-hashed-mod-maxint/${explicitDatePart(date)}")
+          .parquet(s"$versionedOutputPath/${envForWrite}/explicit/sv/$sv/${cleanOutputPrefix}-hashed-mod-maxint/${explicitDatePart(date)}")
     }
 
     val channelTypes = cleanExplicitDataset.select("ChannelSimple").distinct().as[String].collect().toSeq
@@ -122,7 +120,7 @@ object PlutusDataTransform extends Logger {
           .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
           .write
           .mode(SaveMode.Overwrite)
-          .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/explicit/ch/$ch/${cleanOutputPrefix}/${explicitDatePart(date)}")
+          .parquet(s"$versionedOutputPath/${envForWrite}/explicit/ch/$ch/${cleanOutputPrefix}/${explicitDatePart(date)}")
 
         cleanExplicitDataset
           .filter(col("Channel") === ch)
@@ -131,7 +129,7 @@ object PlutusDataTransform extends Logger {
           .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
           .write
           .mode(SaveMode.Overwrite)
-          .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/explicit/ch/$ch/${cleanOutputPrefix}-hashed-mod-maxint/${explicitDatePart(date)}")
+          .parquet(s"$versionedOutputPath/${envForWrite}/explicit/ch/$ch/${cleanOutputPrefix}-hashed-mod-maxint/${explicitDatePart(date)}")
     }
     cleanExplicitDataset.unpersist()
   }
@@ -154,13 +152,11 @@ object PlutusDataTransform extends Logger {
                       dataVersion: Int,
                       implicitSampleRate: Double,
                       cleanOutputPrefix: String,
-                      inputTtdEnv: String,
-                      maybeOutputTtdEnv: Option[String] = None,
                       featuresJson: String)(implicit prometheus: PrometheusClient): Unit = {
 
 
     val versionedOutputPath = s"$outputPath/v=$dataVersion"
-    val mergedDataset: Dataset[PcResultsMergedDataset] = loadParquetData[PcResultsMergedDataset](PcResultsMergedDataset.S3_PATH(Some(inputTtdEnv)), date)
+    val mergedDataset: Dataset[PcResultsMergedDataset] = loadParquetData[PcResultsMergedDataset](PcResultsMergedDataset.S3_PATH(Some(envForRead)), date)
 
 
     // should just check that the data contains these rather than filtering to this list
@@ -186,14 +182,14 @@ object PlutusDataTransform extends Logger {
     cleanImplicitDataset
       .write
       .mode(SaveMode.Overwrite)
-      .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/implicit/sample=${(implicitSampleRate * 100).intValue()}/${cleanOutputPrefix}/${explicitDatePart(date)}")
+      .parquet(s"$versionedOutputPath/${envForWrite}/implicit/sample=${(implicitSampleRate * 100).intValue()}/${cleanOutputPrefix}/${explicitDatePart(date)}")
 
     cleanImplicitDataset
       .select(hashedModMaxIntCols(cleanImplicitDataset.dtypes, DEFAULT_SHIFT, PcResultsMergedDataset.NON_FEATURE_STRINGS, PcResultsMergedDataset.NON_SHIFT_INTS): _*)
       .na.fill(0)
       .write
       .mode(SaveMode.Overwrite)
-      .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/implicit/sample=${(implicitSampleRate * 100).intValue()}/${cleanOutputPrefix}-hashed-mod-maxint/${explicitDatePart(date)}")
+      .parquet(s"$versionedOutputPath/${envForWrite}/implicit/sample=${(implicitSampleRate * 100).intValue()}/${cleanOutputPrefix}-hashed-mod-maxint/${explicitDatePart(date)}")
 
     val channelTypes = cleanImplicitDataset.select("ChannelSimple").distinct().as[String].collect().toSeq
     channelTypes.par.foreach {
@@ -203,7 +199,7 @@ object PlutusDataTransform extends Logger {
           .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
           .write
           .mode(SaveMode.Overwrite)
-          .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/implicit/ch/$ch/sample=${(implicitSampleRate * 100).intValue()}/${cleanOutputPrefix}/${explicitDatePart(date)}")
+          .parquet(s"$versionedOutputPath/${envForWrite}/implicit/ch/$ch/sample=${(implicitSampleRate * 100).intValue()}/${cleanOutputPrefix}/${explicitDatePart(date)}")
 
         cleanImplicitDataset
           .filter(col("Channel") === ch)
@@ -212,7 +208,7 @@ object PlutusDataTransform extends Logger {
           .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
           .write
           .mode(SaveMode.Overwrite)
-          .parquet(s"$versionedOutputPath/${maybeOutputTtdEnv.getOrElse(inputTtdEnv)}/implicit/ch/$ch/sample=${(implicitSampleRate * 100).intValue()}/${cleanOutputPrefix}-hashed-mod-maxint/${explicitDatePart(date)}")
+          .parquet(s"$versionedOutputPath/${envForWrite}/implicit/ch/$ch/sample=${(implicitSampleRate * 100).intValue()}/${cleanOutputPrefix}-hashed-mod-maxint/${explicitDatePart(date)}")
     }
     cleanImplicitDataset.unpersist()
   }

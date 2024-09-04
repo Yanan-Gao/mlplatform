@@ -351,15 +351,17 @@ package object data {
     val ConditionalWin = 301
   }
 
-  val envForRead = config.getStringOption("ttd.env").map(_.toLowerCase) match {
+  val envForRead: String = config.getStringOption("ttd.env").map(_.toLowerCase) match {
     case Some("prod") | Some("production") => "prod"
     case Some("prodtest") | Some("prodtesting") => "prod"
     case _ => "test"
   }
 
-  val envForWrite = config.getStringOption("ttd.env").map(_.toLowerCase) match {
+  val envForWrite: String = config.getStringOption("ttd.env").map(_.toLowerCase) match {
     case Some("prod") | Some("production") => "prod"
     case _ => "test"
   }
+
+  val envForReadInternal: String = envForWrite
 
 }

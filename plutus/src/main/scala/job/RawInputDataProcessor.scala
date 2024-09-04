@@ -11,7 +11,7 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.spark.sql.SQLFunctions._
 
 import java.time.LocalDate
-import com.thetradedesk.plutus.data.{cleansedDataPaths, explicitDatePart, loadCsvData, loadParquetData}
+import com.thetradedesk.plutus.data.{envForRead, envForWrite, loadCsvData, loadParquetData}
 import com.thetradedesk.plutus.data.schema.{Deals, DiscrepancyDataset, Pda, RawLostBidData, RawLostBidDataset, Svb}
 import org.apache.spark.sql.functions.col
 
@@ -22,7 +22,6 @@ object RawInputDataProcessor extends Logger {
   val outputPath = config.getString("outputPath", "s3://thetradedesk-mlplatform-us-east-1/features/data/plutus/v=1/")
   val outputPrefix = config.getString("outputPrefix", "raw")
   val svNames = config.getStringSeq("svNames", Seq("google", "rubicon", "pubmatic"))
-  val ttdEnv = config.getString("ttd.env", "dev")
   val partitions = config.getInt("partitions", 2000)
 
   implicit val prometheus = new PrometheusClient("Plutus", "TrainingDataEtl")
@@ -36,7 +35,7 @@ object RawInputDataProcessor extends Logger {
     val pda = loadParquetData[Pda](DiscrepancyDataset.PDAS3, date)
     val deals = loadParquetData[Deals](DiscrepancyDataset.DEALSS3, date)
 
-    val brBfLoc = BidsImpressions.BIDSIMPRESSIONSS3 + f"${ttdEnv}/bidsimpressions/"
+    val brBfLoc = BidsImpressions.BIDSIMPRESSIONSS3 + f"${envForRead}/bidsimpressions/"
 
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](brBfLoc, date, source = Some("plutus"))
       .filter(col("AuctionType") === 1 && $"SupplyVendor".isin(svNames: _*)) // Note the difference with Impression Data
@@ -45,7 +44,7 @@ object RawInputDataProcessor extends Logger {
     val rawDataDf = RawDataTransform.transform(date, svNames, bidsImpressions, rawLostBidData, (svb, pda, deals), partitions)
 
     svNames.foreach { sv =>
-      RawDataTransform.writeOutput(rawDataDf.filter($"SupplyVendor" === sv), outputPath, ttdEnv, outputPrefix, sv, date)
+      RawDataTransform.writeOutput(rawDataDf.filter($"SupplyVendor" === sv), outputPath, envForWrite, outputPrefix, sv, date)
     }
 
     // clean up

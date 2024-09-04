@@ -1,6 +1,7 @@
 package job
 
 
+import com.thetradedesk.plutus.data.{envForReadInternal, envForWrite}
 import com.thetradedesk.plutus.data.transform.CleanInputDataTransform
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -19,8 +20,6 @@ object CleanInputDataProcessor {
   val outputPrefix = config.getString("outputPrefix" , "clean")
   val svNames = config.getStringSeq("svName", Seq("google", "rubicon", "pubmatic"))
   val extremeValueThreshold = config.getDouble("mbwRatio" , 0.8)
-  val ttdEnv = config.getString("ttd.env" , "dev")
-
 
   implicit val prometheus = new PrometheusClient("Plutus", "TrainingDataEtl")
   val jobDurationTimer = prometheus.createGauge("clean_data_job_duration", "Time to process 1 day of clean data").startTimer()
@@ -29,7 +28,7 @@ object CleanInputDataProcessor {
 
   def main(args: Array[String]): Unit  = {
     svNames.foreach { svName =>
-      CleanInputDataTransform.transform(date, ttdEnv, inputPath, inputPrefix, extremeValueThreshold, Some(svName), outputPath, outputPrefix)
+      CleanInputDataTransform.transform(date, inputPath, inputPrefix, extremeValueThreshold, Some(svName), outputPath, outputPrefix)
     }
     // clean up
     jobDurationTimer.setDuration()
