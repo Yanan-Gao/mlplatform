@@ -1,7 +1,7 @@
 package com.thetradedesk.plutus.data.transform
 
 
-import com.thetradedesk.plutus.data.plutusDataPath
+import com.thetradedesk.plutus.data.{envForReadInternal, envForWrite, plutusDataPath}
 import job.CleanInputDataProcessor.prometheus
 import com.thetradedesk.plutus.data.schema.CleanInputData
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -26,9 +26,9 @@ object CleanInputDataTransform {
   val mbwValidImpsCount = prometheus.createGauge("clean_data_impressions_valid_mb2w", "Total Impressions with Valid MB2W", labelNames = "ssp")
 
 
-  def transform(date: LocalDate, ttdEnv: String, rawInputS3Path: String, rawInputPrefix: String, extremeValueThreshold: Double, svName: Option[String] = None, cleanOutputS3Path: String, cleanOutputPrefix: String): Unit = {
+  def transform(date: LocalDate, rawInputS3Path: String, rawInputPrefix: String, extremeValueThreshold: Double, svName: Option[String] = None, cleanOutputS3Path: String, cleanOutputPrefix: String): Unit = {
     // only reading the data from one ssp at a time so no need to filter for supply vendor here or in createCleanDataset
-    val inputPath = plutusDataPath(rawInputS3Path, ttdEnv, rawInputPrefix, svName, date)
+    val inputPath = plutusDataPath(rawInputS3Path, envForReadInternal, rawInputPrefix, svName, date)
 
     val cleanData = createCleanDataset(inputPath, extremeValueThreshold)
 
@@ -42,7 +42,7 @@ object CleanInputDataTransform {
 
     mbwValidImpsCount.labels(svName.getOrElse("none")).set(cleanData.filter(col("mb2w").isNotNull && col("RealMediaCost").isNotNull).filter(col("mb2w") <= col("RealMediaCost")).count)
 
-    val outputPath = plutusDataPath(cleanOutputS3Path, ttdEnv, cleanOutputPrefix, svName, date)
+    val outputPath = plutusDataPath(cleanOutputS3Path, envForWrite, cleanOutputPrefix, svName, date)
     outputCleanData(cleanData, outputPath)
   }
 

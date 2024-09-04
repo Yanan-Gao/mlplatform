@@ -6,7 +6,6 @@ variables:
   PLUTUS_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/jars/snapshots"
   PLUTUS_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/jars/prod"
   PLUTUS_ASSEMBLY_OUT: "$CI_PROJECT_DIR/plutus/target/scala-2.12/plutus.jar"
-  PLUTUS_FEATURES_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/features/"
   PLUTUS_MERGEREQUESTS_SCRIPTS_DEST: "s3://thetradedesk-mlplatform-us-east-1/libs/plutus/scripts/mergerequests/$CI_COMMIT_REF_SLUG/"
   SCALA_BUILD_IMAGE_2_13_0: "proxy.docker.adsrvr.org/hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
 
@@ -43,8 +42,10 @@ plutus:push_bits_merge_request:
   script:
     - pushd ./plutus/
     - sbt "set test in assembly := {}" clean assembly
-    - DEST=${PLUTUS_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - DEST=${PLUTUS_MERGEREQUESTS_JAR_FOLDER}/${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
     - aws s3 cp ${PLUTUS_ASSEMBLY_OUT} ${DEST}/${PLUTUS_JAR_NAME}
+    - DEST_LATEST=${PLUTUS_MERGEREQUESTS_JAR_FOLDER}/${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}/latest
+    - aws s3 cp ${PLUTUS_ASSEMBLY_OUT} ${DEST_LATEST}/${PLUTUS_JAR_NAME}
     - popd
     - echo "ran plutus_push_bits_merge_request"
 
@@ -59,7 +60,7 @@ plutus:push_bits_master_snapshot:
   script:
     - pushd ./plutus/
     - sbt "set test in assembly := {}" clean assembly
-    - DEST=${PLUTUS_SNAPSHOTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - DEST=${PLUTUS_SNAPSHOTS_JAR_FOLDER}/${CI_MERGE_REQUEST_SOURCE_BRANCH_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
     - aws s3 cp ${PLUTUS_ASSEMBLY_OUT} ${DEST}/${PLUTUS_JAR_NAME}
     - popd
     - echo "ran plutus_push_bits_master_snapshot"

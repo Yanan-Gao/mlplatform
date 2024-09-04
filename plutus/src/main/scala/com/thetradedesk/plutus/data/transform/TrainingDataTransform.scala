@@ -11,7 +11,7 @@ import org.apache.spark.sql.functions.{coalesce, col}
 
 import java.time.LocalDate
 import com.thetradedesk.plutus.data.schema.{CleanInputData, MetaData, ModelTarget}
-import com.thetradedesk.plutus.data.{DEFAULT_SHIFT, plutusDataPath, plutusDataPaths, hashedModMaxIntFeaturesCols}
+import com.thetradedesk.plutus.data.{DEFAULT_SHIFT, envForReadInternal, envForWrite, hashedModMaxIntFeaturesCols, plutusDataPath, plutusDataPaths}
 
 object TrainingDataTransform {
   val STRING_FEATURE_TYPE = "string"
@@ -50,10 +50,10 @@ object TrainingDataTransform {
   val validationCount = prometheus.createGauge("validation_row_count", "rows of validation data", labelNames = "ssp")
   val testCount = prometheus.createGauge("test_row_count", "ros of test data", labelNames = "ssp")
 
-  def transform(s3Path: String, ttdEnv: String, inputS3Prefix: String, outputS3Prefix: String, svName: Option[String], endDate: LocalDate, lookBack: Option[Int] = None, formats: Seq[String], featuresJson: String): Unit = {
+  def transform(s3Path: String, inputS3Prefix: String, outputS3Prefix: String, svName: Option[String], endDate: LocalDate, lookBack: Option[Int] = None, formats: Seq[String], featuresJson: String): Unit = {
 
     // load input data
-    val paths = inputDataPaths(s3Path = s3Path, s3Prefix = inputS3Prefix, ttdEnv = ttdEnv, svName = svName, endDate = endDate, lookBack = lookBack)
+    val paths = inputDataPaths(s3Path = s3Path, s3Prefix = inputS3Prefix, ttdEnv = envForReadInternal, svName = svName, endDate = endDate, lookBack = lookBack)
 
     val modelFeatures = loadModelFeatures(featuresJson)
 
@@ -71,9 +71,9 @@ object TrainingDataTransform {
     val singleDay = loadInputData(Seq(paths.head))
 
     if (!onlyWriteMaxIntMod) {
-      writeSingleDayProcessed(s3Path, ttdEnv, svName, endDate, singleDay, selectionTabular, "singledayprocessed")
+      writeSingleDayProcessed(s3Path, envForWrite, svName, endDate, singleDay, selectionTabular, "singledayprocessed")
     }
-    writeSingleDayProcessed(s3Path, ttdEnv, svName, endDate, singleDay, selectionTabMaxMod, "singledayprocessedmaxint")
+    writeSingleDayProcessed(s3Path, envForWrite, svName, endDate, singleDay, selectionTabMaxMod, "singledayprocessedmaxint")
 
 
     if (!onlyWriteSingleDay) {
@@ -91,7 +91,7 @@ object TrainingDataTransform {
       val valRows = valInputData.cache.count()
 
       val metaData: Dataset[MetaData] = Seq(MetaData(endDate, trainRows, testRows, valRows)).toDS()
-      val metaDataS3 = plutusDataPath(s3Path, ttdEnv, prefix = "metadata", svName, endDate)
+      val metaDataS3 = plutusDataPath(s3Path, envForWrite, prefix = "metadata", svName, endDate)
 
       trainCount.labels(svName.getOrElse("none")).set(trainRows)
       validationCount.labels(svName.getOrElse("none")).set(testRows)
@@ -104,7 +104,7 @@ object TrainingDataTransform {
             writeTfRecord(
               df,
               partitions,
-              outputDataPaths(s3Path, outputS3Prefix, ttdEnv, svName, endDate, lookBack.get, TFRECORD_FORMAT, name)
+              outputDataPaths(s3Path, outputS3Prefix, envForWrite, svName, endDate, lookBack.get, TFRECORD_FORMAT, name)
             )
 
           case ((name, df, partitions), PARQUET_FORMAT) =>
@@ -113,7 +113,7 @@ object TrainingDataTransform {
               .write
               .mode(SaveMode.Overwrite)
               .parquet(
-                outputDataPaths(s3Path, outputS3Prefix, ttdEnv, svName, endDate, lookBack.get, PARQUET_FORMAT, name)
+                outputDataPaths(s3Path, outputS3Prefix, envForWrite, svName, endDate, lookBack.get, PARQUET_FORMAT, name)
               )
           case _ =>
         }

@@ -17,9 +17,6 @@ object PlutusImplicitDataProcessor extends Logger {
   val dataVersion = config.getInt("dataVersion", DATA_VERSION)
   val cleanOutputPrefix = config.getString("outputPrefix", "clean")
 
-  val ttdEnv = config.getString("ttd.env", "dev")
-  val outputTtdEnv = config.getStringOption("outputTtd.env")
-
   val partitions = config.getInt("partitions", 500)
   val facetPartitions = config.getIntOption("facetPartitions")
 
@@ -39,11 +36,9 @@ object PlutusImplicitDataProcessor extends Logger {
       maybeFacetPartitions=facetPartitions,
       outputPath = outputPath,
       cleanOutputPrefix = cleanOutputPrefix,
-      inputTtdEnv = ttdEnv,
       dataVersion = dataVersion,
       implicitSampleRate = implicitSampleRate,
-      maybeOutputTtdEnv = outputTtdEnv,
-      featuresJson = featuresJson,
+      featuresJson = featuresJson
     )
 
     // clean up
