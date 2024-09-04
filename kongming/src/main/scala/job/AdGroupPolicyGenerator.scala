@@ -1,6 +1,6 @@
 package job
 
-import com.thetradedesk.geronimo.shared.shiftModUdf
+import com.thetradedesk.geronimo.shared.{shiftModUdf, encodeStringIdUdf}
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets.{AdGroupDataSet, AdGroupPolicyDataset, AdGroupPolicyMappingDataset, AdGroupPolicyMappingRecord, AdGroupPolicyRecord, AdvertiserDataSet, CampaignConversionReportingColumnDataSet, CampaignDataSet, CampaignFlightDataSet, CampaignROIGoalDataSet, DailyPositiveCountSummaryDataset, PartnerDataSet, PartnerGroupDataSet}
 import com.thetradedesk.kongming.transform.TrainSetFeatureMappingTransform
@@ -298,6 +298,9 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
       .withColumn("AdGroupIdInt", shiftModUdf(xxhash64('AdGroupId), lit(TrainSetFeatureMappingTransform.tryGetFeatureCardinality("AdGroupId"))))
       .withColumn("CampaignIdInt", shiftModUdf(xxhash64('CampaignId), lit(TrainSetFeatureMappingTransform.tryGetFeatureCardinality("CampaignId"))))
       .withColumn("AdvertiserIdInt", shiftModUdf(xxhash64('AdvertiserId), lit(TrainSetFeatureMappingTransform.tryGetFeatureCardinality("AdvertiserId"))))
+      .withColumn("AdGroupIdEncoded", encodeStringIdUdf('AdGroupId))
+      .withColumn("CampaignIdEncoded", encodeStringIdUdf('CampaignId))
+      .withColumn("AdvertiserIdEncoded", encodeStringIdUdf('AdvertiserId))
       .selectAs[AdGroupPolicyMappingRecord]
       .distinct()
 
