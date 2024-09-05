@@ -5,7 +5,7 @@ import com.thetradedesk.spark.datasets.core.VerticaBackupsS3DataSet
 
 case class ProductionAdgroupBudgetDataset()
   extends VerticaBackupsS3DataSet[ProductionAdgroupBudgetData](
-    "ExportLateDataPlatformReport/VerticaAws",
+    "ExportProductionAdGroupBudgetSnapshot/VerticaAws",
     timestampFieldName = "ReportHourUtc",
     schemaPolicy = StrictCaseClassSchema
   ) {}
