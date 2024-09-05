@@ -2,6 +2,7 @@ package com.thetradedesk.kongming.features
 
 import com.thetradedesk.geronimo.shared._
 import com.thetradedesk.geronimo.shared.schemas.{ModelFeature, ModelFeatureLists, Shape}
+import com.thetradedesk.kongming.task
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.functions._
@@ -9,9 +10,13 @@ import org.apache.spark.sql.functions._
 object Features {
 
   val defaultFeaturesJsonS3Location = "s3://thetradedesk-mlplatform-us-east-1/features/data/kongming/v=1/prod/features/feature_userdata_group_featuretable.json"
+  val defaultROASFeaturesJsonS3Location = "s3://thetradedesk-mlplatform-us-east-1/features/data/roas/v=1/prod/schemas/feature_roas_aud.json"
 
-  // TODO: set path for roas' feature json file
-  val modelFeaturesTargets: ModelFeatureLists = parseModelFeaturesSplitFromJson(readModelFeatures(config.getString("featuresJson", defaultFeaturesJsonS3Location)))
+  var featuresJsonS3Location: String = task match {
+    case "roas" => config.getString("featuresJson", defaultROASFeaturesJsonS3Location)
+    case _ => config.getString("featuresJson", defaultFeaturesJsonS3Location)
+  }
+  val modelFeaturesTargets: ModelFeatureLists = parseModelFeaturesSplitFromJson(readModelFeatures(featuresJsonS3Location))
 
   lazy val userFeatures: Array[ModelFeature] = modelFeaturesTargets.userData.getOrElse(Seq.empty[ModelFeature]).toArray
 

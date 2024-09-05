@@ -16,7 +16,7 @@ final case class ContextualTaxonomyRecord(
                                          )
 
 object ContextualTaxonomyDataset {
-  val S3Path: String = "s3://thetradedesk-useast-hadoop/Data_Science/Liu/TTD-contextual-standard-categories-extend.csv"
+  val S3Path: String = "s3://thetradedesk-mlplatform-us-east-1/features/data/contextualtaxonomy/TTD-contextual-standard-categories-extend.csv"
 
   def readHardCodedTier1Map(
                            ):Dataset[ContextualTaxonomyRecord]={
