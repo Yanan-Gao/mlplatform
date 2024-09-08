@@ -13,6 +13,7 @@ import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.Dataset
+import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
@@ -39,10 +40,10 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
 
 
-    val numTrackedRows = OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 1).writePartition(OptInTrackedAttributionSet, scoreDate, "tracked", Some(200))
+    val numTrackedRows = OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 1).writePartition(OptInTrackedAttributionSet, scoreDate, "tracked", Some(1000))
     val numUntrackedRows = OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 1).writePartition(OptInUntrackedAttributionSet, scoreDate, "untracked", Some(200))
 
-    OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 0).writePartition(OptOutTrackedAttributionSet, scoreDate, "tracked", Some(200))
+    OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 0).writePartition(OptOutTrackedAttributionSet, scoreDate, "tracked", Some(1000))
     OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 0).writePartition(OptOutUntrackedAttributionSet, scoreDate, "untracked", Some(200))
 
     OldOutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSet, scoreDate, "tracked", Some(200))
@@ -92,6 +93,11 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
                                                   ConfigKey: String,
                                                   ConfigValue: String
                                                   )
+
+  final case class BidRequestsWithAdGroupId(
+                                               BidRequestIdStr: String,
+                                               AdGroupId: String
+                                             )
 
   final case class EventsAttribution(
                                       BidRequestId: String,
@@ -154,7 +160,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
     val scoringSet = OldDailyOfflineScoringDataset().readRange(scoreDate.plusDays(1), scoreDate.plusDays(Config.ImpressionLookBack), isInclusive=true)
 
-    val impressionsToScore = multiLevelJoinWithPolicy[BidRequestsWithConfigValue](
+    val impressionsToScore = multiLevelJoinWithPolicy[BidRequestsWithAdGroupId](
       scoringSet.withColumnRenamed("AdGroupId", "AdGroupIdInt").withColumnRenamed("AdGroupIdStr", "AdGroupId")
         .withColumnRenamed("CampaignId", "CampaignIdInt").withColumnRenamed("CampaignIdStr", "CampaignId")
         .withColumnRenamed("AdvertiserId", "AdvertiserIdInt").withColumnRenamed("AdvertiserIdStr", "AdvertiserId"),
@@ -165,9 +171,18 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
       .withColumnRenamed("BidRequestId", "BidRequestIdStr")
 
     // offline score labels: one impression could have more than one row if it contributes to multiple conversions. If it contributes to no conversion, then it has one row.
+    val NegPosRatio = Config.OosNegPosRatio
+    val win = Window.partitionBy("AdGroupId")
     val rawOOS = impressionsToScore.join(eventsAttributions, Seq("BidRequestIdStr"), "left")
       .withColumn("Target", coalesce('Target, lit(0)))
       .withColumn("Revenue", coalesce('Revenue, lit(0)))
+      .withColumn("AdGroupPosCount", sum($"Target").over(win))
+      .withColumn("AdGroupNegCount", sum(lit(1) - $"Target").over(win))
+      .withColumn("SamplingRate", $"AdGroupPosCount" * lit(NegPosRatio) / $"AdGroupNegCount")
+      .withColumn("SamplingRate", when($"Target" === lit(1), 1).otherwise($"SamplingRate"))
+      .withColumn("rand", rand(seed = samplingSeed))
+      .filter($"rand" <= $"SamplingRate")
+      .drop("AdGroupId", "AdGroupPosCount", "AdGroupNegCount", "SamplingRate", "rand")
       .join(scoringSet, Seq("BidRequestIdStr"), "inner")
       .cache()
 

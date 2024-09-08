@@ -46,6 +46,7 @@ package object kongming {
   object Config {
     val ImpressionLookBack = config.getInt("OutOfSampleAttributeSetGenerator.ImpressionLookBack", 3)
     val AttributionLookBack = config.getInt("OutOfSampleAttributeSetGenerator.AttributionLookBack", 7)
+    val OosNegPosRatio = config.getInt("OutOfSampleAttributeSetGenerator.OosNegPosRatio", 1000)
   }
 
   def getJobNameWithExperimentName(jobName: String): String = {
