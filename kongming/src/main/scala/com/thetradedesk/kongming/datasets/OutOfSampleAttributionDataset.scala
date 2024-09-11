@@ -261,9 +261,9 @@ final case class OutOfSampleAttributionRecord(
                                                UserData_Column140: Int
                                              )
 
-case class OutOfSampleAttributionDataset(delayNDays: Int, userDataOptIn:Int, experimentOverride: Option[String] = None)
+case class OutOfSampleAttributionDataset(delayNDays: Int, experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3Dataset[OutOfSampleAttributionRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/outofsampleattributionset/v=1/delay=${delayNDays}D/userDataOptIn=${userDataOptIn}",
+    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/outofsampleattributionset/v=1/delay=${delayNDays}D/userDataOptIn=1",
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
 )

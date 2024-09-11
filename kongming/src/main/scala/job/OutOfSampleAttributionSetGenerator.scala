@@ -29,22 +29,14 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
     val attributionSet = generateAttributionSet(scoreDate)(getPrometheus)
 
-    val OptInTrackedAttributionSet = attributionSet._1.filter($"IsTracked" === lit(1)).selectAs[OutOfSampleAttributionRecord]
-    val OptInUntrackedAttributionSet = attributionSet._1.filter($"IsTracked" =!= lit(1)).selectAs[OutOfSampleAttributionRecord]
+    val TrackedAttributionSetWithUserData = attributionSet._1.filter($"IsTracked" === lit(1)).selectAs[OutOfSampleAttributionRecord]
+    val UntrackedAttributionSetWithUserData = attributionSet._1.filter($"IsTracked" =!= lit(1)).selectAs[OutOfSampleAttributionRecord]
 
-    val OptOutTrackedAttributionSet = attributionSet._2.filter($"IsTracked" === lit(1)).selectAs[OutOfSampleAttributionRecord]
-    val OptOutUntrackedAttributionSet = attributionSet._2.filter($"IsTracked" =!= lit(1)).selectAs[OutOfSampleAttributionRecord]
+    val TrackedAttributionSet = attributionSet._2.filter($"IsTracked" === lit(1)).selectAs[OldOutOfSampleAttributionRecord]
+    val UntrackedAttributionSet = attributionSet._2.filter($"IsTracked" =!= lit(1)).selectAs[OldOutOfSampleAttributionRecord]
 
-    val TrackedAttributionSet = attributionSet._3.filter($"IsTracked" === lit(1)).selectAs[OldOutOfSampleAttributionRecord]
-    val UntrackedAttributionSet = attributionSet._3.filter($"IsTracked" =!= lit(1)).selectAs[OldOutOfSampleAttributionRecord]
-
-
-
-    val numTrackedRows = OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 1).writePartition(OptInTrackedAttributionSet, scoreDate, "tracked", Some(1000))
-    val numUntrackedRows = OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 1).writePartition(OptInUntrackedAttributionSet, scoreDate, "untracked", Some(200))
-
-    OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 0).writePartition(OptOutTrackedAttributionSet, scoreDate, "tracked", Some(1000))
-    OutOfSampleAttributionDataset(delayNDays, userDataOptIn = 0).writePartition(OptOutUntrackedAttributionSet, scoreDate, "untracked", Some(200))
+    val numTrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSetWithUserData, scoreDate, "tracked", Some(1000))
+    val numUntrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(UntrackedAttributionSetWithUserData, scoreDate, "untracked", Some(200))
 
     OldOutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSet, scoreDate, "tracked", Some(200))
     OldOutOfSampleAttributionDataset(delayNDays).writePartition(UntrackedAttributionSet, scoreDate, "untracked", Some(200))
@@ -153,7 +145,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
   }
 
   def generateAttributionSet(scoreDate: LocalDate)(implicit prometheus: PrometheusClient):
-  (Dataset[OutOfSampleAttributionRecord], Dataset[OutOfSampleAttributionRecord], Dataset[OldOutOfSampleAttributionRecord]) = {
+  (Dataset[OutOfSampleAttributionRecord], Dataset[OldOutOfSampleAttributionRecord]) = {
     val adGroupPolicy = AdGroupPolicyDataset().readDate(scoreDate)
     val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(scoreDate)
     val policy = getMinimalPolicy(adGroupPolicy, adGroupPolicyMapping).cache()
@@ -193,16 +185,12 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
       .select(parquetSelectionTabular: _*)
       .cache()
 
-    val rawOOSUserDataOptIn = rawOOSFiltered
+    val rawOOSWithUserData = rawOOSFiltered
       .withColumn("UserDataOptIn",lit(2)) // hashmod 1 ->2
-      .selectAs[OutOfSampleAttributionRecord]
-
-    val rawOOSUserDataOptOut = rawOOSFiltered
-      .withColumn("UserDataOptIn",lit(1)) // hashmod 0 ->1
       .selectAs[OutOfSampleAttributionRecord]
 
     val rawOOSdata = rawOOSFiltered.selectAs[OldOutOfSampleAttributionRecord]
 
-    (rawOOSUserDataOptIn, rawOOSUserDataOptOut, rawOOSdata)
+    (rawOOSWithUserData, rawOOSdata)
   }
 }
