@@ -13,6 +13,8 @@ final case class AttributedEventResultRecord(
                                               ConversionTrackerLogEntryTime: String,  // is string in parquet.
                                               CampaignReportingColumnId: String,
                                               AttributionMethodId: String,
+                                              CustomCPACount: Option[String],
+                                              CustomRevenue: Option[String],
 //                                              AttributedEventTypeId: String
                                       )
 

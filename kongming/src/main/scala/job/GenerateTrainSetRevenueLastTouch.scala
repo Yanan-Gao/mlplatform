@@ -30,6 +30,7 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
 
   val trainSetPartitionCount = config.getInt("trainSetPartitionCount", partCount.trainSet)
   val valSetPartitionCount = config.getInt("valSetPartitionCount", partCount.valSet)
+  val maxConvPerBR = config.getInt("maxConvPerBR", 5)
 
 
   def generateTrainSetRevenue()(implicit prometheus: PrometheusClient): Dataset[ValidationDataForModelTrainingRecord] = {
@@ -47,13 +48,23 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
         DailyAttributionEventsDataset().readPartition(dt, ImpDate.format(DefaultTimeFormatStrings.dateTimeFormatter))
       }).reduce(_.union(_))
 
-      val impWithAttr = dailyImp.join(broadcast(attr.select($"BidRequestId".alias("BidRequestIdStr"), $"Target", $"Revenue")), Seq("BidRequestIdStr"), "left")
+      val winBR = Window.partitionBy("BidRequestId")
+      val sampledAttr = attr.withColumn("BRConv", count($"Target").over(winBR))
+        .withColumn("ratio", lit(maxConvPerBR) / $"BRConv")
+        .withColumn("rand", rand(seed = samplingSeed))
+        .filter($"rand" <= $"ratio")
+        .drop("BRConv", "ratio", "rand")
+        .cache()
+
+      val impWithAttr = dailyImp.join(broadcast(sampledAttr.select($"BidRequestId".alias("BidRequestIdStr"), $"Target", $"Revenue")), Seq("BidRequestIdStr"), "left")
         .withColumn("Target", coalesce('Target, lit(0)))
         .withColumn("Revenue", coalesce('Revenue, lit(0)))
         //      .join(scoringSet, Seq("EventDate", "BidRequestIdStr"), "inner")
         .withColumn("PosCount", sum(when($"Target" === lit(1), 1).otherwise(0)).over(win))
         .withColumn("NegCount", sum(when($"Target" === lit(0), 1).otherwise(0)).over(win))
         .withColumn("NegRatio", $"PosCount" * lit(desiredNegOverPos) / $"NegCount")
+
+      sampledAttr.unpersist()
 
       impWithAttr.filter($"Target" === lit(1)).union(
           impWithAttr.filter($"Target" ===lit(0))
