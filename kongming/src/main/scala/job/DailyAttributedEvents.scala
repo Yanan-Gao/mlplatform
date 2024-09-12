@@ -51,7 +51,8 @@ object DailyAttributedEvents extends KongmingBaseJob {
     val startDate = date.minusDays(conversionLookback)
     val validTags = getValidTrackingTags(date)
     val dailyAttr = DailyAttributionDataset().readDate(date)
-      .withColumn("MonetaryValue", $"MonetaryValue".cast("decimal"))
+      .withColumn("MonetaryValue", $"MonetaryValue".cast("decimal(18,6)"))
+      .withColumn("CustomRevenue", $"CustomRevenue".cast("decimal(18,6)"))
       .filter($"AttributedEventLogEntryTime".isNotNull && ((unix_timestamp($"ConversionTrackerLogEntryTime") - unix_timestamp($"AttributedEventLogEntryTime")) <= Config.AttributionLookBack * 86400))
       .join(
         validTags.withColumnRenamed("ReportingColumnId", "CampaignReportingColumnId"),
@@ -70,10 +71,21 @@ object DailyAttributedEvents extends KongmingBaseJob {
         val dailyClick = DailyClickDataset().readDate(ImpDate)
           .withColumnRenamed("ClickRedirectId", "AttributedEventId")
           .select("BidRequestId", "AttributedEventId", "AdGroupId", "CampaignId", "AdvertiserId")
+        // sometimes roas pixel could send back 0 value records.
+        // all cases with valid MonetaryValue have valid MonetaryValueCurrency
+        val invalidCurrency = Seq("Currency", "{Currency}", "{¥}")
         val dailyAttrEvents = dailyAttr.filter($"AttributedEventTypeId" === lit("2")).join(dailyBF, Seq("AttributedEventId", "AdGroupId", "CampaignId", "AdvertiserId"), "inner")
           .union(dailyAttr.filter($"AttributedEventTypeId" === lit("1")).join(dailyClick, Seq("AttributedEventId", "AdGroupId", "CampaignId", "AdvertiserId"), "inner"))
-          .select("AdGroupId", "CampaignId", "AdvertiserId", "BidRequestId", "MonetaryValue", "MonetaryValueCurrency")
-          .distinct().withColumn("Target", lit(1))
+          .select("AdGroupId", "CampaignId", "AdvertiserId", "BidRequestId", "ConversionTrackerLogEntryTime", "MonetaryValue", "MonetaryValueCurrency", "CustomCPACount", "CustomRevenue")
+          .withColumn("MonetaryValueCurrency", when($"MonetaryValueCurrency".isin(invalidCurrency: _*), null).otherwise($"MonetaryValueCurrency"))
+          .withColumn("ConversionTrackerLogEntryTime", date_trunc(RoundUpTimeUnit, $"ConversionTrackerLogEntryTime"))
+          .groupBy("AdGroupId", "CampaignId", "AdvertiserId", "BidRequestId", "ConversionTrackerLogEntryTime")
+          .agg(
+            sum("MonetaryValue").alias("MonetaryValue"),
+            max("MonetaryValueCurrency").alias("MonetaryValueCurrency"),
+            sum("CustomCPACount").alias("CustomCPACount"),
+            sum("CustomRevenue").alias("CustomRevenue"),
+          ).withColumn("Target", lit(1))
 
         val attrEventsByImpDate =
           task match {
@@ -81,9 +93,9 @@ object DailyAttributedEvents extends KongmingBaseJob {
               val rate = DailyExchangeRateDataset().readDate(date).cache() // use scoreDate's exchange to simplify the calculation
               dailyAttrEvents
                 .withColumn("CurrencyCodeId", $"MonetaryValueCurrency").join(broadcast(rate), Seq("CurrencyCodeId"), "left")
-                .withColumn("ValidRevenue", $"MonetaryValue".isNotNull && $"MonetaryValueCurrency".isNotNull)
+                .withColumn("ValidRevenue", coalesce($"CustomRevenue", $"MonetaryValue"))
                 .withColumn("FromUSD", when($"MonetaryValueCurrency" === "USD", lit(1)).otherwise($"FromUSD"))
-                .withColumn("RevenueInUSD", when($"ValidRevenue", $"MonetaryValue" / $"FromUSD").otherwise(0))
+                .withColumn("RevenueInUSD", when($"ValidRevenue".isNotNull, $"ValidRevenue" / $"FromUSD").otherwise(0))
                 .withColumn("Revenue", greatest($"RevenueInUSD", lit(1)))
                 .selectAs[DailyAttributionEventsRecord]
             }

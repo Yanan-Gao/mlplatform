@@ -25,6 +25,8 @@ final case class DailyAttributionRecord(
                                         ConversionTrackerLogEntryTime: String,  // is string in parquet.
                                         CampaignReportingColumnId: String,
                                         AttributionMethodId: String,
+                                        CustomCPACount: Option[String],
+                                        CustomRevenue: Option[String],
                                       )
 
 case class DailyAttributionDataset(experimentOverride: Option[String] = None) extends KongMingDataset[DailyAttributionRecord](
