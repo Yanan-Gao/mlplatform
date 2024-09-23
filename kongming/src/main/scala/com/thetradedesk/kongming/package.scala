@@ -149,6 +149,10 @@ package object kongming {
     "roas" -> "IncludeInCustomROAS"
   )
 
+  val optionalFeature = Map(
+    0 -> "UserData"
+  )
+
 }
 
 object MetadataType extends Enumeration {
