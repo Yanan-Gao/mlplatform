@@ -18,7 +18,7 @@ object Features {
   }
   val modelFeaturesTargets: ModelFeatureLists = parseModelFeaturesSplitFromJson(readModelFeatures(featuresJsonS3Location))
 
-  lazy val userFeatures: Array[ModelFeature] = getSubTowerFeatures(modelFeaturesTargets.bidRequest,optionalFeature(1))
+  lazy val userFeatures: Array[ModelFeature] = getSubTowerFeatures(modelFeaturesTargets.bidRequest,optionalFeature(0))
 
   lazy val modelFeatures: Array[ModelFeature] = modelFeaturesTargets.bidRequest.toArray
 
