@@ -18,9 +18,13 @@ object Features {
   }
   val modelFeaturesTargets: ModelFeatureLists = parseModelFeaturesSplitFromJson(readModelFeatures(featuresJsonS3Location))
 
-  lazy val userFeatures: Array[ModelFeature] = getSubTowerFeatures(modelFeaturesTargets.bidRequest,optionalFeature(0))
+  // flagFields are special fields that are used for flagging certain options in the model
+  val flagFields: Array[ModelFeature] = modelFeaturesTargets.adGroup.toArray.filter(feature =>
+    optionalFeature.values.toArray.contains(feature.subtower.getOrElse("None")) )
 
-  lazy val modelFeatures: Array[ModelFeature] = modelFeaturesTargets.bidRequest.toArray
+  lazy val userFeatures: Array[ModelFeature] = getSubTowerFeatures(modelFeaturesTargets.bidRequest ++ modelFeaturesTargets.adGroup, optionalFeature(0))
+
+  lazy val modelFeatures: Array[ModelFeature] = modelFeaturesTargets.bidRequest.toArray ++ flagFields
 
   lazy val modelDimensions: Array[ModelFeature] = modelFeaturesTargets.adGroup.toArray.filter(feature =>
     !optionalFeature.values.toArray.contains(feature.subtower.getOrElse("None")))
@@ -52,11 +56,6 @@ object Features {
     ModelFeature("AdvertiserId", STRING_FEATURE_TYPE, None, 0, None),
     //ModelFeature("ImpressionPlacementId", STRING_FEATURE_TYPE, Some(500002), 1)
   )
-
-  // flagFields are special fields that are used for flagging certain options in the model
-  val flagFields: Array[ModelFeature] = modelFeaturesTargets.adGroup.toArray.filter(feature =>
-    optionalFeature.values.toArray.contains(feature.subtower.getOrElse("None")) )
-
 
   // Useful fields for analysis/offline attribution that will not be propagated to the full production trainset to minimise data size
   val keptFields = Array(
