@@ -438,3 +438,19 @@ case class DataCsvForModelTrainingDatasetLastTouch(experimentOverride: Option[St
     experimentOverride = experimentOverride
   ) {
 }
+
+case class DataCsvForModelTrainingDatasetClick(experimentOverride: Option[String] = None)
+  extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
+    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/trainset_click/csv/v=1",
+    fileFormat = Csv.WithHeader,
+    experimentOverride = experimentOverride
+  ) {
+}
+
+case class DataIncCsvForModelTrainingDatasetClick(experimentOverride: Option[String] = None)
+  extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
+    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/trainset_click_inc/csv/v=1",
+    fileFormat = Csv.WithHeader,
+    experimentOverride = experimentOverride
+  ) {
+}
