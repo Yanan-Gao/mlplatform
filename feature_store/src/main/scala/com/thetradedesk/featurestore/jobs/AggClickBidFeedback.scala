@@ -12,28 +12,7 @@ import java.time.LocalDate
 
 object AggClickBidFeedback extends FeatureStoreAggJob {
   override def jobName: String = "clickbf"
-
-  // todo: replace this part by config files
-  override def catFeatSpecs: Array[CategoryFeatAggSpecs] = Array(
-  )
-
-  override def conFeatSpecs: Array[ContinuousFeatAggSpecs] = Array(
-    ContinuousFeatAggSpecs(aggField = "SubmittedBidAmountInUSD", aggWindow = 1, aggFunc = AggFunc.Desc),
-    ContinuousFeatAggSpecs(aggField = "SubmittedBidAmountInUSD", aggWindow = 3, aggFunc = AggFunc.Desc),
-    ContinuousFeatAggSpecs(aggField = "SubmittedBidAmountInUSD", aggWindow = 7, aggFunc = AggFunc.Desc),
-    ContinuousFeatAggSpecs(aggField = "Impression", aggWindow = 1, aggFunc = AggFunc.Count),
-    ContinuousFeatAggSpecs(aggField = "Impression", aggWindow = 3, aggFunc = AggFunc.Count),
-    ContinuousFeatAggSpecs(aggField = "Impression", aggWindow = 7, aggFunc = AggFunc.Count),
-  )
-
-  override def ratioFeatSpecs: Array[RatioFeatAggSpecs] = Array(
-    RatioFeatAggSpecs(aggField = "Click", aggWindow = 1, denomField = "Impression", ratioMetrics = "CTR"),
-    RatioFeatAggSpecs(aggField = "Click", aggWindow = 3, denomField = "Impression", ratioMetrics = "CTR"),
-    RatioFeatAggSpecs(aggField = "Click", aggWindow = 7, denomField = "Impression", ratioMetrics = "CTR"),
-    RatioFeatAggSpecs(aggField = "AdvertiserCostInUSD", aggWindow = 1, denomField = "Impression", ratioMetrics = "CPM"),
-    RatioFeatAggSpecs(aggField = "AdvertiserCostInUSD", aggWindow = 3, denomField = "Impression", ratioMetrics = "CPM"),
-    RatioFeatAggSpecs(aggField = "AdvertiserCostInUSD", aggWindow = 7, denomField = "Impression", ratioMetrics = "CPM"),
-  )
+  override def jobConfig = new FeatureStoreAggJobConfig( s"${getClass.getSimpleName.stripSuffix("$")}.yml" )
 
   override def loadInputData(date: LocalDate, lookBack: Int): Dataset[_] = {
     val inputDf = DailyClickBidFeedbackDataset().readRange(date.minusDays(lookBack), date, isInclusive = true)

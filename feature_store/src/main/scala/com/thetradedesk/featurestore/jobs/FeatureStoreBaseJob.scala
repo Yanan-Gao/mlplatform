@@ -18,7 +18,6 @@ import java.time.LocalDate
 abstract class FeatureStoreBaseJob {
 
   def jobName: String = ""
-
   def getPrometheus: PrometheusClient = {
     new PrometheusClient(FeautureAppName, jobName)
   }
@@ -52,12 +51,13 @@ abstract class FeatureStoreBaseJob {
  *
  */
 abstract class FeatureStoreAggJob extends FeatureStoreBaseJob {
+  def jobConfig: FeatureStoreAggJobConfig = new FeatureStoreAggJobConfig("")
 
-  def catFeatSpecs: Array[CategoryFeatAggSpecs]
+  def catFeatSpecs: Array[CategoryFeatAggSpecs] = jobConfig.catFeatSpecs
 
-  def conFeatSpecs: Array[ContinuousFeatAggSpecs]
+  def conFeatSpecs: Array[ContinuousFeatAggSpecs] = jobConfig.conFeatSpecs
 
-  def ratioFeatSpecs: Array[RatioFeatAggSpecs]
+  def ratioFeatSpecs: Array[RatioFeatAggSpecs] = jobConfig.ratioFeatSpecs
 
   def loadInputData(date: LocalDate, lookBack: Int): Dataset[_]
 

@@ -15,21 +15,7 @@ import java.time.LocalDate
 
 object AggBidsImpression extends FeatureStoreAggJob {
   override def jobName: String = "bidsimpression"
-
-  // input args
-  // todo: replace this part by config files
-  override def catFeatSpecs: Array[CategoryFeatAggSpecs] = Array(
-  )
-
-  override def conFeatSpecs: Array[ContinuousFeatAggSpecs] = Array(
-
-    ContinuousFeatAggSpecs(aggField = "WinRate", aggWindow = 1, aggFunc = AggFunc.Mean),
-    ContinuousFeatAggSpecs(aggField = "WinRate", aggWindow = 3, aggFunc = AggFunc.Mean),
-    ContinuousFeatAggSpecs(aggField = "WinRate", aggWindow = 7, aggFunc = AggFunc.Mean),
-  )
-
-  override def ratioFeatSpecs: Array[RatioFeatAggSpecs] = Array(
-  )
+  override def jobConfig = new FeatureStoreAggJobConfig( s"${getClass.getSimpleName.stripSuffix("$")}.yml" )
 
   override def loadInputData(date: LocalDate, lookBack: Int): Dataset[_] = {
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"

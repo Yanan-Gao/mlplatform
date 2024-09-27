@@ -5,6 +5,7 @@ import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, ARRAY_LONG_FEAT
 import com.thetradedesk.spark.sql.SQLFunctions._
 import org.apache.spark.sql.{Column, Dataset}
 import org.apache.spark.sql.functions._
+import io.circe.Decoder
 
 
 object Features {
@@ -12,6 +13,20 @@ object Features {
   object AggFunc extends Enumeration {
     type AggFunc = Value
     val Sum, Count, Mean, Avg, Median, P10, P90, Desc = Value
+
+    def fromString(value: String): Option[AggFunc] = {
+      values.find(_.toString.equalsIgnoreCase(value))
+    }
+
+    // Custom decoder for AggFunc
+    implicit val aggFuncDecoder: Decoder[AggFunc] = Decoder[String].flatMap { str =>
+      Decoder.decodeString.emap { value =>
+        AggFunc.fromString(value) match {
+          case Some(aggFunc) => Right(aggFunc)
+          case None => Left(s"Invalid aggregation function: $value")
+        }
+      }
+    }
   }
 
   trait AggSpecs {

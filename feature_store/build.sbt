@@ -38,6 +38,8 @@ libraryDependencies ++= Seq(
   "com.thetradedesk" %% "geronimo" % "0.2.10-SNAPSHOT",
   "com.thetradedesk" %% "eldorado-core" % "1.0.163-spark-3.2.1",
   "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
+  "io.circe" %% "circe-yaml" % "0.14.1",
+  "org.yaml" % "snakeyaml" % "1.28",
 
   "io.prometheus" % "simpleclient" % prometheusVersion,
   "io.prometheus" % "simpleclient_common" % prometheusVersion,
@@ -50,10 +52,10 @@ libraryDependencies ++= Seq(
   "com.github.mrpowers" %% "spark-fast-tests" % "1.2.0" % Test
 )
 
-assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
-assemblyJarName in assembly := "feature_store.jar"
+assembly / assemblyOption := (assembly / assemblyOption).value.copy(includeScala = false)
+assembly / assemblyJarName := "feature_store.jar"
 
-assemblyMergeStrategy in assembly := {
+assembly / assemblyMergeStrategy := {
   //  case PathList("org", "apache", "hadoop", _@_*) => MergeStrategy.discard
   case PathList("org", "apache", "scala", _@_*) => MergeStrategy.discard
   case PathList("org", "apache", "spark", "sql", "execution", _@_*) => MergeStrategy.discard
@@ -62,9 +64,9 @@ assemblyMergeStrategy in assembly := {
   case _ => MergeStrategy.first
 }
 
-fork in Test := true
+Test / fork := true
 javaOptions ++= Seq("-Xms512M", "-Xmx2048M", "-XX:+CMSClassUnloadingEnabled")
-testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oD")
+Test / testOptions += Tests.Argument(TestFrameworks.ScalaTest, "-oD")
 
 assembly / assemblyShadeRules := Seq(
   ShadeRule.rename("shapeless.**" -> "new_shapeless.@1").inAll,
