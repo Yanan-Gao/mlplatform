@@ -1,0 +1,19 @@
+continuous:
+  - aggField: SubmittedBidAmountInUSD
+    aggWindows: [ 1, 3, 7 ]
+    aggFunc: desc
+
+  - aggField: Impression
+    aggWindows: [ 1, 3, 7 ]
+    aggFunc: count
+
+ratio:
+  - aggField: Click
+    aggWindows: [ 1, 3, 7 ]
+    denomField: Impression
+    ratioMetrics: CTR
+
+  - aggField: AdvertiserCostInUSD
+    aggWindows: [ 1, 3, 7 ]
+    denomField: Impression
+    ratioMetrics: CPM

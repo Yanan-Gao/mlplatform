@@ -1,0 +1,12 @@
+continuous:
+  - aggField: ConversionTrackerId
+    aggWindows: [ 1, 3, 7 ]
+    aggFunc: count
+
+  - aggField: Revenue
+    aggWindows: [ 1, 3, 7 ]
+    aggFunc: desc
+
+  - aggField: ConvDelayInSeconds
+    aggWindows: [ 3, 7 ]
+    aggFunc: desc
