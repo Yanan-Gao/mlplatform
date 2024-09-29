@@ -91,9 +91,11 @@ object DailyAttributedEvents extends KongmingBaseJob {
           task match {
             case "roas" => {
               val rate = DailyExchangeRateDataset().readDate(date).cache() // use scoreDate's exchange to simplify the calculation
+              val campaign = CampaignDataSet().readLatestPartitionUpTo(date, true)
               dailyAttrEvents
                 .withColumn("CurrencyCodeId", $"MonetaryValueCurrency").join(broadcast(rate), Seq("CurrencyCodeId"), "left")
-                .withColumn("ValidRevenue", coalesce($"CustomRevenue", $"MonetaryValue"))
+                .join(broadcast(campaign.select("CampaignId", "CustomROASTypeId")), Seq("CampaignId"), "left")
+                .withColumn("ValidRevenue", when($"CustomROASTypeId"===lit(0), $"MonetaryValue").otherwise($"CustomRevenue"))
                 .withColumn("FromUSD", when($"MonetaryValueCurrency" === "USD", lit(1)).otherwise($"FromUSD"))
                 .withColumn("RevenueInUSD", when($"ValidRevenue".isNotNull, $"ValidRevenue" / $"FromUSD").otherwise(0))
                 .withColumn("Revenue", greatest($"RevenueInUSD", lit(1)))
