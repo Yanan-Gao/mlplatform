@@ -143,16 +143,16 @@ class CampaignAdjustmentsTransformTest extends TTDSparkTest {
     assert(res_campaign3.ImprovedNotPacing == Some(2) && res_campaign3.CampaignPCAdjustment == 0.75 && campaign3_enddate == changedEndDate_dateTime, "Validate improved-not-pacing campaign counter (major) and mid-flight changed EndDate")
 
     val res_campaign4 = res_finalCampaignAdjustments.get(3)
-    assert(res_campaign4.WorseNotPacing == Some(2) && res_campaign4.CampaignPCAdjustment == 0.7, "Validate worse-not-pacing campaign counter and adjustment stepSize back-off")
+    assert(res_campaign4.WorseNotPacing == Some(2) && res_campaign4.CampaignPCAdjustment == 0.65, "Validate worse-not-pacing campaign counter and adjustment stepSize back-off")
 
     val res_campaign5 = res_finalCampaignAdjustments.get(4)
-    assert(res_campaign5.WorseNotPacing == Some(2) && res_campaign5.CampaignPCAdjustment == 0.65, "Validate worse-not-pacing campaign counter and adjustment aggressive stepSize back-off when EndDate close")
+    assert(res_campaign5.WorseNotPacing == Some(2) && res_campaign5.CampaignPCAdjustment == 0.6, "Validate worse-not-pacing campaign counter and adjustment aggressive stepSize back-off when EndDate close")
 
     val res_campaign6 = res_finalCampaignAdjustments.get(5)
     assert(res_campaign6.WorseNotPacing == Some(4) && res_campaign6.CampaignPCAdjustment == 1, "Validate worse-not-pacing campaign counter when worse-not-pacing days max cap is hit and adjustment resets")
 
     val res_campaign7 = res_finalCampaignAdjustments.get(6)
-    assert(res_campaign7.WorseNotPacing == Some(2) && res_campaign7.CampaignPCAdjustment == 0.4, "Validate when minimum adjustment back-off is hit and pacing percent change calculation when previous day's pacing fraction = 0")
+    assert(res_campaign7.WorseNotPacing == Some(2) && res_campaign7.CampaignPCAdjustment == 0.2, "Validate when minimum adjustment back-off is hit and pacing percent change calculation when previous day's pacing fraction = 0")
 
     val res_campaign8 = res_finalCampaignAdjustments.get(7)
     assert(res_campaign8.AddedDate == None && res_campaign8.CampaignPCAdjustment == 1.0 && res_campaign8.Pacing == None && res_campaign8.ImprovedNotPacing == None && res_campaign8.WorseNotPacing == None, "Validate when campaign was previously set to 1")
@@ -164,7 +164,7 @@ class CampaignAdjustmentsTransformTest extends TTDSparkTest {
     assert(res_campaign10.ImprovedNotPacing == Some(2) && res_campaign10.CampaignPCAdjustment == 0.75, "Validate simple logic: improved-not-pacing campaign counter (minor) and adjustment stays the same")
 
     val res_campaign11 = res_finalCampaignAdjustments.get(10)
-    assert(res_campaign11.WorseNotPacing == Some(1) && res_campaign11.CampaignPCAdjustment == 0.7, "Validate simple logic: when worse-not-pacing campaign counter hit after improving-not-pacing and adjustment stepSize back-off")
+    assert(res_campaign11.WorseNotPacing == Some(1) && res_campaign11.CampaignPCAdjustment == 0.65, "Validate simple logic: when worse-not-pacing campaign counter hit after improving-not-pacing and adjustment stepSize back-off")
 
     // Check control campaigns settings
     val records_controlcampaigns = Seq(
@@ -182,7 +182,7 @@ class CampaignAdjustmentsTransformTest extends TTDSparkTest {
 
     // Check newly added campaigns to adjustments file
     val res_campaignnew1 = res_finalCampaignAdjustments.takeRight(6).head
-    assert(res_campaignnew1.Pacing == Some(0) && res_campaignnew1.ImprovedNotPacing == Some(0) && res_campaignnew1.WorseNotPacing == Some(0) && res_campaignnew1.CampaignPCAdjustment == 0.95, "Validate new campaign added to adjustment file - pacing/not-pacing counters set to 0 and first adjustment stepSize back-off to 0.95. Check isTest.")
+    assert(res_campaignnew1.Pacing == Some(0) && res_campaignnew1.ImprovedNotPacing == Some(0) && res_campaignnew1.WorseNotPacing == Some(0) && res_campaignnew1.CampaignPCAdjustment == 0.9, "Validate new campaign added to adjustment file - pacing/not-pacing counters set to 0 and first adjustment stepSize back-off to 0.9. Check isTest.")
 
     val records_newcampaigns = Seq(
       res_finalCampaignAdjustments.takeRight(6).head,
@@ -276,16 +276,16 @@ class CampaignAdjustmentsTransformTest extends TTDSparkTest {
     assert(res_campaign3.ImprovedNotPacing == Some(2) && res_campaign3.CampaignPCAdjustment == 0.75 && campaign3_enddate == changedEndDate_dateTime, "Validate improved-not-pacing campaign counter (major) and mid-flight changed EndDate")
 
     val res_campaign4 = res_finalCampaignAdjustments.get(3)
-    assert(res_campaign4.WorseNotPacing == Some(2) && res_campaign4.CampaignPCAdjustment == 0.7, "Validate worse-not-pacing campaign counter and adjustment stepSize back-off")
+    assert(res_campaign4.WorseNotPacing == Some(2) && res_campaign4.CampaignPCAdjustment == 0.65, "Validate worse-not-pacing campaign counter and adjustment stepSize back-off")
 
     val res_campaign5 = res_finalCampaignAdjustments.get(4)
-    assert(res_campaign5.WorseNotPacing == Some(2) && res_campaign5.CampaignPCAdjustment == 0.65, "Validate worse-not-pacing campaign counter and adjustment aggressive stepSize back-off when EndDate close")
+    assert(res_campaign5.WorseNotPacing == Some(2) && res_campaign5.CampaignPCAdjustment == 0.6, "Validate worse-not-pacing campaign counter and adjustment aggressive stepSize back-off when EndDate close")
 
     val res_campaign6 = res_finalCampaignAdjustments.get(5)
     assert(res_campaign6.WorseNotPacing == Some(4) && res_campaign6.CampaignPCAdjustment == 1, "Validate worse-not-pacing campaign counter when worse-not-pacing days max cap is hit and adjustment resets")
 
     val res_campaign7 = res_finalCampaignAdjustments.get(6)
-    assert(res_campaign7.WorseNotPacing == Some(2) && res_campaign7.CampaignPCAdjustment == 0.4, "Validate when minimum adjustment back-off is hit and pacing percent change calculation when previous day's pacing fraction = 0")
+    assert(res_campaign7.WorseNotPacing == Some(2) && res_campaign7.CampaignPCAdjustment == 0.2, "Validate when minimum adjustment back-off is hit and pacing percent change calculation when previous day's pacing fraction = 0")
 
     val res_campaign8 = res_finalCampaignAdjustments.get(7)
     assert(res_campaign8.AddedDate == None && res_campaign8.CampaignPCAdjustment == 1.0 && res_campaign8.Pacing == None && res_campaign8.ImprovedNotPacing == None && res_campaign8.WorseNotPacing == None, "Validate when campaign was previously set to 1")
@@ -293,17 +293,17 @@ class CampaignAdjustmentsTransformTest extends TTDSparkTest {
     // DIFFERENT COMPLEX LOGIC SPECIFICALLY
 
     val res_campaign9 = res_finalCampaignAdjustments.get(8)
-    assert(res_campaign9.ImprovedNotPacing == Some(2) && res_campaign9.CampaignPCAdjustment == 0.7, "Validate complex logic: improved-not-pacing campaign counter (minor) and adjustment stepSize back-off")
+    assert(res_campaign9.ImprovedNotPacing == Some(2) && res_campaign9.CampaignPCAdjustment == 0.65, "Validate complex logic: improved-not-pacing campaign counter (minor) and adjustment stepSize back-off")
 
     val res_campaign10 = res_finalCampaignAdjustments.get(9)
-    assert(res_campaign10.ImprovedNotPacing == Some(2) && res_campaign10.CampaignPCAdjustment == 0.65, "Validate complex logic: improved-not-pacing campaign counter (minor) and adjustment aggressive stepSize back-off when EndDate close")
+    assert(res_campaign10.ImprovedNotPacing == Some(2) && res_campaign10.CampaignPCAdjustment == 0.6, "Validate complex logic: improved-not-pacing campaign counter (minor) and adjustment aggressive stepSize back-off when EndDate close")
 
     val res_campaign11 = res_finalCampaignAdjustments.get(10)
-    assert(res_campaign11.WorseNotPacing == Some(1) && res_campaign11.CampaignPCAdjustment == 0.8, "Validate complex logic: when worse-not-pacing campaign counter hit after improving-not-pacing and revert adjustment by regular stepSize")
+    assert(res_campaign11.WorseNotPacing == Some(1) && res_campaign11.CampaignPCAdjustment == 0.85, "Validate complex logic: when worse-not-pacing campaign counter hit after improving-not-pacing and revert adjustment by regular stepSize")
 
     // Check newly added campaigns to adjustments file
     val res_campaignnew1 = res_finalCampaignAdjustments.takeRight(6).head
-    assert(res_campaignnew1.Pacing == Some(0) && res_campaignnew1.ImprovedNotPacing == Some(0) && res_campaignnew1.WorseNotPacing == Some(0) && res_campaignnew1.CampaignPCAdjustment == 0.95, "Validate new campaign added to adjustment file - pacing/not-pacing counters set to 0 and first adjustment stepSize back-off to 0.95. Check isTest.")
+    assert(res_campaignnew1.Pacing == Some(0) && res_campaignnew1.ImprovedNotPacing == Some(0) && res_campaignnew1.WorseNotPacing == Some(0) && res_campaignnew1.CampaignPCAdjustment == 0.9, "Validate new campaign added to adjustment file - pacing/not-pacing counters set to 0 and first adjustment stepSize back-off to 0.9. Check isTest.")
 
     val records_newcampaigns = Seq(
       res_finalCampaignAdjustments.takeRight(6).head,

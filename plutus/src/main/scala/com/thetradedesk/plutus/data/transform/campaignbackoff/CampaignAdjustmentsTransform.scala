@@ -32,9 +32,9 @@ object CampaignAdjustmentsTransform extends Logger {
   val improvedPacingThresholdPct = -15
 
   val defaultAdjustment = 1.0
-  val stepSizeAdjustment = 0.05
-  val aggressiveStepSizeAdjustment = 0.1
-  val minAdjustment = 0.4
+  val stepSizeAdjustment = 0.1
+  val aggressiveStepSizeAdjustment = 0.15
+  val minAdjustment = 0.2
 
   def getUnderdelivery(campaignUnderdeliveryData: Dataset[CampaignThrottleMetricSchema], //campaignUnderdeliveryData: Dataset[CampaignUnderdeliveryRecord],
                        campaignFlightData: Dataset[CampaignFlightRecord],
@@ -539,14 +539,6 @@ object CampaignAdjustmentsTransform extends Logger {
   }
 
   def transform(date: LocalDate, testSplit: Option[Double], updateAdjustmentsVersion: String, fileCount: Int): Unit = {
-
-    // This dataset contains multiple entries with different dates - 5 day look-back.
-//    val campaignUnderdeliveryData = loadParquetDataDailyV2[CampaignUnderdeliveryRecord](
-//      CampaignUnderdeliveryDataset.S3PATH,
-//      CampaignUnderdeliveryDataset.S3PATH_DATE_GEN,
-//      date,
-//      4
-//    )
 
     // This dataset contains multiple entries with different dates - 5 day look-back.
     val campaignUnderdeliveryData = loadParquetDataDailyV2[CampaignThrottleMetricSchema](

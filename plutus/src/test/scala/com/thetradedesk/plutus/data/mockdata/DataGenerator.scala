@@ -210,7 +210,7 @@ object DataGenerator {
       campaignAdjustmentsPacingMock(campaignId = "campaign4", campaignFlightId = Some(4000000L), pacing = Some(0), worseNotPacing = Some(1)),
       campaignAdjustmentsPacingMock(campaignId = "campaign5", campaignFlightId = Some(5000000L), enddate = Timestamp.valueOf(LocalDateTime.of(2024, 6, 28, 0, 0)), pacing = Some(0), worseNotPacing = Some(1)),
       campaignAdjustmentsPacingMock(campaignId = "campaign6", campaignFlightId = Some(6000000L), pacing = Some(0), worseNotPacing = Some(3)),
-      campaignAdjustmentsPacingMock(campaignId = "campaign7", campaignFlightId = Some(7000000L), adjustment = 0.4, pacing = Some(0), worseNotPacing = Some(1)),
+      campaignAdjustmentsPacingMock(campaignId = "campaign7", campaignFlightId = Some(7000000L), adjustment = 0.2, pacing = Some(0), worseNotPacing = Some(1)),
       campaignAdjustmentsPacingMock(campaignId = "campaign8", campaignFlightId = Some(8000000L), adjustment = 1, pacing = Some(0), worseNotPacing = Some(4)),
       campaignAdjustmentsPacingMock(campaignId = "campaign9", campaignFlightId = Some(9000000L), pacing = Some(0), improvedNotPacing = Some(1)),
       campaignAdjustmentsPacingMock(campaignId = "campaignn10", campaignFlightId = Some(10000000L), pacing = Some(0), improvedNotPacing = Some(1)),
