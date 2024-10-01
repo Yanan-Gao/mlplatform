@@ -151,7 +151,7 @@ object PcResultsGeronimoTransform extends Logger {
     // There might be some data lost in cases where these booleans change within
     // the hour but we dont think thats worth the additional computation needed
     // to join using a moving window.
-    val productionAdgroupBudgetData = ProductionAdgroupBudgetDataset().readLatestPartitionUpToDateHour(dateTime)
+    val productionAdgroupBudgetData = ProductionAdgroupBudgetDataset().readLatestPartitionUpToDateHour(dateTime, verbose=true)
       .groupBy("AdGroupId")
       .agg(
         max("IsValuePacing").alias("IsValuePacing"),
