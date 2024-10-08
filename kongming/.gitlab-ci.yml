@@ -2,6 +2,8 @@
 variables:
   SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
   KONGMING_JAR_NAME: "kongming.jar"
+  KONGMING_JAR_NAME_PRODUCTION: "kongming_production.jar"
+  KONGMING_SHA_NAME_PRODUCTION: "kongming_production_sha.txt"
   KONGMING_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/jars/mergerequests"
   KONGMING_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/jars/snapshots"
   KONGMING_PROD_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/kongming/jars/prod"
@@ -112,6 +114,21 @@ kongming:deploy_release:
     - aws s3 cp ${KONGMING_ASSEMBLY_OUT} ${KONGMING_PROD_JAR_FOLDER}/${KONGMING_JAR_NAME}
     - popd
     - echo "ran KONGMING_deploy_release"
+  
+kongming:deploy_production:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_TAG =~ /^(kongming_production_\d{8,8}.*)$/'
+      allow_failure: false
+  script:
+    - pushd ./kongming/
+    - sbt "set test in assembly := {}" clean assembly
+    - aws s3 cp ${KONGMING_ASSEMBLY_OUT} ${KONGMING_PROD_JAR_FOLDER}/${KONGMING_JAR_NAME_PRODUCTION}
+    - echo "tag=$CI_COMMIT_TAG SHA=$CI_COMMIT_SHA">${KONGMING_SHA_NAME_PRODUCTION}
+    - aws s3 cp ${KONGMING_SHA_NAME_PRODUCTION} ${KONGMING_PROD_JAR_FOLDER}/${KONGMING_SHA_NAME_PRODUCTION}
+    - popd
+    - echo "ran KONGMING_deploy_production"
 
 kongming:push_mergerequests_scripts:
   image: "$PYTHON_BUILD_IMAGE"
