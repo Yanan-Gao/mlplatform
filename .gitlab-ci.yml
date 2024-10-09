@@ -23,6 +23,7 @@ workflow:
       when: never
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
     - if: '$CI_COMMIT_BRANCH == "master"'
+    - if: '$CI_COMMIT_TAG =~ /^(kongming_production_\d{8,8}.*)$/'
 
 # TODO: build a default image with mvn, sbt, docker, etc - so we use one image for everything
 default:
