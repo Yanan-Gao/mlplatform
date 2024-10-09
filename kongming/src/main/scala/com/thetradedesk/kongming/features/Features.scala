@@ -54,7 +54,6 @@ object Features {
     ModelFeature("AdGroupId", STRING_FEATURE_TYPE, None, 0, None),
     ModelFeature("CampaignId", STRING_FEATURE_TYPE, None, 0, None),
     ModelFeature("AdvertiserId", STRING_FEATURE_TYPE, None, 0, None),
-    ModelFeature("LogEntryTime", STRING_FEATURE_TYPE, None, 0, None)
     //ModelFeature("ImpressionPlacementId", STRING_FEATURE_TYPE, Some(500002), 1)
   )
 

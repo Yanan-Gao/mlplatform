@@ -41,12 +41,8 @@ final case class DailyAttributionEventsRecord(
                                                CampaignId: String,
                                                AdGroupId: String,
                                                Target: Int,
-                                               Revenue: Option[BigDecimal],
-                                               CustomCPACount: Double,
-                                               ConversionTrackerLogEntryTime: String,
-                                               AttributedEventLogEntryTime: String,
+                                               Revenue: Option[BigDecimal]
                                        )
-
 
 case class DailyAttributionEventsDataset(experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3Dataset[DailyAttributionEventsRecord](
