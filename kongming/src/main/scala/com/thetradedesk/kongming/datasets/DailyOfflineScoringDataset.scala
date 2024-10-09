@@ -12,7 +12,7 @@ final case class DailyOfflineScoringRecord(
                                            CampaignIdStr: String,
                                            AdvertiserIdStr: String,
                                            IsTracked: Int,
-
+                                           LogEntryTimeStr: String,
                                            // ImpressionPlacementId: Option[String],
                                            SupplyVendor: Option[Int],
                                            SupplyVendorPublisherId: Option[Int],
@@ -126,7 +126,7 @@ final case class OldDailyOfflineScoringRecord(
                                            CampaignIdStr: String,
                                            AdvertiserIdStr: String,
                                            IsTracked: Int,
-
+                                           LogEntryTimeStr: String,
                                            // ImpressionPlacementId: Option[String],
                                            SupplyVendor: Option[Int],
                                            SupplyVendorPublisherId: Option[Int],

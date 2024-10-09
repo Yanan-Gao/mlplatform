@@ -13,7 +13,7 @@ import org.apache.spark.sql.{Column, Dataset}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.DoubleType
-
+import org.apache.spark.sql.Encoder
 import java.time.LocalDate
 
 object TrainSetTransformation {
@@ -38,7 +38,16 @@ object TrainSetTransformation {
                                    Target: Int,
                                    Revenue: Option[BigDecimal],
                                    IsInTrainSet: Boolean
+                                 )
 
+  case class PreFeatureJoinRecordV2(
+                                   CampaignIdStr: String,
+                                   BidRequestIdStr: String,
+                                   ConversionTrackerLogEntryTime: String,
+                                   LogEntryTimeStr: String,
+                                   CPACountWeight: Double,
+                                   Target: Int,
+                                   Weight: Double
                                  )
 
   case class TrainSetRecord(
@@ -208,6 +217,51 @@ object TrainSetTransformation {
       .withColumnRenamed("AdGroupId", "ConfigValue")
       .selectAs[TrackingTagWeightsRecord]
     // renaming AdGroupId to ConfigValue here only serve for matching the schema. AdGroupId in this table is not limited to ConfigValues in policy table
+  }
+
+  def generateWeightForNegativeV2[T: Encoder](
+                                 negativeSamples: Dataset[T],
+                                 positiveSamples: Dataset[T],
+                                 lookBackDays: Int,
+                                 weightMethod: Option[String] = None,
+                                 methodDistParams: NegativeWeightDistParams,
+                               ): Dataset[T] = {
+
+    val adGroupDailyConvDist = positiveSamples
+      .withColumn("BidDiffDayInt", floor((unix_timestamp($"ConversionTrackerLogEntryTime") - unix_timestamp($"LogEntryTimeStr","yyyy-MM-dd HH:mm:ss")) / 86400).cast("int"))
+      .groupBy("CampaignIdStr", "BidDiffDayInt").agg(count($"BidRequestIdStr").alias("PosDailyCnt"))
+
+    val dayRange = (0 to lookBackDays).toList
+    val adGroupRangeDF = adGroupDailyConvDist.select("CampaignIdStr").distinct()
+      .withColumn("DateRange", typedLit(dayRange))
+      .withColumn("BidDiffDayInt", explode($"DateRange"))
+      .drop("DateRange")
+    val adGroupRangeConvDist = adGroupRangeDF
+      .join(adGroupDailyConvDist, Seq("CampaignIdStr", "BidDiffDayInt"), "left")
+      .withColumn("PosDailyCnt", coalesce('PosDailyCnt, lit(0)))
+      .withColumn("CampaignGroupSize", sum("PosDailyCnt").over(Window.partitionBy("CampaignIdStr")))
+      .withColumn("PosPctInNDay", sum("PosDailyCnt").over(Window.partitionBy("CampaignIdStr").orderBy("BidDiffDayInt"))
+        / $"CampaignGroupSize")
+    val negativeWithAdjustedWeight = weightMethod match {
+      case Some("PostDistVar") => {
+        /*
+        Use the actual cumulative positive sample distribution to weight large ConfigValue (# pos > Threshold)
+        e.g. If # pos in first 2 days took 40% of total, use 0.4 to weight negatives happened 2 days ago
+        For small ConfigValue, the weighting is calculated by an exponential function: 1 - Offset * exp( Coef * DayDiff )
+         */
+        // broadcast join here cause adGroupRangeConvDist is small
+        negativeSamples
+        .withColumn("BidDiffDayInSeconds", (unix_timestamp(date_add(lit(date), 1)) - unix_timestamp($"LogEntryTimeStr","yyyy-MM-dd HH:mm:ss")) / 86400)
+        .withColumn("BidDiffDayInt", floor($"BidDiffDayInSeconds"))
+        .join(broadcast(adGroupRangeConvDist), Seq("CampaignIdStr", "BidDiffDayInt"), "left")
+        .withColumn("WeightDecayFunc", lit(1) - lit(methodDistParams.Offset) * exp(lit(methodDistParams.Coefficient) * $"BidDiffDayInSeconds"))
+        .withColumn("Weight", when($"CampaignGroupSize" > methodDistParams.Threshold, $"PosPctInNDay").otherwise($"WeightDecayFunc").cast(DoubleType))
+      }
+      case _ => { // default is non-weighting
+        negativeSamples
+      }
+    }
+    negativeWithAdjustedWeight.selectAs[T]
   }
 
   def generateWeightForPositive(
@@ -524,5 +578,24 @@ object TrainSetTransformation {
       .selectAs[PreFeatureJoinRecord].toDF()
     val orgValidationset = validation.toDF()
     adjustedTrainset.union(orgValidationset).selectAs[PreFeatureJoinRecord]
+  }
+
+  def balanceWeightForTrainset(trainset: Dataset[UserDataValidationDataForModelTrainingRecord], desiredNegOverPos: Int): Dataset[UserDataValidationDataForModelTrainingRecord] = {
+    // Cache the trainset as we are using it multiple times
+    val cachedTrainset = trainset.cache()
+
+    val sumWeight = cachedTrainset.filter(col("Target") === 0).groupBy("AdGroupId").agg(sum("Weight").as("NegSumWeight"))
+    .join(cachedTrainset.filter(col("Target") === 1).groupBy("AdGroupId").agg(sum("Weight").as("PosSumWeight")), Seq("AdGroupId"), "inner")
+
+    // Repartition to distribute data evenly across partitions
+    val repartitionedSumWeight = 
+      sumWeight
+      .withColumn("Coefficient", when($"PosSumWeight" > 0, $"NegSumweight" / $"PosSumWeight").otherwise($"NegSumWeight"))
+      .repartition(col("AdGroupId"))
+
+    val adjustedTrainset = cachedTrainset.join(broadcast(repartitionedSumWeight), Seq("AdGroupId"), "inner")
+          .withColumn("Weight", when(col("Target") === 1, col("Weight") * col("Coefficient") / lit(desiredNegOverPos)).otherwise(col("Weight")))
+
+    adjustedTrainset.selectAs[UserDataValidationDataForModelTrainingRecord]
   }
 }

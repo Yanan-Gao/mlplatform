@@ -7,7 +7,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.kongming.transform.AudienceIdTransform.AudienceFeature
 import org.apache.spark.sql.{Column, Dataset}
-import org.apache.spark.sql.functions.{col, concat, lit, substring, when, size}
+import org.apache.spark.sql.functions.{col, concat, lit, substring, when, date_format, size}
 
 import java.time.LocalDate
 
@@ -29,6 +29,7 @@ object OfflineScoringSetTransform {
                     (implicit prometheus: PrometheusClient): Dataset[OldDailyOfflineScoringRecord] = {
     val bidsImp = bidsImpressions.filter('IsImp)
       //Assuming ConfigKey will always be adgroupId.
+      .withColumn("LogEntryTime", date_format($"LogEntryTime", "yyyy-MM-dd HH:mm:ss"))
       .withColumn("AdFormat",concat(col("AdWidthInPixels"),lit('x'), col("AdHeightInPixels")))
       .withColumn("RenderingContext", $"RenderingContext.value")
       .withColumn("DeviceType", $"DeviceType.value")
