@@ -29,7 +29,7 @@ object GenerateTrainSetClick extends KongmingBaseJob {
   val valSetPartitionCount = config.getInt("valSetPartitionCount", partCount.valSet)
 
 
-  def generateTrainSetClick()(implicit prometheus: PrometheusClient): Dataset[ValidationDataForModelTrainingRecord] = {
+  def generateTrainSetClick()(implicit prometheus: PrometheusClient): Dataset[UserDataValidationDataForModelTrainingRecord] = {
 
     val lookback = if (incTrain) 0 else clickLookback
 
@@ -57,13 +57,16 @@ object GenerateTrainSetClick extends KongmingBaseJob {
         ).withColumn("Weight", lit(1))
         .drop("PosCount","NegCount","NegRatio")
 
-    }).reduce(_.union(_)).cache()
+    }).reduce(_.union(_))
+      .withColumn("UserDataOptIn",lit(2))
+      .cache()
+    // userdataoptin hashmod 1 ->2
 
-    val parquetSelectionTabular = sampledImpressions.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqDirectFields)
+    val parquetSelectionTabular = sampledImpressions.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqDirectFields ++ seqHashFields)
 
     sampledImpressions
       .select(parquetSelectionTabular: _*)
-      .selectAs[ValidationDataForModelTrainingRecord](nullIfAbsent = true)
+      .selectAs[UserDataValidationDataForModelTrainingRecord](nullIfAbsent = true)
 
   }
 
@@ -82,13 +85,27 @@ object GenerateTrainSetClick extends KongmingBaseJob {
       aliasedModelFeatureNames(keptFields) ++ rawModelFeatureNames(seqDirectFields)
     }
 
+    // save as csv no userdata
     if (saveTrainingDataAsCSV) {
       val csvDS = if (incTrain) DataIncCsvForModelTrainingDatasetClick() else DataCsvForModelTrainingDatasetClick()
       val csvTrainRows = csvDS.writePartition(
-        adjustedTrainParquet.drop(tfDropColumnNames: _*).selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
+        adjustedTrainParquet.drop(aliasedModelFeatureNames(userFeatures):_*).drop(tfDropColumnNames: _*).selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
         date, "train", Some(trainSetPartitionCount))
       val csvValRows = csvDS.writePartition(
-        adjustedValParquet.drop(tfDropColumnNames: _*).selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
+        adjustedValParquet.drop(aliasedModelFeatureNames(userFeatures):_*).drop(tfDropColumnNames: _*).selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
+        date, "val", Some(valSetPartitionCount))
+      trainsetRows = Array(csvTrainRows, csvValRows)
+    }
+
+    // save as csv with userdata
+    if (saveTrainingDataAsCSV) {
+      // with userdata trainset
+      val csvDS = if (incTrain) UserDataIncCsvForModelTrainingDatasetClick() else UserDataCsvForModelTrainingDatasetClick()
+      val csvTrainRows = csvDS.writePartition(
+        adjustedTrainParquet.drop(tfDropColumnNames: _*).selectAs[UserDataForModelTrainingRecord](nullIfAbsent = true),
+        date, "train", Some(trainSetPartitionCount))
+      val csvValRows = csvDS.writePartition(
+        adjustedValParquet.drop(tfDropColumnNames: _*).selectAs[UserDataForModelTrainingRecord](nullIfAbsent = true),
         date, "val", Some(valSetPartitionCount))
       trainsetRows = Array(csvTrainRows, csvValRows)
     }
