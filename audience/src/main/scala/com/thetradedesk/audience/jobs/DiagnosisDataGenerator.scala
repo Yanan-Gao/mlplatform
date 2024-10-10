@@ -2,11 +2,13 @@ package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.dateTime
+import com.thetradedesk.spark.datasets.sources.AdvertiserDataSet
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.AdGroupDataSet
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.Dataset
+import org.apache.spark.sql.expressions.Window
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -17,8 +19,19 @@ object DiagnosisDataGenerator {
     val dateStr = date.format(DateTimeFormatter.ofPattern("yyyyMMdd"))
     val reportDateStr = date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
 
+    val advertisers = AdvertiserDataSet().readLatestPartitionUpTo(date, true)
+      .select("AdvertiserId", "CurrencyCodeId")
+
+    val exchangeRate = spark.read.parquet(s"s3://thetradedesk-useast-qubole/warehouse.external/thetradedesk.db/provisioning/currencyexchangerate/v=1/date=$dateStr/")
+      .withColumn("row", row_number().over(Window.partitionBy("CurrencyCodeId").orderBy(desc("AsOfDateUTC"))))
+      .filter(col("row") === 1)
+      .select("CurrencyCodeId", "FromUSD")
+
     val adgroups = AdGroupDataSet().readLatestPartitionUpTo(date, true)
-      .select("CampaignId", "AdGroupId", "ROIGoalTypeId", "MaxBidCPMInAdvertiserCurrency")
+      .join(advertisers, Seq("AdvertiserId"), "left")
+      .join(exchangeRate, Seq("CurrencyCodeId"), "left")
+      .withColumn("MaxBidCPM", col("MaxBidCPMInAdvertiserCurrency") / col("FromUSD"))
+      .select("CampaignId", "AdGroupId", "ROIGoalTypeId", "MaxBidCPM")
 
     val auctionlog = spark.read.parquet(s"s3a://ttd-identity/datapipeline/prod/internalauctionresultslog/v=1/date=$dateStr/hour=$hour")
       .select(col("AvailableBidRequestId"), explode(col("AdGroupCandidates")))
@@ -34,7 +47,7 @@ object DiagnosisDataGenerator {
         count(when(col("RValueType") === "DynamicBid", 1).otherwise(null)).as("DynamicBidCount"),
         count(when(col("RValueType") === "ControlledBid", 1).otherwise(null)).as("ControlledBidCount"),
         count(when(col("RValueType") === "MaxBid", 1).otherwise(null)).as("RMaxBidCount"),
-        count(when(col("BidPriceBeforePredictiveClearing") === col("MaxBidCPMInAdvertiserCurrency"), 1).otherwise(null)).as("MaxBidCount"),
+        count(when(col("BidPriceBeforePredictiveClearing") >= col("MaxBidCPM") * 0.99, 1).otherwise(null)).as("MaxBidCount"),
         count(when(col("MatchedPrivateContract") === true, 1).otherwise(null)).as("PrivateContractCount"),
         count(when(col("RelevanceResultSource") === 0, 1).otherwise(null)).as("RelevanceSourceNoneCount"),
         count(when(col("RelevanceResultSource") === 1, 1).otherwise(null)).as("RelevanceSourceModelCount"),
