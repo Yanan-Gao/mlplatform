@@ -128,7 +128,7 @@ case class PcResultsMergedDataset(
 
                                    // Fields from PredictiveClearingStrategy
                                    Model: String,
-                                   Strategy: Int, // Contains the pushdown reducer value
+                                   Strategy: Int, // Contains either the pushdown reducer, open path adjustment, or campaign pc adjustment value applied
 
                                    LossReason: Int, // from MinimumBidToWin data
                                    WinCPM: Double, // from MinimumBidToWin data
