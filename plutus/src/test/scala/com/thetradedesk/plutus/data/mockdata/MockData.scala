@@ -40,7 +40,7 @@ object MockData {
 
   def bidsImpressionsMock(FeeFeatureUsage: Seq[FeeFeatureUsageLogBackingData] = Seq(),
                           JanusVariantMap: Option[Map[String, String]] = None,
-                          ModelVersionsUsed: Option[Map[String, Long]] = None,
+                          ModelVersionsUsed: Option[Map[String, Long]] = None
                          ) =
     BidsImpressionsSchema(
       // bidrequest cols
@@ -107,17 +107,22 @@ object MockData {
       PredictiveClearingMode = Option(PredictiveClearingModeLookupRecord()),
       PredictiveClearingRandomControl = false,
       PlutusTfModel = Some("plutusMock"),
-
-      AdInfoSpoInventoryIdHash = Some(0L),
-      AdInfoSpoFilteredStatusId = Some(0),
+      VolumeControlPriorityKeepRate = None,
 
       // bidfeedback cols
 
       MediaCostCPMInUSD = Some(9000.0),
       DiscrepancyAdjustmentMultiplier = Some(1.0),
+      AdvertiserCostInUSD = None,
+      PartnerCostInUSD = None,
+      TTDCostInUSD = None,
+      AdvertiserCurrencyExchangeRateFromUSD = None,
 
       SubmittedBidAmountInUSD = 10.0,
       ImpressionsFirstPriceAdjustment = Some(0.9),
+
+      BillingEventId = None,
+      FeeFeatureUsage= FeeFeatureUsage,
 
       IsImp = true,
 
@@ -151,7 +156,6 @@ object MockData {
       IsEnabled = Option(false),    //koa always on or always off
       UserSegmentCount = Option(1000),
 
-      VolumeControlPriorityKeepRate = None,
       MatchedSegments = Seq[Long](),
       ExpectedValue = Option(200d),
       RPacingValue = Option(0.5),
@@ -159,12 +163,8 @@ object MockData {
       ModelVersionsUsed = ModelVersionsUsed,
       UserAgeInDays = Option(20),
 
-      AdvertiserCostInUSD = None,
-      PartnerCostInUSD = None,
-      TTDCostInUSD = None,
-      AdvertiserCurrencyExchangeRateFromUSD = None,
-      BillingEventId = None,
-      FeeFeatureUsage= FeeFeatureUsage
+      AdInfoSpoInventoryIdHash = Some(0L),
+      AdInfoSpoFilteredStatusId = Some(0)
     )
 
   val privateContractsMock = PrivateContractRecord(
@@ -294,7 +294,7 @@ object MockData {
     CampaignId = campaignId,
     AdGroupId = Some("mno012"),
 
-    SupplyVendor = supplyVendor,//Some("cafemedia"),
+    SupplyVendor = supplyVendor,
     SupplyVendorPublisherId = Some("983"),
     AliasedSupplyPublisherId = Some(1),
     SupplyVendorSiteId = Some(""),
@@ -402,8 +402,7 @@ object MockData {
 
     // Fields from PredictiveClearingStrategy
     Model = model,
-    Strategy = strategy,//100, // Contains the pushdown reducer value
-
+    Strategy = strategy,
     LossReason = 1, // from MinimumBidToWin data
     WinCPM = 1.0d, // from MinimumBidToWin data
     mbtw = 20.0d,//1.0d, // from MinimumBidToWin data
