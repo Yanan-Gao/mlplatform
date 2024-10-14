@@ -63,6 +63,14 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
      * to allow for the data generation to be parallelised during testing/backfilling for some test cases.
      */
     var TryMaintainConfigValue = config.getBoolean("AdGroupPolicyGenerator.TryMaintainConfigValue", true)
+
+    /*
+      For staging DAG, we don't run full dataset, instead a sampled subset. The sampling ratio is controlled
+      by AdGroupPolicyGenerator.SamplingMod. If it is 0, means no sampling, if it's N, then we sample 1/N of the
+      data
+     */
+    var Salt = config.getString("AdGroupPolicyGenerator.Salt", "salty")
+    var SamplingMod = config.getInt("AdGroupPolicyGenerator.SamplingMod", 0)
   }
 
   class ConditionalRule(condition: Column, value: Column) {
@@ -240,8 +248,11 @@ object AdGroupPolicyGenerator extends KongmingBaseJob {
     val includeInCustomGoalCol = IncludeInCustomGoal.get(task).get
     val roiGoalTypeIdValue = ROIGoalTypeId.get(task).get
 
-    val adGroups = AdGroupDataSet().readLatestPartitionUpTo(date, true)
+    var adGroups = AdGroupDataSet().readLatestPartitionUpTo(date, true)
       .select("AdGroupId", "CampaignId", "AdvertiserId", "PartnerId", "ROIGoalTypeId")
+    if (Config.SamplingMod > 0) {
+      adGroups = adGroups.filter(xxhash64(concat('CampaignId, lit(Config.Salt))) % Config.SamplingMod === lit(0))
+    }
     var campaignROIGoal = CampaignROIGoalDataSet().readLatestPartitionUpTo(date, true)
     campaignROIGoal = task match {
       case "roas" => campaignROIGoal
