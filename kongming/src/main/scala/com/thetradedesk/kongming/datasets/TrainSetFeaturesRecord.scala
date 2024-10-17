@@ -7,6 +7,7 @@ final case class TrainSetFeaturesRecord (
                                           CampaignId: String,
                                           AdvertiserId: String,
 
+                                          LogEntryTime: String,
                                           Weight: Double,
                                           Target: Int,
                                           Revenue: Option[BigDecimal],
