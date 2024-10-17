@@ -360,6 +360,7 @@ object TrainSetTransformation {
 
     // attachTrainsetWithFeature function
     val df = trainset.join(bidimpression.drop("AdGroupId", "LogEntryTime"), Seq("BidRequestId"), joinType = "inner")
+      .withColumn("LogEntryTime", date_format($"LogEntryTime", "yyyy-MM-dd HH:mm:ss"))
       .withColumn("AdFormat", concat(col("AdWidthInPixels"), lit('x'), col("AdHeightInPixels")))
       .withColumn("RenderingContext", $"RenderingContext.value")
       .withColumn("DeviceType", $"DeviceType.value")
