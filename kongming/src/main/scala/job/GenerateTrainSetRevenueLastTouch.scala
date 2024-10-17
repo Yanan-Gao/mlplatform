@@ -45,8 +45,9 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
       val AttrDates = (ImpDate.toEpochDay to date.toEpochDay).map(LocalDate.ofEpochDay)
       val dailyImp = OldDailyOfflineScoringDataset().readDate(ImpDate)
       val attr = AttrDates.map(dt => {
-        DailyAttributionEventsDataset().readPartition(dt, ImpDate.format(DefaultTimeFormatStrings.dateTimeFormatter))
-      }).reduce(_.union(_))
+        if (DailyAttributionEventsDataset().partitionExists(dt, ImpDate.format(DefaultTimeFormatStrings.dateTimeFormatter)))
+          DailyAttributionEventsDataset().readPartition(dt, ImpDate.format(DefaultTimeFormatStrings.dateTimeFormatter)) else null
+      }).filter(_ != null).reduce(_.union(_))
 
       val winBR = Window.partitionBy("BidRequestId")
       val sampledAttr = attr.withColumn("BRConv", count($"Target").over(winBR))
@@ -95,6 +96,7 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
     val parquetSelectionTabular = cappedImpressions.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqDirectFields)
 
     cappedImpressions
+      .repartition(trainSetPartitionCount, rand(seed = samplingSeed)).orderBy(rand(seed = samplingSeed))
       .select(parquetSelectionTabular: _*)
       .selectAs[ValidationDataForModelTrainingRecord]
 
