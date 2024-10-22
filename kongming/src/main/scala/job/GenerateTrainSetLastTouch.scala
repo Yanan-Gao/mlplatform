@@ -91,7 +91,7 @@ object GenerateTrainSetLastTouch extends KongmingBaseJob {
         .withColumn("PosRatio", lit(maxPositiveCount)/$"PosCount")
         .withColumn("NegRatio", when($"PosCount" < lit(maxPositiveCount), $"PosCount").otherwise(lit(maxPositiveCount)) * lit(desiredNegOverPos) / $"NegCount")
         .withColumn("ConversionTrackerLogEntryTime", coalesce('ConversionTrackerLogEntryTime, lit(null).cast("timestamp")))
-        .withColumn("UserDataOptIn", lit(1))
+        .withColumn("UserDataOptIn", lit(2))
 
       impWithAttr
         .filter($"Target" === lit(1))
