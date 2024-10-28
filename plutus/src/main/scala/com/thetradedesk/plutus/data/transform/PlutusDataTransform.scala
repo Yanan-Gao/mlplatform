@@ -72,6 +72,7 @@ object PlutusDataTransform extends Logger {
 
     val versionedOutputPath = s"$outputPath/v=$dataVersion"
     val mergedDataset: Dataset[PcResultsMergedDataset] = loadParquetData[PcResultsMergedDataset](PcResultsMergedDataset.S3_PATH(Some(envForRead)), date)
+      .filter(! (col("IsImp") === false && col("BidBelowFloorExceptedSource") =!= 0)) // remove BBF bids (keep the impressions)
 
     // should just check that the data contains these rather than filtering to this list
     val modelFeatures = loadModelFeatures(featuresJson)
