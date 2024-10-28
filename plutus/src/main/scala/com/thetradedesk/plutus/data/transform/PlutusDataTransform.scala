@@ -100,7 +100,7 @@ object PlutusDataTransform extends Logger {
           .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
           .write
           .mode(SaveMode.Overwrite)
-          .parquet(s"$versionedOutputPath/${envForWrite}/explicit/sv/$sv/${cleanOutputPrefix}/${explicitDatePart(date)}")
+          .parquet(s"""$versionedOutputPath/$envForWrite/explicit/sv/${sv.replaceAll(" ", "")}/$cleanOutputPrefix/${explicitDatePart(date)}""")
 
         cleanExplicitDataset
           .filter(col("SupplyVendor") === sv)
@@ -109,7 +109,7 @@ object PlutusDataTransform extends Logger {
           .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
           .write
           .mode(SaveMode.Overwrite)
-          .parquet(s"$versionedOutputPath/${envForWrite}/explicit/sv/$sv/${cleanOutputPrefix}-hashed-mod-maxint/${explicitDatePart(date)}")
+          .parquet(s"""$versionedOutputPath/$envForWrite/explicit/sv/${sv.replaceAll(" ", "")}/$cleanOutputPrefix-hashed-mod-maxint/${explicitDatePart(date)}""")
     }
 
     val channelTypes = cleanExplicitDataset.select("ChannelSimple").distinct().as[String].collect().toSeq
@@ -120,7 +120,7 @@ object PlutusDataTransform extends Logger {
           .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
           .write
           .mode(SaveMode.Overwrite)
-          .parquet(s"$versionedOutputPath/${envForWrite}/explicit/ch/$ch/${cleanOutputPrefix}/${explicitDatePart(date)}")
+          .parquet(s"""$versionedOutputPath/$envForWrite/explicit/ch/${ch.replaceAll(" ", "")}/$cleanOutputPrefix/${explicitDatePart(date)}""")
 
         cleanExplicitDataset
           .filter(col("Channel") === ch)
@@ -129,7 +129,7 @@ object PlutusDataTransform extends Logger {
           .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
           .write
           .mode(SaveMode.Overwrite)
-          .parquet(s"$versionedOutputPath/${envForWrite}/explicit/ch/$ch/${cleanOutputPrefix}-hashed-mod-maxint/${explicitDatePart(date)}")
+          .parquet(s"""$versionedOutputPath/$envForWrite/explicit/ch/${ch.replaceAll(" ", "")}/$cleanOutputPrefix-hashed-mod-maxint/${explicitDatePart(date)}""")
     }
     cleanExplicitDataset.unpersist()
   }
@@ -199,7 +199,7 @@ object PlutusDataTransform extends Logger {
           .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
           .write
           .mode(SaveMode.Overwrite)
-          .parquet(s"$versionedOutputPath/${envForWrite}/implicit/ch/$ch/sample=${(implicitSampleRate * 100).intValue()}/${cleanOutputPrefix}/${explicitDatePart(date)}")
+          .parquet(s"""$versionedOutputPath/$envForWrite/implicit/ch/${ch.replaceAll(" ", "")}/sample=${(implicitSampleRate * 100).intValue()}/$cleanOutputPrefix/${explicitDatePart(date)}""")
 
         cleanImplicitDataset
           .filter(col("Channel") === ch)
@@ -208,7 +208,7 @@ object PlutusDataTransform extends Logger {
           .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
           .write
           .mode(SaveMode.Overwrite)
-          .parquet(s"$versionedOutputPath/${envForWrite}/implicit/ch/$ch/sample=${(implicitSampleRate * 100).intValue()}/${cleanOutputPrefix}-hashed-mod-maxint/${explicitDatePart(date)}")
+          .parquet(s"""$versionedOutputPath/$envForWrite/implicit/ch/${ch.replaceAll(" ", "")}/sample=${(implicitSampleRate * 100).intValue()}/$cleanOutputPrefix-hashed-mod-maxint/${explicitDatePart(date)}""")
     }
     cleanImplicitDataset.unpersist()
   }
