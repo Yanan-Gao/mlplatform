@@ -117,7 +117,7 @@ case class PcResultsMergedDataset(
                                    OptOutDueToFloor: Boolean,
                                    FloorPrice: Double,
                                    PartnerSample: Boolean,
-                                   BidBelowFloorExceptedSource: Int,
+                                   BidBelowFloorExceptedSource: Int, // 0 = off 1 = gauntlet bbf 2 = plutus bbf 
                                    FullPush: Boolean,
 
                                    // Fields From PlutusLog
