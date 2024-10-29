@@ -18,11 +18,14 @@ import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.{IntegerType, StringType, StructField, StructType, DoubleType}
+import org.apache.spark.sql.types.{DoubleType, IntegerType, StringType, StructField, StructType}
 import org.apache.spark.sql.{Column, DataFrame, Row, SaveMode}
 
+import java.nio.ByteBuffer
+import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.util.{Base64, UUID}
 import scala.util.Try
 
 /**
@@ -92,7 +95,7 @@ abstract class AudienceModelInputGenerator(name: String, val sampleRate: Double)
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
     val bidsImpressionsLong = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack=Some(AudienceModelInputGeneratorConfig.bidImpressionLookBack), source = Some(GERONIMO_DATA_SOURCE))
-      .withColumnRenamed("UIID", "TDID")
+      .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdType))
       .filter(samplingFunction('TDID))
       .select('BidRequestId, // use to connect with bidrequest, to get more features
         'AdvertiserId,
@@ -223,7 +226,7 @@ abstract class AudienceModelInputGenerator(name: String, val sampleRate: Double)
       AudienceModelInputGeneratorConfig.positiveSampleLowerThreshold,
       AudienceModelInputGeneratorConfig.positiveSampleSmoothingFactor,
       downSampleFactor
-      )
+    )
 
     // val labelDatasetSize = (labels.count()*(1000000.0/config.getInt(s"userDownSampleHitPopulation${name}", default = 1000000))).toLong
 
@@ -235,7 +238,7 @@ abstract class AudienceModelInputGenerator(name: String, val sampleRate: Double)
       AudienceModelInputGeneratorConfig.positiveSampleUpperThreshold,
       labelDatasetSize,
       downSampleFactor
-      )
+    )
 
     // downsample positive labels to keep # of positive labels among targets balanced
     val labelResult = labels

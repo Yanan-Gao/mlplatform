@@ -9,10 +9,9 @@ import com.amazonaws.services.s3.AmazonS3ClientBuilder
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.catalyst.expressions.XxHash64Function
 import org.apache.spark.sql.functions._
-import org.apache.spark.unsafe.types.UTF8String
 
 import java.time.format.DateTimeFormatter
-import java.time.{LocalDate, LocalDateTime}
+import java.time.LocalDate
 
 package object audience {
   var date = config.getDate("date", LocalDate.now())
@@ -72,6 +71,16 @@ package object audience {
 
   def shouldTrackTDID(symbol: Symbol): Column = {
     symbol.isNotNullOrEmpty && symbol =!= doNotTrackTDIDColumn
+  }
+
+  def getUiid(uiid: Symbol, uid2: Symbol, euid: Symbol, idType: Symbol): Column = {
+    when(idType === lit("TDID") || idType === lit("DeviceAdvertisingId"), uiid).otherwise(
+      when(idType === lit("UnifiedId2"), uid2).otherwise(
+        when(uiid === lit(null) && euid =!= lit(null), euid).otherwise(
+          uiid
+        )
+      )
+    )
   }
 
   def getClassName(obj: Any): String = {

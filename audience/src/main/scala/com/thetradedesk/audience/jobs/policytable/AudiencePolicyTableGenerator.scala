@@ -109,7 +109,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
     val uniqueTDIDs = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(Config.bidImpressionLookBack), source = Some(GERONIMO_DATA_SOURCE))
-      .withColumnRenamed("UIID", "TDID")
+      .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdType))
       .filter(samplingFunction('TDID))
       .select('TDID)
       .repartition(Config.bidImpressionRepartitionNum, 'TDID)

@@ -25,7 +25,7 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-mllib" % sparkVersion % "provided",
 
   "com.typesafe" % "config" % "1.3.0",
-  "com.thetradedesk" %% "geronimo" % "0.2.17-SNAPSHOT",
+  "com.thetradedesk" %% "geronimo" % "0.2.30-SNAPSHOT",
   "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
 
   "io.prometheus" % "simpleclient" % prometheusVersion,
