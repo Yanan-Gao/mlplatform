@@ -50,7 +50,8 @@ case class ModelInputRecord(
     OriginalCountry: String,
 
     UIID: String,
-    LogEntryTime: java.sql.Timestamp
+    LogEntryTime: java.sql.Timestamp,
+    excluded: Int
 
 )
 

@@ -4,14 +4,13 @@ import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, FLOAT_FEATURE_TYPE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, loadModelFeatures}
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import com.thetradedesk.logging.Logger
-import com.thetradedesk.philo.{flattenData, schema, shiftModUdf, addOriginalCols}
-import com.thetradedesk.philo.schema.{ClickTrackerRecord, ModelInputRecord, ModelInputUserRecord,
-  CampaignROIGoalDataSet, CampaignROIGoalRecord, AdGroupDataSet, AdGroupRecord, CreativeLandingPageRecord}
+import com.thetradedesk.philo.{addOriginalCols, debugInfo, flattenData, schema, shiftModUdf}
+import com.thetradedesk.philo.schema.{AdGroupDataSet, AdGroupRecord, AdvertiserExclusionRecord, CampaignROIGoalDataSet, CampaignROIGoalRecord, ClickTrackerRecord, CreativeLandingPageRecord, ModelInputRecord, ModelInputUserRecord}
 import com.thetradedesk.spark.sql.SQLFunctions._
 import org.apache.spark.sql.{Column, DataFrame, Dataset, SparkSession}
-import org.apache.spark.sql.functions.{col, sum, max, concat_ws, lit, when, xxhash64, udf, expr, size, count, mean, stddev}
+import org.apache.spark.sql.functions.{col, concat_ws, count, expr, lit, max, mean, size, stddev, sum, udf, when, xxhash64}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import job.{CountryFilterRecord}
+import job.CountryFilterRecord
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.types.IntegerType
 import org.apache.spark.sql.expressions.Window
@@ -20,7 +19,7 @@ import com.thetradedesk.spark.util.TTDConfig.config
 object ModelInputTransform extends Logger {
 
   val flatten_set = Set("AdsTxtSellerType","PublisherType", "DeviceType", "OperatingSystemFamily", "Browser", "RenderingContext", "DoNotTrack")
-
+  val addCols = Seq("label", "BidRequestId", "UIID", "LogEntryTime", "excluded")
   // Precomputed thresholds for different number of impression percentiles used for click-bot filtering
   // can also use percentileToThreshold() to get exact values but this takes too much time
   val impression_97 = 18
@@ -46,20 +45,30 @@ object ModelInputTransform extends Logger {
                 modelFeatures: Seq[ModelFeature],
                 addUserData: Boolean,
                 filterClickBots: Boolean,
-                numUserCols: Int): (DataFrame, DataFrame) = {
+                numUserCols: Int,
+                advertiserExclusionList: Option[Dataset[AdvertiserExclusionRecord]],
+                debug: Boolean): (DataFrame, DataFrame) = {
     val (clickLabels, bidsImpsPreJoin) = addBidAndClickLabels(clicks, bidsImpsDat)
     val preFilteredData = preFilterJoin(clickLabels, bidsImpsPreJoin)
     val filteredData = preFilteredData
+      .transform(ds => addExclusionFlag(ds, advertiserExclusionList))
       // if not filterResults, filterAdGroup will be false and countryFilter will be None, it will just left join adgroup
       .transform(ds => filterDataset(ds, adgroup, filterAdGroup, countryFilter))
       .transform(ds => creativeLandingPage.map(clp => ModelInputTransform.matchLandingPage(ds, clp)).getOrElse(ds))
-    val (addKeptCols, originalColNames) = addOriginalCols(keptCols, filteredData.toDF)
 
+
+
+    val (addKeptCols, originalColNames) = addOriginalCols(keptCols, filteredData.toDF)
+    if (debug) {
+      debugInfo("PreFilteredData", preFilteredData)
+      debugInfo("filteredData", filteredData)
+      debugInfo("addKeptCols", addKeptCols)
+    }
     if (addUserData) {
 
       val data = addUserDataFeatures(addKeptCols, numUserCols, filterClickBots)
       val flatten = flattenData(data, flatten_set).selectAs[ModelInputUserRecord]
-      val labelCounts = flatten.groupBy("label").count()
+      val labelCounts = flatten.groupBy("label", "excluded").count()
       val hashedData = getHashedUserData(flatten, modelFeatures, originalColNames)
 
       val columnNames = (0 until numUserCols).map(i => s"UserData_Column$i")
@@ -71,15 +80,20 @@ object ModelInputTransform extends Logger {
             col(colName)
         }: _*
       )
-
+      if (debug) {
+        debugInfo("updatedHashedData", updatedHashedData)
+      }
       (updatedHashedData, labelCounts)
 
   } else {
 
       val flatten = flattenData(addKeptCols, flatten_set).selectAs[ModelInputRecord]
-      val labelCounts = flatten.groupBy("label").count()
-      val hashedData = getHashedData(flatten, modelFeatures, originalColNames)
 
+      val labelCounts = flatten.groupBy("label", "excluded").count()
+      val hashedData = getHashedData(flatten, modelFeatures, originalColNames)
+      if (debug) {
+        debugInfo("hashedData", hashedData)
+      }
       (hashedData, labelCounts)
     }
   }
@@ -301,9 +315,9 @@ object ModelInputTransform extends Logger {
 
   def getHashedData(flatten: Dataset[ModelInputRecord], modelFeatures: Seq[ModelFeature],
                     originalColNames: Seq[String]): DataFrame ={
-    val additionalCols = Seq("label", "BidRequestId", "UIID", "LogEntryTime") ++ originalColNames
+    val origCols = addCols ++ originalColNames
     // todo: we need a better way to track these fields
-    val selectionQuery = intModelFeaturesCols(modelFeatures) ++ additionalCols.map(col)
+    val selectionQuery = intModelFeaturesCols(modelFeatures) ++ origCols.map(col)
 
     flatten.select(selectionQuery: _*)
 
@@ -311,12 +325,31 @@ object ModelInputTransform extends Logger {
 
   def getHashedUserData(flatten: Dataset[ModelInputUserRecord], modelFeatures: Seq[ModelFeature],
                     originalColNames: Seq[String]): DataFrame ={
-    val additionalCols = Seq("label", "BidRequestId", "UIID", "LogEntryTime") ++ originalColNames
+    val origCols = addCols ++ originalColNames
     // todo: we need a better way to track these fields
-    val selectionQuery = intModelFeaturesCols(modelFeatures) ++ additionalCols.map(col)
+    val selectionQuery = intModelFeaturesCols(modelFeatures) ++ origCols.map(col)
 
     flatten.select(selectionQuery: _*)
 
+  }
+
+  def addExclusionFlag(df: DataFrame, advertiserExclusionList: Option[Dataset[AdvertiserExclusionRecord]]
+                      ): DataFrame = {
+    // Check if the advertiser exclusion list is defined
+    if (advertiserExclusionList.isDefined) {
+      val exclusionList = advertiserExclusionList.get
+      // Join with exclusion list and set the 'excluded' flag
+      df.join(
+        exclusionList.withColumn("excluded", lit(1)),
+        Seq("AdvertiserId"),
+        "leftouter"
+      ).withColumn(
+        "excluded", when(col("excluded").isNull, 0).otherwise(1)
+      )
+    } else {
+      // If no exclusion list, mark all rows as not excluded (excluded = 0)
+      df.withColumn("excluded", lit(0))
+    }
   }
 
 }
