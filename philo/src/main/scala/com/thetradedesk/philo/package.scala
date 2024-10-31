@@ -101,4 +101,11 @@ package object philo {
                            .count()
     lineCountsPerFile
   }
+
+  def debugInfo[T](varName: String, data: Dataset[T]): Unit = {
+    println(s"$varName")
+    println("---------------------------------------")
+    data.printSchema()
+    println("---------------------------------------")
+  }
 }

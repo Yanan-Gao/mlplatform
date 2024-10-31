@@ -2,10 +2,7 @@ package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{loadModelFeatures, loadParquetData, parseModelFeaturesSplitFromJson}
-import com.thetradedesk.philo.schema.{
-  ClickTrackerDataSet, ClickTrackerRecord, UnifiedAdGroupDataSet, AdGroupRecord,
-  CreativeLandingPageRecord, CreativeLandingPageDataSet, CampaignROIGoalRecord, CampaignROIGoalDataSet
-}
+import com.thetradedesk.philo.schema.{AdGroupRecord, AdvertiserExclusionList, AdvertiserExclusionRecord, CampaignROIGoalDataSet, CampaignROIGoalRecord, ClickTrackerDataSet, ClickTrackerRecord, CreativeLandingPageDataSet, CreativeLandingPageRecord, UnifiedAdGroupDataSet}
 import com.thetradedesk.philo.transform.ModelInputTransform
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -15,7 +12,8 @@ import com.thetradedesk.spark.TTDSparkContext
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.io.FSUtils.fileExists
 import org.apache.spark.sql.{DataFrame, Dataset}
-import org.apache.spark.sql.functions.coalesce
+import org.apache.spark.sql.functions.{coalesce, lit}
+
 import scala.io.Source
 
 import java.time.LocalDate
@@ -40,18 +38,20 @@ object ModelInput {
   // if we only have one region, country filter will be removed
   val landingPage = config.getBoolean("landingPage", false)
   val roiFilter = config.getBoolean("roiFilter", false)
+  val advertiserFilter =  config.getBoolean("advertiserFilter", false)
   val countryFilePath = config.getStringOption("filterFilePath") // previously defined as fiterFilePath, use this instead to minimize change for airflow
   val keptCols = config.getStringSeq("keptColumns", Seq("AdGroupId", "Country")) // columns to keep for debugging purpose
   val featuresJson = config.getStringRequired("featuresJson")
-  println(s"landing page $landingPage")
-  println(s"roi filter $roiFilter")
-  println(s"country filter $countryFilePath")
+  val debug = config.getBoolean("debug", false)
 
   // Attributes used for adding user data and for click-bot filtering
   val filterClickBots = config.getBoolean("filterClickBots", false)
   val addUserData = config.getBoolean("addUserData", false)
   val numUserCols = config.getInt("numUserCols", 170)
 
+  if (debug) {
+    println(s"config $config")
+  }
   def getAdGroupFilter(date: LocalDate, adgroup: Dataset[AdGroupRecord],
                        roi_types: Seq[Int]): Dataset[AdGroupRecord] = {
     val campaignGoal = CampaignROIGoalDataSet().readLatestPartitionUpTo(date, isInclusive = true)
@@ -103,6 +103,7 @@ object ModelInput {
     rawJson
   }
 
+
   def main(args: Array[String]): Unit = {
     val readEnv = if (ttdEnv == "prodTest") "prod" else ttdEnv
     val writeEnv = if (ttdEnv == "prodTest") "dev" else ttdEnv
@@ -113,8 +114,12 @@ object ModelInput {
     val clicks = loadParquetData[ClickTrackerRecord](ClickTrackerDataSet.CLICKSS3, date)
     val roi_types = Seq(3, 4) // 3, 4 for cpc and ctr
     // if roiFilter, filter use the adgroup as a filter, else just left join to get the adgroup info
-    val adgroup = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, isInclusive = true).select($"AdGroupId",$"AudienceId",$"IndustryCategoryId",$"ROIGoalTypeId",$"CampaignId").as[AdGroupRecord].transform(
-      ds => if (roiFilter) {getAdGroupFilter(date, ds, roi_types)} else ds)
+    val adgroup = UnifiedAdGroupDataSet().readLatestPartitionUpTo(date, isInclusive = true)
+                                         .select($"AdGroupId",$"AudienceId",$"IndustryCategoryId",
+                                           $"ROIGoalTypeId",$"CampaignId").as[AdGroupRecord]
+                                         .transform(
+                                           ds => if (roiFilter) {getAdGroupFilter(date, ds, roi_types)} else ds
+                                         )
 
     val parsedJson = readModelFeatures(featuresJson)
     val modelFeaturesSplit = parseModelFeaturesSplitFromJson(parsedJson)
@@ -122,21 +127,53 @@ object ModelInput {
       Some(CreativeLandingPageDataSet().readLatestPartitionUpTo(date, isInclusive = true))
     } else None
     val countryFilter = countryFilePath.map(getCountryFilter)
+    val advertiserExclusionList = if (outputPrefix == "processed" || !advertiserFilter) {
+                                    None
+                                  } else {
+                                    val exclusionDF = spark.read.format("csv")
+                                                           .option("header", false)
+                                                           .load(AdvertiserExclusionList.ADVERTISEREXCLUSIONS3)
+                                                           .withColumnRenamed("_c0", "AdvertiserId")
+                                    // if nothing is in the list, assign None to the list so that file save for exclusion list
+                                    // won't get triggered
+                                    if (exclusionDF.isEmpty) None
+                                    else Some(exclusionDF.as[AdvertiserExclusionRecord])}
+
+
     val modelFeatures = modelFeaturesSplit.bidRequest ++ modelFeaturesSplit.adGroup
     val (trainingData, labelCounts) = ModelInputTransform.transform(
       clicks, adgroup, bidsImpressions, roiFilter,
-      creativeLandingPage, countryFilter, keptCols, modelFeatures, addUserData, filterClickBots, numUserCols
+      creativeLandingPage, countryFilter, keptCols, modelFeatures, addUserData, filterClickBots, numUserCols,
+      advertiserExclusionList, debug
     )
-    //write to csv to dev for production job
-    if (writeFullData) {writeData(trainingData, outputPath, writeEnv, outputPrefix, date, partitions, false)}
+    //TODO if non exclusion list, set all exclusion flag to 0
+
+    if (writeFullData) {
+      //write to csv to dev for production job
+      writeData(
+        trainingData.filter($"excluded"===0).drop("excluded"),
+        outputPath, writeEnv, outputPrefix, date, partitions, false
+      )
+      if (advertiserExclusionList.isDefined) {
+        val excluded_data = trainingData.filter($"excluded"===1).drop("excluded").cache()
+        writeData(excluded_data, outputPath, writeEnv, outputPrefix+"excluded", date, 20, false)
+        writeData(excluded_data.select("AdvertiserId").distinct(), outputPath, writeEnv, outputPrefix+"excludedadvertisers",
+          date, 1, false)
+        excluded_data.unpersist()
+      }
+    }
     if (writePerFile) {
-      val lineCountsPerFile = countLinePerFile(outputPath, writeEnv, outputPrefix, date)(spark)
       val linesPerFileName = if (outputPrefix == "processed") {
         "linecounts"
       } else {
         outputPrefix + "linecounts"
       }
-      writeData(lineCountsPerFile, outputPath, writeEnv, linesPerFileName, date, 1, false)
+      val lineCountsPerFileNonEx = countLinePerFile(outputPath, writeEnv, outputPrefix, date)(spark)
+      writeData(lineCountsPerFileNonEx, outputPath, writeEnv, linesPerFileName, date, 1, false)
+      if (advertiserExclusionList.isDefined) {
+        val lineCountsPerFileEx = countLinePerFile(outputPath, writeEnv, outputPrefix+"excluded", date)(spark)
+        writeData(lineCountsPerFileEx, outputPath, writeEnv, linesPerFileName+"excluded", date, 1, false)
+      }
     }
     if (writeMeta) {
       val metadataName = if (outputPrefix == "processed") {
@@ -144,7 +181,10 @@ object ModelInput {
       } else {
         outputPrefix + "metadata"
       }
-      writeData(labelCounts, outputPath, writeEnv, metadataName, date, 1, false)
+      writeData(labelCounts.filter($"excluded"===0).drop("excluded"), outputPath, writeEnv, metadataName, date, 1, false)
+      if (advertiserExclusionList.isDefined) {
+        writeData(labelCounts.filter($"excluded" === 1).drop("excluded"), outputPath, writeEnv, metadataName + "excluded", date, 1, false)
+      }
     }
 
   }

@@ -50,6 +50,7 @@ case class ModelInputUserRecord(
     OriginalCountry: String,
     UIID: String,
     LogEntryTime: java.sql.Timestamp,
+    excluded: Int,
     HasUserData: Int,
     UserDataLength: Double,
 
