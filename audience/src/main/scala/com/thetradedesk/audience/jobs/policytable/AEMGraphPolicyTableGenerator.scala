@@ -47,7 +47,7 @@ object AEMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(
     activeCampaignConversionTrackerTagIds
   }
 
-  override def retrieveSourceDataWithDifferentGraphType(date:LocalDate, personGraph: DataFrame, householdGraph: DataFrame): SourceDataWithDifferentGraphType = {
+  override def retrieveSourceDataWithDifferentGraphType(date: LocalDate, personGraph: DataFrame, householdGraph: DataFrame): SourceDataWithDifferentGraphType = {
     var conversionDataset = ConversionDataset(defaultCloudProvider)
       .readRange(date.minusDays(Config.conversionLookBack).atStartOfDay(), date.plusDays(1).atStartOfDay())
       .select('TDID, 'TrackingTagId)
@@ -81,7 +81,7 @@ object AEMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(
           .alias("Count"))
       .join(trackingTagDataset, "TrackingTagId")
       .withColumnRenamed("TrackingTagId", "SourceId")
-      .select('SourceId,'Count, 'TargetingDataId)
+      .select('SourceId, 'Count, 'TargetingDataId, array("").alias("topCountryByDensity")) // topCountryByDensity is not used for AEM right now
       .as[SourceMetaRecord]
 
     val TDID2ConversionPixel = conversionDataset

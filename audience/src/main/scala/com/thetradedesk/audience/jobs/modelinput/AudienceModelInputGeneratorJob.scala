@@ -40,6 +40,31 @@ object AudienceModelInputGeneratorJob {
     val schedule = if (AudienceModelInputGeneratorConfig.IncrementalTrainingEnabled) DateUtils.getSchedule(date, AudienceModelInputGeneratorConfig.trainingStartDate, AudienceModelInputGeneratorConfig.trainingCadence) else Schedule.Full
     val policyTable = clusterTargetingData(AudienceModelInputGeneratorConfig.model, AudienceModelInputGeneratorConfig.supportedDataSources,
       AudienceModelInputGeneratorConfig.seedSizeLowerScaleThreshold, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold, schedule)
+    val countryMap = getSyntheticIdCountryMap(AudienceModelInputGeneratorConfig.model, AudienceModelInputGeneratorConfig.supportedDataSources, AudienceModelInputGeneratorConfig.seedSizeLowerScaleThreshold, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold)
+
+    val rawJson = readModelFeatures(featuresJsonSourcePath)()
+    // write the rawJson to destination if present.
+    if (featuresJsonDestPath != null && rawJson != null) {
+      FSUtils.writeStringToFile(featuresJsonDestPath, rawJson)(spark)
+    }
+
+    val countryMapTransformed = ModelFeatureTransform
+      .modelFeatureTransform[SyntheticIdToCountriesRecord](countryMap, rawJson)
+      .select('Country, explode('CountryToSyntheticIds).alias("SyntheticId"))
+      .groupBy('SyntheticId)
+      .agg(collect_set('Country))
+      .as[(Int, Seq[Int])]
+      .collect()
+      .map(e => e._1 -> e._2.toSet)
+      .toMap
+
+    val countryMapTransformedUDF = udf((syntheticIds: Seq[Int], targets: Seq[Float], country: Int) => {
+      syntheticIds
+        .zip(targets)
+        .filter(e => countryMapTransformed(e._1).contains(country))
+        .unzip
+    })
+
 
     policyTable.foreach(typePolicyTable => {
       val dataset = {
@@ -75,7 +100,7 @@ object AudienceModelInputGeneratorJob {
               case Schedule.Full =>
                 typePolicyTable match {
                   case ((DataSource.Seed, crossDeviceVendor: CrossDeviceVendor, IncrementalTrainingTag.Full), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
-                    RSMSeedInputGenerator(crossDeviceVendor,1.0).generateDataset(date, subPolicyTable)
+                    RSMSeedInputGenerator(crossDeviceVendor, 1.0).generateDataset(date, subPolicyTable)
                   case _ => throw new Exception(s"unsupported policy settings: Model[${Model.RSM}], Setting[${typePolicyTable._1}]")
                 }
               case Schedule.Incremental =>
@@ -98,18 +123,17 @@ object AudienceModelInputGeneratorJob {
         result
       }
 
-      val rawJson = readModelFeatures(featuresJsonSourcePath)()
-      // write the rawJson to destination if present.
-      if (featuresJsonDestPath != null && rawJson != null) {
-        FSUtils.writeStringToFile(featuresJsonDestPath, rawJson)(spark)
-      }
-
       val resultSet = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](dataset, rawJson)
         .withColumn("SplitRemainder", xxhash64(concat('GroupId, lit(AudienceModelInputGeneratorConfig.saltToSplitDataset))) % AudienceModelInputGeneratorConfig.validateDatasetSplitModule)
         .withColumn("SubFolder",
           when('SplitRemainder === lit(SubFolder.Val.id), SubFolder.Val.id)
             .when('SplitRemainder === lit(SubFolder.Holdout.id), SubFolder.Holdout.id)
             .otherwise(SubFolder.Train.id))
+        .withColumn("f", countryMapTransformedUDF('SyntheticIds, 'Targets, 'Country))
+        .withColumn("SyntheticIds", col("f._1"))
+        .where(size('SyntheticIds) > 0)
+        .withColumn("Targets", col("f._2"))
+        .drop("f")
 
       resultSet.cache()
 
@@ -159,20 +183,34 @@ object AudienceModelInputGeneratorJob {
       resultDF.cache()
       val total = resultDF.select(sum("total")).cache().head().getLong(0)
       val pos_ratio = resultDF.select(sum("pos")).head().getDouble(0) / total
-      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(total, dateTime,"metadata", "Count")
-      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(pos_ratio, dateTime,"metadata", "PosRatio")
+      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(total, dateTime, "metadata", "Count")
+      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(pos_ratio, dateTime, "metadata", "PosRatio")
       posRatioGauge.labels(AudienceModelInputGeneratorConfig.model.toString.toLowerCase).set(pos_ratio)
 
       resultDF.unpersist()
+      resultSet.unpersist()
     }
     )
   }
 
-  def clusterTargetingData(model: Model.Value, supportedDataSources: Array[Int], seedSizeLowerScaleThreshold: Int, seedSizeUpperScaleThreshold: Int, schedule: Schedule.Schedule ):
+  def getSyntheticIdCountryMap(model: Model.Value, supportedDataSources: Array[Int], seedSizeLowerScaleThreshold: Int, seedSizeUpperScaleThreshold: Int) = {
+    val countryMap = AudienceModelPolicyReadableDataset(model)
+      .readSinglePartition(dateTime)(spark)
+      .where((length('ActiveSize) >= seedSizeLowerScaleThreshold) && (length('ActiveSize) <= seedSizeUpperScaleThreshold))
+      .where('IsActive)
+      .where('Source.isin(supportedDataSources: _*))
+      .withColumn("Country",explode('topCountryByDensity))
+      .groupBy("Country").agg(
+        collect_set('SyntheticId).alias("CountryToSyntheticIds"))
+
+    countryMap
+  }
+
+  def clusterTargetingData(model: Model.Value, supportedDataSources: Array[Int], seedSizeLowerScaleThreshold: Int, seedSizeUpperScaleThreshold: Int, schedule: Schedule.Schedule):
   Map[(DataSource.DataSource, CrossDeviceVendor.CrossDeviceVendor, IncrementalTrainingTag.IncrementalTrainingTag), Array[AudienceModelPolicyRecord]] = {
     val policyTable = AudienceModelPolicyReadableDataset(model)
       .readSinglePartition(dateTime)(spark)
-      .where((length('ActiveSize)>=seedSizeLowerScaleThreshold) && (length('ActiveSize)<seedSizeUpperScaleThreshold))
+      .where((length('ActiveSize) >= seedSizeLowerScaleThreshold) && (length('ActiveSize) < seedSizeUpperScaleThreshold))
       // .where('SourceId==="1ufp35u0")
       .where('IsActive)
       .where('Source.isin(supportedDataSources: _*))
