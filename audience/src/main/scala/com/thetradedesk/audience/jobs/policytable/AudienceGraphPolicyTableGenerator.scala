@@ -62,7 +62,7 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, dataSource:
         .union(householdGraphCount)
         .withColumnRenamed("count", "ActiveSize")
         .join(sourceMeta, Seq("SourceId"), "inner")
-        .select(('ActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ActiveSize"), 'CrossDeviceVendorId, 'SourceId, 'Count.alias("Size"), 'TargetingDataId)
+        .select(('ActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ActiveSize"), 'CrossDeviceVendorId, 'SourceId, 'Count.alias("Size"), 'TargetingDataId, 'topCountryByDensity)
         .withColumn("Source", lit(dataSource.id))
         .withColumn("GoalType", lit(goalType.id))
         .withColumn("StorageCloud", lit(Config.storageCloud))
@@ -152,7 +152,9 @@ final case class AggregatedGraphTypeRecord(TDID: String,
 
 final case class SourceMetaRecord(SourceId: String,
                                   Count: BigInt,
-                                  TargetingDataId: BigInt)
+                                  TargetingDataId: BigInt,
+                                  topCountryByDensity: Seq[String]
+                                  )
 
 
 case class SourceDataWithDifferentGraphType(

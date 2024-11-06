@@ -41,6 +41,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     // detect recent seed metadata path in airflow and pass to spark job
     val seedMetaDataRecentVersion = config.getString("seedMetaDataRecentVersion", null)
     val seedMetadataS3Bucket = S3Utils.refinePath(config.getString("seedMetadataS3Bucket", "ttd-datprd-us-east-1"))
+    val countryDensityThreshold = config.getDouble("countryDensityThreshold", 0.8)
     val seedMetadataS3Path = S3Utils.refinePath(config.getString("seedMetadataS3Path", "prod/data/SeedDetail/v=1/"))
     val seedRawDataS3Bucket = S3Utils.refinePath(config.getString("seedRawDataS3Bucket", "ttd-datprd-us-east-1"))
     val seedRawDataS3Path = S3Utils.refinePath(config.getString("seedRawDataS3Path", "prod/data/Seed/v=1"))

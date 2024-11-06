@@ -3,15 +3,14 @@ package com.thetradedesk.audience.jobs.policytable
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJob.prometheus
-import com.thetradedesk.audience.utils.S3Utils
+import com.thetradedesk.audience.utils.{S3Utils, MapDensity}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.core.AnnotatedSchemaBuilder
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql._
-import org.apache.spark.sql.functions._
+import org.apache.spark.sql.functions.{transform => sql_transform, _}
 import org.apache.spark.sql.types.{ArrayType, StringType, StructType}
-
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -28,6 +27,11 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
       else S3Utils.queryCurrentDataVersion(Config.seedMetadataS3Bucket, Config.seedMetadataS3Path)
 
     val seedDataFullPath = "s3a://" + Config.seedMetadataS3Bucket + "/" + Config.seedMetadataS3Path + "/" + recentVersion
+
+    val country = CountryDataset().readPartition(date).select('ShortName,'LongName).distinct()
+    val countryMap: Map[String, String] = country.collect()
+                                                .map(row => (row.getString(0), row.getString(1)))
+                                                .toMap
 
     val seedMeta =
       if (!Config.allRSMSeed) {
@@ -52,17 +56,23 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
 
         spark.read.parquet(seedDataFullPath)
           .join(optInSeed, Seq("SeedId"), "inner")
-          .select('SeedId, 'TargetingDataId, coalesce('Count, lit(-1)).alias("Count"), 'Path)
-          .withColumn("TargetingDataId", coalesce('TargetingDataId, lit(-1)))
-          .cache()
       } else {
         spark.read.parquet(seedDataFullPath)
-          .select('SeedId, 'TargetingDataId, coalesce('Count, lit(-1)).alias("Count"), 'Path)
-          .withColumn("TargetingDataId", coalesce('TargetingDataId, lit(-1)))
-          .cache()
       }
 
     seedMeta
+      .withColumn("topCountryByDensity", coalesce(MapDensity.getTopDensityFeatures(Config.countryDensityThreshold)('CountByCountry), array()))
+      .withColumn("topCountryByDensity",sql_transform(
+        col("topCountryByDensity"),
+        code => coalesce(
+          element_at(typedLit(countryMap), code),
+          code // Keep the original code if no mapping is found
+        )
+      )
+      )
+      .select('SeedId, 'TargetingDataId, coalesce('Count, lit(-1)).alias("Count"), 'Path, 'topCountryByDensity)
+      .withColumn("TargetingDataId", coalesce('TargetingDataId, lit(-1)))
+      .cache()
 
   }
 
@@ -70,6 +80,7 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
     val seedMeta = retrieveSeedMeta(date)
 
     val policyMetaTable = seedMeta
+      .drop("topCountryByDensity")
       .as[SeedDetail]
       .collect()
 
@@ -87,7 +98,7 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
       largeSeedData.union(smallSeedData._1),
       smallSeedData._2,
       smallSeedData._3,
-      seedMeta.withColumnRenamed("SeedId","SourceId").select('SourceId,'Count, 'TargetingDataId).as[SourceMetaRecord]
+      seedMeta.withColumnRenamed("SeedId","SourceId").select('SourceId,'Count, 'TargetingDataId, 'topCountryByDensity).as[SourceMetaRecord]
     )
 
   }

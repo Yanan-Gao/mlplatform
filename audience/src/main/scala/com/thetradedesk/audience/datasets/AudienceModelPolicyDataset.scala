@@ -45,6 +45,8 @@ final case class AudienceModelPolicyRecord(TargetingDataId: Long,
                                            ExpiredDays: Int,
                                            // Source of the cloud storage  
                                            StorageCloud: Int,
+                                          //  top density country
+                                           topCountryByDensity: Seq[String]
                                           )
 
 case class AudienceModelPolicyWritableDataset(model: Model) extends
