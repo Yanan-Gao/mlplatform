@@ -136,7 +136,7 @@ object GenerateTrainSetLastTouch extends KongmingBaseJob {
       sampledImpressionWithAttribution.drop($"Weight")
       .join(preFeatureSamplesWithAdjustedWeight.select($"BidRequestIdStr",$"Target",$"Weight"), Seq("BidRequestIdStr","Target"), "inner")
 
-    val parquetSelectionTabular = featureSamplesWithAdjustedWeight.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqDirectFields) ++ seqModModelFeaturesCols(seqHashFields)
+    val parquetSelectionTabular = featureSamplesWithAdjustedWeight.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqDirectFields ++ seqHashFields)
 
     featureSamplesWithAdjustedWeight
       .select(parquetSelectionTabular: _*)
