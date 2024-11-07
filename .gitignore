@@ -160,3 +160,9 @@ output
 
 #ignore ds-sync meta files
 **/.meta
+
+#ignore metals
+**/.metals
+
+#ignore scala-build
+**/.scala-build
