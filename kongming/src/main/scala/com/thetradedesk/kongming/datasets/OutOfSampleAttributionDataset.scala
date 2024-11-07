@@ -15,6 +15,7 @@ final case class OutOfSampleAttributionRecord(
 
                                                Target: Int,
                                                Revenue: Option[BigDecimal],
+                                               Weight: Double,
 
                                                SupplyVendor: Option[Int],
                                                SupplyVendorPublisherId: Option[Int],
@@ -280,6 +281,7 @@ final case class OldOutOfSampleAttributionRecord(
 
                                                   Target: Int,
                                                   Revenue: Option[BigDecimal],
+                                                  Weight: Double,
 
                                                   SupplyVendor: Option[Int],
                                                   SupplyVendorPublisherId: Option[Int],

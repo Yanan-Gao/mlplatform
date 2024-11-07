@@ -15,12 +15,17 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
+import com.thetradedesk.kongming.transform.TrainSetTransformation._
+import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.types.DoubleType
+import com.thetradedesk.spark.datasets.core.DefaultTimeFormatStrings
 
 import java.time.LocalDate
 
 object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
   override def jobName: String = "OutOfSampleAttributionSetGenerator"
+  val applyCustomCPACountAsWeight = config.getBoolean("applyCustomCPACountAsWeight", true)
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
@@ -45,40 +50,11 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
   }
 
+  final case class BidRequestsWithAdGroupId(
+                                               BidRequestIdStr: String,
+                                               AdGroupId: String
+                                             )
 
-
-  final case class AttributionBidFeedbackRecord(
-                                                 BidRequestId: String,
-                                                 BidFeedbackId: String,
-                                                 AdGroupId: String,
-                                                 CampaignId: String,
-                                                 AdvertiserId: String
-                                               )
-
-  final case class AttributionEventRecordWithConfigKeys(
-                                                         BidRequestId: String,
-                                                         AttributedEventId: String,
-                                                         ConfigKey: String,
-                                                         ConfigValue: String
-                                                       )
-
-  final case class AttributedEventRecordWithPolicyKeys(
-                                                         AttributedEventId: String,
-                                                         AttributedEventTypeId: String,
-                                                         ConversionTrackerLogFileId: String,
-                                                         ConversionTrackerIntId1: String,
-                                                         ConversionTrackerIntId2: String,
-                                                         AttributedEventLogFileId: String,
-                                                         AttributedEventIntId1: String,
-                                                         AttributedEventIntId2: String,
-                                                         AttributedEventLogEntryTime: String,// is string in parquet
-                                                         ConversionTrackerId: String,
-                                                         TrackingTagId: String,
-                                                         ConfigKey: String,
-                                                         ConfigValue: String,
-                                                         MonetaryValue: Option[String],
-                                                         MonetaryValueCurrency: Option[String]
-                                                       )
 
   final case class BidRequestsWithConfigValue(
                                                   BidRequestIdStr: String,
@@ -86,102 +62,69 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
                                                   ConfigValue: String
                                                   )
 
-  final case class BidRequestsWithAdGroupId(
-                                               BidRequestIdStr: String,
-                                               AdGroupId: String
-                                             )
-
-  final case class EventsAttribution(
-                                      BidRequestId: String,
-                                      Target: Int,
-                                      Revenue: Option[BigDecimal]
-                                    )
-
-  def getEventsAttributions(adGroupPolicy: Dataset[AdGroupPolicyRecord], adGroupPolicyMapping: Dataset[AdGroupPolicyMappingRecord], scoreDate: LocalDate)(implicit prometheus: PrometheusClient): Dataset[EventsAttribution] = {
-    val validTags = getValidTrackingTags(scoreDate, adGroupPolicy)
-
-    val (attributedEvent, attributedEventResult) = OfflineAttributionTransform.getAttributedEventAndResult(adGroupPolicyMapping, date, lookBack = Config.AttributionLookBack + Config.ImpressionLookBack - 1)
-    val attributedEventResultOfInterest = multiLevelJoinWithPolicy[AttributedEventRecordWithPolicyKeys](attributedEvent, adGroupPolicy, "inner")
-      .withColumn("MonetaryValue", $"MonetaryValue".cast("decimal"))
-      .join(
-        attributedEventResult.withColumn("ConversionTrackerLogEntryTime", to_timestamp(col("ConversionTrackerLogEntryTime")).as("ConversionTrackerLogEntryTime")),
-        Seq("ConversionTrackerLogFileId", "ConversionTrackerIntId1", "ConversionTrackerIntId2", "AttributedEventLogFileId", "AttributedEventIntId1", "AttributedEventIntId2"),
-        "inner")
-      .join(
-        validTags.withColumnRenamed("ReportingColumnId", "CampaignReportingColumnId"),
-        Seq("ConfigKey", "ConfigValue", "TrackingTagId", "CampaignReportingColumnId"),
-        "inner")
-      .filter($"AttributedEventLogEntryTime".isNotNull && ((unix_timestamp($"ConversionTrackerLogEntryTime") - unix_timestamp($"AttributedEventLogEntryTime")) <= Config.AttributionLookBack*86400))
-
-    val bidFeedBack = multiLevelJoinWithPolicy[AttributionEventRecordWithConfigKeys](
-      loadParquetData[AttributionBidFeedbackRecord](BidFeedbackDataset.BFS3, scoreDate.plusDays(Config.ImpressionLookBack), lookBack = Some(Config.ImpressionLookBack - 1))
-        .withColumnRenamed("BidFeedbackId", "AttributedEventId"),
-      adGroupPolicy, "inner")
-
-    val clicks = multiLevelJoinWithPolicy[AttributionEventRecordWithConfigKeys](
-      ClickTrackerDataSetV5(defaultCloudProvider).readRange(scoreDate.plusDays(1).atStartOfDay(), scoreDate.plusDays(Config.ImpressionLookBack + 1).atStartOfDay())
-        .withColumnRenamed("ClickRedirectId", "AttributedEventId"),
-      adGroupPolicy, "inner")
-
-    val attribution = attributedEventResultOfInterest.filter($"AttributedEventTypeId" === lit("2")).join(bidFeedBack, Seq("AttributedEventId", "ConfigKey", "ConfigValue"), "inner")
-      .union(attributedEventResultOfInterest.filter($"AttributedEventTypeId" === lit("1")).join(clicks, Seq("AttributedEventId", "ConfigKey", "ConfigValue"), "inner"))
-      .select("BidRequestId", "MonetaryValue", "MonetaryValueCurrency")
-      .distinct().withColumn("Target", lit(1))
-
-      task match {
-        case "roas" => {
-          val rate = DailyExchangeRateDataset().readDate(scoreDate).cache() // use scoreDate's exchange to simplify the calculation
-          attribution
-            .withColumn("CurrencyCodeId", $"MonetaryValueCurrency").join(broadcast(rate), Seq("CurrencyCodeId"), "left")
-            .withColumn("ValidRevenue", $"MonetaryValue".isNotNull && $"MonetaryValueCurrency".isNotNull)
-            .withColumn("FromUSD", when($"MonetaryValueCurrency" === "USD", lit(1)).otherwise($"FromUSD"))
-            .withColumn("RevenueInUSD", when($"ValidRevenue", $"MonetaryValue" / $"FromUSD").otherwise(0))
-            .withColumn("Revenue", greatest($"RevenueInUSD", lit(1)))
-            .selectAs[EventsAttribution]
-        }
-        case _ => attribution.withColumn("Revenue", lit(0)).selectAs[EventsAttribution]
-      }
-
-  }
-
   def generateAttributionSet(scoreDate: LocalDate)(implicit prometheus: PrometheusClient):
   (Dataset[OutOfSampleAttributionRecord], Dataset[OldOutOfSampleAttributionRecord]) = {
     val adGroupPolicy = AdGroupPolicyDataset().readDate(scoreDate)
     val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(scoreDate)
     val policy = getMinimalPolicy(adGroupPolicy, adGroupPolicyMapping).cache()
 
-    val scoringSet = OldDailyOfflineScoringDataset().readRange(scoreDate.plusDays(1), scoreDate.plusDays(Config.ImpressionLookBack), isInclusive=true)
+    val rawOOS = (1 to Config.ImpressionLookBack).map(i => {
+      val ImpDate = scoreDate.plusDays(i)
+      // Attr [T-ConvLB, T]
+      val AttrDates = (ImpDate.toEpochDay to date.toEpochDay).map(LocalDate.ofEpochDay)
+      val dailyImp = OldDailyOfflineScoringDataset().readDate(ImpDate)
+      val impressionsToScore = multiLevelJoinWithPolicy[BidRequestsWithAdGroupId](
+        dailyImp.withColumnRenamed("AdGroupId", "AdGroupIdInt").withColumnRenamed("AdGroupIdStr", "AdGroupId")
+          .withColumnRenamed("CampaignId", "CampaignIdInt").withColumnRenamed("CampaignIdStr", "CampaignId")
+          .withColumnRenamed("AdvertiserId", "AdvertiserIdInt").withColumnRenamed("AdvertiserIdStr", "AdvertiserId"),
+        policy,
+        "inner")
+      val attr = AttrDates.map(dt => {
+        DailyAttributionEventsDataset().readPartition(dt, ImpDate.format(DefaultTimeFormatStrings.dateTimeFormatter))
+      })
+      .reduce(_.union(_))
 
-    val impressionsToScore = multiLevelJoinWithPolicy[BidRequestsWithAdGroupId](
-      scoringSet.withColumnRenamed("AdGroupId", "AdGroupIdInt").withColumnRenamed("AdGroupIdStr", "AdGroupId")
-        .withColumnRenamed("CampaignId", "CampaignIdInt").withColumnRenamed("CampaignIdStr", "CampaignId")
-        .withColumnRenamed("AdvertiserId", "AdvertiserIdInt").withColumnRenamed("AdvertiserIdStr", "AdvertiserId"),
-      policy,
-      "inner")
+      val campaignDS = CampaignDataSet().readLatestPartitionUpTo(ImpDate, true)
 
-    val eventsAttributions = getEventsAttributions(policy, adGroupPolicyMapping, scoreDate)(prometheus)
-      .withColumnRenamed("BidRequestId", "BidRequestIdStr")
+      val filteredAttr = 
+        attr.filter(unix_timestamp($"ConversionTrackerLogEntryTime") - unix_timestamp($"AttributedEventLogEntryTime")<= Config.AttributionLookBack*86400)
+        .join(broadcast(campaignDS.select($"CampaignId", $"CustomCPATypeId")), Seq("CampaignId"), "inner")
 
-    // offline score labels: one impression could have more than one row if it contributes to multiple conversions. If it contributes to no conversion, then it has one row.
-    val NegPosRatio = Config.OosNegPosRatio
-    val win = Window.partitionBy("AdGroupId")
-    val rawOOS = impressionsToScore.join(eventsAttributions, Seq("BidRequestIdStr"), "left")
-      .withColumn("Target", coalesce('Target, lit(0)))
-      .withColumn("Revenue", coalesce('Revenue, lit(0)))
-      .withColumn("AdGroupPosCount", sum($"Target").over(win))
-      .withColumn("AdGroupNegCount", sum(lit(1) - $"Target").over(win))
-      .withColumn("SamplingRate", $"AdGroupPosCount" * lit(NegPosRatio) / $"AdGroupNegCount")
-      .withColumn("SamplingRate", when($"Target" === lit(1), 1).otherwise($"SamplingRate"))
-      .withColumn("rand", rand(seed = samplingSeed))
-      .filter($"rand" <= $"SamplingRate")
-      .drop("AdGroupId", "AdGroupPosCount", "AdGroupNegCount", "SamplingRate", "rand")
-      .join(scoringSet, Seq("BidRequestIdStr"), "inner")
-      .cache()
+      val filteredAttrWithWeight = 
+        if(applyCustomCPACountAsWeight && task=="cpa"){
+          filteredAttr
+          .withColumn("Weight", when($"CustomCPATypeId"===0, 1).otherwise($"CustomCPACount"))
+        }else{
+          filteredAttr
+          .withColumn("Weight", lit(1))
+        }
+
+      val NegPosRatio = Config.OosNegPosRatio
+      val win = Window.partitionBy("AdGroupId")
+
+      val impWithAttr = impressionsToScore.join(broadcast(filteredAttrWithWeight.select($"BidRequestId".alias("BidRequestIdStr"), $"Target", $"Revenue", $"Weight")), Seq("BidRequestIdStr"), "left")
+        .withColumn("Target", coalesce('Target, lit(0)))
+        .withColumn("Revenue", coalesce('Revenue, lit(0)))
+        .withColumn("Weight", coalesce('Weight,lit(1)))
+        .withColumn("AdGroupPosCount", sum($"Target").over(win))
+        .withColumn("AdGroupNegCount", sum(lit(1) - $"Target").over(win))
+        .withColumn("SamplingRate", $"AdGroupPosCount" * lit(NegPosRatio) / $"AdGroupNegCount")
+        .withColumn("SamplingRate", when($"Target" === lit(1), 1).otherwise($"SamplingRate"))
+        .withColumn("rand", rand(seed = samplingSeed))
+        .filter($"rand" <= $"SamplingRate")
+        .drop("AdGroupId", "AdGroupPosCount", "AdGroupNegCount", "SamplingRate", "rand")
+        .join(dailyImp, Seq("BidRequestIdStr"), "inner")
+
+      dailyImp.unpersist()
+      
+      impWithAttr
+    }).reduce(_.union(_)).cache()
 
     val campaignsWithPosSamples = rawOOS.filter('Target === lit(1)).select('CampaignId).distinct
     val parquetSelectionTabular = rawOOS.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqDirectFields ++ seqHashFields)
 
-    val rawOOSFiltered =  rawOOS.join(broadcast(campaignsWithPosSamples), Seq("CampaignId"), "left_semi")
+    val rawOOSFiltered =  
+      rawOOS.join(broadcast(campaignsWithPosSamples), Seq("CampaignId"), "left_semi")
       .select(parquetSelectionTabular: _*)
       .cache()
 
