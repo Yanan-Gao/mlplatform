@@ -33,7 +33,7 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
   val maxConvPerBR = config.getInt("maxConvPerBR", 5)
 
 
-  def generateTrainSetRevenue()(implicit prometheus: PrometheusClient): Dataset[ValidationDataForModelTrainingRecord] = {
+  def generateTrainSetRevenue()(implicit prometheus: PrometheusClient): Dataset[UserDataValidationDataForModelTrainingRecord] = {
 
     val startDate = date.minusDays(conversionLookback)
     val win = Window.partitionBy($"CampaignIdStr", $"AdGroupIdStr")
@@ -64,6 +64,7 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
         .withColumn("PosCount", sum(when($"Target" === lit(1), 1).otherwise(0)).over(win))
         .withColumn("NegCount", sum(when($"Target" === lit(0), 1).otherwise(0)).over(win))
         .withColumn("NegRatio", $"PosCount" * lit(desiredNegOverPos) / $"NegCount")
+        .withColumn("UserDataOptIn", lit(2))
 
       sampledAttr.unpersist()
 
@@ -93,12 +94,12 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
         sampledImpressions.filter($"Revenue" <= lit(1)).select(cols: _*)
       )
 
-    val parquetSelectionTabular = cappedImpressions.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqDirectFields)
+    val parquetSelectionTabular = cappedImpressions.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqDirectFields ++ seqHashFields)
 
     cappedImpressions
       .repartition(trainSetPartitionCount, rand(seed = samplingSeed)).orderBy(rand(seed = samplingSeed))
       .select(parquetSelectionTabular: _*)
-      .selectAs[ValidationDataForModelTrainingRecord]
+      .selectAs[UserDataValidationDataForModelTrainingRecord]
 
   }
 
@@ -136,6 +137,18 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
       trainsetRows = Array(tfTrainRows, tfValRows)
     }
 
+    // save with user data
+    if (saveTrainingDataAsCSV) {
+      val csvDS = UserDataCsvForModelTrainingDatasetLastTouch() //DataCsvForModelTrainingDatasetLastTouch()
+      val csvTrainRows = csvDS.writePartition(
+        adjustedTrainParquet.drop(tfDropColumnNames: _*).selectAs[UserDataForModelTrainingRecord](nullIfAbsent = true),
+        date, "train", Some(trainSetPartitionCount))
+      val csvValRows = csvDS.writePartition(
+        adjustedValParquet.drop(tfDropColumnNames: _*).selectAs[UserDataForModelTrainingRecord](nullIfAbsent = true),
+        date, "val", Some(valSetPartitionCount))
+      trainsetRows = Array(csvTrainRows, csvValRows)
+    }
+    //save without userdata
     if (saveTrainingDataAsCSV) {
       val csvDS = DataCsvForModelTrainingDatasetLastTouch()
       val csvTrainRows = csvDS.writePartition(
