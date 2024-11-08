@@ -236,7 +236,9 @@ object MockData {
     FloorPrice = 1,
     PartnerSample = false,
     BidBelowFloorExceptedSource = 0,
-    FullPush = false
+    FullPush = false,
+    UseUncappedBidForPushdown = false,
+    UncappedFirstPriceAdjustment = 0,
   )
 
   val pcResultsRawLogMock = PcResultsRawLogs(
@@ -253,6 +255,9 @@ object MockData {
     PartnerSample = false,
     BidBelowFloorExceptedSource = 0,
     FullPush = false,
+    FloorBufferAdjustment = 0,
+    UseUncappedBidForPushdown = false,
+    UncappedFirstPriceAdjustment = 0,
     LogEntryTime = 638560527380000000L
   )
 

@@ -32,6 +32,9 @@ case class PlutusLogsData(
                            BidBelowFloorExceptedSource: Int,
                            FullPush: Boolean,
 
+                           UseUncappedBidForPushdown:Boolean,
+                           UncappedFirstPriceAdjustment:Double,
+
                            // Fields From PlutusLog
                            Mu: Float,
                            Sigma: Float,
@@ -85,6 +88,9 @@ case object PlutusLogsData {
         i.getPartnerSample,
         i.getBidBelowFloorExceptedSource,
         i.getFullPush,
+        i.getFloorBufferAdjustment,
+        i.getUseUncappedBidForPushdown, 
+        i.getUncappedFirstPriceAdjustment,
         i.getLogEntryTime
       )).toDS()
 
@@ -111,6 +117,9 @@ case class PcResultsRawLogs(
                              PartnerSample: Boolean,
                              BidBelowFloorExceptedSource: Int,
                              FullPush: Boolean,
+                             FloorBufferAdjustment: Double,
+                             UseUncappedBidForPushdown: Boolean,
+                             UncappedFirstPriceAdjustment: Double,
                              LogEntryTime: Long
                            )
 
