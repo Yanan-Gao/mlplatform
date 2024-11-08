@@ -21,6 +21,9 @@ message PcResultLog {
   optional int64 LogEntryTime=15;
   optional int32 BidBelowFloorExceptedSource=16;
   optional bool FullPush=17;
+  optional double FloorBufferAdjustment=18;
+  optional bool UseUncappedBidForPushdown=19;
+  optional double UncappedFirstPriceAdjustment=20;
 
 }
 
