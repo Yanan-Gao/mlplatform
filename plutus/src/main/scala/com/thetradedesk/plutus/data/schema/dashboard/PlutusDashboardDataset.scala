@@ -15,11 +15,16 @@ case class PlutusDashboardSchema(
                                 MarketType: String,
                                 FactorCombination: Option[String],
                                 hasParams: Boolean,
-                                hasMBTW: Boolean,
                                 hasDeal: Boolean,
+                                hasMBTW: Boolean,
+                                isMbtwValidStrict: Boolean,
+                                isMbtwValid: Boolean,
 
-                                avg_plutusPushdown: Option[Double],
-                                avg_FirstPriceAdjustment: Option[Double],
+                                avg_plutusPushdown: Option[Double], // Deprecated
+                                avg_FirstPriceAdjustment: Option[Double], // Deprecated
+                                sum_mode_logNorm: Option[Double],
+                                sum_plutusPushdown: Option[Double],
+                                sum_FirstPriceAdjustment: Option[Double],
                                 FinalBidPrice: Option[Double],
                                 FeeAmount: Option[Double],
                                 PartnerCostInUSD: Double,

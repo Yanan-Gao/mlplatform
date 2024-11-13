@@ -11,7 +11,7 @@ class PlutusDashboardTransformTest extends TTDSparkTest {
 
   test("Plutus Dashboard data transform test 1 for schema/column correctness - ex with winning imp, open path adjustment, PC pushing down without hitting floor") {
 
-    val pcResultsMergedData = Seq(pcResultsMergedMock(supplyVendor = Some("cafemedia"), feeAmount = Some(0.000012), strategy = 30)).toDS().as[PcResultsMergedDataset]
+    val pcResultsMergedData = Seq(pcResultsMergedMock(supplyVendor = Some("cafemedia"), feeAmount = Some(0.000012), strategy = 30, mu = -0.9295179843902588f, sigma = 0.9264574646949768f)).toDS().as[PcResultsMergedDataset]
     val supplyVendorData = Seq(supplyVendorMock(supplyVendorName = "cafemedia", openPathEnabled = true)).toDS().as[SupplyVendorRecord]
 
     // Calculations behind Margin Attribution
@@ -24,6 +24,7 @@ class PlutusDashboardTransformTest extends TTDSparkTest {
     // Metric aggregation
     val agg_merged = getAggMetrics(add_marginattcols)
     val results = agg_merged.collectAsList().get(0)
+    print(results)
 
     // Test for Margin Attribution output
     assert(results.FactorCombination == Some("OpenPath-"), "Validating Margin Attribution logic when SSP is OpenPath")
@@ -50,6 +51,11 @@ class PlutusDashboardTransformTest extends TTDSparkTest {
     // Test for mbtw analysis when bid wins
     assert(results.spend_cpm == Some(36), "Validating MBTW win logic")
     assert(results.overbid_cpm == Some(16), "Validating MBTW win logic v2")
+
+    assert(results.sum_mode_logNorm == Some(0.16732095609076852), "Validating mode_logNorm calculation")
+
+    assert(results.avg_plutusPushdown == None, "Validating not populating avg_plutusPushdown")
+    assert(results.avg_FirstPriceAdjustment == None, "Validating not populating avg_FirstPriceAdjustment")
   }
 
   test("Plutus Dashboard data transform test 2 for schema/column correctness - ex with losing bid, campaign pc adjustment, Strategy < 100, PC pushing down without hitting floor") {

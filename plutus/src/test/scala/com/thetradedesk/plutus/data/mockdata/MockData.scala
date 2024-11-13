@@ -284,7 +284,7 @@ object MockData {
       IsMargin = false
   )
 
-  def pcResultsMergedMock(dealId: String = "", fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, floorPrice: Double = 5, mu: Float = 0.5f, model: String = "plutus", strategy: Int = 100) = PcResultsMergedDataset(
+  def pcResultsMergedMock(dealId: String = "", fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100) = PcResultsMergedDataset(
     BidRequestId = "1",
     DealId = dealId,
 
@@ -401,7 +401,7 @@ object MockData {
 
     // Fields From PlutusLog
     Mu = mu, //0.5f,
-    Sigma = 2.5f,
+    Sigma = sigma,
     GSS = 0.5,
     AlternativeStrategyPush = 1.0,
 
