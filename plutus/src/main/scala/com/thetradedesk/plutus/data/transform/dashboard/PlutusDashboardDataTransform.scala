@@ -54,8 +54,11 @@ object PlutusDashboardDataTransform extends Logger {
       .groupBy(
         "Date", "Model", "BidBelowFloorExceptedSource", "hasParams", "hasMBTW", "hasDeal", "isMbtwValidStrict", "isMbtwValid", "Channel", "SupplyVendor", "MarketType", "DetailedMarketType", "FactorCombination"
       ).agg(
-        avg(when(col("PredictiveClearingMode") === 3, col("plutusPushdown_beforeAdj")).otherwise(null)).alias("avg_plutusPushdown"),
-        avg(col("BidsFirstPriceAdjustment")).alias("avg_FirstPriceAdjustment"),
+//        avg(when(col("PredictiveClearingMode") === 3, col("plutusPushdown_beforeAdj")).otherwise(null)).alias("avg_plutusPushdown"),
+//        avg(col("BidsFirstPriceAdjustment")).alias("avg_FirstPriceAdjustment"),
+        sum(when(col("PredictiveClearingMode") === 3, col("mode_logNorm")).otherwise(null)).alias("sum_mode_logNorm"),
+        sum(when(col("PredictiveClearingMode") === 3, col("plutusPushdown_beforeAdj")).otherwise(null)).alias("sum_plutusPushdown"),
+        sum(col("BidsFirstPriceAdjustment")).alias("sum_FirstPriceAdjustment"),
         sum(col("FinalBidPrice")).alias("FinalBidPrice"),
         sum(col("MediaCostCPMInUSD")).alias("MediaCostCPMInUSD"),
         sum(col("PartnerCostInUSD")).alias("PartnerCostInUSD"),
@@ -89,44 +92,45 @@ object PlutusDashboardDataTransform extends Logger {
           greatest(lit(0), round(col("AdjustedBidCPMInUSD") - col("MediaCostCPMInUSD"), scale = 3))).otherwise(0)
         ).alias("Savings_MediaCost"),
         round(sum(when(
-          col("hasMBTW") &&
+          col("PredictiveClearingMode") === 3 &&
             col("IsImp") &&
-            col("PredictiveClearingMode") === 3,
+            col("hasMBTW"),
           col("FinalBidPrice") - col("mbtw")).otherwise(0)), scale = 3
         ).alias("overbid_cpm"),
         round(sum(when(
-          col("hasMBTW") &&
+          col("PredictiveClearingMode") === 3 &&
             col("IsImp") &&
-            col("PredictiveClearingMode") === 3,
+            col("hasMBTW"),
           col("FinalBidPrice")).otherwise(0)), scale = 3
         ).alias("spend_cpm"),
         sum(when(
-          col("hasMBTW") &&
+          col("PredictiveClearingMode") === 3 &&
             col("IsImp") &&
-            col("PredictiveClearingMode") === 3
-            && (col("FinalBidPrice") - col("mbtw")) > 0,
+            col("hasMBTW") &&
+            (col("FinalBidPrice") - col("mbtw")) > 0,
           1).otherwise(0)
         ).alias("num_overbid"),
         round(sum(when(
-          col("hasMBTW") &&
+          col("PredictiveClearingMode") === 3 &&
             !col("IsImp") &&
-            col("PredictiveClearingMode") === 3,
+            col("hasMBTW"),
           col("mbtw") - col("FinalBidPrice")).otherwise(0)), scale = 3
         ).alias("underbid_cpm"),
         round(sum(when(
-          col("hasMBTW") &&
+          col("PredictiveClearingMode") === 3 &&
             !col("IsImp") &&
-            col("PredictiveClearingMode") === 3,
+            col("hasMBTW"),
           col("FinalBidPrice")).otherwise(0)), scale = 3
         ).alias("non_spend_cpm"),
         sum(when(
-          col("hasMBTW") &&
+          col("PredictiveClearingMode") === 3 &&
             !col("IsImp") &&
-            col("PredictiveClearingMode") === 3 &&
+            col("hasMBTW") &&
             (col("mbtw") - col("FinalBidPrice")) > 0,
           1).otherwise(0)
         ).alias("num_underbid")
-      )
+      ).withColumn("avg_plutusPushdown", lit(null).cast("Double"))
+      .withColumn("avg_FirstPriceAdjustment", lit(null).cast("Double"))
 
     final_df.selectAs[PlutusDashboardSchema]
   }
@@ -134,6 +138,13 @@ object PlutusDashboardDataTransform extends Logger {
   def calculateFinalBidForMarginAttribution(df: DataFrame, ssp: Dataset[SupplyVendorRecord]): DataFrame = {
     // Apply adjustments to Plutus Pushdown value to manually calculate FinalBid
     // Manually calculating FinalBid allows us to determine what actual factors were applied get to the FinalBid (MarginAttribution)
+
+    // Calculate mode of log norm
+    def calculateMode(mu: Double, sigma: Double): Double = {
+      math.exp(mu - math.pow(sigma, 2.0))
+    }
+
+    val calculateModeUDF = udf(calculateMode _)
 
     // Get OpenPath SSPs
     val openPathSSPs = ssp
@@ -144,6 +155,7 @@ object PlutusDashboardDataTransform extends Logger {
       .withColumn("BaseBidAutoOpt", when(col("BaseBidAutoOpt") === 0, 1).otherwise(col("BaseBidAutoOpt")))
       .withColumn("prePlutusBid", col("AdjustedBidCPMInUSD") * coalesce(col("BaseBidAutoOpt"), lit(1)))
       .withColumn("GSS", col("GSS") / (col("BaseBidAutoOpt") * col("BaseBidAutoOpt")))
+      .withColumn("mode_logNorm", calculateModeUDF(col("Mu").cast("Double"), col("Sigma").cast("Double")))
       .withColumn("TFPcModelBid", col("GSS") * col("prePlutusBid"))
       .withColumn("plutusPushdown_beforeAdj", col("TFPcModelBid") / col("AdjustedBidCPMInUSD"))
       // Calculate adjusted pushdown by comparing to discrepancy, openpath adjustment, and platform-wide pc pressure reducer (Strategy)
