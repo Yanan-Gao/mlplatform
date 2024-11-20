@@ -40,6 +40,7 @@ object AudienceCalculateDistributionParameters {
 
     val minMaxDF = ialDF.select(explode($"AdGroupCandidates").alias("AdGroupCandidate"))
       .withColumn("AdGroupId", $"AdGroupCandidate.AdGroupId")
+      .filter(($"AdGroupCandidate.RelevanceResultSource"===lit(1))&&($"AdGroupCandidate.RelevanceModel"===lit(1)))
       .join(adgroupDF
         .select($"AdGroupId", $"CampaignId"), Seq("AdgroupId"), "inner")
       .join(campaignSeedDF, Seq("CampaignId"), "inner")
