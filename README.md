@@ -14,6 +14,8 @@ TBD - General versioning guidelines are being implemented.  This is a work in pr
 ### Test Code
 Test code is allowed in the users folder.  Please create your test folder using your name - e.g. "users/ryan.reynolds/"
 
+For individual project tests, follow the setup steps and run `sbt test`
+
 ### Creation of Features
 TBD - Features will be pushed to S3 and registered with the feature store.  This is a work in progress and this README file will be updated with additional info as it becomes available.
 
@@ -21,5 +23,9 @@ TBD - Features will be pushed to S3 and registered with the feature store.  This
 Jobs should be scheduled using the airflow-dags repository.
 
 ### Developer Machine Setup
-This will vary depending on which feature/model you are working on.  Notes will be added here.
+This will vary depending on which feature/model you are working on.
+
+When in doubt, follow the setup steps for eldorado here https://thetradedesk.atlassian.net/wiki/x/M2clAQ. 
+
+Then, navigate to your target project directory (e.g. /mlplatform/plutus/) and run `sbt initialize`. 
 

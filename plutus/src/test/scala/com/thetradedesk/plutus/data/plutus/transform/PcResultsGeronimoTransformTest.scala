@@ -65,6 +65,10 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
 
     // Test for Fee Amount column
     assert(res.FeeAmount == None, "Validating that an empty feeFeatureUsage list results in a none value")
+    
+    // Test for BidCap change columns
+    assert(res.UseUncappedBidForPushdown == true, "Validating we use the value from the raw log")
+    assert(res.UncappedFirstPriceAdjustment == 1.023, "Validating that Uncapped FPA results in a the raw log value")
 
     assert(resultList.get(1).FeeAmount == None, "Validating that null feeFeatureUsage results in a none value\"")
     assert(resultList.get(2).FeeAmount == Some(feeFeatureUsageLogMock.FeeAmount), "Validating that the actual feeFeatureUsage.FeeAmount value is propogated")
@@ -90,5 +94,12 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
     val outputDataset = PlutusLogsData.transformPcResultsRawLog(rawDataset, localDateTime)
 
     assert(outputDataset.count() == 1, "Output rows")
+
+    val resultList = outputDataset.collectAsList()
+    val res = resultList.get(0)
+
+    // Test for BidCap change columns
+    assert(res.UseUncappedBidForPushdown == false, "Validating we use the value from the raw log")
+    assert(res.UncappedFirstPriceAdjustment == 2.789, "Validating that Uncapped FPA results in a the raw log value")
   }
 }

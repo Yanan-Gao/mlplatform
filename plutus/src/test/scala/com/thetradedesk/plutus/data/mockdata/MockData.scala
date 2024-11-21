@@ -237,8 +237,8 @@ object MockData {
     PartnerSample = false,
     BidBelowFloorExceptedSource = 0,
     FullPush = false,
-    UseUncappedBidForPushdown = false,
-    UncappedFirstPriceAdjustment = 0,
+    UseUncappedBidForPushdown = true,
+    UncappedFirstPriceAdjustment = 1.023,
   )
 
   val pcResultsRawLogMock = PcResultsRawLogs(
@@ -257,7 +257,7 @@ object MockData {
     FullPush = false,
     FloorBufferAdjustment = 0,
     UseUncappedBidForPushdown = false,
-    UncappedFirstPriceAdjustment = 0,
+    UncappedFirstPriceAdjustment = 2.789,
     LogEntryTime = 638560527380000000L
   )
 
@@ -284,7 +284,7 @@ object MockData {
       IsMargin = false
   )
 
-  def pcResultsMergedMock(dealId: String = "", fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100) = PcResultsMergedDataset(
+  def pcResultsMergedMock(dealId: String = "", fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0) = PcResultsMergedDataset(
     BidRequestId = "1",
     DealId = dealId,
 
@@ -427,7 +427,10 @@ object MockData {
     RPacingValue = Some(0.5),
 
     IsValuePacing = Some(true), // from ProductionAdgroupBudgetData
-    IsUsingPIDController = Some(false)
+    IsUsingPIDController = Some(false),
+
+    UseUncappedBidForPushdown = useUncappedBidForPushdown,
+    UncappedFirstPriceAdjustment = uncappedFpa
   )
 
   def supplyVendorMock(supplyVendorName: String = "google", openPathEnabled: Boolean = false) = SupplyVendorRecord(
