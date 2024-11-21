@@ -151,6 +151,9 @@ case class PcResultsMergedDataset(
                                    IsValuePacing: Option[Boolean], // from ProductionAdgroupBudgetData
                                    IsUsingPIDController: Option[Boolean], // from ProductionAdgroupBudgetData
 
+                                   UseUncappedBidForPushdown:Boolean,
+                                   UncappedFirstPriceAdjustment:Double,
+                                 
                                    // Note: I've removed a bunch of fields from the Geronimo schema since
                                    // these fields dont seem relevant to plutus.
 
