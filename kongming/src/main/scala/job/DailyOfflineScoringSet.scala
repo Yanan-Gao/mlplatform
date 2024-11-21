@@ -23,25 +23,24 @@ object DailyOfflineScoringSet extends KongmingBaseJob {
 
     var hashFeatures = modelDimensions ++ modelFeatures
     hashFeatures = hashFeatures.filter(x => !(seqDirectFields ++ directFields ++ flagFields).contains(x))
-    // todo: temporary - we will not add userFeature for scoring&calibration&metrics in this MR; will do it in the next MR
     val selectionTabular = intModelFeaturesCols(hashFeatures) ++ rawModelFeatureCols(seqDirectFields) ++ aliasedModelFeatureCols(keptFields ++ directFields)
 
     //val dailyOfflineScoringRows = if (task == "roas") {
-    val scoringFeatureDS = OfflineScoringSetTransform.dailyTransform(
+    val oldScoringFeatureDS = OfflineScoringSetTransform.dailyTransform(
       date,
       bidsImpressionFilterByPolicy,
       selectionTabular
     )(getPrometheus)
 
-    val dailyOfflineScoringRows = OldDailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(partCount.DailyOfflineScoring))
+    val dailyOfflineScoringRows = OldDailyOfflineScoringDataset().writePartition(oldScoringFeatureDS, date, Some(partCount.DailyOfflineScoring))
     //} else {
-      //val oldScoringFeatureDS = OfflineScoringSetTransform.dailyTransform(date, bidsImpression, selectionTabular)(getPrometheus)
-      //val reselectionTabular = oldScoringFeatureDS.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqFields)
-      //val scoringFeatureDS = oldScoringFeatureDS
-        //.select(reselectionTabular: _*)
-        //.selectAs[DailyOfflineScoringRecord]
+//    val oldScoringFeatureDS = OfflineScoringSetTransform.dailyTransform(date, bidsImpression, selectionTabular)(getPrometheus)
+    val reselectionTabular = oldScoringFeatureDS.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqHashFields ++ seqDirectFields)
+    val scoringFeatureDS = oldScoringFeatureDS
+      .select(reselectionTabular: _*)
+      .selectAs[DailyOfflineScoringRecord]
 
-      //DailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(partCount.DailyOfflineScoring))
+    DailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(partCount.DailyOfflineScoring))
     //}
 
     Array(dailyOfflineScoringRows)
