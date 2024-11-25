@@ -48,7 +48,7 @@ object OutOfSampleGenerateJob {
   def runETLPipeline(): Unit = {
       val date = dateTime.toLocalDate
       // val schedule = if (AudienceModelInputGeneratorConfig.IncrementalTrainingEnabled) DateUtils.getSchedule(date, AudienceModelInputGeneratorConfig.fullTrainDay, AudienceModelInputGeneratorConfig.trainingCadence) else Schedule.Full
-      val policyTable = clusterTargetingData(AudienceModelInputGeneratorConfig.model, AudienceModel_OOS_Config.supportedDataSources, AudienceModelInputGeneratorConfig.seedSizeLowerScaleThreshold, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold, Schedule.Full)
+      val policyTable = clusterTargetingData(AudienceModelInputGeneratorConfig.model, AudienceModel_OOS_Config.supportedDataSources, AudienceModelInputGeneratorConfig.supportedGraphs, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold, Schedule.Full)
 
       // 10% more downsampling on the original 10% downsampling to make the size of out of seed tdid smaller
       var samplingFunction = shouldConsiderTDID3((AudienceModel_OOS_Config.outSeedSampleRatio*userDownSampleBasePopulation).toInt, AudienceModel_OOS_Config.saltSampleOutSeed)(_)

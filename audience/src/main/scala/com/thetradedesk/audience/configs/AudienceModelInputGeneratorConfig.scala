@@ -1,8 +1,9 @@
 package com.thetradedesk.audience.configs
 
 import com.thetradedesk.spark.util.TTDConfig.config
+
 import java.time.LocalDate
-import com.thetradedesk.audience.datasets.{DataSource, Model}
+import com.thetradedesk.audience.datasets.{CrossDeviceVendor, DataSource, Model}
 import com.thetradedesk.audience.utils.S3Utils;
 
 object AudienceModelInputGeneratorConfig {
@@ -19,6 +20,9 @@ object AudienceModelInputGeneratorConfig {
   val supportedDataSources = config.getString("supportedDataSources", default = "Seed,TTDOwnData").split(',')
     .map(dataSource => DataSource.withName(dataSource).id)
 
+  val supportedGraphs = config.getString("supportedGraphs", default = "None").split(',')
+    .map(CrossDeviceVendor.withName(_).id)
+
   val saltToSplitDataset = config.getString("saltToSplitDataset", default = "RSMSplit")
 
   val validateDatasetSplitModule = config.getInt("validateDatasetSplitModule", default = 5)
@@ -26,8 +30,6 @@ object AudienceModelInputGeneratorConfig {
   var subFolder = config.getString("subFolder", null)
 
   var persistHoldoutSet = config.getBoolean("persistHoldoutSet", default = false)
-
-  var seedSizeLowerScaleThreshold = config.getInt("seedSizeLowerScaleThreshold", default = 1)
 
   var seedSizeUpperScaleThreshold = config.getInt("seedSizeUpperScaleThreshold", default = 12)
 
@@ -66,6 +68,10 @@ object AudienceModelInputGeneratorConfig {
   val recordIntermediateResult = config.getBoolean("recordIntermediateResult", default = false)
 
   val bidImpressionRepartitionNumAfterFilter = config.getInt("bidImpressionRepartitionNumAfterFilter", 8192)
+
+  val enforceGraphExtensionThreshold = config.getInt("enforceGraphExtensionThreshold", 10000)
+
+  val graphExtensionDataRatio = config.getDouble("graphExtensionDataRatio", 0.1)
 
   // the way to determine the n tdid selection->
   // 0: last n tdid; 1: even stepwise selection for n tdid; 2 and other: random select n tdid
