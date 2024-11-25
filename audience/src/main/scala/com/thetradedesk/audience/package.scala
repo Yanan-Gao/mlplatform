@@ -26,7 +26,7 @@ package object audience {
   val userDownSampleHitPopulation = config.getInt("userDownSampleHitPopulation", default = 10000)
   val userDownSampleHitPopulationV2 = config.getInt("userDownSampleHitPopulationV2", default = 100000)
 
-  val audienceResultCoalesce = config.getInt("audienceResultCoalesce", 256)
+  val audienceResultCoalesce = config.getInt("audienceResultCoalesce", 4096)
   val policyTableResultCoalesce = config.getInt("policyTableResultCoalesce", 8)
 
   val audienceVersionDateFormat = "yyyyMMddHHmmss"

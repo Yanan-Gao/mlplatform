@@ -4,6 +4,7 @@ import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJob.prometheus
 import com.thetradedesk.audience.utils.{S3Utils, MapDensity}
+import com.thetradedesk.spark.datasets.sources.ThirdPartyDataDataSet
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.core.AnnotatedSchemaBuilder
@@ -14,7 +15,7 @@ import org.apache.spark.sql.types.{ArrayType, StringType, StructType}
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(GoalType.Relevance, DataSource.Seed, Model.RSM, prometheus: PrometheusClient) {
+object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(GoalType.Relevance, Model.RSM, prometheus: PrometheusClient) {
 
   val rsmSeedProcessCount = prometheus.createCounter("rsm_policy_table_job_seed_process_count", "RSM policy table job seed process record", "seedId", "success")
   private val seedDataSchema = new StructType()
@@ -28,10 +29,10 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
 
     val seedDataFullPath = "s3a://" + Config.seedMetadataS3Bucket + "/" + Config.seedMetadataS3Path + "/" + recentVersion
 
-    val country = CountryDataset().readPartition(date).select('ShortName,'LongName).distinct()
+    val country = CountryDataset().readPartition(date).select('ShortName, 'LongName).distinct()
     val countryMap: Map[String, String] = country.collect()
-                                                .map(row => (row.getString(0), row.getString(1)))
-                                                .toMap
+      .map(row => (row.getString(0), row.getString(1)))
+      .toMap
 
     val seedMeta =
       if (!Config.allRSMSeed) {
@@ -62,7 +63,7 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
 
     seedMeta
       .withColumn("topCountryByDensity", coalesce(MapDensity.getTopDensityFeatures(Config.countryDensityThreshold)('CountByCountry), array()))
-      .withColumn("topCountryByDensity",sql_transform(
+      .withColumn("topCountryByDensity", sql_transform(
         col("topCountryByDensity"),
         code => coalesce(
           element_at(typedLit(countryMap), code),
@@ -76,7 +77,69 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
 
   }
 
+  override def retrieveSourceMetaData(date: LocalDate): Dataset[SourceMetaRecord] = {
+    val ttdRawDataMeta = retrieveTTDRawDataMeta(date)
+    val seedDataMeta = retrieveSeedDataMeta(date).where('Count >= lit(Config.seedProcessLowerThreshold) && 'Count <= lit(Config.seedProcessUpperThreshold))
+    ttdRawDataMeta.union(seedDataMeta)
+  }
+
+  private def retrieveSeedDataMeta(date: LocalDate): Dataset[SourceMetaRecord] = {
+    val seedMeta = retrieveSeedMeta(date)
+    seedMeta
+      .withColumnRenamed("SeedId", "SourceId").select('SourceId, 'Count, 'TargetingDataId, 'topCountryByDensity, lit(DataSource.Seed.id).alias("Source")).as[SourceMetaRecord]
+  }
+
+  private def retrieveTTDRawDataMeta(date: LocalDate): Dataset[SourceMetaRecord] = {
+    val segmentsSummary = spark.read.format("com.thetradedesk.segment.client.spark_3.receivedSegmentSummary.ReceivedSegmentSummaryTableProvider").load()
+
+    val metaTable = ThirdPartyDataDataSet()
+      .readPartition(date)
+      .where('ThirdPartyDataHierarchyString.startsWith("/2537086/242456787/")) // means TTD own segments
+      .select('TargetingDataId)
+      .join(segmentsSummary, Seq("TargetingDataId"), "inner")
+      .where('RecordCount >= lit(Config.seedProcessLowerThreshold) &&
+        'RecordCount <= lit(Config.seedProcessUpperThreshold))
+      .select('TargetingDataId.cast(StringType).alias("SourceId"), 'RecordCount.alias("Count"), 'TargetingDataId, array(lit("")).alias("topCountryByDensity"))
+    metaTable.withColumn("Source", lit(DataSource.TTDOwnData.id)).as[SourceMetaRecord]
+  }
+
   override def retrieveSourceDataWithDifferentGraphType(date: LocalDate, personGraph: DataFrame, householdGraph: DataFrame): SourceDataWithDifferentGraphType = {
+    val seedSourceDataWithDifferentGraphType = retrieveSeedDataWithDifferentGraphType(date, personGraph, householdGraph)
+    val ttdSourceRawData = retrieveTTDRawData(date)
+    SourceDataWithDifferentGraphType(
+      seedSourceDataWithDifferentGraphType.NoneGraphData
+        .join(ttdSourceRawData._1.withColumnRenamed("SeedIds", "SeedIds1"), Seq("TDID"), "outer")
+        .select('TDID, concat('SeedIds, 'SeedIds1).alias("SeedIds"))
+        .as[AggregatedGraphTypeRecord],
+      seedSourceDataWithDifferentGraphType.PersonGraphData,
+      seedSourceDataWithDifferentGraphType.HouseholdGraphData,
+      seedSourceDataWithDifferentGraphType.SourceMeta.union(ttdSourceRawData._2)
+    )
+  }
+
+  private def retrieveTTDRawData(date: LocalDate): (Dataset[AggregatedGraphTypeRecord], Dataset[SourceMetaRecord]) = {
+    val segmentsSummary = spark.read.format("com.thetradedesk.segment.client.spark_3.receivedSegmentSummary.ReceivedSegmentSummaryTableProvider").load()
+
+    val metaTable = ThirdPartyDataDataSet()
+      .readPartition(date)
+      .where('ThirdPartyDataHierarchyString.startsWith("/2537086/242456787/")) // means TTD own segments
+      .select('TargetingDataId)
+      .join(segmentsSummary, Seq("TargetingDataId"), "inner")
+      .where('RecordCount >= lit(Config.seedProcessLowerThreshold) &&
+        'RecordCount <= lit(Config.seedProcessUpperThreshold))
+      .select('TargetingDataId, 'RecordCount.alias("Count"), 'TargetingDataId.alias("SourceId"))
+
+    val tdid2TargetingDataIds = spark.read.format("com.thetradedesk.segment.client.spark_3.receivedSegment.ReceivedSegmentTableProvider")
+      .option("targetingDataIds", metaTable.select('TargetingDataId).as[Long].collect().mkString(","))
+      .load()
+      .groupBy('UserId.alias("TDID"))
+      .agg(collect_list('TargetingDataId).alias("TargetingDataIds"))
+
+    (tdid2TargetingDataIds.select('TDID, org.apache.spark.sql.functions.transform('TargetingDataIds, item => item.cast(StringType)).alias("SeedIds")).as[AggregatedGraphTypeRecord],
+      metaTable.withColumn("topCountryByDensity", array(lit(""))).withColumn("Source", lit(DataSource.TTDOwnData.id)).as[SourceMetaRecord])
+  }
+
+  def retrieveSeedDataWithDifferentGraphType(date: LocalDate, personGraph: DataFrame, householdGraph: DataFrame): SourceDataWithDifferentGraphType = {
     val seedMeta = retrieveSeedMeta(date)
 
     val policyMetaTable = seedMeta
@@ -98,7 +161,7 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
       largeSeedData.union(smallSeedData._1),
       smallSeedData._2,
       smallSeedData._3,
-      seedMeta.withColumnRenamed("SeedId","SourceId").select('SourceId,'Count, 'TargetingDataId, 'topCountryByDensity).as[SourceMetaRecord]
+      seedMeta.withColumnRenamed("SeedId", "SourceId").select('SourceId, 'Count, 'TargetingDataId, 'topCountryByDensity, lit(DataSource.Seed.id).alias("Source")).as[SourceMetaRecord]
     )
 
   }

@@ -16,7 +16,7 @@ import java.sql.Timestamp
 import java.time.{LocalDate, LocalDateTime, ZoneOffset}
 
 object AEMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(
-  GoalType.CPA, DataSource.Conversion, Model.AEM, prometheus: PrometheusClient) {
+  GoalType.CPA, Model.AEM, prometheus: PrometheusClient) {
 
   private def retrieveActiveCampaignConversionTrackerTagIds(): DataFrame = {
     // prepare dataset
@@ -45,6 +45,10 @@ object AEMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(
       .select(CampConv("TrackingTagId")).distinct()
 
     activeCampaignConversionTrackerTagIds
+  }
+
+  override def retrieveSourceMetaData(date: LocalDate): Dataset[SourceMetaRecord] = {
+    throw new Exception(s"unsupported in AEMGraphPolicyTableGenerator")
   }
 
   override def retrieveSourceDataWithDifferentGraphType(date: LocalDate, personGraph: DataFrame, householdGraph: DataFrame): SourceDataWithDifferentGraphType = {
@@ -81,7 +85,7 @@ object AEMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(
           .alias("Count"))
       .join(trackingTagDataset, "TrackingTagId")
       .withColumnRenamed("TrackingTagId", "SourceId")
-      .select('SourceId, 'Count, 'TargetingDataId, array("").alias("topCountryByDensity")) // topCountryByDensity is not used for AEM right now
+      .select('SourceId, 'Count, 'TargetingDataId, array(lit("")).alias("topCountryByDensity"), lit(DataSource.Conversion.id).alias("Source")) // topCountryByDensity is not used for AEM right now
       .as[SourceMetaRecord]
 
     val TDID2ConversionPixel = conversionDataset

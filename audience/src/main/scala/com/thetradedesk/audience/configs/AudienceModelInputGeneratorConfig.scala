@@ -16,7 +16,7 @@ object AudienceModelInputGeneratorConfig {
 
   val model = Model.withName(config.getString("modelName", default = "RSM"))
 
-  val supportedDataSources = config.getString("supportedDataSources", default = "Seed").split(',')
+  val supportedDataSources = config.getString("supportedDataSources", default = "Seed,TTDOwnData").split(',')
     .map(dataSource => DataSource.withName(dataSource).id)
 
   val saltToSplitDataset = config.getString("saltToSplitDataset", default = "RSMSplit")

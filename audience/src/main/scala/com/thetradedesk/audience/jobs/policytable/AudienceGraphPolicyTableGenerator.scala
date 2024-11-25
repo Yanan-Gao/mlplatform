@@ -20,7 +20,9 @@ import java.time.LocalDate
 IMPORTANT:
 seed here don't represent kokai seed, it represents any pixel(group of tdid) in TTD (including kokai seed, conversion tracker etc.)
 */
-abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, dataSource: DataSource, model: Model, prometheus: PrometheusClient) extends AudiencePolicyTableGenerator(model, prometheus) {
+abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Model, prometheus: PrometheusClient) extends AudiencePolicyTableGenerator(model, prometheus) {
+  def retrieveSourceMetaData(date: LocalDate): Dataset[SourceMetaRecord]
+
   def retrieveSourceDataWithDifferentGraphType(date: LocalDate, personGraph: DataFrame, householdGraph: DataFrame): SourceDataWithDifferentGraphType
 
   def getAggregatedSeedWritableDataset(): LightWritableDataset[AggregatedSeedRecord]
@@ -62,8 +64,7 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, dataSource:
         .union(householdGraphCount)
         .withColumnRenamed("count", "ActiveSize")
         .join(sourceMeta, Seq("SourceId"), "inner")
-        .select(('ActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ActiveSize"), 'CrossDeviceVendorId, 'SourceId, 'Count.alias("Size"), 'TargetingDataId, 'topCountryByDensity)
-        .withColumn("Source", lit(dataSource.id))
+        .select(('ActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ActiveSize"), 'CrossDeviceVendorId, 'SourceId, 'Count.alias("Size"), 'TargetingDataId, 'Source, 'topCountryByDensity)
         .withColumn("GoalType", lit(goalType.id))
         .withColumn("StorageCloud", lit(Config.storageCloud))
         .cache()
@@ -72,6 +73,13 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, dataSource:
   }
 
   override def retrieveSourceData(date: LocalDate): DataFrame = {
+    val successFile = getAggregatedSeedReadableDataset().DatePartitionedPath(Some(date)) + "/_SUCCESS"
+    if (Config.reuseAggregatedSeedIfPossible && FSUtils.fileExists(successFile)(spark)) {
+      val sourceMeta = retrieveSourceMetaData(date)
+      // step 5. generate policy table
+      return generateRawPolicyTable(sourceMeta, date)
+    }
+
     // step 1. fetch unique tdid
     val uniqueTDIDs = getBidImpUniqueTDIDs(date)
 
@@ -132,7 +140,6 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, dataSource:
 
     // make sure dataset is written successfully to s3
     var checkCount = 0
-    val successFile = getAggregatedSeedReadableDataset().DatePartitionedPath(Some(date)) + "/_SUCCESS"
     while (checkCount < 10 && !FSUtils.fileExists(successFile)(spark)) {
       checkCount += 1
       Thread.sleep(1000 * checkCount)
@@ -153,7 +160,8 @@ final case class AggregatedGraphTypeRecord(TDID: String,
 final case class SourceMetaRecord(SourceId: String,
                                   Count: BigInt,
                                   TargetingDataId: BigInt,
-                                  topCountryByDensity: Seq[String]
+                                  topCountryByDensity: Seq[String],
+                                  Source: Int
                                   )
 
 
