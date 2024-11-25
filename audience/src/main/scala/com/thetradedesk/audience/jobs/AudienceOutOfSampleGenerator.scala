@@ -19,7 +19,7 @@ import org.apache.spark.sql.functions._
 object AudienceModel_OOS_Config {
     val negativeSampleRatio = config.getInt("negativeSampleRatio", default = 10)
 
-    val supportedDataSources = config.getString("supportedDataSources", "Seed").split(',')
+    val supportedDataSources = config.getString("supportedDataSources", "Seed,TTDOwnData").split(',')
       .map(dataSource => DataSource.withName(dataSource).id)
 
     val saltSampleOutSeed = config.getString(s"saltSampleOutSeed", default = "OOS_out_of_seed")
@@ -59,7 +59,7 @@ object OutOfSampleGenerateJob {
         val dataset = {
           AudienceModelInputGeneratorConfig.model match {
             case Model.RSM => typePolicyTable match {
-              case ((DataSource.Seed, crossDeviceVendor: CrossDeviceVendor, IncrementalTrainingTag.Full), subPolicyTable: Array[AudienceModelPolicyRecord]) => {
+              case ((_, crossDeviceVendor: CrossDeviceVendor, IncrementalTrainingTag.Full), subPolicyTable: Array[AudienceModelPolicyRecord]) => {
                 val rawLabels = new RSMSeedInputGenerator(crossDeviceVendor,1.0).generateLabels(date, subPolicyTable)
                 // in seed oos
                 val filteredInSeedLabels = uniqueTDIDs.join(rawLabels, Seq("TDID"), "inner")
@@ -84,7 +84,7 @@ object OutOfSampleGenerateJob {
 
                 var OOS: DataFrame = inSeedOOS.union(outSeedOOS)
                 if (AudienceModel_OOS_Config.extraSampleRatio != 1.0) {
-                  var extraSampling = shouldConsiderTDID3((AudienceModel_OOS_Config.extraSampleRatio*userDownSampleBasePopulation).toInt, AudienceModel_OOS_Config.extraSaltSample)(_)
+                  val extraSampling = shouldConsiderTDID3((AudienceModel_OOS_Config.extraSampleRatio * userDownSampleBasePopulation).toInt, AudienceModel_OOS_Config.extraSaltSample)(_)
                   OOS = OOS.filter(extraSampling('TDID))
                 }
                 ContextualTransform.generateContextualFeatureTier1(OOS.withColumn("GroupID", 'TDID))

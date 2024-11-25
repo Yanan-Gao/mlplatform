@@ -54,6 +54,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     val policyS3Bucket = S3Utils.refinePath(config.getString("policyS3Bucket", "thetradedesk-mlplatform-us-east-1"))
     val policyS3Path = S3Utils.refinePath(config.getString("policyS3Path", s"configdata/${ttdEnv}/audience/policyTable/${model}/v=1"))
     val maxVersionsToKeep = config.getInt("maxVersionsToKeep", 30)
+    val reuseAggregatedSeedIfPossible = config.getBoolean("reuseAggregatedSeedIfPossible", false)
     val bidImpressionRepartitionNum = config.getInt("bidImpressionRepartitionNum", 4096)
     val seedRepartitionNum = config.getInt("seedRepartitionNum", 32)
     val bidImpressionLookBack = config.getInt("bidImpressionLookBack", 1)

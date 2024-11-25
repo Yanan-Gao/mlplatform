@@ -99,15 +99,15 @@ object AudienceModelInputGeneratorJob {
             schedule match {
               case Schedule.Full =>
                 typePolicyTable match {
-                  case ((DataSource.Seed, crossDeviceVendor: CrossDeviceVendor, IncrementalTrainingTag.Full), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
+                  case ((_, crossDeviceVendor: CrossDeviceVendor, IncrementalTrainingTag.Full), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
                     RSMSeedInputGenerator(crossDeviceVendor, 1.0).generateDataset(date, subPolicyTable)
                   case _ => throw new Exception(s"unsupported policy settings: Model[${Model.RSM}], Setting[${typePolicyTable._1}]")
                 }
               case Schedule.Incremental =>
                 typePolicyTable match {
-                  case ((DataSource.Seed, crossDeviceVendor: CrossDeviceVendor, IncrementalTrainingTag.New), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
+                  case ((_, crossDeviceVendor: CrossDeviceVendor, IncrementalTrainingTag.New), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
                     RSMSeedInputGenerator(crossDeviceVendor, 1.0).generateDataset(date, subPolicyTable)
-                  case ((DataSource.Seed, crossDeviceVendor: CrossDeviceVendor, IncrementalTrainingTag.Small), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
+                  case ((_, crossDeviceVendor: CrossDeviceVendor, IncrementalTrainingTag.Small), subPolicyTable: Array[AudienceModelPolicyRecord]) =>
                     RSMSeedInputGenerator(crossDeviceVendor, AudienceModelInputGeneratorConfig.IncrementalTrainingSampleRate).generateDataset(date, subPolicyTable)
                   case _ => throw new Exception(s"unsupported policy settings: Model[${Model.RSM}], Setting[${typePolicyTable._1}]")
                 }
@@ -123,12 +123,15 @@ object AudienceModelInputGeneratorJob {
         result
       }
 
-      val resultSet = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](dataset, rawJson)
+      val tempResultSet = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](dataset, rawJson)
         .withColumn("SplitRemainder", xxhash64(concat('GroupId, lit(AudienceModelInputGeneratorConfig.saltToSplitDataset))) % AudienceModelInputGeneratorConfig.validateDatasetSplitModule)
         .withColumn("SubFolder",
           when('SplitRemainder === lit(SubFolder.Val.id), SubFolder.Val.id)
             .when('SplitRemainder === lit(SubFolder.Holdout.id), SubFolder.Holdout.id)
             .otherwise(SubFolder.Train.id))
+
+        val resultSet = if (typePolicyTable._1._1 != DataSource.Seed) tempResultSet else
+          tempResultSet
         .withColumn("f", countryMapTransformedUDF('SyntheticIds, 'Targets, 'Country))
         .withColumn("SyntheticIds", col("f._1"))
         .where(size('SyntheticIds) > 0)

@@ -62,7 +62,7 @@ object Model extends Enumeration {
 
 object DataSource extends Enumeration {
   type DataSource = Value
-  val None, Conversion, SIB, Seed, Feedback, Click = Value
+  val None, Conversion, SIB, Seed, Feedback, Click, TTDOwnData = Value
 }
 
 object GoalType extends Enumeration {
