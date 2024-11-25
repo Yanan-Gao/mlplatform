@@ -40,7 +40,9 @@ object MockData {
 
   def bidsImpressionsMock(FeeFeatureUsage: Seq[FeeFeatureUsageLogBackingData] = Seq(),
                           JanusVariantMap: Option[Map[String, String]] = None,
-                          ModelVersionsUsed: Option[Map[String, Long]] = None
+                          ModelVersionsUsed: Option[Map[String, Long]] = None,
+                          SupplyVendorPublisherId: Option[String] = None,
+                          AliasedSupplyPublisherId: Option[Int] = None
                          ) =
     BidsImpressionsSchema(
       // bidrequest cols
@@ -59,8 +61,8 @@ object MockData {
       AdGroupId = Some("fakeadgroup123"),
 
       SupplyVendor = Some(""),
-      SupplyVendorPublisherId = Some("983"),
-      AliasedSupplyPublisherId = Some(1),
+      SupplyVendorPublisherId = SupplyVendorPublisherId,
+      AliasedSupplyPublisherId = AliasedSupplyPublisherId,
       SupplyVendorSiteId = Some(""),
       Site = Some(""),
       ImpressionPlacementId = Some(""),

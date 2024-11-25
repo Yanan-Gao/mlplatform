@@ -1,14 +1,14 @@
 package com.thetradedesk.plutus.data.transform
 
 
-import com.thetradedesk.plutus.data.{envForReadInternal, envForWrite, plutusDataPath}
+import com.thetradedesk.plutus.data.{RenderingContext, envForReadInternal, envForWrite, plutusDataPath}
 import job.CleanInputDataProcessor.prometheus
 import com.thetradedesk.plutus.data.schema.CleanInputData
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExtensions}
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.spark.sql.functions.{col, round, when}
+import org.apache.spark.sql.functions.{col, lit, round, when}
 import org.apache.spark.sql.types.FloatType
 import org.apache.spark.sql.{Dataset, SaveMode}
 
@@ -81,6 +81,9 @@ object CleanInputDataTransform {
               ((col("mb2w") > col("FloorPriceInUSD")) || (col("FloorPriceInUSD").isNullOrEmpty)), true)
           .otherwise(false)
       )
+      // We only want to use location data from InApp Rendering Context. Rest is not good data.
+      .withColumn("Latitude", when(col("RenderingContext") === lit(RenderingContext.InApp), col("Latitude")).otherwise(lit(0.0f)))
+      .withColumn("Longitude", when(col("RenderingContext") === lit(RenderingContext.InApp), col("Longitude")).otherwise(lit(0.0f)))
       .withColumn("AuctionBidPrice",
         when(col("RealMediaCost").isNotNull, col("RealMediaCost"))
           .when((col("FloorPriceInUSD").isNotNull && (col("b_RealBidPrice") < col("FloorPriceInUSD"))), col("FloorPriceInUSD"))

@@ -5,13 +5,18 @@ import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.plutus.data._
 import com.thetradedesk.plutus.data.schema._
+import com.thetradedesk.plutus.data.utils.ParallelParquetWriter
+import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.listener.WriteListener
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{Column, DataFrame, Dataset, SaveMode}
 import org.apache.spark.storage.StorageLevel
 
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import scala.concurrent.ExecutionContext
 
 object PlutusDataTransform extends Logger {
 
@@ -22,6 +27,12 @@ object PlutusDataTransform extends Logger {
   val DEFAULT_MAX_BID = 300.0
   val LAT_LONG_PRECISION = 4
   val DEFAULT_FACET_PARTITIONS = 50
+
+  val COL_NAME_CHANNEL = "ch"
+  val COL_NAME_SUPPLYVENDOR = "sv"
+
+  val NON_SHIFT_INTS: Seq[String] = Seq("PredictiveClearingMode", "BidBelowFloorExceptedSource", "Strategy", "LossReason", "UserSegmentCount")
+  val NON_FEATURE_STRINGS: Seq[String] = Seq("BidRequestId", "UIID", "Model", COL_NAME_SUPPLYVENDOR, COL_NAME_CHANNEL)
 
 
   def EncodeLatLong(df: Dataset[PcResultsMergedDataset]): DataFrame = {
@@ -71,8 +82,13 @@ object PlutusDataTransform extends Logger {
                       featuresJson: String)(implicit prometheus: PrometheusClient): Unit = {
 
     val versionedOutputPath = s"$outputPath/v=$dataVersion"
+    val datePrefix = explicitDatePart(date)
     val mergedDataset: Dataset[PcResultsMergedDataset] = loadParquetData[PcResultsMergedDataset](PcResultsMergedDataset.S3_PATH(Some(envForRead)), date)
       .filter(! (col("IsImp") === false && col("BidBelowFloorExceptedSource") =!= 0)) // remove BBF bids (keep the impressions)
+      // We only want to use location data from InApp Rendering Context. Rest is not good data.
+      .withColumn("Latitude", when(col("RenderingContext") === lit(RenderingContext.InApp), col("Latitude")).otherwise(lit(0.0f)))
+      .withColumn("Longitude", when(col("RenderingContext") === lit(RenderingContext.InApp), col("Longitude")).otherwise(lit(0.0f)))
+      .as[PcResultsMergedDataset]
 
     // should just check that the data contains these rather than filtering to this list
     val modelFeatures = loadModelFeatures(featuresJson)
@@ -85,53 +101,62 @@ object PlutusDataTransform extends Logger {
       .filter(col("AuctionType").isin(AuctionType.FirstPrice))
       .filter(col("isMbtwValidStrict"))
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
+      .withColumn(COL_NAME_CHANNEL, lower(regexp_replace(col("Channel"), " ", "")))
+      .withColumn(COL_NAME_SUPPLYVENDOR, col("SupplyVendor"))
       .drop("AdWidthInPixels", "AdHeightInPixels")
       .repartition(partitions)
       .persist(StorageLevel.MEMORY_ONLY_2)
 
+    val cleanExplicitHashModMaxDataset = cleanExplicitDataset
+      .select(hashedModMaxIntCols(cleanExplicitDataset.dtypes, DEFAULT_SHIFT, NON_FEATURE_STRINGS ++ NON_SHIFT_INTS): _*)
+      .na.fill(0)
+
     val bidsGaugeExplicit = prometheus.createGauge("plutus_clean_explicit_v2", "count of clean explicit dataset v2")
     bidsGaugeExplicit.set(cleanExplicitDataset.count())
 
-    val mbtwSupplyVendors = cleanExplicitDataset.select("SupplyVendor").distinct().as[String].collect().toSeq
+    val writer = new ParallelParquetWriter()
 
-    mbtwSupplyVendors.par.foreach {
-      sv =>
+    writer.EnqueueWrite(
+      writer =
         cleanExplicitDataset
-          .filter(col("SupplyVendor") === sv)
-          .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
+          .drop(COL_NAME_CHANNEL)
           .write
-          .mode(SaveMode.Overwrite)
-          .parquet(s"""$versionedOutputPath/$envForWrite/explicit/sv/${sv.replaceAll(" ", "")}/$cleanOutputPrefix/${explicitDatePart(date)}""")
+          .partitionBy(COL_NAME_SUPPLYVENDOR)
+          .mode(SaveMode.Overwrite),
+      path = s"$versionedOutputPath/$envForWrite/explicit/$cleanOutputPrefix/$datePrefix/sv"
+    )
 
-        cleanExplicitDataset
-          .filter(col("SupplyVendor") === sv)
-          .select(hashedModMaxIntCols(cleanExplicitDataset.dtypes, DEFAULT_SHIFT, PcResultsMergedDataset.NON_FEATURE_STRINGS, PcResultsMergedDataset.NON_SHIFT_INTS): _*)
-          .na.fill(0)
-          .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
+    writer.EnqueueWrite(
+      writer =
+        cleanExplicitHashModMaxDataset
+          .drop(COL_NAME_CHANNEL)
           .write
-          .mode(SaveMode.Overwrite)
-          .parquet(s"""$versionedOutputPath/$envForWrite/explicit/sv/${sv.replaceAll(" ", "")}/$cleanOutputPrefix-hashed-mod-maxint/${explicitDatePart(date)}""")
-    }
+          .partitionBy(COL_NAME_SUPPLYVENDOR)
+          .mode(SaveMode.Overwrite),
+      path = s"$versionedOutputPath/$envForWrite/explicit/$cleanOutputPrefix-hashed-mod-maxint/$datePrefix/sv"
+    )
 
-    val channelTypes = cleanExplicitDataset.select("ChannelSimple").distinct().as[String].collect().toSeq
-    channelTypes.par.foreach {
-      ch =>
+    writer.EnqueueWrite(
+      writer =
         cleanExplicitDataset
-          .filter(col("Channel") === ch)
-          .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
+          .drop(COL_NAME_SUPPLYVENDOR)
           .write
-          .mode(SaveMode.Overwrite)
-          .parquet(s"""$versionedOutputPath/$envForWrite/explicit/ch/${ch.replaceAll(" ", "")}/$cleanOutputPrefix/${explicitDatePart(date)}""")
+          .partitionBy(COL_NAME_CHANNEL)
+          .mode(SaveMode.Overwrite),
+      path = s"$versionedOutputPath/$envForWrite/explicit/$cleanOutputPrefix/$datePrefix/ch"
+    )
 
-        cleanExplicitDataset
-          .filter(col("Channel") === ch)
-          .select(hashedModMaxIntCols(cleanExplicitDataset.dtypes, DEFAULT_SHIFT, PcResultsMergedDataset.NON_FEATURE_STRINGS, PcResultsMergedDataset.NON_SHIFT_INTS): _*)
-          .na.fill(0)
-          .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
+    writer.EnqueueWrite(
+      writer =
+        cleanExplicitHashModMaxDataset
+          .drop(COL_NAME_SUPPLYVENDOR)
           .write
-          .mode(SaveMode.Overwrite)
-          .parquet(s"""$versionedOutputPath/$envForWrite/explicit/ch/${ch.replaceAll(" ", "")}/$cleanOutputPrefix-hashed-mod-maxint/${explicitDatePart(date)}""")
-    }
+          .partitionBy(COL_NAME_CHANNEL)
+          .mode(SaveMode.Overwrite),
+      path = s"$versionedOutputPath/$envForWrite/explicit/$cleanOutputPrefix-hashed-mod-maxint/$datePrefix/ch"
+    )
+
+    writer.WriteAll()
     cleanExplicitDataset.unpersist()
   }
 
@@ -158,7 +183,7 @@ object PlutusDataTransform extends Logger {
 
     val versionedOutputPath = s"$outputPath/v=$dataVersion"
     val mergedDataset: Dataset[PcResultsMergedDataset] = loadParquetData[PcResultsMergedDataset](PcResultsMergedDataset.S3_PATH(Some(envForRead)), date)
-
+    val datePrefix = explicitDatePart(date)
 
     // should just check that the data contains these rather than filtering to this list
     val modelFeatures = loadModelFeatures(featuresJson)
@@ -174,43 +199,56 @@ object PlutusDataTransform extends Logger {
       )
     ).withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
       .drop("AdWidthInPixels", "AdHeightInPixels")
+      .withColumn(COL_NAME_CHANNEL, lower(regexp_replace(col("Channel"), " ", "")))
       .repartition(partitions)
       .persist()
+
+    val cleanImplicitHashModMaxDataset = cleanImplicitDataset
+      .select(hashedModMaxIntCols(cleanImplicitDataset.dtypes, DEFAULT_SHIFT, NON_FEATURE_STRINGS ++ NON_SHIFT_INTS): _*)
+      .na.fill(0)
 
     val bidsGaugeImplicit = prometheus.createGauge("plutus_clean_implicit_v2", "count of clean explicit dataset v2")
     bidsGaugeImplicit.set(cleanImplicitDataset.count())
 
-    cleanImplicitDataset
-      .write
-      .mode(SaveMode.Overwrite)
-      .parquet(s"$versionedOutputPath/${envForWrite}/implicit/sample=${(implicitSampleRate * 100).intValue()}/${cleanOutputPrefix}/${explicitDatePart(date)}")
+    val writer = new ParallelParquetWriter()
 
-    cleanImplicitDataset
-      .select(hashedModMaxIntCols(cleanImplicitDataset.dtypes, DEFAULT_SHIFT, PcResultsMergedDataset.NON_FEATURE_STRINGS, PcResultsMergedDataset.NON_SHIFT_INTS): _*)
-      .na.fill(0)
-      .write
-      .mode(SaveMode.Overwrite)
-      .parquet(s"$versionedOutputPath/${envForWrite}/implicit/sample=${(implicitSampleRate * 100).intValue()}/${cleanOutputPrefix}-hashed-mod-maxint/${explicitDatePart(date)}")
+    // Writing all hash mod max rows
+    writer.EnqueueWrite(
+      writer = cleanImplicitDataset
+        .drop(COL_NAME_CHANNEL)
+        .write
+        .mode(SaveMode.Overwrite),
+      path = s"$versionedOutputPath/${envForWrite}/implicit/sample=${(implicitSampleRate * 100).intValue()}/${cleanOutputPrefix}/$datePrefix/all"
+    )
 
-    val channelTypes = cleanImplicitDataset.select("ChannelSimple").distinct().as[String].collect().toSeq
-    channelTypes.par.foreach {
-      ch =>
-        cleanImplicitDataset
-          .filter(col("Channel") === ch)
-          .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
-          .write
-          .mode(SaveMode.Overwrite)
-          .parquet(s"""$versionedOutputPath/$envForWrite/implicit/ch/${ch.replaceAll(" ", "")}/sample=${(implicitSampleRate * 100).intValue()}/$cleanOutputPrefix/${explicitDatePart(date)}""")
+    // Writing all hash mod max rows
+    writer.EnqueueWrite(
+      writer = cleanImplicitHashModMaxDataset
+        .drop(COL_NAME_CHANNEL)
+        .write
+        .mode(SaveMode.Overwrite),
+      path = s"$versionedOutputPath/${envForWrite}/implicit/sample=${(implicitSampleRate * 100).intValue()}/${cleanOutputPrefix}-hashed-mod-maxint/$datePrefix/all"
+    )
 
-        cleanImplicitDataset
-          .filter(col("Channel") === ch)
-          .select(hashedModMaxIntCols(cleanImplicitDataset.dtypes, DEFAULT_SHIFT, PcResultsMergedDataset.NON_FEATURE_STRINGS, PcResultsMergedDataset.NON_SHIFT_INTS): _*)
-          .na.fill(0)
-          .repartition(maybeFacetPartitions.getOrElse(DEFAULT_FACET_PARTITIONS))
-          .write
-          .mode(SaveMode.Overwrite)
-          .parquet(s"""$versionedOutputPath/$envForWrite/implicit/ch/${ch.replaceAll(" ", "")}/sample=${(implicitSampleRate * 100).intValue()}/$cleanOutputPrefix-hashed-mod-maxint/${explicitDatePart(date)}""")
-    }
+    // Separating by channel
+    writer.EnqueueWrite(
+      writer = cleanImplicitDataset
+        .write
+        .partitionBy(COL_NAME_CHANNEL)
+        .mode(SaveMode.Overwrite),
+      path = s"$versionedOutputPath/$envForWrite/implicit/sample=${(implicitSampleRate * 100).intValue()}/$cleanOutputPrefix/$datePrefix/ch"
+    )
+
+    // Writing all hash mod max rows separated by channel
+    writer.EnqueueWrite(
+      writer = cleanImplicitHashModMaxDataset
+        .write
+        .partitionBy(COL_NAME_CHANNEL)
+        .mode(SaveMode.Overwrite),
+      path = s"$versionedOutputPath/$envForWrite/implicit/sample=${(implicitSampleRate * 100).intValue()}/$cleanOutputPrefix-hashed-mod-maxint/$datePrefix/ch"
+    )
+
+    writer.WriteAll()
     cleanImplicitDataset.unpersist()
   }
 
