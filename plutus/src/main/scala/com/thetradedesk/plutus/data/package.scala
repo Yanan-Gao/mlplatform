@@ -21,7 +21,7 @@ import scala.util.Try
 
 package object data {
 
-  val DATA_VERSION = 2
+  val DATA_VERSION = 3
 
   val PLUTUS_DATA_SOURCE = "plutus"
   val IMPLICIT_DATA_SOURCE = "bidsimpressions"
@@ -43,10 +43,10 @@ package object data {
     }.toArray
   }
 
-  def hashedModMaxIntCols(datasetDtype: Array[(String, String)], shift: Int, nonFeatureStrings: Seq[String] = Seq(), nonShiftIntegers: Seq[String] = Seq()): Array[Column] = {
+  def hashedModMaxIntCols(datasetDtype: Array[(String, String)], shift: Int, excludeCols: Seq[String] = Seq()): Array[Column] = {
     datasetDtype.map {
-      case (name, "StringType") if !nonFeatureStrings.contains(name) => when(col(name).isNotNullOrEmpty, shiftModMaxValueUDF(xxhash64(col(name)), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
-      case (name, "IntegerType") if !nonShiftIntegers.contains(name) => when(col(name).isNotNull, shiftModMaxValueUDF(col(name), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
+      case (name, "StringType") if !excludeCols.contains(name) => when(col(name).isNotNullOrEmpty, shiftModMaxValueUDF(xxhash64(col(name)), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
+      case (name, "IntegerType") if !excludeCols.contains(name) => when(col(name).isNotNull, shiftModMaxValueUDF(col(name), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
       case (name, _) => col(name).alias(name)
     }.toArray
   }

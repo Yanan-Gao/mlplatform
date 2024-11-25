@@ -178,9 +178,6 @@ object PcResultsMergedDataset {
   val S3_PATH_HOUR: (LocalDateTime, Option[String]) => String = (dateTime: LocalDateTime, ttdEnv: Option[String]) => f"${S3_PATH(ttdEnv)}/${paddedDateTimePart(dateTime)}"
   val S3_PATH_DATE: (LocalDate, Option[String]) => String = (date: LocalDate, ttdEnv: Option[String]) => f"${S3_PATH(ttdEnv)}/date=${paddedDatePart(date)}"
 
-  val NON_FEATURE_STRINGS: Seq[String] = Seq("BidRequestId", "UIID", "Model")
-  val NON_SHIFT_INTS: Seq[String] = Seq("PredictiveClearingMode", "BidBelowFloorExceptedSource", "Strategy", "LossReason", "UserSegmentCount")
-
   def S3_PATH_DATE_GEN = (date: LocalDate) => {
     f"/date=${paddedDatePart(date)}"
   }

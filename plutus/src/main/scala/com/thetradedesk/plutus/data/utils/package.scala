@@ -1,11 +1,13 @@
 package com.thetradedesk.plutus.data
 
+import org.apache.spark.sql.{DataFrame, DataFrameWriter, Row}
 import org.joda.time.format.DateTimeFormat
 
 import java.nio.{ByteBuffer, ByteOrder}
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDateTime, ZoneId, ZoneOffset}
 import java.util.UUID
+import scala.concurrent.{ExecutionContext, Future}
 
 package object utils {
   /*
@@ -55,7 +57,6 @@ package object utils {
   val localDatetimeToTicks = (localDateTime: LocalDateTime) =>
     (localDateTime.toInstant(ZoneOffset.UTC).toEpochMilli * TICKS_PER_MILLISECOND) + TICKS_BEFORE_EPOCH
 
-
   val ISO_DATE_FORMAT  = "yyyy-MM-dd'T'HH:mm:ss"
   def javaToJoda(javaDatetime: LocalDateTime) = {
       val javaString = javaDatetime.format(DateTimeFormatter.ofPattern(ISO_DATE_FORMAT))
@@ -65,5 +66,25 @@ package object utils {
   def jodaToJava(jodaDatetime: org.joda.time.LocalDateTime) = {
     val jodaString = jodaDatetime.toString(DateTimeFormat.forPattern(ISO_DATE_FORMAT))
     LocalDateTime.parse(jodaString, DateTimeFormatter.ofPattern(ISO_DATE_FORMAT))
+  }
+
+  class ParallelParquetWriter() {
+
+    private case class WriteTask(writer: DataFrameWriter[Row], path: String)
+
+    // List to store writing tasks
+    private var tasks: List[WriteTask] = List();
+
+    // Function to submit a single write task in parallel
+    def EnqueueWrite(writer: DataFrameWriter[Row], path: String): Unit = {
+      tasks = tasks :+ WriteTask(writer, path)
+    }
+
+    // Function to wait for all tasks to finish
+    def WriteAll(): Unit = {
+      tasks.par.foreach( task =>
+        task.writer.parquet(task.path)
+      )
+    }
   }
 }

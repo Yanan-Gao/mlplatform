@@ -8,6 +8,7 @@ import com.thetradedesk.plutus.data.transform.PcResultsGeronimoTransform.joinGer
 import com.thetradedesk.plutus.data.{ChannelType, MarketType}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.{AdFormatRecord, PrivateContractRecord}
+import org.apache.spark.sql.functions._
 
 import java.time.LocalDateTime
 
@@ -19,11 +20,9 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
     val modelVersionsUsedWithoutPlutus = Map("model1" -> 42L)
 
     val geronimoDataset = Seq(
-      bidsImpressionsMock(),
-      bidsImpressionsMock(null),
-      bidsImpressionsMock(Seq {
-        feeFeatureUsageLogMock
-      }),
+      bidsImpressionsMock(SupplyVendorPublisherId = Some("1")),
+      bidsImpressionsMock(FeeFeatureUsage = null, AliasedSupplyPublisherId = Some(2)),
+      bidsImpressionsMock(FeeFeatureUsage = Seq (feeFeatureUsageLogMock), SupplyVendorPublisherId = Some("1"), AliasedSupplyPublisherId = Some(2)),
       bidsImpressionsMock(JanusVariantMap = Some(janusVariantMap)),
       bidsImpressionsMock(ModelVersionsUsed = Some(modelVersionsUsedWithoutPlutus)),
       bidsImpressionsMock(ModelVersionsUsed = Some(modelVersionsUsedWithPlutus)),
@@ -32,7 +31,10 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
     val mbtwDataset = Seq(mbtwDataMock.copy()).toDS().as[MinimumBidToWinData]
     val privateContractDataSet = Seq(privateContractsMock.copy()).toDS().as[PrivateContractRecord]
     val adFormatDataSet = Seq(adFormatMock.copy()).toDS().as[AdFormatRecord]
-    val productionAdgroupBudgetDataset = Seq(productionAdgroupBudgetMock.copy()).toDS().as[ProductionAdgroupBudgetData]
+    val productionAdgroupBudgetDataset = Seq(productionAdgroupBudgetMock.copy()).toDS()
+      .withColumn("date",lit(20240394))
+      .withColumn("hour",lit(11))
+      .as[ProductionAdgroupBudgetData]
 
     val (mergedDataset, pcResultsAbsentDataset, mbtwAbsentDataset) =
       joinGeronimoPcResultsLog(geronimoDataset, pcResultsDataset, mbtwDataset,
@@ -51,21 +53,24 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
     assert(res.ChannelSimple == ChannelType.Display, "Validating Channel Simplification")
 
     // test for Value Pacing Column
-    assert(res.IsValuePacing == Some(true), "Validating ProductionAdgroupBudgetData Join")
-    assert(res.IsUsingPIDController == Some(false), "Validating ProductionAdgroupBudgetData Join")
+    assert(res.IsValuePacing.contains(true), "Validating ProductionAdgroupBudgetData Join")
+    assert(res.IsUsingPIDController.contains(false), "Validating ProductionAdgroupBudgetData Join")
 
     // test for DetailedMarketType
     assert(res.DetailedMarketType == MarketType.PrivateAuctionVariablePrice, "Validating DetailedMarketType Join")
 
     // Test for AspSvpId
-    assert(res.AspSvpId == "asp_1", "Validating DetailedMarketType Join")
+    assert(resultList.get(0).AspSvpId == "svp_1", "Validating that svpid is used if aspid is not present")
+    assert(resultList.get(1).AspSvpId == "asp_2", "Validating that aspid is used if it is present")
+    assert(resultList.get(2).AspSvpId == "asp_2", "Validating that aspid is used if both aspid and svpid are present")
+    assert(resultList.get(3).AspSvpId == null, "Validating null in case none are present")
 
     // Test for IsUsingJanus
     assert(res.IsUsingJanus == false, "Validating Janus fields")
 
     // Test for Fee Amount column
-    assert(res.FeeAmount == None, "Validating that an empty feeFeatureUsage list results in a none value")
-    
+    assert(res.FeeAmount.isEmpty, "Validating that an empty feeFeatureUsage list results in a none value")
+
     // Test for BidCap change columns
     assert(res.UseUncappedBidForPushdown == true, "Validating we use the value from the raw log")
     assert(res.UncappedFirstPriceAdjustment == 1.023, "Validating that Uncapped FPA results in a the raw log value")
