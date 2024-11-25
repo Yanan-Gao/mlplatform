@@ -166,10 +166,10 @@ package object data {
     (0 to lookBack.getOrElse(0)).map(i => f"${plutusDataPath(s3Path, ttdEnv, prefix, svName, date.minusDays(i))}")
   }
 
-  def loadParquetData[T: Encoder](s3path: String, date: LocalDate, source: Option[String] = None, lookBack: Option[Int] = None): Dataset[T] = {
+  def loadParquetData[T: Encoder](s3path: String, date: LocalDate, source: Option[String] = None, lookBack: Option[Int] = None, nullIfColAbsent: Boolean = true): Dataset[T] = {
     val paths = parquetDataPaths(s3path, date, source, lookBack)
     spark.read.parquet(paths: _*)
-      .selectAs[T]
+      .selectAs[T](nullIfColAbsent)
   }
 
   def dateRange(start: LocalDateTime, end: LocalDateTime, step: TemporalAmount): Iterator[LocalDateTime] =
@@ -210,10 +210,10 @@ package object data {
   }
 
 
-  def loadParquetDataDailyV2[T: Encoder](basePath: String, extGenerator: LocalDate => String, date: LocalDate, lookBack: Int = 0): Dataset[T] = {
+  def loadParquetDataDailyV2[T: Encoder](basePath: String, extGenerator: LocalDate => String, date: LocalDate, lookBack: Int = 0, nullIfColAbsent: Boolean = true): Dataset[T] = {
     val paths = generateDataPathsDaily(basePath, extGenerator, date, lookBack)
     spark.read.parquet(paths: _*)
-      .selectAs[T]
+      .selectAs[T](nullIfColAbsent)
   }
 
   def extractDateFromPath(path: String): Option[LocalDate] = {
