@@ -38,9 +38,8 @@ object AudienceModelInputGeneratorJob {
   def runETLPipeline(): Unit = {
     val date = dateTime.toLocalDate
     val schedule = if (AudienceModelInputGeneratorConfig.IncrementalTrainingEnabled) DateUtils.getSchedule(date, AudienceModelInputGeneratorConfig.trainingStartDate, AudienceModelInputGeneratorConfig.trainingCadence) else Schedule.Full
-    val policyTable = clusterTargetingData(AudienceModelInputGeneratorConfig.model, AudienceModelInputGeneratorConfig.supportedDataSources,
-      AudienceModelInputGeneratorConfig.seedSizeLowerScaleThreshold, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold, schedule)
-    val countryMap = getSyntheticIdCountryMap(AudienceModelInputGeneratorConfig.model, AudienceModelInputGeneratorConfig.supportedDataSources, AudienceModelInputGeneratorConfig.seedSizeLowerScaleThreshold, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold)
+    val policyTable = clusterTargetingData(AudienceModelInputGeneratorConfig.model, AudienceModelInputGeneratorConfig.supportedDataSources, AudienceModelInputGeneratorConfig.supportedGraphs, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold, schedule)
+    val countryMap = getSyntheticIdCountryMap(AudienceModelInputGeneratorConfig.model, AudienceModelInputGeneratorConfig.supportedDataSources, AudienceModelInputGeneratorConfig.seedSizeUpperScaleThreshold)
 
     val rawJson = readModelFeatures(featuresJsonSourcePath)()
     // write the rawJson to destination if present.
@@ -173,21 +172,28 @@ object AudienceModelInputGeneratorJob {
 
       val calculateStats = udf((array: Seq[Float]) => {
         val totalElements = array.size
-        val onesCount = array.sum
+        val onesCount = array.sum.toInt
         val zerosCount = totalElements - onesCount
 
         (totalElements, onesCount, zerosCount)
       })
 
       val resultDF = resultSet.filter('SubFolder === lit(SubFolder.Train.id)).as[AudienceModelInputRecord]
-        .withColumn("total", calculateStats(col("Targets")).getItem("_1"))
-        .withColumn("pos", calculateStats(col("Targets")).getItem("_2"))
-        .withColumn("neg", calculateStats(col("Targets")).getItem("_3"))
+        .withColumn("stats", calculateStats(col("Targets")))
+        .withColumn("total", 'stats.getItem("_1"))
+        .withColumn("pos", 'stats.getItem("_2"))
+        .withColumn("neg", 'stats.getItem("_3"))
       resultDF.cache()
-      val total = resultDF.select(sum("total")).cache().head().getLong(0)
-      val pos_ratio = resultDF.select(sum("pos")).head().getDouble(0) / total
-      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(total, dateTime, "metadata", "Count")
-      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(pos_ratio, dateTime, "metadata", "PosRatio")
+      val metricDF = resultDF.select(sum("total"), sum("pos"), sum("neg")).cache()
+      val total = metricDF.head().getLong(0)
+      val pos = metricDF.head().getLong(1)
+      val neg = metricDF.head().getLong(2)
+      val pos_ratio = pos * 1.0 / total
+      val currentBatch = s"${schedule}_${typePolicyTable._1._1}_${typePolicyTable._1._2}_${typePolicyTable._1._3}"
+      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(total, dateTime, "metadata", s"Count_${currentBatch}")
+      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(pos, dateTime, "metadata", s"Pos_${currentBatch}")
+      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(neg , dateTime, "metadata", s"Neg_${currentBatch}")
+      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(pos_ratio, dateTime, "metadata", s"PosRatio_${currentBatch}")
       posRatioGauge.labels(AudienceModelInputGeneratorConfig.model.toString.toLowerCase).set(pos_ratio)
 
       resultDF.unpersist()
@@ -196,10 +202,10 @@ object AudienceModelInputGeneratorJob {
     )
   }
 
-  def getSyntheticIdCountryMap(model: Model.Value, supportedDataSources: Array[Int], seedSizeLowerScaleThreshold: Int, seedSizeUpperScaleThreshold: Int) = {
+  def getSyntheticIdCountryMap(model: Model.Value, supportedDataSources: Array[Int], seedSizeUpperScaleThreshold: Int) = {
     val countryMap = AudienceModelPolicyReadableDataset(model)
       .readSinglePartition(dateTime)(spark)
-      .where((length('ActiveSize) >= seedSizeLowerScaleThreshold) && (length('ActiveSize) <= seedSizeUpperScaleThreshold))
+      .where(length('ActiveSize) <= seedSizeUpperScaleThreshold)
       .where('IsActive)
       .where('Source.isin(supportedDataSources: _*))
       .withColumn("Country",explode('topCountryByDensity))
@@ -209,14 +215,15 @@ object AudienceModelInputGeneratorJob {
     countryMap
   }
 
-  def clusterTargetingData(model: Model.Value, supportedDataSources: Array[Int], seedSizeLowerScaleThreshold: Int, seedSizeUpperScaleThreshold: Int, schedule: Schedule.Schedule):
+  def clusterTargetingData(model: Model.Value, supportedDataSources: Array[Int], supportedGraphs: Array[Int],seedSizeUpperScaleThreshold: Int, schedule: Schedule.Schedule):
   Map[(DataSource.DataSource, CrossDeviceVendor.CrossDeviceVendor, IncrementalTrainingTag.IncrementalTrainingTag), Array[AudienceModelPolicyRecord]] = {
     val policyTable = AudienceModelPolicyReadableDataset(model)
       .readSinglePartition(dateTime)(spark)
-      .where((length('ActiveSize) >= seedSizeLowerScaleThreshold) && (length('ActiveSize) < seedSizeUpperScaleThreshold))
+      .where(length('ActiveSize) < seedSizeUpperScaleThreshold)
       // .where('SourceId==="1ufp35u0")
       .where('IsActive)
       .where('Source.isin(supportedDataSources: _*))
+      .where('CrossDeviceVendorId.isin(supportedGraphs: _*))
       .collect()
 
     // Handle incremental training schedule tag
