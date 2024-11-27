@@ -11,9 +11,12 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.spark.sql.SaveMode
+import org.apache.spark.sql.expressions.UserDefinedFunction
+import org.apache.spark.sql.{DataFrame, SaveMode}
 import org.apache.spark.sql.functions._
 
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import scala.util.Try
 
 object AudienceModelInputGeneratorJob {
@@ -170,6 +173,13 @@ object AudienceModelInputGeneratorJob {
         saveMode = SaveMode.Overwrite
       )
 
+      // break down into FP and TP
+      if (AudienceModelInputGeneratorConfig.breakDownSeedsByPermission && AudienceModelInputGeneratorConfig.model == Model.RSM && typePolicyTable._1._1 == DataSource.Seed && typePolicyTable._1._2 == CrossDeviceVendor.None) {
+        separateThirdPartySeeds(dateTime, subFolder, SubFolder.Val.toString, typePolicyTable._2)
+        separateThirdPartySeeds(dateTime, subFolder, SubFolder.Holdout.toString, typePolicyTable._2)
+        separateThirdPartySeeds(dateTime, subFolder, SubFolder.Train.toString, typePolicyTable._2)
+      }
+
       val calculateStats = udf((array: Seq[Float]) => {
         val totalElements = array.size
         val onesCount = array.sum.toInt
@@ -200,6 +210,41 @@ object AudienceModelInputGeneratorJob {
       resultSet.unpersist()
     }
     )
+  }
+
+  private def filterIdsUDF(filteredIds: Set[Long]) = udf(
+    (ids: Seq[Long], targets: Seq[Float]) => {
+      ids
+        .zip(targets)
+        .filter(e => filteredIds.contains(e._1))
+        .unzip
+    }
+  )
+
+  private def writeSeparateSeedData(df: DataFrame, syntheticIds: Set[Long], partitionedPath: String): Unit = {
+    val output = df.withColumn("x", filterIdsUDF(syntheticIds)('SyntheticIds, 'Targets))
+      .withColumn("SyntheticIds", col("x._1"))
+      .withColumn("Targets", col("x._2"))
+      .drop("x")
+      .where(size('SyntheticIds) > lit(0))
+
+    output.write.format("tfrecord")
+      .option("recordType", "Example")
+      .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
+      .save(partitionedPath)
+  }
+
+  private def separateThirdPartySeeds(dateTime: LocalDateTime, subFolderKey: String, subFolderValue: String, policyTable: Array[AudienceModelPolicyRecord]) {
+    val dateStr = DateTimeFormatter.ofPattern(audienceVersionDateFormat).format(dateTime)
+    val input = spark.read.format("tfrecord")
+      .option("recordType", "Example")
+      .load(s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/${AudienceModelInputGeneratorConfig.model.toString}/Seed_None/v=1/${dateStr}/${subFolderKey}=${subFolderValue}")
+
+    val fpSyntheticIds = policyTable.filter(e => e.PermissionTag == PermissionTag.Private.id).map(_.SyntheticId.toLong).toSet
+    val tpSyntheticIds = policyTable.filter(e => e.PermissionTag == PermissionTag.Shared.id).map(_.SyntheticId.toLong).toSet
+
+    writeSeparateSeedData(input, fpSyntheticIds, s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/${AudienceModelInputGeneratorConfig.model.toString}/Seed_FP_None/v=1/${dateStr}/${subFolderKey}=${subFolderValue}")
+    writeSeparateSeedData(input, tpSyntheticIds, s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/${AudienceModelInputGeneratorConfig.model.toString}/Seed_TP_None/v=1/${dateStr}/${subFolderKey}=${subFolderValue}")
   }
 
   def getSyntheticIdCountryMap(model: Model.Value, supportedDataSources: Array[Int], seedSizeUpperScaleThreshold: Int) = {

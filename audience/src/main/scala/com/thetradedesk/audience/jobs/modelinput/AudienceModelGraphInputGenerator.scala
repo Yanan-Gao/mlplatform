@@ -65,8 +65,6 @@ abstract class AudienceModelGraphInputGenerator(name: String, crossDeviceVendor:
       .cache()
   }
 
-  case class GraphChoicePolicy(sourceId: String, syntheticId: Int, crossDeviceVendorId: Int, weight: Float)
-
   def graphChoicesInPolicy(date: LocalDate): Array[GraphChoicePolicy] = {
     val campaignSeedDF = CampaignSeedDataset().readLatestPartitionUpTo(date, isInclusive = true)
     val Campaign = CampaignDataSet().readLatestPartitionUpTo(date, isInclusive = true)
@@ -131,3 +129,5 @@ abstract class AudienceModelGraphInputGenerator(name: String, crossDeviceVendor:
       .collect()
   }
 }
+
+case class GraphChoicePolicy(sourceId: String, syntheticId: Int, crossDeviceVendorId: Int, weight: Float)

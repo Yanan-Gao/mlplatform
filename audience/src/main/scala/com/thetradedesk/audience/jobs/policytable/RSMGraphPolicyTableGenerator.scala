@@ -71,7 +71,9 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
         )
       )
       )
-      .select('SeedId, 'TargetingDataId, coalesce('Count, lit(-1)).alias("Count"), 'Path, 'topCountryByDensity)
+      .select('SeedId, 'TargetingDataId, coalesce('Count, lit(-1)).alias("Count"), 'Path, 'topCountryByDensity
+        , when(size('FirstPartyInclusionTargetingDataIds) =!= lit(0) || size('RetailInclusionTargetingDataIds) =!= lit(0),
+          PermissionTag.Private.id).otherwise(PermissionTag.Shared.id).alias("PermissionTag"))
       .withColumn("TargetingDataId", coalesce('TargetingDataId, lit(-1)))
       .cache()
 
@@ -86,7 +88,7 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
   private def retrieveSeedDataMeta(date: LocalDate): Dataset[SourceMetaRecord] = {
     val seedMeta = retrieveSeedMeta(date)
     seedMeta
-      .withColumnRenamed("SeedId", "SourceId").select('SourceId, 'Count, 'TargetingDataId, 'topCountryByDensity, lit(DataSource.Seed.id).alias("Source")).as[SourceMetaRecord]
+      .withColumnRenamed("SeedId", "SourceId").select('SourceId, 'Count, 'TargetingDataId, 'topCountryByDensity, lit(DataSource.Seed.id).alias("Source"), 'PermissionTag).as[SourceMetaRecord]
   }
 
   private def retrieveTTDRawDataMeta(date: LocalDate): Dataset[SourceMetaRecord] = {
@@ -100,7 +102,9 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
       .where('RecordCount >= lit(Config.seedProcessLowerThreshold) &&
         'RecordCount <= lit(Config.seedProcessUpperThreshold))
       .select('TargetingDataId.cast(StringType).alias("SourceId"), 'RecordCount.alias("Count"), 'TargetingDataId, array(lit("")).alias("topCountryByDensity"))
-    metaTable.withColumn("Source", lit(DataSource.TTDOwnData.id)).as[SourceMetaRecord]
+    metaTable
+      .withColumn("Source", lit(DataSource.TTDOwnData.id))
+      .withColumn("PermissionTag", lit(PermissionTag.None.id)).as[SourceMetaRecord]
   }
 
   override def retrieveSourceDataWithDifferentGraphType(date: LocalDate, personGraph: DataFrame, householdGraph: DataFrame): SourceDataWithDifferentGraphType = {
@@ -136,14 +140,14 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
       .agg(collect_list('TargetingDataId).alias("TargetingDataIds"))
 
     (tdid2TargetingDataIds.select('TDID, org.apache.spark.sql.functions.transform('TargetingDataIds, item => item.cast(StringType)).alias("SeedIds")).as[AggregatedGraphTypeRecord],
-      metaTable.withColumn("topCountryByDensity", array(lit(""))).withColumn("Source", lit(DataSource.TTDOwnData.id)).as[SourceMetaRecord])
+      metaTable.withColumn("topCountryByDensity", array(lit(""))).withColumn("Source", lit(DataSource.TTDOwnData.id)).withColumn("PermissionTag", lit(PermissionTag.None.id)).as[SourceMetaRecord])
   }
 
   def retrieveSeedDataWithDifferentGraphType(date: LocalDate, personGraph: DataFrame, householdGraph: DataFrame): SourceDataWithDifferentGraphType = {
     val seedMeta = retrieveSeedMeta(date)
 
     val policyMetaTable = seedMeta
-      .drop("topCountryByDensity")
+      .drop("topCountryByDensity", "PermissionTag")
       .as[SeedDetail]
       .collect()
 
@@ -161,7 +165,7 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
       largeSeedData.union(smallSeedData._1),
       smallSeedData._2,
       smallSeedData._3,
-      seedMeta.withColumnRenamed("SeedId", "SourceId").select('SourceId, 'Count, 'TargetingDataId, 'topCountryByDensity, lit(DataSource.Seed.id).alias("Source")).as[SourceMetaRecord]
+      seedMeta.withColumnRenamed("SeedId", "SourceId").select('SourceId, 'Count, 'TargetingDataId, 'topCountryByDensity, lit(DataSource.Seed.id).alias("Source"), 'PermissionTag).as[SourceMetaRecord]
     )
 
   }
