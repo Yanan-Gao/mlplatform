@@ -85,7 +85,7 @@ object AEMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(
           .alias("Count"))
       .join(trackingTagDataset, "TrackingTagId")
       .withColumnRenamed("TrackingTagId", "SourceId")
-      .select('SourceId, 'Count, 'TargetingDataId, array(lit("")).alias("topCountryByDensity"), lit(DataSource.Conversion.id).alias("Source")) // topCountryByDensity is not used for AEM right now
+      .select('SourceId, 'Count, 'TargetingDataId, array(lit("")).alias("topCountryByDensity"), lit(DataSource.Conversion.id).alias("Source"), lit(PermissionTag.Private.id).alias("PermissionTag")) // topCountryByDensity is not used for AEM right now
       .as[SourceMetaRecord]
 
     val TDID2ConversionPixel = conversionDataset

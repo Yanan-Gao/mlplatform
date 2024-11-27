@@ -6,6 +6,7 @@ import com.thetradedesk.audience.datasets.DataSource.DataSource
 import com.thetradedesk.audience.datasets.GoalType.GoalType
 import com.thetradedesk.audience.datasets.StorageCloud
 import com.thetradedesk.audience.datasets.Model.Model
+import com.thetradedesk.audience.datasets.PermissionTag.PermissionTag
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -64,7 +65,7 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
         .union(householdGraphCount)
         .withColumnRenamed("count", "ActiveSize")
         .join(sourceMeta, Seq("SourceId"), "inner")
-        .select(('ActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ActiveSize"), 'CrossDeviceVendorId, 'SourceId, 'Count.alias("Size"), 'TargetingDataId, 'Source, 'topCountryByDensity)
+        .select(('ActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ActiveSize"), 'CrossDeviceVendorId, 'SourceId, 'Count.alias("Size"), 'TargetingDataId, 'Source, 'topCountryByDensity, 'PermissionTag)
         .withColumn("GoalType", lit(goalType.id))
         .withColumn("StorageCloud", lit(Config.storageCloud))
         .cache()
@@ -161,7 +162,8 @@ final case class SourceMetaRecord(SourceId: String,
                                   Count: BigInt,
                                   TargetingDataId: BigInt,
                                   topCountryByDensity: Seq[String],
-                                  Source: Int
+                                  Source: Int,
+                                  PermissionTag: PermissionTag
                                   )
 
 

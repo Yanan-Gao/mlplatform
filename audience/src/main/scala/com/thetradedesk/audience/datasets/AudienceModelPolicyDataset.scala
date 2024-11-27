@@ -36,7 +36,7 @@ final case class AudienceModelPolicyRecord(TargetingDataId: Long,
                                            // if we want to retrain the model for this setting
                                            IsActive: Boolean,
                                            // [[com.thetradedesk.audience.datasets.Tag]]
-                                           // A tag indicate if we need to include the seed in incremental training
+                                           // A tag indicates if we need to include the seed in incremental training
                                            // step based on model performance or other signal from previous date.
                                            // e.g. Underperform, New, Small, etc
                                            Tag: Int,
@@ -46,7 +46,10 @@ final case class AudienceModelPolicyRecord(TargetingDataId: Long,
                                            // Source of the cloud storage  
                                            StorageCloud: Int,
                                           //  top density country
-                                           topCountryByDensity: Seq[String]
+                                           topCountryByDensity: Seq[String],
+                                          // [[com.thetradedesk.audience.datasets.PermissionTag]]
+                                          // A tag indicates permission with the dataset
+                                          PermissionTag: Int,
                                           )
 
 case class AudienceModelPolicyWritableDataset(model: Model) extends
@@ -83,4 +86,9 @@ object Tag extends Enumeration {
 object StorageCloud extends Enumeration {
   type Tag = Value
   val AWS, AZURE = Value
+}
+
+object PermissionTag extends Enumeration {
+  type PermissionTag = Value
+  val None, Shared, Private = Value
 }
