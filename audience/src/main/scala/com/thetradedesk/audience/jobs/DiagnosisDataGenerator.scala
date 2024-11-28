@@ -89,7 +89,7 @@ object DiagnosisDataGenerator {
         col("CampaignId"),
         col("AdGroupId"),
         col("ROIGoalTypeId"),
-        lit(s"$reportDateStr $hour:00:00").as("ReportHourUtc"),
+        to_timestamp(lit(s"$reportDateStr $hour:00:00"), "yyyy-MM-dd H:mm:ss").as("ReportHourUtc"),
         col("TotalCount"),
         to_json(struct(
           col("RSMErrorCount"),

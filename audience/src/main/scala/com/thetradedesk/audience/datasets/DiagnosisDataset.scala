@@ -3,10 +3,12 @@ package com.thetradedesk.audience.datasets
 import com.thetradedesk.audience.datasets.S3Roots.ML_PLATFORM_ROOT
 import com.thetradedesk.audience.ttdEnv
 
+import java.sql.Timestamp
+
 final case class DiagnosisRecord(CampaignId: String,
                                  AdGroupId: String,
                                  ROIGoalTypeId: BigInt,
-                                 ReportHourUtc: String,
+                                 ReportHourUtc: Timestamp,
                                  TotalCount: BigInt,
                                  CountMetrics: String
                                 )
