@@ -150,6 +150,23 @@ class packageTest extends AnyFlatSpec {
 
 
 
+  "getMaxDate" should "return the proper latest date" in {
+    var paths = Seq(
+      "s3://thetradedesk-useast-logs-2/lostbidrequest/date=20241124",
+      "s3://thetradedesk-useast-logs-2/lostbidrequest/date=20241125",
+      "s3://thetradedesk-useast-logs-2/lostbidrequest/date=20241123",
+      "s3://thetradedesk-useast-logs-2/lostbidrequest/date=20241201",
+    )
+
+    getMaxDate(paths, LocalDate.of(2024, 11, 12)) shouldBe empty
+    getMaxDate(paths, LocalDate.of(2024, 11, 23)) should contain (LocalDate.of(2024, 11, 23))
+    getMaxDate(paths, LocalDate.of(2024, 11, 24)) should contain (LocalDate.of(2024, 11, 24))
+    getMaxDate(paths, LocalDate.of(2024, 11, 29)) should contain (LocalDate.of(2024, 11, 25))
+    getMaxDate(paths, LocalDate.of(2025, 12, 12)) should contain (LocalDate.of(2024, 12, 1))
+  }
+
+
+
   "isOkay" should "return false when stageStat is less than prodStat" in {
     isOkay(10.0, 8.0) should be(false)
   }
