@@ -101,7 +101,8 @@ object CampaignDAPlutusDashboardDataTransform extends Logger {
     val pcResultsMergedData = loadParquetDataDailyV2[PcResultsMergedDataset](
       PcResultsMergedDataset.S3_PATH(Some(envForRead)),
       PcResultsMergedDataset.S3_PATH_DATE_GEN,
-      date
+      date,
+      nullIfColAbsent = true
     )
 
     val adGroupData = get_prov_joineddays(AdGroupDataSet(), date, "AdGroupId")

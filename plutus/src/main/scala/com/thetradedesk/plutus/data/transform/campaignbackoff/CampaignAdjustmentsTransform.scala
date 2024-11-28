@@ -545,7 +545,8 @@ object CampaignAdjustmentsTransform extends Logger {
       CampaignThrottleMetricDataset.S3PATH,
       CampaignThrottleMetricDataset.S3PATH_DATE_GEN,
       date,
-      4
+      4,
+      nullIfColAbsent = false // Setting this to false since nullIfColAbsent sets date to null (its a bug with selectAs)
     ).withColumn(
       "Date",
       to_date(col("Date"))
@@ -556,7 +557,8 @@ object CampaignAdjustmentsTransform extends Logger {
       val data = loadParquetDataDailyV2[CampaignAdjustmentsPacingSchema](
         CampaignAdjustmentsPacingDataset.S3_PATH(envForWrite),
         CampaignAdjustmentsPacingDataset.S3_PATH_DATE_GEN,
-        date.minusDays(1) // get previous day's adjustment data
+        date.minusDays(1), // get previous day's adjustment data
+        nullIfColAbsent = false // Setting this to false since we want this query to fail if data doesn't exist
       )
       println("Previous day's CampaignAdjustmentsPacingDataset exists and loaded successfully.")
       data
@@ -584,7 +586,8 @@ object CampaignAdjustmentsTransform extends Logger {
     val pcResultsMergedData = loadParquetDataDailyV2[PcResultsMergedDataset](
       PcResultsMergedDataset.S3_PATH(Some(envForRead)),
       PcResultsMergedDataset.S3_PATH_DATE_GEN,
-      date
+      date,
+      nullIfColAbsent = true
     )
 
     val platformReportData = UnifiedRtbPlatformReportDataSet.readRange(date, date.plusDays(1))

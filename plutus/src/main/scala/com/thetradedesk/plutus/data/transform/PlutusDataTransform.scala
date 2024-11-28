@@ -83,7 +83,7 @@ object PlutusDataTransform extends Logger {
 
     val versionedOutputPath = s"$outputPath/v=$dataVersion"
     val datePrefix = explicitDatePart(date)
-    val mergedDataset: Dataset[PcResultsMergedDataset] = loadParquetData[PcResultsMergedDataset](PcResultsMergedDataset.S3_PATH(Some(envForRead)), date)
+    val mergedDataset: Dataset[PcResultsMergedDataset] = loadParquetData[PcResultsMergedDataset](PcResultsMergedDataset.S3_PATH(Some(envForRead)), date, nullIfColAbsent = true)
       .filter(! (col("IsImp") === false && col("BidBelowFloorExceptedSource") =!= 0)) // remove BBF bids (keep the impressions)
       // We only want to use location data from InApp Rendering Context. Rest is not good data.
       .withColumn("Latitude", when(col("RenderingContext") === lit(RenderingContext.InApp), col("Latitude")).otherwise(lit(0.0f)))
@@ -182,7 +182,7 @@ object PlutusDataTransform extends Logger {
 
 
     val versionedOutputPath = s"$outputPath/v=$dataVersion"
-    val mergedDataset: Dataset[PcResultsMergedDataset] = loadParquetData[PcResultsMergedDataset](PcResultsMergedDataset.S3_PATH(Some(envForRead)), date)
+    val mergedDataset: Dataset[PcResultsMergedDataset] = loadParquetData[PcResultsMergedDataset](PcResultsMergedDataset.S3_PATH(Some(envForRead)), date, nullIfColAbsent = true)
     val datePrefix = explicitDatePart(date)
 
     // should just check that the data contains these rather than filtering to this list

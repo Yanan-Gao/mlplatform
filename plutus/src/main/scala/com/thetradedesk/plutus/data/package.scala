@@ -166,7 +166,7 @@ package object data {
     (0 to lookBack.getOrElse(0)).map(i => f"${plutusDataPath(s3Path, ttdEnv, prefix, svName, date.minusDays(i))}")
   }
 
-  def loadParquetData[T: Encoder](s3path: String, date: LocalDate, source: Option[String] = None, lookBack: Option[Int] = None, nullIfColAbsent: Boolean = true): Dataset[T] = {
+  def loadParquetData[T: Encoder](s3path: String, date: LocalDate, source: Option[String] = None, lookBack: Option[Int] = None, nullIfColAbsent: Boolean = false): Dataset[T] = {
     val paths = parquetDataPaths(s3path, date, source, lookBack)
     spark.read.parquet(paths: _*)
       .selectAs[T](nullIfColAbsent)
@@ -210,7 +210,7 @@ package object data {
   }
 
 
-  def loadParquetDataDailyV2[T: Encoder](basePath: String, extGenerator: LocalDate => String, date: LocalDate, lookBack: Int = 0, nullIfColAbsent: Boolean = true): Dataset[T] = {
+  def loadParquetDataDailyV2[T: Encoder](basePath: String, extGenerator: LocalDate => String, date: LocalDate, lookBack: Int = 0, nullIfColAbsent: Boolean = false): Dataset[T] = {
     val paths = generateDataPathsDaily(basePath, extGenerator, date, lookBack)
     spark.read.parquet(paths: _*)
       .selectAs[T](nullIfColAbsent)
@@ -227,10 +227,10 @@ package object data {
     }
   }
 
-  def getMaxDate(paths: Seq[String], date: LocalDate): Option[LocalDate] = {
+  def getMaxDate(paths: Seq[String], maxDate: LocalDate): Option[LocalDate] = {
     // get max date to read latest date partition from the date
     val dates = paths.flatMap(extractDateFromPath)
-    dates.filter(date => date.isBefore(date) || date.isEqual(date))
+    dates.filter(date => date.isBefore(maxDate) || date.isEqual(maxDate))
       .reduceOption((d1: LocalDate, d2: LocalDate) => if (d1.isAfter(d2)) d1 else d2)
   }
 
