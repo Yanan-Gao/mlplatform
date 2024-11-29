@@ -77,16 +77,24 @@ abstract class HitRateTableGenerator(prometheus: PrometheusClient) {
 
     val result = bidsImpressions
       .join(campaignSeed.select('CampaignId, 'SeedId), Seq("CampaignId"), "left")
-      .join(seedData.filter(size('SeedIds) > 0).select('TDID, 'SeedIds), Seq("TDID"), "left")
-      .withColumn("hit", isStringInArray($"SeedId", $"SeedIds").cast("integer"))
+      .join(seedData, Seq("TDID"), "left")
+      .withColumn("hit", array_contains($"SeedIds", $"SeedId"))
+      .withColumn("personGraphHit", ('hit || isStringInArray($"PersonGraphSeedIds", $"SeedId")).cast("integer"))
+      .withColumn("HHGraphHit", ('hit || isStringInArray($"HouseholdGraphSeedIds", $"SeedId")).cast("integer"))
+      .withColumn("hit", 'hit.cast("integer"))
 
     val hitRate = result.groupBy('CampaignId, 'AdGroupId, 'SeedId, 'ReportDate)
       .agg(
         count('hit).alias("ImpressionCount")
-        , sum(when(size('SeedIds) > 0, 1).otherwise(0)).alias("SeedImpressionCount")
+        , sum(when(size('SeedIds) > 0 || size('PersonGraphSeedIds) > 0, 1).otherwise(0)).alias("PersonGraphSeedImpressionCount")
+        , sum(when(size('SeedIds) > 0 || size('HHGraphSeedIds) > 0, 1).otherwise(0)).alias("HHGraphSeedImpressionCount")
         , sum('hit).alias("HitCount")
+        , sum('personGraphHit).alias("PersonGraphHitCount")
+        , sum('HHGraphHit).alias("HHGraphHitCount")
       )
       .withColumn("HitRate", 'HitCount / 'ImpressionCount)
+      .withColumn("PersonGraphHitRate", 'PersonGraphHit / 'ImpressionCount)
+      .withColumn("HHGraphHitRate", 'HHGraphHit / 'ImpressionCount)
       .as[HitRateRecord]
 
     HitRateWritableDataset()
