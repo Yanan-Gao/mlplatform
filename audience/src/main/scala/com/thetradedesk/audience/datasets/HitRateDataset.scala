@@ -6,14 +6,20 @@ import java.sql.Date
 import com.thetradedesk.spark.util.TTDConfig.config
 
 final case class HitRateRecord(SeedId: String,
-                                      CampaignId: String,
-                                      AdGroupId: String,
-                                      ReportDate: Date,
-                                      ImpressionCount: Long,
-                                      SeedImpressionCount: Long,
-                                      HitCount: Long,
-                                      HitRate: Double,
-                                      )
+                               CampaignId: String,
+                               AdGroupId: String,
+                               ReportDate: Date,
+                               ImpressionCount: Long,
+                               SeedImpressionCount: Long,
+                               PersonGraphSeedImpressionCount: Long,
+                               HHGraphSeedImpressionCount: Long,
+                               HitCount: Long,
+                               PersonGraphHitCount: Long,
+                               HHGraphHitCount: Long,
+                               HitRate: Double,
+                               PersonGraphHitRate: Double,
+                               HHGraphHitRate: Double,
+                              )
 
 case class HitRateReadableDataset() extends LightReadableDataset[HitRateRecord](s"${config.getString(s"${getClassName(HitRateReadableDataset)}ReadEnv", ttdEnv)}/audience/measurement/hitRate/v=1", ML_PLATFORM_ROOT)
 
