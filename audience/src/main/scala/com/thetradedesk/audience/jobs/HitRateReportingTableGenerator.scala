@@ -79,8 +79,8 @@ abstract class HitRateTableGenerator(prometheus: PrometheusClient) {
       .join(campaignSeed.select('CampaignId, 'SeedId), Seq("CampaignId"), "left")
       .join(seedData, Seq("TDID"), "left")
       .withColumn("hit", array_contains($"SeedIds", $"SeedId"))
-      .withColumn("personGraphHit", ('hit || isStringInArray($"PersonGraphSeedIds", $"SeedId")).cast("integer"))
-      .withColumn("HHGraphHit", ('hit || isStringInArray($"HouseholdGraphSeedIds", $"SeedId")).cast("integer"))
+      .withColumn("personGraphHit", ('hit || array_contains($"PersonGraphSeedIds", $"SeedId")).cast("integer"))
+      .withColumn("HHGraphHit", ('hit || array_contains($"HouseholdGraphSeedIds", $"SeedId")).cast("integer"))
       .withColumn("hit", 'hit.cast("integer"))
 
     val hitRate = result.groupBy('CampaignId, 'AdGroupId, 'SeedId, 'ReportDate)
@@ -93,8 +93,8 @@ abstract class HitRateTableGenerator(prometheus: PrometheusClient) {
         , sum('HHGraphHit).alias("HHGraphHitCount")
       )
       .withColumn("HitRate", 'HitCount / 'ImpressionCount)
-      .withColumn("PersonGraphHitRate", 'PersonGraphHit / 'ImpressionCount)
-      .withColumn("HHGraphHitRate", 'HHGraphHit / 'ImpressionCount)
+      .withColumn("PersonGraphHitRate", 'PersonGraphHitCount / 'ImpressionCount)
+      .withColumn("HHGraphHitRate", 'HHGraphHitCount / 'ImpressionCount)
       .as[HitRateRecord]
 
     HitRateWritableDataset()
