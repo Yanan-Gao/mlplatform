@@ -86,8 +86,9 @@ abstract class HitRateTableGenerator(prometheus: PrometheusClient) {
     val hitRate = result.groupBy('CampaignId, 'AdGroupId, 'SeedId, 'ReportDate)
       .agg(
         count('hit).alias("ImpressionCount")
+        , sum(when(size('SeedIds) > 0, 1).otherwise(0)).alias("SeedImpressionCount")
         , sum(when(size('SeedIds) > 0 || size('PersonGraphSeedIds) > 0, 1).otherwise(0)).alias("PersonGraphSeedImpressionCount")
-        , sum(when(size('SeedIds) > 0 || size('HHGraphSeedIds) > 0, 1).otherwise(0)).alias("HHGraphSeedImpressionCount")
+        , sum(when(size('SeedIds) > 0 || size('HouseholdGraphSeedIds) > 0, 1).otherwise(0)).alias("HHGraphSeedImpressionCount")
         , sum('hit).alias("HitCount")
         , sum('personGraphHit).alias("PersonGraphHitCount")
         , sum('HHGraphHit).alias("HHGraphHitCount")
