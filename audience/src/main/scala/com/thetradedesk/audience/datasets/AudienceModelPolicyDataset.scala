@@ -50,6 +50,8 @@ final case class AudienceModelPolicyRecord(TargetingDataId: Long,
                                           // [[com.thetradedesk.audience.datasets.PermissionTag]]
                                           // A tag indicates permission with the dataset
                                           PermissionTag: Int,
+                                          // incremental id from 1, used to map between source ids and the new Id
+                                          MappingId: Int,
                                           )
 
 case class AudienceModelPolicyWritableDataset(model: Model) extends
