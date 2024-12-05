@@ -18,7 +18,7 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql._
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.{ArrayType, StringType, StructType}
+import org.apache.spark.sql.types.{ArrayType, IntegerType, StringType, StructType}
 
 import java.sql.Timestamp
 import java.time.format.DateTimeFormatter
@@ -183,6 +183,8 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
 
     val releasedIds = inActiveIds.filter('ExpiredDays > Config.expiredDays)
 
+    val continueIds = previousPolicyTable.join(releasedIds, Seq("SyntheticId"), "left_anti")
+
     val retentionIds = inActiveIds.filter('ExpiredDays <= Config.expiredDays)
       .withColumn("IsActive", lit(false))
       .withColumn("Tag", lit(Tag.Retention.id))
@@ -191,15 +193,49 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     // get new sourceId
     val newIds = activeIds.join(previousPolicyTable.filter('StorageCloud === Config.storageCloud)
                                   .select('SourceId, 'Source, 'CrossDeviceVendorId, 'StorageCloud), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "left_anti")
+    val newIdsCount = newIds.count().toInt
+    val releasedIdsCount = releasedIds.count().toInt
     // get max SyntheticId from previous policy table
-    val maxId = previousPolicyTable.agg(max('SyntheticId)).collect()(0)(0).asInstanceOf[Int]
-    // generate new synthetic Ids
-    val numNewIdNeeded = (newIds.count() - releasedIds.count()).toInt
-    // assign available syntheticids randomly to new sourceids
-    val allIdsAdded = Random.shuffle(releasedIds.select('SyntheticId).as[Int].collect().toSeq ++ Range.inclusive(maxId + 1, maxId + numNewIdNeeded, 1))
-    val getElementAtIndex = udf((index: Long) => allIdsAdded(index.toInt))
-    val updatedIds = newIds.withColumn("row_index", (row_number.over(Window.orderBy("SourceId", "CrossDeviceVendorId")) - 1).alias("row_index"))
-      .withColumn("SyntheticId", getElementAtIndex($"row_index")).drop("row_index")
+    val maxId = math.max(previousPolicyTable.agg(max('SyntheticId)).collect()(0)(0).asInstanceOf[Int], previousPolicyTable.count().toInt + newIdsCount - releasedIdsCount)
+    val syntheticIdPool = spark
+      .range(1, maxId + 1)
+      .toDF("SyntheticId")
+      .select('SyntheticId.cast(IntegerType).as("SyntheticId"))
+      .join(continueIds, Seq("SyntheticId"), "left_anti")
+      .withColumn("order", row_number().over(Window.orderBy('SyntheticId.asc)))
+      .where('order <= lit(newIdsCount))
+      .select('SyntheticId, 'order)
+    // get max SyntheticId over source type and CrossDeviceVendor from previous policy table
+
+    val maxIdOverSourceNGraph = previousPolicyTable.groupBy('Source, 'CrossDeviceVendorId).agg(max('SyntheticId).as("MaxSyntheticId"))
+      .join(previousPolicyTable.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("Count")), Seq("Source", "CrossDeviceVendorId"))
+      .join(releasedIds.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("ReleasedCount")), Seq("Source", "CrossDeviceVendorId"))
+      .join(newIds.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("NewCount")), Seq("Source", "CrossDeviceVendorId"))
+      .select('Source, 'CrossDeviceVendorId, greatest('MaxSyntheticId, 'Count + 'NewCount - 'ReleasedCount).cast(IntegerType).as("Value"))
+      .as[SourceNGraphValue].collect()
+    val mappingIdPool = maxIdOverSourceNGraph.map(e =>
+      spark
+        .range(1, e.Value + 1)
+        .toDF("MappingId")
+        .select('MappingId.cast(IntegerType).as("MappingId"))
+        .withColumn("Source", lit(e.Source))
+        .withColumn("CrossDeviceVendorId", lit(e.CrossDeviceVendorId)))
+      .reduce(_ union _)
+      .join(continueIds, Seq("Source", "CrossDeviceVendorId", "MappingId"), "left_anti")
+      .withColumn("order", row_number().over(Window.partitionBy('Source, 'CrossDeviceVendorId).orderBy('MappingId.asc)))
+      .join(newIds.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("NewCount")), Seq("Source", "CrossDeviceVendorId"))
+      .where('order <= 'NewCount)
+      .select('MappingId, 'Source, 'CrossDeviceVendorId, 'order)
+
+    val updatedIds = newIds
+      // assign available synthetic ids randomly to new source ids
+      .withColumn("order", row_number().over(Window.orderBy(rand())))
+      .join(syntheticIdPool, Seq("order"))
+      .drop("order")
+      // assign available mapping ids randomly over source and crossdevicevendorid to new source ids
+      .withColumn("order", row_number().over(Window.partitionBy('Source, 'CrossDeviceVendorId).orderBy(rand())))
+      .join(mappingIdPool, Seq("order", "Source", "CrossDeviceVendorId"))
+      .drop("order")
       .join(policyTable.drop("SyntheticId"), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "inner")
       .withColumn("ExpiredDays", lit(0))
       .withColumn("IsActive", lit(true))
@@ -207,7 +243,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
       .withColumn("SampleWeight", lit(1.0)).cache()
 
     val currentActiveIds = policyTable
-      .join(previousPolicyTable.filter('StorageCloud === Config.storageCloud).select('SourceId, 'Source, 'CrossDeviceVendorId, 'SyntheticId, 'IsActive, 'StorageCloud), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "inner")
+      .join(previousPolicyTable.filter('StorageCloud === Config.storageCloud).select('SourceId, 'Source, 'CrossDeviceVendorId, 'SyntheticId, 'IsActive, 'StorageCloud, 'MappingId), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "inner")
       .withColumn("ExpiredDays", lit(0))
       .withColumn("Tag", when('IsActive, lit(Tag.Existing.id)).otherwise(lit(Tag.Recall.id)))
       .withColumn("IsActive", lit(true))
@@ -215,9 +251,17 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
 
     val otherSourcePreviousPolicyTable = previousPolicyTable.filter('StorageCloud =!= Config.storageCloud).toDF()
     val updatedPolicyTable = updatedIds.unionByName(retentionIds).unionByName(currentActiveIds)
-    val finalUpdatedPolicyTable = updatedPolicyTable.unionByName(otherSourcePreviousPolicyTable)
+    val finalUpdatedPolicyTable = updatedPolicyTable.unionByName(otherSourcePreviousPolicyTable).cache()
 
+    evaluatePolicyTable(finalUpdatedPolicyTable)
     finalUpdatedPolicyTable
+  }
+
+  private def evaluatePolicyTable(policyTable: DataFrame): Unit = {
+    require(policyTable.count() == policyTable.select('SyntheticId).distinct().count(), "conflict synthetic ids")
+    require(policyTable.count() == policyTable.select('Source, 'CrossDeviceVendorId, 'MappingId).distinct().count(), "conflict mapping ids")
+    require(policyTable.agg(max('SyntheticId)).collect()(0)(0).asInstanceOf[Int] <= 500000, "maximal synthetic id is 500000")
+    require(policyTable.agg(max('MappingId)).collect()(0)(0).asInstanceOf[Int] < 65536, "maximal mapping id is 65535")
   }
 
   def retrieveSourceData(date: LocalDate): DataFrame
@@ -234,6 +278,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
         // TODO: update tag info from other signal tables (offline/online monitor, etc)
         .withColumn("Tag", lit(Tag.New.id))
         .withColumn("ExpiredDays", lit(0))
+        .withColumn("MappingId", row_number().over(Window.partitionBy('Source, 'CrossDeviceVendorId).orderBy(rand())))
       updatedPolicyTable
     } else {
       val previousPolicyTable = AudienceModelPolicyReadableDataset(model)
@@ -257,3 +302,5 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     }
   }
 }
+
+case class SourceNGraphValue(Source: Int, CrossDeviceVendorId: Int, Value: Int)
