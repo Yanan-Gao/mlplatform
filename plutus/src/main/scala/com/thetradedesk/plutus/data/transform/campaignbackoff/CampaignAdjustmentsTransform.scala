@@ -12,7 +12,7 @@ import com.thetradedesk.spark.datasets.sources.vertica.UnifiedRtbPlatformReportD
 import com.thetradedesk.spark.datasets.sources.{AdFormatDataSet, AdFormatRecord, CountryDataSet, CountryRecord}
 import com.thetradedesk.spark.listener.WriteListener
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
-import job.campaignbackoff.CampaignAdjustmentsJob.{campaignCounts, numRowsWritten, testControlSplit}
+import job.campaignbackoff.CampaignAdjustmentsJob.{campaignCounts, numRowsWritten, testControlSplit, hadesCampaignCounts}
 import org.apache.spark.sql.expressions.{UserDefinedFunction, Window}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
@@ -36,7 +36,7 @@ object CampaignAdjustmentsTransform extends Logger {
   val aggressiveStepSizeAdjustment = 0.15
   val minAdjustment = 0.2
 
-  def getUnderdelivery(campaignUnderdeliveryData: Dataset[CampaignThrottleMetricSchema], //campaignUnderdeliveryData: Dataset[CampaignUnderdeliveryRecord],
+  def getUnderdelivery(campaignUnderdeliveryData: Dataset[CampaignThrottleMetricSchema],
                        campaignFlightData: Dataset[CampaignFlightRecord],
                        date: LocalDate
                       ): (DataFrame, DataFrame) = {
@@ -97,8 +97,7 @@ object CampaignAdjustmentsTransform extends Logger {
     // Filter previously adjusted campaigns
     val prevAdjustedCampaigns_campaignAdjustmentsData = campaignAdjustmentsPacingData
       .filter(
-        col("IsTest") && // Only test campaigns
-          col("CampaignPCAdjustment") =!= defaultAdjustment // Exclude previously reset campaigns
+        col("CampaignPCAdjustment") =!= defaultAdjustment // Exclude previously adjusted campaigns
       )
 
     val distinct_prevAdjustedCampaigns = prevAdjustedCampaigns_campaignAdjustmentsData
@@ -120,12 +119,9 @@ object CampaignAdjustmentsTransform extends Logger {
       .filter(col("Date") === lit(date))
 
     // Identify and label new pc underdelivering campaigns by excluding any previously set test & control campaigns
-    val testControlCampaigns_campaignAdjustmentsData = campaignAdjustmentsPacingData
-      .filter(
-        col("IsTest").isNotNull // Get control and test campaigns
-      ).select("CampaignId")
+    val prevAdjustedCampaigns = prevAdjustedCampaigns_campaignAdjustmentsData.select("CampaignId")
 
-    val newPCUnderdelivering = newPCUnderdeliveringCampaigns.join(testControlCampaigns_campaignAdjustmentsData, Seq("CampaignId"), "left_anti")
+    val newPCUnderdelivering = newPCUnderdeliveringCampaigns.join(prevAdjustedCampaigns, Seq("CampaignId"), "left_anti")
 
     val labelNew_allOtherCampaigns_spendAndFlightData = allOtherCampaigns_spendAndFlightData.alias("ud")
       .join(broadcast(newPCUnderdelivering).alias("new"), col("ud.CampaignId") === col("new.CampaignId"), "left")
@@ -133,7 +129,7 @@ object CampaignAdjustmentsTransform extends Logger {
       .drop(col("new.CampaignId"))
 
     // Update pacing (to null or 0), flight and adjustment data for all other campaigns
-    val allOtherCampaigns_updatedPacingData = updateAllOtherCampaigns(labelNew_allOtherCampaigns_spendAndFlightData, campaignAdjustmentsPacingData, date, testSplit)
+    val allOtherCampaigns_updatedPacingData = updateAllOtherCampaigns(labelNew_allOtherCampaigns_spendAndFlightData, campaignAdjustmentsPacingData, date)
 
 
     /*** Combine updated pacing data for all campaigns ***/
@@ -374,12 +370,9 @@ object CampaignAdjustmentsTransform extends Logger {
     prevAdjustedCampaigns_updatedPacingData
   }
 
-  def updateAllOtherCampaigns(labelNew_allOtherCampaigns_spendAndFlightData: DataFrame, campaignAdjustmentsPacingData: Dataset[CampaignAdjustmentsPacingSchema], date: LocalDate, testSplit: Option[Double]): DataFrame = {
+  def updateAllOtherCampaigns(labelNew_allOtherCampaigns_spendAndFlightData: DataFrame, campaignAdjustmentsPacingData: Dataset[CampaignAdjustmentsPacingSchema], date: LocalDate): DataFrame = {
     // Update flight details, pacing status, spend performance, and CampaignPcAdjustment of all other campaigns
     // These include newly added pc underdelivering, previously reset, control (if test split), and not-pc-underdelivering campaigns
-
-    // Set IsTest for new pc underdelivering campaigns based on hash function
-    val assignTestGroupUDF = udf((CampaignId: String) => assignTestGroup(CampaignId, testSplit))
 
     /*
      * For new pc underdelivering campaigns:
@@ -393,9 +386,8 @@ object CampaignAdjustmentsTransform extends Logger {
       .drop(col("adj.IsValuePacing"))
       .join(labelNew_allOtherCampaigns_spendAndFlightData.alias("ud"), col("ud.CampaignId") === col("adj.CampaignId"), "right")
       .withColumn("CampaignPcAdjustment", lit(defaultAdjustment) // Set to default
-      ).withColumn("IsTest",
-        when(col("IsNewlyAdded"), assignTestGroupUDF(col("ud.CampaignId"))) // Assign test group to new campaigns
-          .otherwise(col("IsTest")) // Keep previous setting or null if never hit pc underdelivery logic
+      ).withColumn("IsTest", // No longer using IsTest assignment logic for Campaign Backoff as the testing phase is complete. Hades Backoff will handle it instead.
+        lit(null).cast("Boolean") // Set all to null
       ).withColumn("AddedDate",
         when(col("IsNewlyAdded"), date) // Set AddedDate for new campaigns
           .otherwise(null) // Keep or reset to null
@@ -424,7 +416,7 @@ object CampaignAdjustmentsTransform extends Logger {
     // Set new CampaignPcAdjustment for new pc underdelivering campaigns in Test group
     val allOtherCampaigns_updatedPacingData = labelNew_allOtherCampaigns_updatedPacingData
       .withColumn("CampaignPcAdjustment",
-        when(col("IsTest") && col("IsNewlyAdded"), defaultAdjustment - stepSizeAdjustment) // Set new CampaignPCAdjustment for new campaigns
+        when(col("IsNewlyAdded"), defaultAdjustment - stepSizeAdjustment) // Set new CampaignPCAdjustment for new campaigns
           .otherwise(col("CampaignPcAdjustment")) // Keep previous default
       ).drop("IsNewlyAdded")
 
@@ -524,21 +516,16 @@ object CampaignAdjustmentsTransform extends Logger {
       )
   }
 
-  def assignTestGroup(entityId: String, thresholdPct: Option[Double]): Boolean = {
-    import scala.util.hashing.MurmurHash3
-    val hash = Math.abs(MurmurHash3.stringHash(entityId))
+  def mergeCampaignBackoffWithHadesCampaignBackoff(campaignAdjustmentsPacingDataset: Dataset[CampaignAdjustmentsPacingSchema], hadesCampaignAdjustmentsDataset: Dataset[CampaignAdjustmentsHadesSchema]): DataFrame = {
 
-    // Use modulus to split into groups
-    val threshold = thresholdPct match {
-      case Some(rate) if rate >= 0 && rate <= 1 => (rate * Int.MaxValue).toInt
-      case Some(_) => throw new IllegalArgumentException("Invalid split threshold, should be between 0 and 1")
-      case None => Int.MaxValue // If None, apply backoff to all new campaigns
-    }
-
-    (Math.abs(hash) < threshold)
+    campaignAdjustmentsPacingDataset
+      .join(broadcast(hadesCampaignAdjustmentsDataset), Seq("CampaignId"), "fullouter")
+      .withColumn("CampaignBackoff_PCAdjustment", col("CampaignPCAdjustment"))
+      .withColumn("CampaignPCAdjustment", least(col("CampaignPCAdjustment"), col("HadesBackoff_PCAdjustment")))
+      .withColumn("IsTest", when(col("Hades_isProblemCampaign").isNotNull, true).otherwise(false)) // If null, then campaign test bucket was filtered out as holdout group
   }
 
-  def transform(date: LocalDate, testSplit: Option[Double], updateAdjustmentsVersion: String, fileCount: Int): Unit = {
+  def transform(date: LocalDate, testSplit: Option[Double], updateAdjustmentsVersion: String, fileCount: Int, underdeliveryThreshold: Double): Unit = {
 
     // This dataset contains multiple entries with different dates - 5 day look-back.
     val campaignUnderdeliveryData = loadParquetDataDailyV2[CampaignThrottleMetricSchema](
@@ -555,8 +542,8 @@ object CampaignAdjustmentsTransform extends Logger {
     val campaignAdjustmentsPacingData = try {
       println("Attempting to read CampaignAdjustmentsDataset...")
       val data = loadParquetDataDailyV2[CampaignAdjustmentsPacingSchema](
-        CampaignAdjustmentsPacingDataset.S3_PATH(envForWrite),
-        CampaignAdjustmentsPacingDataset.S3_PATH_DATE_GEN,
+        CampaignAdjustmentsMergedDataset.S3_PATH(envForWrite),
+        CampaignAdjustmentsMergedDataset.S3_PATH_DATE_GEN,
         date.minusDays(1), // get previous day's adjustment data
         nullIfColAbsent = false // Setting this to false since we want this query to fail if data doesn't exist
       )
@@ -601,34 +588,49 @@ object CampaignAdjustmentsTransform extends Logger {
 
     val pc_underdeliveringCampaigns = getUnderdeliveringDueToPlutus(underdeliveringCampaigns, platformReportData, countryData, adFormatData, platformWideStatsData, pcResultsMergedData)
 
-    val finalCampaignAdjustments = updateAdjustments(campaignInfo, date, pc_underdeliveringCampaigns, campaignAdjustmentsPacingData, testSplit, updateAdjustmentsVersion)
+    val campaignAdjustmentsPacingDataset = updateAdjustments(campaignInfo, date, pc_underdeliveringCampaigns, campaignAdjustmentsPacingData, testSplit, updateAdjustmentsVersion)
 
-    finalCampaignAdjustments.cache().count()
+    campaignAdjustmentsPacingDataset.cache().count()
 
-    // Counts to monitor
-    val newCampaignsCount = finalCampaignAdjustments.filter(col("AddedDate") === date && col("Pacing") === 0 && col("ImprovedNotPacing") === 0 && col("WorseNotPacing") === 0).count()
-    val endedFlightResetCampaignsCount = finalCampaignAdjustments.filter(col("AddedDate").isNull && col("CampaignPCAdjustment") === 1 && (col("Pacing") > 0 || col("ImprovedNotPacing") > 0 || col("WorseNotPacing") > 0)).count()
-    val worsePacingResetCampaignsCount = finalCampaignAdjustments.filter(col("WorseNotPacing") > 3 && col("CampaignPCAdjustment") === 1).count()
-    val activeAdjustedCampaignsCount = finalCampaignAdjustments.filter(col("AddedDate").isNotNull && col("CampaignPCAdjustment") =!= 1).count()
+    // Counts to monitor Campaign Backoff
+    val newCampaignsCount = campaignAdjustmentsPacingDataset.filter(col("AddedDate") === date && col("Pacing") === 0 && col("ImprovedNotPacing") === 0 && col("WorseNotPacing") === 0).count()
+    val endedFlightResetCampaignsCount = campaignAdjustmentsPacingDataset.filter(col("AddedDate").isNull && col("CampaignPCAdjustment") === 1 && (col("Pacing") > 0 || col("ImprovedNotPacing") > 0 || col("WorseNotPacing") > 0)).count()
+    val worsePacingResetCampaignsCount = campaignAdjustmentsPacingDataset.filter(col("WorseNotPacing") > 3 && col("CampaignPCAdjustment") === 1).count()
+    val activeAdjustedCampaignsCount = campaignAdjustmentsPacingDataset.filter(col("AddedDate").isNotNull && col("CampaignPCAdjustment") =!= 1).count()
 
-    val isValuePacingCount = finalCampaignAdjustments.filter(col("IsValuePacing") === true && col("AddedDate").isNotNull && col("CampaignPCAdjustment") =!= 1).count()
+    val isValuePacingCount = campaignAdjustmentsPacingDataset.filter(col("IsValuePacing") === true && col("AddedDate").isNotNull && col("CampaignPCAdjustment") =!= 1).count()
     val isValuePacingRatioOfAdjustedCampaigns = isValuePacingCount.toDouble / activeAdjustedCampaignsCount.toDouble
 
-    val controlGroupCount = finalCampaignAdjustments.filter(col("IsTest") === false).count()
-    val testGroupCount = finalCampaignAdjustments.filter(col("IsTest") === true).count()
+    // Get Hades Campaign PC Adjustment
+
+    val hadesAdjustmentsDataset = HadesCampaignAdjustmentsTransform.transform(date, testSplit, underdeliveryThreshold)
+
+
+    // Merge Campaign Backoff with Hades Backoff
+
+    val finalMergedCampaignAdjustments = mergeCampaignBackoffWithHadesCampaignBackoff(campaignAdjustmentsPacingDataset, hadesAdjustmentsDataset)
+
+    // Counts to monitor Hades Campaign Backoff Test
+
+    val controlGroupCount = finalMergedCampaignAdjustments.filter(col("IsTest") === false).count()
+    val testGroupCount = finalMergedCampaignAdjustments.filter(col("IsTest") === true).count()
     val totalSplitCount = controlGroupCount + testGroupCount
     val controlGroupRatio = controlGroupCount.toDouble / totalSplitCount.toDouble
     val testGroupRatio = testGroupCount.toDouble / totalSplitCount.toDouble
 
+    val Hades_isProblemCampaignsCount = finalMergedCampaignAdjustments.filter(col("Hades_isProblemCampaign") === true).count()
+
+
     val listener = new WriteListener()
     spark.sparkContext.addSparkListener(listener)
 
-    val campaignAdjustmentsPacing_outputPath = CampaignAdjustmentsPacingDataset.S3_PATH_DATE(date, envForWrite)
-    finalCampaignAdjustments.coalesce(fileCount)
+    val campaignAdjustmentsPacing_outputPath = CampaignAdjustmentsMergedDataset.S3_PATH_DATE(date, envForWrite)
+    finalMergedCampaignAdjustments.coalesce(fileCount)
       .write.mode(SaveMode.Overwrite)
       .parquet(campaignAdjustmentsPacing_outputPath)
 
-    val onlyCampaignAdjustments = finalCampaignAdjustments.filter(col("CampaignPCAdjustment") =!= 1).select("CampaignId", "CampaignPCAdjustment")
+    val onlyCampaignAdjustments = finalMergedCampaignAdjustments
+      .filter(col("CampaignPCAdjustment") =!= 1).select("CampaignId", "CampaignPCAdjustment")
 
     val campaignAdjustments_outputPath = CampaignAdjustmentsDataset.S3_PATH_DATE(date, envForWrite)
     onlyCampaignAdjustments.coalesce(fileCount)
@@ -650,6 +652,7 @@ object CampaignAdjustmentsTransform extends Logger {
     testControlSplit.labels("TotalTestControlCampaigns").set(totalSplitCount)
     testControlSplit.labels("ControlCampaigns").set(controlGroupRatio)
     testControlSplit.labels("TestCampaigns").set(testGroupRatio)
+    hadesCampaignCounts.labels("HadesProblemCampaigns").set(Hades_isProblemCampaignsCount)
 
   }
 }
