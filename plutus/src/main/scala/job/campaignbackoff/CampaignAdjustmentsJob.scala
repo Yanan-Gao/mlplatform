@@ -10,17 +10,19 @@ object CampaignAdjustmentsJob {
   val testSplit = config.getDoubleOption("testSplit")
   val updateAdjustmentsVersion = config.getStringRequired("updateAdjustmentsVersion")
   val fileCount = config.getInt("fileCount", 200)
+  val underdeliveryThreshold = config.getDouble("underdeliveryThreshold", 0.1)
 
   val prometheus = new PrometheusClient("CampaignBackoff", "CampaignAdjustmentsJob")
   val jobDurationGauge = prometheus.createGauge("campaignadjustments_run_time_seconds", "Job execution time in seconds")
   val numRowsWritten = prometheus.createGauge("campaignadjustments_num_rows", "Number of total rows in file (or campaigns)")
   val campaignCounts = prometheus.createGauge("campaignadjustments_campaign_count", "Number of new, removed, worse, and DA campaigns added to file", labelNames = "status")
   val testControlSplit = prometheus.createGauge("campaignadjustments_campaign_split", "Rate of control vs test campaigns", labelNames = "test")
+  val hadesCampaignCounts = prometheus.createGauge("campaignadjustments_hades_campaign_count", "Number of identified Hades problem campaigns", labelNames = "status")
 
   def main(args: Array[String]): Unit = {
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
 
-    CampaignAdjustmentsTransform.transform(date, testSplit, updateAdjustmentsVersion, fileCount)
+    CampaignAdjustmentsTransform.transform(date, testSplit, updateAdjustmentsVersion, fileCount, underdeliveryThreshold)
 
     jobDurationGaugeTimer.setDuration()
     prometheus.pushMetrics()

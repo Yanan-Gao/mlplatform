@@ -1,12 +1,12 @@
 package com.thetradedesk.plutus.data.mockdata
 
 import MockData.{platformReportMock, _}
-import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsPacingSchema, CampaignThrottleMetricSchema, CampaignFlightRecord, RtbPlatformReportCondensedData}
+import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsHadesSchema, CampaignAdjustmentsPacingSchema, CampaignFlightRecord, CampaignThrottleMetricSchema, RtbPlatformReportCondensedData}
 import com.thetradedesk.spark.datasets.sources.CountryRecord
 import org.apache.spark.sql.Dataset
 
 import java.sql.Timestamp
-import java.time.{LocalDate, LocalDateTime}
+import java.time.{LocalDateTime}
 
 object DataGenerator {
 
@@ -224,6 +224,15 @@ object DataGenerator {
 
     )
     campaignAdjustmentsPacingDataSeq.reduce(_ union _)
+  }
+
+  def generateCampaignAdjustmentsHadesData: Dataset[CampaignAdjustmentsHadesSchema] = {
+    val campaignAdjustmentsHadesDataSeq = Seq(
+      campaignAdjustmentsHadesMock(),
+      campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustment = None, hadesProblemCampaign = false),
+      campaignAdjustmentsHadesMock(campaignId = "jkl789", hadesPCAdjustment = Some(0.9), hadesProblemCampaign = true)
+    )
+    campaignAdjustmentsHadesDataSeq.reduce(_ union _)
   }
 
 }
