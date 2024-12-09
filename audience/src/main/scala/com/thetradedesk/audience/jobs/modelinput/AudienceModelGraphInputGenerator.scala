@@ -47,7 +47,7 @@ abstract class AudienceModelGraphInputGenerator(name: String, crossDeviceVendor:
     val mapping = seedIdToSyntheticIdMapping(seedIdToSyntheticId)
 
     // extend seeds with Graph
-    if (crossDeviceVendor == CrossDeviceVendor.None && DataSource.Seed.id == policyTable(0).Source) {
+    if (AudienceModelInputGeneratorConfig.enableGraphInRSMETL && crossDeviceVendor == CrossDeviceVendor.None && DataSource.Seed.id == policyTable(0).Source) {
       val seedIdsInBatch = policyTable.map(_.SourceId).toSet
       val graphExtendPolicyTable: Array[GraphChoicePolicy] = graphChoicesInPolicy(date).filter(e => seedIdsInBatch.contains(e.sourceId))
       if (graphExtendPolicyTable.length > 0) {

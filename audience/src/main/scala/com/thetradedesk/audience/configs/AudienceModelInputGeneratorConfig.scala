@@ -71,6 +71,8 @@ object AudienceModelInputGeneratorConfig {
 
   val bidImpressionRepartitionNumAfterFilter = config.getInt("bidImpressionRepartitionNumAfterFilter", 8192)
 
+  val enableGraphInRSMETL = config.getBoolean("enableGraphInRSMETL", false)
+
   val enforceGraphExtensionThreshold = config.getInt("enforceGraphExtensionThreshold", 10000)
 
   val graphExtensionDataRatio = config.getDouble("graphExtensionDataRatio", 0.1)
