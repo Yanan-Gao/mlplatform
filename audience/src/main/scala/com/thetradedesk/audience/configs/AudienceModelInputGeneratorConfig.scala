@@ -17,7 +17,7 @@ object AudienceModelInputGeneratorConfig {
 
   val model = Model.withName(config.getString("modelName", default = "RSM"))
 
-  val breakDownSeedsByPermission = config.getBoolean("breakDownSeedsByPermission", true)
+  val breakDownSeedsByPermission = config.getBoolean("breakDownSeedsByPermission", false)
 
   val supportedDataSources = config.getString("supportedDataSources", default = "Seed,TTDOwnData").split(',')
     .map(dataSource => DataSource.withName(dataSource).id)
