@@ -194,17 +194,24 @@ object AudienceModelInputGeneratorJob {
         .withColumn("pos", 'stats.getItem("_2"))
         .withColumn("neg", 'stats.getItem("_3"))
       resultDF.cache()
-      val metricDF = resultDF.select(sum("total"), sum("pos"), sum("neg")).cache()
-      val total = metricDF.head().getLong(0)
-      val pos = metricDF.head().getLong(1)
-      val neg = metricDF.head().getLong(2)
-      val pos_ratio = pos * 1.0 / total
+      // no data with new seeds
+      val metric = if (typePolicyTable._1._3 == IncrementalTrainingTag.New && resultDF.count() == 0L) {
+        Metric(0, 0, 0, 0d)
+      } else {
+        val metricDF = resultDF.select(sum("total"), sum("pos"), sum("neg")).cache()
+        val total = metricDF.head().getLong(0)
+        val pos = metricDF.head().getLong(1)
+        val neg = metricDF.head().getLong(2)
+        val pos_ratio = pos * 1.0 / total
+        Metric(total, pos, neg, pos_ratio)
+      }
+
       val currentBatch = s"${schedule}_${typePolicyTable._1._1}_${typePolicyTable._1._2}_${typePolicyTable._1._3}"
-      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(total, dateTime, "metadata", s"Count_${currentBatch}")
-      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(pos, dateTime, "metadata", s"Pos_${currentBatch}")
-      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(neg , dateTime, "metadata", s"Neg_${currentBatch}")
-      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(pos_ratio, dateTime, "metadata", s"PosRatio_${currentBatch}")
-      posRatioGauge.labels(AudienceModelInputGeneratorConfig.model.toString.toLowerCase).set(pos_ratio)
+      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(metric.total, dateTime, "metadata", s"Count_${currentBatch}")
+      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(metric.pos, dateTime, "metadata", s"Pos_${currentBatch}")
+      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(metric.neg , dateTime, "metadata", s"Neg_${currentBatch}")
+      MetadataDataset(AudienceModelInputGeneratorConfig.model).writeRecord(metric.posRatio, dateTime, "metadata", s"PosRatio_${currentBatch}")
+      posRatioGauge.labels(AudienceModelInputGeneratorConfig.model.toString.toLowerCase).set(metric.posRatio)
 
       resultDF.unpersist()
       resultSet.unpersist()
@@ -289,4 +296,6 @@ object AudienceModelInputGeneratorJob {
       (DataSource(e.Source), CrossDeviceVendor(e.CrossDeviceVendorId), tag)
     }.mapValues(_.map(_._1))
   }
+
+  case class Metric(total: Long, pos: Long, neg: Long, posRatio: Double)
 }
