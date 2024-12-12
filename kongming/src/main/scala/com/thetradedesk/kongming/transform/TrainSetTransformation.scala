@@ -585,16 +585,16 @@ object TrainSetTransformation {
     // Cache the trainset as we are using it multiple times
     val cachedTrainset = trainset.cache()
 
-    val sumWeight = cachedTrainset.filter(col("Target") === 0).groupBy("AdGroupId").agg(sum("Weight").as("NegSumWeight"))
-    .join(cachedTrainset.filter(col("Target") === 1).groupBy("AdGroupId").agg(sum("Weight").as("PosSumWeight")), Seq("AdGroupId"), "inner")
+    val sumWeight = cachedTrainset.filter(col("Target") === 0).groupBy("AdGroupIdStr").agg(sum("Weight").as("NegSumWeight"))
+    .join(cachedTrainset.filter(col("Target") === 1).groupBy("AdGroupIdStr").agg(sum("Weight").as("PosSumWeight")), Seq("AdGroupIdStr"), "inner")
 
     // Repartition to distribute data evenly across partitions
     val repartitionedSumWeight = 
       sumWeight
       .withColumn("Coefficient", when($"PosSumWeight" > 0, $"NegSumweight" / $"PosSumWeight").otherwise($"NegSumWeight"))
-      .repartition(col("AdGroupId"))
+      .repartition(col("AdGroupIdStr"))
 
-    val adjustedTrainset = cachedTrainset.join(broadcast(repartitionedSumWeight), Seq("AdGroupId"), "inner")
+    val adjustedTrainset = cachedTrainset.join(broadcast(repartitionedSumWeight), Seq("AdGroupIdStr"), "inner")
           .withColumn("Weight", when(col("Target") === 1, col("Weight") * col("Coefficient") / lit(desiredNegOverPos)).otherwise(col("Weight")))
 
     adjustedTrainset.selectAs[UserDataValidationDataForModelTrainingRecord]
