@@ -2,6 +2,7 @@ package com.thetradedesk
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.kongming.datasets.{AdGroupPolicyMappingRecord, AdGroupPolicyRecord, AdGroupRecord}
+import com.thetradedesk.spark.datasets.core.SchemaPolicy.{SchemaPolicyType, DefaultUseFirstFileSchema, MergeAllFilesSchema, StrictCaseClassSchema}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -27,6 +28,13 @@ package object kongming {
   val BaseFolderPath = task match {
     case "roas" => "roas"
     case _ => "kongming"
+  }
+
+  val schemaPolicyStr = config.getString("schemaPolicy", "DefaultUseFirstFileSchema")
+  val schemaPolicy: SchemaPolicyType = schemaPolicyStr match {
+    case "StrictCaseClassSchema" => StrictCaseClassSchema
+    case "MergeAllFilesSchema" => MergeAllFilesSchema
+    case _ => DefaultUseFirstFileSchema
   }
 
   val RunTimeGaugeName = "run_time_seconds"

@@ -1,7 +1,7 @@
 package com.thetradedesk.kongming.datasets
 
 import com.thetradedesk.MetadataType
-import com.thetradedesk.kongming.{BaseFolderPath, JobExperimentName, MLPlatformS3Root, getExperimentVersion, writeThroughHdfs}
+import com.thetradedesk.kongming.{BaseFolderPath, JobExperimentName, MLPlatformS3Root, getExperimentVersion, schemaPolicy, writeThroughHdfs}
 import com.thetradedesk.spark.datasets.core.PartitionedS3DataSet.buildPath
 import com.thetradedesk.spark.datasets.core._
 import com.thetradedesk.spark.util.{ProdTesting, Testing}
@@ -26,7 +26,8 @@ abstract class KongMingDataset[T <: Product : Manifest](dataSetType: DataSetType
     fileFormat = fileFormat,
     partitionField = partitionField,
     writeThroughHdfs = writeThroughHdfs,
-    experimentOverride = experimentOverride
+    experimentOverride = experimentOverride,
+    schemaPolicy = schemaPolicy
   ) {
   def writePartition(dataSet: Dataset[T], partition: LocalDate, coalesceToNumFiles: Option[Int]): (String, Long) = {
     // write to and read from test folders for ProdTesting environment to get the correct row count
