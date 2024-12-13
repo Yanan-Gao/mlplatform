@@ -228,9 +228,9 @@ object DataGenerator {
 
   def generateCampaignAdjustmentsHadesData: Dataset[CampaignAdjustmentsHadesSchema] = {
     val campaignAdjustmentsHadesDataSeq = Seq(
-      campaignAdjustmentsHadesMock(),
-      campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustment = None, hadesProblemCampaign = false),
-      campaignAdjustmentsHadesMock(campaignId = "jkl789", hadesPCAdjustment = Some(0.9), hadesProblemCampaign = true)
+      campaignAdjustmentsHadesMock(campaignId = "campaign2", hadesPCAdjustment = 0.6, hadesProblemCampaign = true),
+      campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustment = 1.0, hadesProblemCampaign = false),
+      campaignAdjustmentsHadesMock(campaignId = "jkl789", hadesPCAdjustment = 0.9, hadesProblemCampaign = true)
     )
     campaignAdjustmentsHadesDataSeq.reduce(_ union _)
   }

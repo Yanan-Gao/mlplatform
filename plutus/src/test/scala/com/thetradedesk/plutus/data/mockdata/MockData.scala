@@ -7,7 +7,6 @@ import com.thetradedesk.plutus.data.schema._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.{AdFormatRecord, AdGroupRecord, CampaignRecord, CountryRecord, PrivateContractRecord, ROIGoalTypeRecord, SupplyVendorRecord}
 import com.thetradedesk.streaming.records.rtb._
-import org.apache.hadoop.shaded.org.eclipse.jetty.websocket.common.frames.DataFrame
 import org.apache.spark.sql.Dataset
 
 import java.sql.Timestamp
@@ -287,7 +286,7 @@ object MockData {
       IsMargin = false
   )
 
-  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0) = PcResultsMergedDataset(
+  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0, auctionType: Int = 1) = PcResultsMergedDataset(
     BidRequestId = "1",
     DealId = dealId,
 
@@ -322,7 +321,7 @@ object MockData {
 
     AdsTxtSellerType = 1,
     PublisherType = 5,
-    AuctionType = Some(1),
+    AuctionType = Some(auctionType),
 
     Country = Some(""),
     Region = Some(""),
@@ -608,13 +607,15 @@ object MockData {
     )).toDS()
   }
 
-  def campaignAdjustmentsHadesMock(campaignId: String = "campaign2", hadesPCAdjustment: Option[Double] = Some(0.6), hadesProblemCampaign: Boolean = true): Dataset[CampaignAdjustmentsHadesSchema] = {
+  def campaignAdjustmentsHadesMock(campaignId: String, hadesPCAdjustment: Double = 1.0, hadesProblemCampaign: Boolean = true, hadesPCAdjustmentCurrent: Option[Double] = None, hadesPCAdjustmentOld: Option[Double] = None ): Dataset[CampaignAdjustmentsHadesSchema] = {
     Seq(CampaignAdjustmentsHadesSchema(
       CampaignId = campaignId,
       HadesBackoff_PCAdjustment = hadesPCAdjustment,
       Hades_isProblemCampaign = hadesProblemCampaign,
       BBFPC_OptOut_ShareOfBids = Some(0.75),
-      BBFPC_OptOut_ShareOfBidAmount = Some(0.75)
+      BBFPC_OptOut_ShareOfBidAmount = Some(0.75),
+      HadesBackoff_PCAdjustment_Current = hadesPCAdjustmentCurrent,
+      HadesBackoff_PCAdjustment_Old = hadesPCAdjustmentOld
     )).toDS()
   }
 
@@ -633,8 +634,8 @@ object MockData {
   )
 
   val campaignBBFOptOutRateMock = Seq(
-    ("abc123", 0.2, 0.1, 0.3, 0.3),
-    ("jkl789", 0.5, 0.25, 0.75, 0.75)
-  ).toDF("CampaignId", "BBFPC_OptOut_Variable_ShareOfBidAmount", "BBFPC_OptOut_Fixed_ShareOfBidAmount", "BBFPC_OptOut_ShareOfBidAmount", "BBFPC_OptOut_ShareOfBids")
+    ("abc123", 0.2, 0.1, 0.3, 0.3, 0.6),
+    ("jkl789", 0.5, 0.25, 0.75, 0.75, 0.7884867455687953)
+  ).toDF("CampaignId", "BBFPC_OptOut_Variable_ShareOfBidAmount", "BBFPC_OptOut_Fixed_ShareOfBidAmount", "BBFPC_OptOut_ShareOfBidAmount", "BBFPC_OptOut_ShareOfBids", "HadesBackoff_PCAdjustment")
 
 }
