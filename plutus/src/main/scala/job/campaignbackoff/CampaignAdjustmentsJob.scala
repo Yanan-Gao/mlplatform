@@ -9,7 +9,7 @@ object CampaignAdjustmentsJob {
   val date = config.getDateRequired("date")
   val testSplit = config.getDoubleOption("testSplit")
   val updateAdjustmentsVersion = config.getStringRequired("updateAdjustmentsVersion")
-  val fileCount = config.getInt("fileCount", 200)
+  val fileCount = config.getInt("fileCount", 10)
   val underdeliveryThreshold = config.getDouble("underdeliveryThreshold", 0.1)
 
   val prometheus = new PrometheusClient("CampaignBackoff", "CampaignAdjustmentsJob")

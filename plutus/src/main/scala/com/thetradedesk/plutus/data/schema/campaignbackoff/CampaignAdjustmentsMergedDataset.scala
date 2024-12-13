@@ -8,30 +8,32 @@ import java.time.LocalDate
 case class CampaignAdjustmentsMergedDataset (
   CampaignId: String,
   CampaignFlightId: Option[Long],
-  CampaignPCAdjustment: Double,
+  MergedPCAdjustment: Double,
 
- // Campaign Backoff
-  CampaignBackoff_PCAdjustment: Double,
+  // Campaign Backoff
+  CampaignPCAdjustment: Option[Double],
+  IsTest: Option[Boolean],
   AddedDate: Option[LocalDate],
-  EndDateExclusiveUTC: Timestamp,
+  EndDateExclusiveUTC: Option[Timestamp],
   IsValuePacing: Option[Boolean],
   Pacing: Option[Int],
   ImprovedNotPacing: Option[Int],
   WorseNotPacing: Option[Int],
-  MinCalculatedCampaignCapInUSD: Double,
-  MaxCalculatedCampaignCapInUSD: Double,
-  OverdeliveryInUSD: Double,
-  UnderdeliveryInUSD: Double,
-  TotalAdvertiserCostFromPerformanceReportInUSD: Double,
-  EstimatedBudgetInUSD: Double,
-  UnderdeliveryFraction: Double,
+  MinCalculatedCampaignCapInUSD: Option[Double],
+  MaxCalculatedCampaignCapInUSD: Option[Double],
+  OverdeliveryInUSD: Option[Double],
+  UnderdeliveryInUSD: Option[Double],
+  TotalAdvertiserCostFromPerformanceReportInUSD: Option[Double],
+  EstimatedBudgetInUSD: Option[Double],
+  UnderdeliveryFraction: Option[Double],
 
   // Hades Backoff
-  HadesBackoff_PCAdjustment: Double,
-  Hades_isProblemCampaign: Boolean,
-  BBFPC_OptOut_ShareOfBids: Double,
-  BBFPC_OptOut_ShareOfBidAmount: Double,
-  IsTest: Option[Boolean]
+  HadesBackoff_PCAdjustment: Option[Double],
+  Hades_isProblemCampaign: Option[Boolean],
+  BBFPC_OptOut_ShareOfBids: Option[Double],
+  BBFPC_OptOut_ShareOfBidAmount: Option[Double],
+  HadesBackoff_PCAdjustment_Current: Option[Double],
+  HadesBackoff_PCAdjustment_Old: Option[Double],
 )
 
 object CampaignAdjustmentsMergedDataset {

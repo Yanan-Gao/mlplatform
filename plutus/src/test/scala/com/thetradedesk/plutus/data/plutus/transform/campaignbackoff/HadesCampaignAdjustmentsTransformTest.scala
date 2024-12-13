@@ -2,144 +2,177 @@ package com.thetradedesk.plutus.data.plutus.transform.campaignbackoff
 
 import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.plutus.data.mockdata.DataGenerator
-import com.thetradedesk.plutus.data.mockdata.MockData.{campaignBBFOptOutRateMock, campaignUnderdeliveryForHadesMock, pcResultsMergedMock}
+import com.thetradedesk.plutus.data.mockdata.MockData._
 import com.thetradedesk.plutus.data.schema.PcResultsMergedDataset
-import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignThrottleMetricSchema}
-import com.thetradedesk.plutus.data.transform.campaignbackoff.CampaignAdjustmentsTransform.mergeCampaignBackoffWithHadesCampaignBackoff
-import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform.{getCampaignBidData, identifyAndHandleProblemCampaigns}
+import com.thetradedesk.plutus.data.schema.campaignbackoff._
+import com.thetradedesk.plutus.data.transform.campaignbackoff.CampaignAdjustmentsTransform.mergeBackoffDatasets
+import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import org.apache.spark.sql.Row
+import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
+import org.apache.spark.sql.functions._
 
 
 class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
-  test("Hades Backoff transform test for schema/column correctness") {
+  val tolerance = 0.001
 
-    val pcResultsMergedData_BudgetBucketTest = Seq(pcResultsMergedMock(campaignId = Some("pmbcej3"))).toDS().as[PcResultsMergedDataset]
+  test("Validating campaign budget buckets") {
+    val campaignId = "pmbcej3"
+    val campaigns = Seq(campaignId).toDS()
+      .withColumnRenamed("value", "CampaignId")
+      .withColumn("TestBucket", getTestBucketUDF(col("CampaignId"), lit(bucketCount)))
 
-    val campaignBidData_BudgetBucketTest = getCampaignBidData(pcResultsMergedData_BudgetBucketTest, testSplit = Some(0.9))
-    val results_campaignBidData_BudgetBucketTest = campaignBidData_BudgetBucketTest.collectAsList().get(0)
-    val testBucket = results_campaignBidData_BudgetBucketTest.getAs[Short]("TestBucket")
+    val res = campaigns.collectAsList().get(0)
+    val testBucket = res.getAs[Short]("TestBucket")
     assert(testBucket == 894, "Validating Budget Bucket Hash.")
+  }
 
+  test("Validating plutus adjustment calculations") {
+    val campaignId = "pmbcej3"
+    val underdeliveringCampaigns = Array(campaignId)
 
     // getCampaignBidData
-    val pcResultsMergedData = Seq(pcResultsMergedMock(dealId = "0000", adjustedBidCPMInUSD = 25.01, discrepancy = 1.1, floorPrice = 25, mu = -4.1280107498168945f, sigma = 1.0384914875030518f)).toDS().as[PcResultsMergedDataset]
+    val pcResultsMergedData = Seq(
+      pcResultsMergedMock(campaignId = Some(campaignId), dealId = "0000", adjustedBidCPMInUSD = 6.8800, discrepancy = 1.1, floorPrice = 1, mu = -0.3071f, sigma =  0.6923f, auctionType = 3)
+    ).toDS().as[PcResultsMergedDataset]
 
-    val campaignBidData = getCampaignBidData(pcResultsMergedData, testSplit = Some(0.9))
+    val campaignBidData = getUnderdeliveringCampaignBidData(
+      pcResultsMergedData,
+      underdeliveringCampaigns
+    )
+
     val results_campaignBidData = campaignBidData.collectAsList().get(0)
-    val gen_PCAdjustment = results_campaignBidData.getAs[Double]("gen_PCAdjustment")
-    assert(gen_PCAdjustment == 0.7884867455687953, "Validating Hades Adjustment Factor Calculation")
+    val gen_plutusPushdown = results_campaignBidData.getAs[Double]("gen_plutusPushdown")
+    assert(math.abs(gen_plutusPushdown - 0.2426) <= tolerance)
+  }
 
-
+  test("Testing Problem Campaign filtering") {
     // aggregateCampaignBBFOptOutRate
     val campaignBBFOptOutRate = campaignBBFOptOutRateMock.select("*")
-
+    val yesterdaysData = spark.emptyDataset[CampaignAdjustmentsHadesSchema]
 
     // identifyAndHandleProblemCampaigns
-    val campaignUnderdeliveryData = Seq(campaignUnderdeliveryForHadesMock.copy()).toDS().as[CampaignThrottleMetricSchema]
-    val hadesAdjustmentsData = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, campaignUnderdeliveryData, campaignBidData, underdeliveryThreshold = 0.1)
+    val hadesAdjustmentsData = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData)
 
-    // Check problem campaign
-    val results_hadesAdjustmentsData_1 = hadesAdjustmentsData.collectAsList().get(1)
-    val HadesBackoff_PCAdjustment_1: Option[Double] = results_hadesAdjustmentsData_1.HadesBackoff_PCAdjustment
-    val Hades_isProblemCampaign_1: Boolean = results_hadesAdjustmentsData_1.Hades_isProblemCampaign
-    assert(HadesBackoff_PCAdjustment_1 == Some(0.7884867455687953) && Hades_isProblemCampaign_1 == true, "Validating Identifying Problem Campaigns: when is a problem campaign.")
     // Check non-problem campaign
-    val results_hadesAdjustmentsData_0 = hadesAdjustmentsData.collectAsList().get(0)
-    val HadesBackoff_PCAdjustment_0: Option[Double] = results_hadesAdjustmentsData_0.HadesBackoff_PCAdjustment
-    val Hades_isProblemCampaign_0: Boolean = results_hadesAdjustmentsData_0.Hades_isProblemCampaign
-    assert(HadesBackoff_PCAdjustment_0 == None && Hades_isProblemCampaign_0 == false, "Validating Identifying Problem Campaigns: when not a problem campaign.")
-
-
-    // identifyAndHandleProblemCampaigns - test when no underdelivery data
-    val emptyCampaignUnderdeliveryData = spark.emptyDataset[CampaignThrottleMetricSchema]
-    val hadesAdjustmentsDataV2 = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, emptyCampaignUnderdeliveryData, campaignBidData, underdeliveryThreshold = 0.1)
+    val nonProblemCampaign = hadesAdjustmentsData.collectAsList().get(0)
+    assert(nonProblemCampaign.HadesBackoff_PCAdjustment == 1)
+    assert(!nonProblemCampaign.Hades_isProblemCampaign)
 
     // Check problem campaign
-    val results_hadesAdjustmentsDataV2_1 = hadesAdjustmentsDataV2.collectAsList().get(1)
-    val HadesBackoff_PCAdjustmentV2_1: Option[Double] = results_hadesAdjustmentsDataV2_1.HadesBackoff_PCAdjustment
-    val Hades_isProblemCampaignV2_1: Boolean = results_hadesAdjustmentsDataV2_1.Hades_isProblemCampaign
-    assert(HadesBackoff_PCAdjustmentV2_1 == Some(0.7884867455687953) && Hades_isProblemCampaignV2_1 == true, "Validating Identifying Problem Campaigns when no CampaignUnderdeliveryData and is problem campaign.")
-    val results_hadesAdjustmentsDataV2_0 = hadesAdjustmentsDataV2.collectAsList().get(0)
-    val HadesBackoff_PCAdjustmentV2_0: Option[Double] = results_hadesAdjustmentsDataV2_0.HadesBackoff_PCAdjustment
-    val Hades_isProblemCampaignV2_0: Boolean = results_hadesAdjustmentsDataV2_0.Hades_isProblemCampaign
-    assert(HadesBackoff_PCAdjustmentV2_0 == None && Hades_isProblemCampaignV2_0 == false, "Validating Identifying Problem Campaigns when no CampaignUnderdeliveryData and is not problem campaign.")
+    val problemCampaign = hadesAdjustmentsData.collectAsList().get(1)
+    assert(problemCampaign.HadesBackoff_PCAdjustment == 0.7884867455687953)
+    assert(problemCampaign.Hades_isProblemCampaign)
+  }
 
+  test("Hades Backoff transform test for schema/column correctness") {
+    val campaignId = "abcd"
+    val pcResultsMergedData = Seq(pcResultsMergedMock(campaignId = Some(campaignId), dealId = "0000", adjustedBidCPMInUSD = 25.01, discrepancy = 1.1, floorPrice = 25, mu = -4.1280107498168945f, sigma = 1.0384914875030518f)).toDS().as[PcResultsMergedDataset]
+
+    val underDeliveringCampaigns = Array(campaignId)
+    val campaignBidData = getUnderdeliveringCampaignBidData(pcResultsMergedData, underDeliveringCampaigns)
+
+    val campaignBBFOptOutRate = aggregateCampaignBBFOptOutRate(campaignBidData)
+    val yesterdaysData = spark.emptyDataset[CampaignAdjustmentsHadesSchema]
+
+    val optOutRates = campaignBBFOptOutRate.collectAsList()
+    assert(optOutRates.size() == 1)
+
+    val hadesAdjustmentsData = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData)
+    val res = hadesAdjustmentsData.collectAsList()
+    assert(res.size() == 1)
   }
 
   test("Merge Hades Backoff and Campaign Backoff test for schema/column correctness") {
 
     val campaignAdjustmentsHadesData = DataGenerator.generateCampaignAdjustmentsHadesData
     val campaignAdjustmentsData = DataGenerator.generateCampaignAdjustmentsPacingData.limit(3)
-    val finalMergedCampaignAdjustments = mergeCampaignBackoffWithHadesCampaignBackoff(campaignAdjustmentsData, campaignAdjustmentsHadesData)
-    val results_finalMergedCampaignAdjustments = finalMergedCampaignAdjustments.collectAsList()
-    //    finalMergedCampaignAdjustments.printSchema()
-    //    finalMergedCampaignAdjustments.show(truncate = false)
+    val finalMergedCampaignAdjustments = mergeBackoffDatasets(campaignAdjustmentsData, campaignAdjustmentsHadesData)
+    val res = finalMergedCampaignAdjustments.collect()
+
 
     // Test for campaign that is not Hades Backoff test campaign but in Campaign Backoff.
     // Campaign backoff adjustment should be final adjustment.
-    val res_fromCampaignBackoff = results_finalMergedCampaignAdjustments.get(0)
-    val Hades_isProblemCampaign_fromCampaignBackoff = res_fromCampaignBackoff.fieldIndex("Hades_isProblemCampaign")
-    val isTest_fromCampaignBackoff = res_fromCampaignBackoff.getAs[Boolean]("IsTest")
-    val merged_CampaignPCAdjustment_fromCampaignBackoff = res_fromCampaignBackoff.getAs[Double]("CampaignPCAdjustment")
-    val CampaignBackoff_PCAdjustment_fromCampaignBackoff = res_fromCampaignBackoff.getAs[Double]("CampaignBackoff_PCAdjustment")
-    val HadesBackoff_PCAdjustment_fromCampaignBackoff = res_fromCampaignBackoff.fieldIndex("HadesBackoff_PCAdjustment")
-    assert(
-      res_fromCampaignBackoff.isNullAt(Hades_isProblemCampaign_fromCampaignBackoff) &&
-        isTest_fromCampaignBackoff == false &&
-        merged_CampaignPCAdjustment_fromCampaignBackoff == 0.75 &&
-        CampaignBackoff_PCAdjustment_fromCampaignBackoff == 0.75 &&
-        res_fromCampaignBackoff.isNullAt(HadesBackoff_PCAdjustment_fromCampaignBackoff),
-      "Validating final merged dataset: Only Campaign Backoff campaigns in final merged dataset")
+    val justCampaignBackoff = res.filter(_.CampaignId == "campaign1").head
+    assert(justCampaignBackoff.Hades_isProblemCampaign.isEmpty)
+    assert(justCampaignBackoff.HadesBackoff_PCAdjustment.isEmpty)
+    assert(justCampaignBackoff.CampaignPCAdjustment.contains(0.75))
+    assert(justCampaignBackoff.MergedPCAdjustment == 0.75)
 
 
     // Test for campaign that is Hades Backoff test campaign and in Campaign Backoff. This is a Hades problem campaign.
     // The minimum backoff adjustment should be final adjustment.
-    val res_fromHadesBackoff_flagged = results_finalMergedCampaignAdjustments.get(1)
-    val Hades_isProblemCampaign_fromHadesBackoff_flagged = res_fromHadesBackoff_flagged.getAs[Boolean]("Hades_isProblemCampaign")
-    val isTest_fromHadesBackoff_flagged = res_fromHadesBackoff_flagged.getAs[Boolean]("IsTest")
-    val merged_CampaignPCAdjustment_fromHadesBackoff_flagged = res_fromHadesBackoff_flagged.getAs[Double]("CampaignPCAdjustment")
-    val CampaignBackoff_PCAdjustment_fromHadesBackoff_flagged = res_fromHadesBackoff_flagged.getAs[Double]("CampaignBackoff_PCAdjustment")
-    val HadesBackoff_PCAdjustment_fromHadesBackoff_flagged = res_fromHadesBackoff_flagged.getAs[Double]("HadesBackoff_PCAdjustment")
-    assert(
-      Hades_isProblemCampaign_fromHadesBackoff_flagged == true &&
-        isTest_fromHadesBackoff_flagged == true &&
-        merged_CampaignPCAdjustment_fromHadesBackoff_flagged == 0.6 &&
-        CampaignBackoff_PCAdjustment_fromHadesBackoff_flagged == 0.75 &&
-        HadesBackoff_PCAdjustment_fromHadesBackoff_flagged == 0.6,
-      "Validating final merged dataset: Hades Backoff campaigns that are in Test and flagged as problem.")
+    val bothHadesAndCampaignBackoff = res.filter(_.CampaignId == "campaign2").head
+    assert(bothHadesAndCampaignBackoff.Hades_isProblemCampaign.contains(true))
+    assert(bothHadesAndCampaignBackoff.HadesBackoff_PCAdjustment.contains(0.6))
+    assert(bothHadesAndCampaignBackoff.CampaignPCAdjustment.contains(0.75))
+    assert(bothHadesAndCampaignBackoff.MergedPCAdjustment == 0.6)
+
 
     // Test for campaign that is Hades Backoff test campaign and in Campaign Backoff. This is not a Hades problem campaign.
     // The Campaign Backoff adjustment should be final adjustment.
-    val res_fromHadesBackoff_notFlagged = results_finalMergedCampaignAdjustments.get(2)
-    val Hades_isProblemCampaign_fromHadesBackoff_notFlagged = res_fromHadesBackoff_notFlagged.getAs[Boolean]("Hades_isProblemCampaign")
-    val isTest_fromHadesBackoff_notFlagged = res_fromHadesBackoff_notFlagged.getAs[Boolean]("IsTest")
-    val merged_CampaignPCAdjustment_fromHadesBackoff_notFlagged = res_fromHadesBackoff_notFlagged.getAs[Double]("CampaignPCAdjustment")
-    val CampaignBackoff_PCAdjustment_fromHadesBackoff_notFlagged = res_fromHadesBackoff_notFlagged.getAs[Double]("CampaignBackoff_PCAdjustment")
-    val HadesBackoff_PCAdjustment_fromHadesBackoff_notFlagged = res_fromHadesBackoff_notFlagged.fieldIndex("HadesBackoff_PCAdjustment")
-    assert(
-      Hades_isProblemCampaign_fromHadesBackoff_notFlagged == false &&
-        isTest_fromHadesBackoff_notFlagged == true &&
-        merged_CampaignPCAdjustment_fromHadesBackoff_notFlagged == 0.75 &&
-        CampaignBackoff_PCAdjustment_fromHadesBackoff_notFlagged == 0.75 &&
-        res_fromHadesBackoff_notFlagged.isNullAt(HadesBackoff_PCAdjustment_fromHadesBackoff_notFlagged),
-      "Validating final merged dataset: Hades Backoff campaigns that are in Test but not flagged as problem.")
+    val notHadesProblemCampaign = res.filter(_.CampaignId == "campaign3").head
+    assert(notHadesProblemCampaign.Hades_isProblemCampaign.contains(false))
+    assert(notHadesProblemCampaign.HadesBackoff_PCAdjustment.contains(1.0))
+    assert(notHadesProblemCampaign.CampaignPCAdjustment.contains(0.75))
+    assert(notHadesProblemCampaign.MergedPCAdjustment == 0.75)
+
 
     // Test for campaign that is Hades Backoff test campaign and not in Campaign Backoff. This is a Hades problem campaign.
     // The Hades Backoff adjustment should be final adjustment.
-    val res_fromHadesBackoff_outer = results_finalMergedCampaignAdjustments.get(3)
-    val Hades_isProblemCampaign_fromHadesBackoff_outer = res_fromHadesBackoff_outer.getAs[Boolean]("Hades_isProblemCampaign")
-    val isTest_fromHadesBackoff_outer = res_fromHadesBackoff_outer.getAs[Boolean]("IsTest")
-    val merged_CampaignPCAdjustment_fromHadesBackoff_outer = res_fromHadesBackoff_outer.getAs[Double]("CampaignPCAdjustment")
-    val CampaignBackoff_PCAdjustment_fromHadesBackoff_outer = res_fromHadesBackoff_outer.fieldIndex("CampaignBackoff_PCAdjustment")
-    val HadesBackoff_PCAdjustment_fromHadesBackoff_outer = res_fromHadesBackoff_outer.getAs[Double]("HadesBackoff_PCAdjustment")
-    assert(
-      Hades_isProblemCampaign_fromHadesBackoff_outer == true &&
-        isTest_fromHadesBackoff_outer == true &&
-        merged_CampaignPCAdjustment_fromHadesBackoff_outer == 0.9 &&
-        res_fromHadesBackoff_outer.isNullAt(CampaignBackoff_PCAdjustment_fromHadesBackoff_outer) &&
-        HadesBackoff_PCAdjustment_fromHadesBackoff_outer == 0.9,
-      "Validating final merged dataset: Hades Backoff campaigns that are in Test but not in Campaign Backoff Pacing dataset.")
+    val hadesProblemCampaign = res.filter(_.CampaignId == "jkl789").head
+    assert(hadesProblemCampaign.Hades_isProblemCampaign.contains(true))
+    assert(hadesProblemCampaign.HadesBackoff_PCAdjustment.contains(0.9))
+    assert(hadesProblemCampaign.CampaignPCAdjustment.isEmpty)
+    assert(hadesProblemCampaign.MergedPCAdjustment == 0.9)
+  }
+
+
+  test("Test that reading the merged data back into campaign adjustments works") {
+    val campaignAdjustmentsHadesData = DataGenerator.generateCampaignAdjustmentsHadesData
+    val campaignAdjustmentsData = DataGenerator.generateCampaignAdjustmentsPacingData.limit(3)
+    val finalMergedCampaignAdjustments = mergeBackoffDatasets(campaignAdjustmentsData, campaignAdjustmentsHadesData)
+    val campaignAdjustmentsPacingData = finalMergedCampaignAdjustments.filter($"CampaignPCAdjustment".isNotNull).selectAs[CampaignAdjustmentsPacingSchema]
+
+    assert(campaignAdjustmentsPacingData.collect().length == 3)
+
+  }
+
+  test("test for mergeTodayWithYesterdaysData") {
+    // In these test, we drop `HadesBackoff_PCAdjustment_Old`
+    // because that shouldn't exist in the dataframe going into mergeTodayWithYesterdaysData
+
+    // Testing if yesterday's pushdown is maintained
+    var todaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustmentCurrent = Some(1.0))
+      .toDF()
+    var yesterdaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustment = 0.4)
+    var res = mergeTodayWithYesterdaysData(todaysData, yesterdaysData).collect().head
+
+    assert(res.CampaignId == "campaign3")
+    assert(res.HadesBackoff_PCAdjustment == 0.4)
+    assert(res.HadesBackoff_PCAdjustment_Current.contains(1.0))
+    assert(res.HadesBackoff_PCAdjustment_Old.contains(0.4))
+
+    // Testing if todays's pushdown is maintained if yesterdays is missing
+    todaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustmentCurrent = Some(0.5))
+      .toDF()
+    yesterdaysData = spark.emptyDataset[CampaignAdjustmentsHadesSchema]
+    res = mergeTodayWithYesterdaysData(todaysData, yesterdaysData).collect().head
+
+    assert(res.CampaignId == "campaign3")
+    assert(res.HadesBackoff_PCAdjustment == 0.5)
+    assert(res.HadesBackoff_PCAdjustment_Current.contains(0.5))
+    assert(res.HadesBackoff_PCAdjustment_Old.isEmpty)
+
+    // Testing if yesterday's pushdown is maintained if todays is missing
+    todaysData = spark.emptyDataset[CampaignAdjustmentsHadesSchema]
+      .toDF()
+    yesterdaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustment = 0.5)
+    res = mergeTodayWithYesterdaysData(todaysData, yesterdaysData).collect().head
+
+    assert(res.CampaignId == "campaign3")
+    assert(res.HadesBackoff_PCAdjustment == 0.5)
+    assert(res.HadesBackoff_PCAdjustment_Current.isEmpty)
+    assert(res.HadesBackoff_PCAdjustment_Old.contains(0.5))
   }
 
 }
