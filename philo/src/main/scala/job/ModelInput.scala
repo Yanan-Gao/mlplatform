@@ -147,7 +147,6 @@ object ModelInput {
       advertiserExclusionList, debug
     )
     //TODO if non exclusion list, set all exclusion flag to 0
-
     if (writeFullData) {
       //write to csv to dev for production job
       writeData(
@@ -186,6 +185,8 @@ object ModelInput {
         writeData(labelCounts.filter($"excluded" === 1).drop("excluded"), outputPath, writeEnv, metadataName + "excluded", date, 1, false)
       }
     }
+    writeData(trainingData.select("originalAdGroupId", "AdGroupId").distinct(), outputPath, writeEnv, "adgrouptable", date, 1, false)
+
 
   }
 }
