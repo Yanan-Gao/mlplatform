@@ -1,13 +1,12 @@
 package com.thetradedesk.kongming.transform
 
-import com.thetradedesk.geronimo.shared.{intModelFeaturesCols, STRING_FEATURE_TYPE}
+import com.thetradedesk.geronimo.shared.{INT_FEATURE_TYPE, STRING_FEATURE_TYPE, intModelFeaturesCols}
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import com.thetradedesk.kongming.datasets.{BidsImpressionsSchema, TrainSetFeatureMappingDataset, TrainSetFeatureMappingRecord}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-
 import org.apache.spark.sql.{Column, Dataset}
 import org.apache.spark.sql.functions.{col, lit}
 
@@ -20,6 +19,7 @@ final case class BidsImpressionsFeatureMappingRecord(
                                                OriginalAdvertiserId: Option[String],
                                                OriginalSupplyVendor: Option[String],
                                                OriginalSupplyVendorPublisherId: Option[String],
+                                               OriginalAliasedSupplyPublisherId: Option[Int],
                                                OriginalSite: Option[String],
 
                                                OriginalCountry: Option[String],
@@ -36,6 +36,7 @@ final case class BidsImpressionsFeatureMappingRecord(
                                                HashedAdvertiserId: Int,
                                                HashedSupplyVendor: Option[Int],
                                                HashedSupplyVendorPublisherId: Option[Int],
+                                               HashedAliasedSupplyPublisherId: Option[Int],
                                                HashedSite: Option[Int],
 
                                                HashedCountry: Option[Int],
@@ -56,6 +57,7 @@ object TrainSetFeatureMappingTransform {
     ModelFeature("AdvertiserId", STRING_FEATURE_TYPE, Some(500002), 0),
     ModelFeature("SupplyVendor", STRING_FEATURE_TYPE, Some(102), 0),
     ModelFeature("SupplyVendorPublisherId", STRING_FEATURE_TYPE, Some(200002), 0),
+    ModelFeature("AliasedSupplyPublisherId", INT_FEATURE_TYPE, Some(200002), 0),
     ModelFeature("Site", STRING_FEATURE_TYPE, Some(500002), 0),
 
     ModelFeature("Country", STRING_FEATURE_TYPE, Some(252), 0),

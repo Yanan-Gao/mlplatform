@@ -16,6 +16,7 @@ final case class TrainSetFeaturesRecord (
 
                                           SupplyVendor: Option[String],
                                           SupplyVendorPublisherId: Option[String],
+                                          AliasedSupplyPublisherId: Option[Int],
                                           Site: Option[String],
                                           ImpressionPlacementId: Option[String],
                                           AdFormat: String,

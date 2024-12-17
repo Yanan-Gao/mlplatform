@@ -9,8 +9,8 @@ import org.apache.spark.sql.functions._
 
 object Features {
 
-  val defaultFeaturesJsonS3Location = "s3://thetradedesk-mlplatform-us-east-1/features/data/kongming/v=1/prod/features/feature_userdata_subtower_featuretable.json"
-  val defaultROASFeaturesJsonS3Location = "s3://thetradedesk-mlplatform-us-east-1/features/data/roas/v=1/prod/schemas/feature_roas_aud.json"
+  val defaultFeaturesJsonS3Location = "s3://thetradedesk-mlplatform-us-east-1/features/data/kongming/v=1/prod/features/feature_userdata_subtower_featuretable_aliased_sv.json"
+  val defaultROASFeaturesJsonS3Location = "s3://thetradedesk-mlplatform-us-east-1/features/data/roas/v=1/prod/schemas/feature_roas_aud_aliased_sv.json"
 
   var featuresJsonS3Location: String = task match {
     case "roas" => config.getString("featuresJson", defaultROASFeaturesJsonS3Location)
