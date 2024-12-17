@@ -17,6 +17,7 @@ final case class UserDataForModelTrainingRecord(
 
                                                  SupplyVendor: Option[Int],
                                                  SupplyVendorPublisherId: Option[Int],
+                                                 AliasedSupplyPublisherId: Option[Int],
                                                  //                                 ImpressionPlacementId: Option[String],
                                                  Site: Option[Int],
                                                  AdFormat: Int,
@@ -286,6 +287,7 @@ final case class DataForModelTrainingRecord(
 
                                  SupplyVendor: Option[Int],
                                  SupplyVendorPublisherId: Option[Int],
+                                 AliasedSupplyPublisherId: Option[Int],
 //                                 ImpressionPlacementId: Option[String],
                                  Site: Option[Int],
                                  AdFormat: Int,

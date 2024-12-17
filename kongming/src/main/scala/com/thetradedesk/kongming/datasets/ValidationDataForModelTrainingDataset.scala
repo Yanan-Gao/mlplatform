@@ -18,6 +18,7 @@ final case class ValidationDataForModelTrainingRecord(BidRequestIdStr: String,
 //                                                      ImpressionPlacementId: Option[String],
                                                       SupplyVendor: Option[Int],
                                                       SupplyVendorPublisherId: Option[Int],
+                                                      AliasedSupplyPublisherId: Option[Int],
                                                       Site: Option[Int],
                                                       AdFormat: Int,
 
@@ -128,6 +129,7 @@ final case class UserDataValidationDataForModelTrainingRecord(BidRequestIdStr: S
                                                       //                                                      ImpressionPlacementId: Option[String],
                                                       SupplyVendor: Option[Int],
                                                       SupplyVendorPublisherId: Option[Int],
+                                                      AliasedSupplyPublisherId: Option[Int],
                                                       Site: Option[Int],
                                                       AdFormat: Int,
 

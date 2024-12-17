@@ -13,7 +13,7 @@ final case class DailyAttributionRecord(
                                         AttributedEventLogFileId: String,
                                         AttributedEventIntId1: String,
                                         AttributedEventIntId2: String,
-                                        AttributedEventLogEntryTime: String,// is string in parquet
+                                        AttributedEventLogEntryTime: java.sql.Timestamp,// is timestamp in parquet
                                         ConversionTrackerId: String,
                                         TrackingTagId: String,
                                         TDID: String,
@@ -22,7 +22,7 @@ final case class DailyAttributionRecord(
                                         AdGroupId: String,
                                         MonetaryValue: Option[String],
                                         MonetaryValueCurrency: Option[String],
-                                        ConversionTrackerLogEntryTime: String,  // is string in parquet.
+                                        ConversionTrackerLogEntryTime: java.sql.Timestamp,  // is timestamp in parquet.
                                         CampaignReportingColumnId: String,
                                         AttributionMethodId: String,
                                         CustomCPACount: Option[String],
@@ -43,8 +43,8 @@ final case class DailyAttributionEventsRecord(
                                                Target: Int,
                                                Revenue: Option[BigDecimal],
                                                CustomCPACount: Double,
-                                               ConversionTrackerLogEntryTime: String,
-                                               AttributedEventLogEntryTime: String,
+                                               ConversionTrackerLogEntryTime: java.sql.Timestamp,
+                                               AttributedEventLogEntryTime: java.sql.Timestamp,
                                        )
 
 

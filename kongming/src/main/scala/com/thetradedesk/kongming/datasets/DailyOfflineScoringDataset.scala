@@ -16,6 +16,7 @@ final case class DailyOfflineScoringRecord(
                                            // ImpressionPlacementId: Option[String],
                                            SupplyVendor: Option[Int],
                                            SupplyVendorPublisherId: Option[Int],
+                                           AliasedSupplyPublisherId: Option[Int],
                                            Site: Option[Int],
                                            AdFormat: Int,
 
@@ -274,6 +275,7 @@ final case class OldDailyOfflineScoringRecord(
                                            // ImpressionPlacementId: Option[String],
                                            SupplyVendor: Option[Int],
                                            SupplyVendorPublisherId: Option[Int],
+                                           AliasedSupplyPublisherId: Option[Int],
                                            Site: Option[Int],
                                            AdFormat: Int,
 
