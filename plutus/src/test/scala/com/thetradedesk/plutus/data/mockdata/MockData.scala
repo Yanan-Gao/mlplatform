@@ -221,8 +221,8 @@ object MockData {
     UserFriendlyLabel = None
   )
 
-  val pcResultsLogMock = PlutusLogsData(
-    BidRequestId = "1",
+  def pcResultsLogMock(bidRequestId: String): PlutusLogsData = PlutusLogsData(
+    BidRequestId = bidRequestId,
     InitialBid = 10,
     FinalBidPrice = 9,
     Discrepancy = 0.1,
@@ -241,6 +241,12 @@ object MockData {
     FullPush = false,
     UseUncappedBidForPushdown = true,
     UncappedFirstPriceAdjustment = 1.023,
+    LogEntryTime = 123123,
+    IsValuePacing = true,
+    AuctionType = 1,
+    DealId = null,
+    SupplyVendor = "ads",
+    AdgroupId = "asdasd"
   )
 
   val pcResultsRawLogMock = PcResultsRawLogs(
@@ -260,7 +266,12 @@ object MockData {
     FloorBufferAdjustment = 0,
     UseUncappedBidForPushdown = false,
     UncappedFirstPriceAdjustment = 2.789,
-    LogEntryTime = 638560527380000000L
+    LogEntryTime = 638560527380000000L,
+    IsValuePacing = true,
+    AuctionType = 1,
+    DealId = null,
+    SupplyVendor = "ads",
+    AdgroupId = "asdasd"
   )
 
   val mbtwDataMock = MinimumBidToWinData(

@@ -22,6 +22,9 @@ object PcResultsGeronimoTransform extends Logger {
   val delta = 0.0001
   val extremeValueThreshold = 0.75
 
+  // These columns exist in Geronimo already
+  val excludeFromPlutusLogsData = Seq("LogEntryTime","IsValuePacing","AuctionType","DealId","SupplyVendor","AdgroupId")
+
   def joinGeronimoPcResultsLog(geronimo: Dataset[BidsImpressionsSchema],
                                plutusLogs: Dataset[PlutusLogsData],
                                mbtw: Dataset[MinimumBidToWinData],
@@ -29,8 +32,10 @@ object PcResultsGeronimoTransform extends Logger {
                                adFormatData: Dataset[AdFormatRecord],
                                productionAdgroupBudgetData: Dataset[ProductionAdgroupBudgetData],
                                joinCols: Seq[String] = Seq("BidRequestId")
-                              ): (Dataset[PcResultsMergedDataset], sql.DataFrame, sql.DataFrame) = {
-    var res = geronimo.join(plutusLogs, joinCols, "left").join(mbtw, joinCols, "left")
+                              ): (Dataset[PcResultsMergedDataset], Dataset[PlutusLogsData], sql.DataFrame) = {
+
+    var res = geronimo.join(plutusLogs.drop(excludeFromPlutusLogsData: _*), joinCols, "left")
+      .join(mbtw, joinCols, "left")
       .withColumn("AdFormat", concat($"AdWidthInPixels", lit("x"), $"AdHeightInPixels"))
 
     res = AddChannel(res, adFormatData)
@@ -125,6 +130,7 @@ object PcResultsGeronimoTransform extends Logger {
     )
 
     val pcResultsAbsentDataset = plutusLogs.join(geronimo, joinCols, "leftanti")
+      .as[PlutusLogsData]
     val mbtwAbsentDataset = mbtw.join(geronimo, joinCols, "leftanti")
 
     (res.selectAs[PcResultsMergedDataset], pcResultsAbsentDataset, mbtwAbsentDataset)
@@ -165,22 +171,30 @@ object PcResultsGeronimoTransform extends Logger {
       adFormatData,
       productionAdgroupBudgetData)
 
-    val pcResultsAbsentCount = pcResultsAbsentDataset.count()
     val mbtwAbsentCount = mbtwAbsentDataset.count()
 
-    val listener = new WriteListener()
-    spark.sparkContext.addSparkListener(listener)
+    val plutusDataListener = new WriteListener()
+    spark.sparkContext.addSparkListener(plutusDataListener)
 
-    val outputPath = PcResultsMergedDataset.S3_PATH_HOUR(dateTime, ttdEnv)
+    val plutusDataOutputPath = PcResultsMergedDataset.S3_PATH_HOUR(dateTime, ttdEnv)
     mergedDataset.coalesce(fileCount)
       .write.mode(SaveMode.Overwrite)
-      .parquet(outputPath)
+      .parquet(plutusDataOutputPath)
 
-    val rows = listener.rowsWritten
+    val rows = plutusDataListener.rowsWritten
     println(s"Rows Written: $rows")
 
+    spark.sparkContext.removeSparkListener(plutusDataListener)
     numRowsWritten.set(rows)
-    numRowsAbsent.labels("pcResultsLog").set(pcResultsAbsentCount)
+
+    val optoutDataListener = new WriteListener()
+    spark.sparkContext.addSparkListener(optoutDataListener)
+
+    pcResultsAbsentDataset.coalesce(fileCount)
+      .write.mode(SaveMode.Overwrite)
+      .parquet(PlutusLogsDataset.S3PATH_FULL_HOUR(dateTime, ttdEnv))
+
+    numRowsAbsent.labels("pcResultsLog").set(optoutDataListener.rowsWritten)
     numRowsAbsent.labels("mbtw").set(mbtwAbsentCount)
   }
 }
