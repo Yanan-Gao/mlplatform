@@ -27,7 +27,7 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
       bidsImpressionsMock(ModelVersionsUsed = Some(modelVersionsUsedWithoutPlutus)),
       bidsImpressionsMock(ModelVersionsUsed = Some(modelVersionsUsedWithPlutus)),
     ).toDS().as[BidsImpressionsSchema]
-    val pcResultsDataset = Seq(pcResultsLogMock.copy()).toDS().as[PlutusLogsData]
+    val pcResultsDataset = Seq(pcResultsLogMock("1"), pcResultsLogMock("a")).toDS().as[PlutusLogsData]
     val mbtwDataset = Seq(mbtwDataMock.copy()).toDS().as[MinimumBidToWinData]
     val privateContractDataSet = Seq(privateContractsMock.copy()).toDS().as[PrivateContractRecord]
     val adFormatDataSet = Seq(adFormatMock.copy()).toDS().as[AdFormatRecord]
@@ -41,7 +41,8 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
         privateContractDataSet, adFormatDataSet, productionAdgroupBudgetDataset)
 
     assert(mergedDataset.count() == 6, "Output rows")
-    assert(pcResultsAbsentDataset.count() == 0, "Absent rows (from PCResultsLog)")
+    assert(pcResultsAbsentDataset.count() == 1, "Absent rows (from PCResultsLog)")
+    pcResultsAbsentDataset.printSchema()
     assert(mbtwAbsentDataset.count() == 0, "Absent rows (from MBTW Dataset)")
 
     val resultList = mergedDataset.collectAsList()

@@ -1,7 +1,7 @@
 package com.thetradedesk.plutus.data.schema
 
 import com.thetradedesk.plutus.data.utils.localDatetimeToTicks
-import com.thetradedesk.plutus.data.{paddedDatePart, utils}
+import com.thetradedesk.plutus.data.{envForWrite, paddedDatePart, utils}
 import com.thetradedesk.protologreader.protoformat.PredictiveClearingResults
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -15,10 +15,14 @@ import java.time.LocalDateTime
 
 case class PlutusLogsData(
                            BidRequestId: String,
-                           //  Not using these two fields since we're getting them from
-                           //  Geronimo and having them makes joining more complicated.
-                           //    SupplyVendor: String,
-                           //    AdgroupId: String,
+
+                           LogEntryTime: Long,
+                           IsValuePacing: Boolean,
+                           AuctionType: Int,
+                           DealId: String,
+
+                           SupplyVendor: String,
+                           AdgroupId: String,
 
                            InitialBid: Double,
                            FinalBidPrice: Double,
@@ -91,7 +95,12 @@ case object PlutusLogsData {
         i.getFloorBufferAdjustment,
         i.getUseUncappedBidForPushdown, 
         i.getUncappedFirstPriceAdjustment,
-        i.getLogEntryTime
+        i.getLogEntryTime,
+        i.getSupplyVendor,
+        i.getAdgroupId,
+        i.getIsValuePacing,
+        i.getAuctionType,
+        i.getDealId,
       )).toDS()
 
     transformPcResultsRawLog(pcResultData, dateTime)
@@ -120,7 +129,12 @@ case class PcResultsRawLogs(
                              FloorBufferAdjustment: Double,
                              UseUncappedBidForPushdown: Boolean,
                              UncappedFirstPriceAdjustment: Double,
-                             LogEntryTime: Long
+                             LogEntryTime: Long,
+                             SupplyVendor: String,
+                             AdgroupId: String,
+                             IsValuePacing: Boolean,
+                             AuctionType: Int,
+                             DealId: String
                            )
 
 case class PlutusLog(
@@ -136,9 +150,11 @@ case class PredictiveClearingStrategy(
                                      )
 
 object PlutusLogsDataset {
-  val S3PATH = "s3://ttd-identity/datapipeline/prod/pcresultslog/v=2/"
-
   def S3PATH_GEN = (dateTime: LocalDateTime) => {
     f"date=${paddedDatePart(dateTime.toLocalDate)}/hour=${dateTime.getHour}"
+  }
+
+  def S3PATH_FULL_HOUR = (dateTime: LocalDateTime, env: Option[String]) => {
+    f"s3://ttd-identity/datapipeline/${env.getOrElse(envForWrite)}/pc_optout_bids/v=1/${S3PATH_GEN(dateTime)}"
   }
 }

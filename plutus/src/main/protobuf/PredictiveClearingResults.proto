@@ -24,7 +24,9 @@ message PcResultLog {
   optional double FloorBufferAdjustment=18;
   optional bool UseUncappedBidForPushdown=19;
   optional double UncappedFirstPriceAdjustment=20;
-
+  optional bool IsValuePacing=21;
+  optional int32 AuctionType=22;
+  optional string DealId=23;
 }
 
 message PlutusLog {
