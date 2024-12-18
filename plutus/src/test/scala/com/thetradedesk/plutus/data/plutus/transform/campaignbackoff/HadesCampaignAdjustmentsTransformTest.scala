@@ -166,7 +166,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     // Testing if yesterday's pushdown is maintained if todays is missing
     todaysData = spark.emptyDataset[CampaignAdjustmentsHadesSchema]
       .toDF()
-    yesterdaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustment = 0.5)
+    yesterdaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustment = 0.5, hadesProblemCampaign = false)
     res = mergeTodayWithYesterdaysData(todaysData, yesterdaysData).collect().head
 
     assert(res.CampaignId == "campaign3")

@@ -186,7 +186,7 @@ object HadesCampaignAdjustmentsTransform {
   }
 
   def mergeTodayWithYesterdaysData(todaysData: DataFrame, yesterdaysData: Dataset[CampaignAdjustmentsHadesSchema]) : Dataset[CampaignAdjustmentsHadesSchema] = {
-    val oldAdjustments = yesterdaysData.filter($"Hades_isProblemCampaign")
+    val oldAdjustments = yesterdaysData
       .drop("HadesBackoff_PCAdjustment_Old")
       .withColumnRenamed("HadesBackoff_PCAdjustment", "HadesBackoff_PCAdjustment_Old")
       .select("CampaignId", "HadesBackoff_PCAdjustment_Old")
