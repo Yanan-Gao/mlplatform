@@ -11,7 +11,7 @@ import com.thetradedesk.spark.util.protologreader.{ProtoLogReader, S3Client, S3P
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql.Dataset
 
-import java.time.LocalDateTime
+import java.time.{LocalDate, LocalDateTime}
 
 case class PlutusLogsData(
                            BidRequestId: String,
@@ -150,11 +150,19 @@ case class PredictiveClearingStrategy(
                                      )
 
 object PlutusLogsDataset {
+  def S3PATH_DATE_GEN = (date: LocalDate) => {
+    f"date=${paddedDatePart(date)}"
+  }
+
   def S3PATH_GEN = (dateTime: LocalDateTime) => {
     f"date=${paddedDatePart(dateTime.toLocalDate)}/hour=${dateTime.getHour}"
   }
 
+  def S3PATH_BASE = (env: Option[String]) => {
+    f"s3://ttd-identity/datapipeline/${env.getOrElse(envForWrite)}/pc_optout_bids/v=1/"
+  }
+
   def S3PATH_FULL_HOUR = (dateTime: LocalDateTime, env: Option[String]) => {
-    f"s3://ttd-identity/datapipeline/${env.getOrElse(envForWrite)}/pc_optout_bids/v=1/${S3PATH_GEN(dateTime)}"
+    f"${S3PATH_BASE(env)}${S3PATH_GEN(dateTime)}"
   }
 }

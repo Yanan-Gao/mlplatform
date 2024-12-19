@@ -1,15 +1,15 @@
 package com.thetradedesk.plutus.data.transform.campaignbackoff
 
 import com.thetradedesk.plutus.data.{AuctionType, envForRead, loadParquetDataDailyV2}
-import com.thetradedesk.plutus.data.schema.PcResultsMergedDataset
+import com.thetradedesk.plutus.data.schema.{PcResultsMergedDataset, PlutusLogsData, PlutusLogsDataset}
 import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsHadesSchema, CampaignThrottleMetricDataset, CampaignThrottleMetricSchema}
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.datasets.sources.{AdGroupDataSet, AdGroupRecord}
 import org.apache.hadoop.shaded.org.apache.commons.math3.special.Erf
-import org.apache.spark.sql.Dataset
+import org.apache.spark.sql.{DataFrame, Dataset, Row}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.DataFrame
 
 import java.time.LocalDate
 import scala.util.hashing.MurmurHash3
@@ -63,13 +63,13 @@ object HadesCampaignAdjustmentsTransform {
     return (bMin + bMax) / 2
   }
 
-  def getUnderdeliveringCampaignBidData(pcResultsMerged: Dataset[PcResultsMergedDataset],
+  def getUnderdeliveringCampaignBidData(bidData: DataFrame,
                                         underdeliveringCampaigns: Array[String]): DataFrame = {
 
     val gss = udf((m: Double, s: Double, b: Double, e: Double) => gssFunc(m, s, b, e))
 
-    pcResultsMerged
-      .filter(col("FloorPrice") < col("AdjustedBidCPMInUSD")) // Exclude rare cases with initial bids below the floor to avoid skewing the median
+    bidData
+      .filter(col("FloorPrice") < col("InitialBid")) // Exclude rare cases with initial bids below the floor to avoid skewing the median
       .filter(col("CampaignId").isin(underdeliveringCampaigns: _*))
       .withColumn("Market", // Define Market only using AuctionType and if has DealId
         when(col("DealId").isNotNull,
@@ -78,21 +78,18 @@ object HadesCampaignAdjustmentsTransform {
             .otherwise("Other")
         ).otherwise("OpenMarket"))
       .withColumn("gen_discrepancy", when(col("AuctionType") === AuctionType.FixedPrice, lit(1)).otherwise(when(col("Discrepancy") === 0, lit(1)).otherwise(col("Discrepancy"))))
-      .withColumn("gen_gss_pushdown", when(col("AuctionType") =!= AuctionType.FixedPrice, $"GSS").otherwise(gss(col("Mu"), col("Sigma"), col("AdjustedBidCPMInUSD"), lit(0.1)) / col("AdjustedBidCPMInUSD")))
+      .withColumn("gen_gss_pushdown", when(col("AuctionType") =!= AuctionType.FixedPrice, $"GSS").otherwise(gss(col("Mu"), col("Sigma"), col("InitialBid"), lit(0.1)) / col("InitialBid")))
       .withColumn("gen_effectiveDiscrepancy", least(lit(1), lit(1) / col("gen_discrepancy")))
       .withColumn("gen_excess", col("gen_effectiveDiscrepancy") - col("gen_gss_pushdown"))
       .filter(col("gen_excess") > 0)
       .withColumn("gen_bufferFloor", (col("FloorPrice") * lit(1 - buffer)))
-      .withColumn("gen_plutusPushdownAtBufferFloor", col("gen_bufferFloor") / col("AdjustedBidCPMInUSD"))
+      .withColumn("gen_plutusPushdownAtBufferFloor", col("gen_bufferFloor") / col("InitialBid"))
 
       .withColumn("gen_PCAdjustment", (col("gen_effectiveDiscrepancy") - col("gen_plutusPushdownAtBufferFloor")) / (col("gen_effectiveDiscrepancy") - col("gen_gss_pushdown")))
 
       .withColumn("gen_plutusPushdown", col("gen_effectiveDiscrepancy") - (col("gen_excess") * when(col("Strategy") === 0, lit(100)).otherwise(col("Strategy")) / lit(100.0)))
-      .withColumn("gen_proposedBid", col("AdjustedBidCPMInUSD") * col("gen_plutusPushdown"))
+      .withColumn("gen_proposedBid", col("InitialBid") * col("gen_plutusPushdown"))
       .withColumn("gen_isInBufferZone", col("gen_proposedBid") >= col("gen_bufferFloor"))
-      .withColumn("BidBelowFloorExceptedSource", // Fix BBFSource value for incorrectly marked deal BBF bids that are winning when should be opted out
-        when((col("BidBelowFloorExceptedSource") === 2 && col("Market").isin("Variable", "Fixed") && !col("gen_isInBufferZone") && col("MediaCostCPMInUSD").isNotNull), lit(0))
-          .otherwise(col("BidBelowFloorExceptedSource")))
       .withColumn("BBFPC_OptOutBid",
         when((col("BidBelowFloorExceptedSource") === 2 && col("Market").isin("Variable", "Fixed") && !col("gen_isInBufferZone")), true)
           .otherwise(false))
@@ -103,7 +100,6 @@ object HadesCampaignAdjustmentsTransform {
       .groupBy("CampaignId")
       .agg(
         count("*").as("TotalBidCount_includingOptOut"),
-        sum(col("AdvertiserCostInUSD")).as("TotalAdvertiserCostInUSD"),
         sum(col("FloorPrice")).as("TotalFloorPrice"),
         sum(col("FinalBidPrice")).as("TotalFinalBidPrice"),
         sum(
@@ -199,6 +195,20 @@ object HadesCampaignAdjustmentsTransform {
       .as[CampaignAdjustmentsHadesSchema]
   }
 
+  def getAllBidData(pcOptoutData: Dataset[PlutusLogsData], adGroupData: Dataset[AdGroupRecord], pcResultsMergedData: Dataset[PcResultsMergedDataset]): DataFrame = {
+    val plutusLogsData = pcOptoutData
+      .join(adGroupData.select("AdGroupId", "CampaignId"), Seq("AdGroupId"), "inner")
+      .drop("AdGroupId", "LegacyPcPushdown", "LogEntryTime")
+      .toDF()
+
+    val columns = plutusLogsData.columns
+
+    pcResultsMergedData.drop("LogEntryTime")
+      .toDF
+      .select(columns.head, columns.drop(1): _*)
+      .union(plutusLogsData)
+  }
+
   def transform(date: LocalDate, testSplit: Option[Double], underdeliveryThreshold: Double, yesterdaysData: Dataset[CampaignAdjustmentsHadesSchema]): (Dataset[CampaignAdjustmentsHadesSchema], Int) = {
 
     val campaignUnderdeliveryData = loadParquetDataDailyV2[CampaignThrottleMetricSchema](
@@ -218,12 +228,27 @@ object HadesCampaignAdjustmentsTransform {
       nullIfColAbsent = true
     )
 
+    val pcOptoutData = loadParquetDataDailyV2[PlutusLogsData](
+      PlutusLogsDataset.S3PATH_BASE(Some(envForRead)),
+      PlutusLogsDataset.S3PATH_DATE_GEN,
+      date,
+      nullIfColAbsent = true
+    )
+
     val underdeliveringCampaigns = getUnderdeliveringCampaignsInTestBucket(campaignUnderdeliveryData, underdeliveryThreshold, testSplit)
 
-    val campaignBidData = getUnderdeliveringCampaignBidData(pcResultsMergedData, underdeliveringCampaigns)
+    val adGroupData = AdGroupDataSet().readLatestPartitionUpTo(date, isInclusive = true).filter($"CampaignId".isin(underdeliveringCampaigns: _*))
 
+    // Combine bid data from both pcOptout dataset and pcResultsMerged Dataset
+    val bidData = getAllBidData(pcOptoutData, adGroupData, pcResultsMergedData)
+
+    // Get bid data filtered to underdelivering campaigns
+    val campaignBidData = getUnderdeliveringCampaignBidData(bidData, underdeliveringCampaigns)
+
+    // Get Optout Rates & potential pushdowns for underdelivering campaigns
     val campaignBBFOptOutRate = aggregateCampaignBBFOptOutRate(campaignBidData)
 
+    // Get final pushdowns
     val res = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData)
 
     (res, underdeliveringCampaigns.length)
