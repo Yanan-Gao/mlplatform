@@ -21,25 +21,6 @@ import scala.collection.convert.ImplicitConversions.`list asScalaBuffer`
 import scala.jdk.CollectionConverters.asScalaBufferConverter
 
 class CampaignAdjustmentsTransformTest extends TTDSparkTest {
-  test("Test CampaignUnderdeliveryDataset path generators") {
-    val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-    val date = LocalDate.parse("2024-06-25", formatter)
-    val expected = Seq(
-      "s3://thetradedesk-mlplatform-us-east-1/model_monitor/mission_control/dev/aggregate-pacing-statistics/v=1/metric=throttle_metric_campaign_parquet/date=20240625",
-      "s3://thetradedesk-mlplatform-us-east-1/model_monitor/mission_control/dev/aggregate-pacing-statistics/v=1/metric=throttle_metric_campaign_parquet/date=20240624",
-      "s3://thetradedesk-mlplatform-us-east-1/model_monitor/mission_control/dev/aggregate-pacing-statistics/v=1/metric=throttle_metric_campaign_parquet/date=20240623",
-      "s3://thetradedesk-mlplatform-us-east-1/model_monitor/mission_control/dev/aggregate-pacing-statistics/v=1/metric=throttle_metric_campaign_parquet/date=20240622",
-      "s3://thetradedesk-mlplatform-us-east-1/model_monitor/mission_control/dev/aggregate-pacing-statistics/v=1/metric=throttle_metric_campaign_parquet/date=20240621"
-    )
-    val result = generateDataPathsDaily(
-      CampaignThrottleMetricDataset.S3PATH,
-      CampaignThrottleMetricDataset.S3PATH_DATE_GEN,
-      date,
-      4)
-
-    expected should contain theSameElementsAs result
-  }
-
   test("CampaignAdjustmentsData transform test (simple) for schema/column correctness") {
     val get_campaignUnderdeliveryData = DataGenerator.generateCampaignUnderdeliveryData
     val campaignUnderdeliveryData = get_campaignUnderdeliveryData

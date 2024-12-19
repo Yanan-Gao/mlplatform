@@ -5,12 +5,13 @@ import com.thetradedesk.plutus.data.schema.PcResultsMergedDataset
 import com.thetradedesk.plutus.data.schema.campaignbackoff.CampaignFlightDataset.loadParquetCampaignFlightLatestPartitionUpTo
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
 import com.thetradedesk.plutus.data.transform.SharedTransforms.AddChannel
-import com.thetradedesk.plutus.data.{envForRead, envForWrite, loadParquetDataDailyV2}
+import com.thetradedesk.plutus.data.{envForRead, envForWrite, getMaxDate, loadParquetDataDailyV2}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.vertica.UnifiedRtbPlatformReportDataSet
 import com.thetradedesk.spark.datasets.sources.{AdFormatDataSet, AdFormatRecord, CountryDataSet, CountryRecord}
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
+import com.thetradedesk.spark.util.io.FSUtils.listDirectoryContents
 import job.campaignbackoff.CampaignAdjustmentsJob.{campaignCounts, hadesCampaignCounts, numRowsWritten, testControlSplit}
 import org.apache.spark.sql.expressions.{UserDefinedFunction, Window}
 import org.apache.spark.sql.functions._
@@ -548,6 +549,30 @@ object CampaignAdjustmentsTransform extends Logger {
       .selectAs[CampaignAdjustmentsMergedDataset]
   }
 
+  def getLatestCampaignAdjustmentsUpTo(yesterdayDate: LocalDate): Dataset[CampaignAdjustmentsMergedDataset] = {
+    val s3BaseDirectory = CampaignAdjustmentsMergedDataset.S3_PATH(envForRead)
+    val listEntries = listDirectoryContents(s3BaseDirectory)(spark)
+    val listPaths = listEntries
+      .filter(_.isDirectory)
+      .map(_.getPath.toString)
+
+    val maxDateOption = getMaxDate(listPaths, yesterdayDate)
+    if (maxDateOption.isDefined) {
+      println(f"Attempting to read CampaignAdjustmentsDataset from date: ${maxDateOption.get}")
+      val data = loadParquetDataDailyV2[CampaignAdjustmentsMergedDataset](
+        s3BaseDirectory,
+        CampaignAdjustmentsMergedDataset.S3_PATH_DATE_GEN,
+        maxDateOption.get,
+        nullIfColAbsent = false // Setting this to false since we want this query to fail if data doesn't exist
+      )
+      println(f"(${maxDateOption.get})'s CampaignAdjustmentsMergedDataset exists and loaded successfully.")
+      data
+    } else {
+      println("Couldn't find recent CampaignAdjustmentsMergedDataset.")
+      spark.emptyDataset[CampaignAdjustmentsMergedDataset]
+    }
+  }
+
   def transform(date: LocalDate, testSplit: Option[Double], updateAdjustmentsVersion: String, fileCount: Int, underdeliveryThreshold: Double): Unit = {
 
     // This dataset contains multiple entries with different dates - 5 day look-back.
@@ -562,24 +587,7 @@ object CampaignAdjustmentsTransform extends Logger {
       to_date(col("Date"))
     ).selectAs[CampaignThrottleMetricSchema]
 
-    val campaignAdjustmentsMergedData = try {
-      println("Attempting to read CampaignAdjustmentsDataset...")
-      val data = loadParquetDataDailyV2[CampaignAdjustmentsMergedDataset](
-        CampaignAdjustmentsMergedDataset.S3_PATH(envForWrite),
-        CampaignAdjustmentsMergedDataset.S3_PATH_DATE_GEN,
-        date.minusDays(1), // get previous day's adjustment data
-        nullIfColAbsent = false // Setting this to false since we want this query to fail if data doesn't exist
-      )
-      println("Previous day's CampaignAdjustmentsMergedDataset exists and loaded successfully.")
-      data
-    } catch {
-      case _: org.apache.spark.sql.AnalysisException =>
-        println("Previous day's CampaignAdjustmentsMergedDataset does not exist, so returning empty dataset.")
-        spark.emptyDataset[CampaignAdjustmentsMergedDataset]
-      case unknown: Exception =>
-        println(s"Error occurred: ${unknown.getMessage}.")
-        throw unknown
-    }
+    val campaignAdjustmentsMergedData = getLatestCampaignAdjustmentsUpTo(date.minusDays(1))
 
     val campaignFlightData = loadParquetCampaignFlightLatestPartitionUpTo(
       CampaignFlightDataset.S3PATH,
@@ -639,6 +647,7 @@ object CampaignAdjustmentsTransform extends Logger {
     val finalCampaignCount = finalMergedAdjustments.count()
 
     val hadesIsProblemCampaignsCount = finalMergedAdjustments.filter(col("Hades_isProblemCampaign") === true).count()
+    val hadesTotalAdjustmentsCount = finalMergedAdjustments.filter(col("HadesBackoff_PCAdjustment") < 1.0).count()
 
     // Writing the full dataset used in future jobs
     val campaignAdjustmentsPacing_outputPath = CampaignAdjustmentsMergedDataset.S3_PATH_DATE(date, envForWrite)
@@ -669,6 +678,7 @@ object CampaignAdjustmentsTransform extends Logger {
     campaignCounts.labels("ActiveAdjustedCampaigns").set(activeAdjustedCampaignsCount)
     campaignCounts.labels("DACampaigns").set(isValuePacingRatioOfAdjustedCampaigns)
     hadesCampaignCounts.labels("HadesProblemCampaigns").set(hadesIsProblemCampaignsCount)
+    hadesCampaignCounts.labels("HadesAdjustedCampaigns").set(hadesTotalAdjustmentsCount)
     hadesCampaignCounts.labels("UnderdeliveringCampaigns").set(underdeliveringCampaignsCount)
 
   }

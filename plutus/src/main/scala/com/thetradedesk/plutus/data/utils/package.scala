@@ -5,7 +5,7 @@ import org.joda.time.format.DateTimeFormat
 
 import java.nio.{ByteBuffer, ByteOrder}
 import java.time.format.DateTimeFormatter
-import java.time.{LocalDateTime, ZoneId, ZoneOffset}
+import java.time.{Instant, LocalDateTime, ZoneId, ZoneOffset}
 import java.util.UUID
 import scala.concurrent.{ExecutionContext, Future}
 
@@ -56,6 +56,10 @@ package object utils {
   val TICKS_BEFORE_EPOCH = 621355968000000000L
   val localDatetimeToTicks = (localDateTime: LocalDateTime) =>
     (localDateTime.toInstant(ZoneOffset.UTC).toEpochMilli * TICKS_PER_MILLISECOND) + TICKS_BEFORE_EPOCH
+
+  def ticksToLocalDatetime = (ticks: Long) => {
+    LocalDateTime.ofInstant(Instant.ofEpochMilli((ticks - TICKS_BEFORE_EPOCH)/TICKS_PER_MILLISECOND), ZoneId.of("UTC"))
+  }
 
   val ISO_DATE_FORMAT  = "yyyy-MM-dd'T'HH:mm:ss"
   def javaToJoda(javaDatetime: LocalDateTime) = {

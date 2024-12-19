@@ -402,7 +402,7 @@ object MockData {
     AspSvpId = "1983",
 
     // Fields from PCResults Log Dataset
-    InitialBid = 50,
+    InitialBid = adjustedBidCPMInUSD,
     FinalBidPrice = finalBidPrice,//36,
     Discrepancy = discrepancy,
     BaseBidAutoOpt = baseBidAutoOpt, //1,
@@ -550,7 +550,7 @@ object MockData {
     )).toDS()
   }
 
-  def campaignUnderdeliveryMock(date: Timestamp = Timestamp.valueOf(LocalDateTime.of(2024, 6, 25, 0, 0)), campaignId: String = "newcampaign1", campaignFlightId: Integer = 1122330, underdelivery: Double = 4100, spend: Double = 900, cappedpotential:Double = 4500, fraction: Double = 0.8
+  def campaignUnderdeliveryMock(date: Timestamp = Timestamp.valueOf(LocalDateTime.of(2024, 6, 25, 0, 0)), campaignId: String = "newcampaign1", campaignFlightId: Long = 1122330, underdelivery: Double = 4100, spend: Double = 900, cappedpotential:Double = 4500, fraction: Double = 0.8
                                ): Dataset[CampaignThrottleMetricSchema] = {
     Seq(CampaignThrottleMetricSchema(
       Date = date,
