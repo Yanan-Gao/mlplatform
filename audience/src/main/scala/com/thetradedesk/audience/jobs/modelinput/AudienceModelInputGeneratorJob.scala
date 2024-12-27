@@ -278,13 +278,21 @@ object AudienceModelInputGeneratorJob {
       .where('CrossDeviceVendorId.isin(supportedGraphs: _*))
       .collect()
 
+    // hack for new/recall seeds
+    val newSeedCount = policyTable.count(e => e.IsActive
+      && e.CrossDeviceVendorId == CrossDeviceVendor.None.id
+    && (e.Tag == Tag.New.id || e.Tag == Tag.Recall.id))
+    val incrementalTrainingTagForNewSeed =
+      if (newSeedCount >= AudienceModelInputGeneratorConfig.newSeedCountThreshold) IncrementalTrainingTag.New
+      else IncrementalTrainingTag.Small
+
     // Handle incremental training schedule tag
     val processedPolicyTable = policyTable.map { record =>
       val tagValue = schedule match {
         case Schedule.Full => IncrementalTrainingTag.Full //
         case Schedule.Incremental => Try(record.Tag match {
           case 4 => IncrementalTrainingTag.Small
-          case 2 | 6 => IncrementalTrainingTag.New
+          case 2 | 6 => incrementalTrainingTagForNewSeed
           case _ => IncrementalTrainingTag.None
         }).getOrElse(IncrementalTrainingTag.None)
         case _ => IncrementalTrainingTag.None
