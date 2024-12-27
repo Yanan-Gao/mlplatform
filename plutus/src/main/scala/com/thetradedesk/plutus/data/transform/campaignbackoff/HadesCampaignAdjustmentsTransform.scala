@@ -18,7 +18,7 @@ object HadesCampaignAdjustmentsTransform {
 
   // Constants
   val bucketCount = 1000
-  val buffer = 0.75
+  val buffer = 0.85
 
   val getTestBucketUDF = udf(computeBudgetBucketHash(_: String, _: Int))
 
