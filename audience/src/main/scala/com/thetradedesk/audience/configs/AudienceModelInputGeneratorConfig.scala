@@ -88,5 +88,5 @@ object AudienceModelInputGeneratorConfig {
   val IncrementalTrainingEnabled = config.getBoolean("IncrementalTrainingEnabled", default=false)
 
   val IncrementalTrainingSampleRate = config.getDouble("IncrementalTrainingSampleRate", default=0.1)
-
+  val newSeedCountThreshold = config.getInt("newSeedCountThreshold", default=5)
 }
