@@ -192,55 +192,11 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
 
     // get new sourceId
     val newIds = activeIds.join(previousPolicyTable.filter('StorageCloud === Config.storageCloud)
-                                  .select('SourceId, 'Source, 'CrossDeviceVendorId, 'StorageCloud), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "left_anti")
+      .select('SourceId, 'Source, 'CrossDeviceVendorId, 'StorageCloud), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "left_anti")
     val newIdsCount = newIds.count().toInt
     val releasedIdsCount = releasedIds.count().toInt
     // get max SyntheticId from previous policy table
     val maxId = math.max(previousPolicyTable.agg(max('SyntheticId)).collect()(0)(0).asInstanceOf[Int], previousPolicyTable.count().toInt + newIdsCount - releasedIdsCount)
-    val syntheticIdPool = spark
-      .range(1, maxId + 1)
-      .toDF("SyntheticId")
-      .select('SyntheticId.cast(IntegerType).as("SyntheticId"))
-      .join(continueIds, Seq("SyntheticId"), "left_anti")
-      .withColumn("order", row_number().over(Window.orderBy('SyntheticId.asc)))
-      .where('order <= lit(newIdsCount))
-      .select('SyntheticId, 'order)
-    // get max SyntheticId over source type and CrossDeviceVendor from previous policy table
-
-    val maxIdOverSourceNGraph = previousPolicyTable.groupBy('Source, 'CrossDeviceVendorId).agg(max('SyntheticId).as("MaxSyntheticId"))
-      .join(previousPolicyTable.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("Count")), Seq("Source", "CrossDeviceVendorId"))
-      .join(releasedIds.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("ReleasedCount")), Seq("Source", "CrossDeviceVendorId"))
-      .join(newIds.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("NewCount")), Seq("Source", "CrossDeviceVendorId"))
-      .select('Source, 'CrossDeviceVendorId, greatest('MaxSyntheticId, 'Count + 'NewCount - 'ReleasedCount).cast(IntegerType).as("Value"))
-      .as[SourceNGraphValue].collect()
-    val mappingIdPool = maxIdOverSourceNGraph.map(e =>
-      spark
-        .range(1, e.Value + 1)
-        .toDF("MappingId")
-        .select('MappingId.cast(IntegerType).as("MappingId"))
-        .withColumn("Source", lit(e.Source))
-        .withColumn("CrossDeviceVendorId", lit(e.CrossDeviceVendorId)))
-      .reduce(_ union _)
-      .join(continueIds, Seq("Source", "CrossDeviceVendorId", "MappingId"), "left_anti")
-      .withColumn("order", row_number().over(Window.partitionBy('Source, 'CrossDeviceVendorId).orderBy('MappingId.asc)))
-      .join(newIds.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("NewCount")), Seq("Source", "CrossDeviceVendorId"))
-      .where('order <= 'NewCount)
-      .select('MappingId, 'Source, 'CrossDeviceVendorId, 'order)
-
-    val updatedIds = newIds
-      // assign available synthetic ids randomly to new source ids
-      .withColumn("order", row_number().over(Window.orderBy(rand())))
-      .join(syntheticIdPool, Seq("order"))
-      .drop("order")
-      // assign available mapping ids randomly over source and crossdevicevendorid to new source ids
-      .withColumn("order", row_number().over(Window.partitionBy('Source, 'CrossDeviceVendorId).orderBy(rand())))
-      .join(mappingIdPool, Seq("order", "Source", "CrossDeviceVendorId"))
-      .drop("order")
-      .join(policyTable.drop("SyntheticId"), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "inner")
-      .withColumn("ExpiredDays", lit(0))
-      .withColumn("IsActive", lit(true))
-      .withColumn("Tag", lit(Tag.New.id))
-      .withColumn("SampleWeight", lit(1.0)).cache()
 
     val currentActiveIds = policyTable
       .join(previousPolicyTable.filter('StorageCloud === Config.storageCloud).select('SourceId, 'Source, 'CrossDeviceVendorId, 'SyntheticId, 'IsActive, 'StorageCloud, 'MappingId), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "inner")
@@ -250,7 +206,59 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
       .withColumn("SampleWeight", lit(1.0)) // todo optimize this with performance/monitoring
 
     val otherSourcePreviousPolicyTable = previousPolicyTable.filter('StorageCloud =!= Config.storageCloud).toDF()
-    val updatedPolicyTable = updatedIds.unionByName(retentionIds).unionByName(currentActiveIds)
+
+    val updatedPolicyTable =
+      if (newIdsCount == 0) {
+        val syntheticIdPool = spark
+          .range(1, maxId + 1)
+          .toDF("SyntheticId")
+          .select('SyntheticId.cast(IntegerType).as("SyntheticId"))
+          .join(continueIds, Seq("SyntheticId"), "left_anti")
+          .withColumn("order", row_number().over(Window.orderBy('SyntheticId.asc)))
+          .where('order <= lit(newIdsCount))
+          .select('SyntheticId, 'order)
+
+        // get max SyntheticId over source type and CrossDeviceVendor from previous policy table
+
+        val maxIdOverSourceNGraph = previousPolicyTable.groupBy('Source, 'CrossDeviceVendorId).agg(max('SyntheticId).as("MaxSyntheticId"))
+          .join(previousPolicyTable.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("Count")), Seq("Source", "CrossDeviceVendorId"))
+          .join(releasedIds.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("ReleasedCount")), Seq("Source", "CrossDeviceVendorId"))
+          .join(newIds.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("NewCount")), Seq("Source", "CrossDeviceVendorId"))
+          .select('Source, 'CrossDeviceVendorId, greatest('MaxSyntheticId, 'Count + 'NewCount - 'ReleasedCount).cast(IntegerType).as("Value"))
+          .as[SourceNGraphValue].collect()
+        val mappingIdPool = maxIdOverSourceNGraph.map(e =>
+            spark
+              .range(1, e.Value + 1)
+              .toDF("MappingId")
+              .select('MappingId.cast(IntegerType).as("MappingId"))
+              .withColumn("Source", lit(e.Source))
+              .withColumn("CrossDeviceVendorId", lit(e.CrossDeviceVendorId)))
+          .reduce(_ union _)
+          .join(continueIds, Seq("Source", "CrossDeviceVendorId", "MappingId"), "left_anti")
+          .withColumn("order", row_number().over(Window.partitionBy('Source, 'CrossDeviceVendorId).orderBy('MappingId.asc)))
+          .join(newIds.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("NewCount")), Seq("Source", "CrossDeviceVendorId"))
+          .where('order <= 'NewCount)
+          .select('MappingId, 'Source, 'CrossDeviceVendorId, 'order)
+
+        val updatedIds = newIds
+          // assign available synthetic ids randomly to new source ids
+          .withColumn("order", row_number().over(Window.orderBy(rand())))
+          .join(syntheticIdPool, Seq("order"))
+          .drop("order")
+          // assign available mapping ids randomly over source and crossdevicevendorid to new source ids
+          .withColumn("order", row_number().over(Window.partitionBy('Source, 'CrossDeviceVendorId).orderBy(rand())))
+          .join(mappingIdPool, Seq("order", "Source", "CrossDeviceVendorId"))
+          .drop("order")
+          .join(policyTable.drop("SyntheticId"), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "inner")
+          .withColumn("ExpiredDays", lit(0))
+          .withColumn("IsActive", lit(true))
+          .withColumn("Tag", lit(Tag.New.id))
+          .withColumn("SampleWeight", lit(1.0)).cache()
+        updatedIds.unionByName(retentionIds).unionByName(currentActiveIds)
+      } else {
+        retentionIds.unionByName(currentActiveIds)
+      }
+
     val finalUpdatedPolicyTable = updatedPolicyTable.unionByName(otherSourcePreviousPolicyTable).cache()
 
     evaluatePolicyTable(finalUpdatedPolicyTable)
