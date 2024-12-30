@@ -17,13 +17,15 @@ package object featurestore {
   val FeautureAppName = "OfflineFeatureStore"
   val RunTimeGaugeName = "run_time_seconds"
   val OutputRowCountGaugeName = "output_rows_written"
-  val defaultNumPartitions: Int = 10
   // S3 path
   val MLPlatformS3Root: String = "s3a://thetradedesk-mlplatform-us-east-1/features/feature_store"
   val ProfileDataBasePath: String = "profiles"
   val ProcessedDataBasePath: String = "processed"
 
+  var defaultNumPartitions: Int = config.getInt("numPartitions", default = 10)
   var date: LocalDate = config.getDate("date", LocalDate.now())
+  var hourInt: Int = config.getInt("hour", 0)
+  var splitIndex: Array[Int] = config.getString("splitIndex", "0").split(",").map(_.toInt)
   var dateTime: LocalDateTime = config.getDateTime("dateTime", date.atStartOfDay())
   var ttdEnv: String = config.getString("ttd.env", "dev")
   val aggLevel: String = config.getString("aggLevel", "UIID")
