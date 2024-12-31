@@ -11,8 +11,11 @@ case class Buffer(maxScores: mutable.Map[Int, Float])
 
 object MaxDensityScoreAgg extends Aggregator[Seq[SynteticIdDensityScore], Buffer, Seq[SynteticIdDensityScore]] {
 
+  private val mapBuilder =  mutable.HashMap.newBuilder[Int, Float]
+  mapBuilder.sizeHint(1024)
+
   // Initialize the buffer
-  override def zero: Buffer = Buffer(mutable.Map.empty)
+  override def zero: Buffer = Buffer(mapBuilder.result())
 
   // Update buffer with a new row
   override def reduce(buffer: Buffer, syntheticIdDensityScores: Seq[SynteticIdDensityScore]): Buffer = {
