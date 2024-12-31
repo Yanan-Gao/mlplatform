@@ -6,7 +6,7 @@ object DensityScoreFilterUDF {
 
   // lowerThreshold: inclusive, upperThreshold: exclusive
   def apply(lowerThreshold: Float, upperThreshold: Float) = udf(
-    (pairs : Seq[(Short, Float)]) =>
+    (pairs : Seq[(Int, Float)]) =>
       pairs.filter(e => e._2 < upperThreshold && e._2 >= lowerThreshold).map(_._1)
   )
 }

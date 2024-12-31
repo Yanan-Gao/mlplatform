@@ -4,6 +4,8 @@ import com.thetradedesk.featurestore._
 import com.thetradedesk.featurestore.transform._
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.util.TTDConfig.config
+import com.thetradedesk.spark.util.io.FSUtils
 import org.apache.spark.sql.{DataFrame, SaveMode}
 import org.apache.spark.sql.functions._
 
@@ -77,23 +79,32 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
       .cache()
 
     val syntheticIdToMappingId =
-      policyTable
+      spark.sparkContext.broadcast(policyTable
         .where(col("Source") === lit(3))
         .select('SyntheticId, 'MappingId.cast("short").as("MappingId"))
         .as[(Int, Short)]
         .collect()
-        .toMap
+        .toMap)
 
     val syntheticIdToMappingIdUdf = udf(
       (pairs: Seq[Int]) =>
-        pairs.flatMap(e => syntheticIdToMappingId.get(e))
+        pairs.flatMap(e => syntheticIdToMappingId.value.get(e))
     )
 
     val siteZipToTDIDDF = spark.read.parquet(s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=TDID/config=DailyTDIDSiteZipMapping/v=1/date=${dateStr}")
       .select("SiteZipHashed", "TDID")
       .cache()
 
+    val overrideOutput = config.getBoolean("overrideOutput", default = false)
+
     def processSplit(splitIndex: Int): Unit = {
+      val writePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=TDID/config=$jobConfigName/v=1/date=$dateStr/split=$splitIndex"
+      val successFile = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=TDID/config=$jobConfigName/v=1/date=$dateStr/split=$splitIndex/_SUCCESS"
+      if (!overrideOutput && FSUtils.fileExists(successFile)(spark)) {
+        println(s"split ${splitIndex} data is existing")
+        return
+      }
+
       val tdidSiteZipHashed = loadTDIDSiteZipMappingRDD(siteZipToTDIDDF, splitIndex, numPartitions)
       val joinedDf = tdidSiteZipHashed.join(syntheticIdSiteZipHashedDensityScore, Seq("SiteZipHashed", "random"))
         .select('TDID, 'SyntheticIdDensityScores)
@@ -106,7 +117,6 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
         .withColumn("SyntheticId_Level1", DensityScoreFilterUDF.apply(0.8f, 0.99f)('SyntheticIdDensityScores))
         .withColumn("MappingId_Level1", syntheticIdToMappingIdUdf('SyntheticId_Level1))
 
-      val writePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=TDID/config=$jobConfigName/v=1/date=$dateStr/split=$splitIndex"
       tdidDensityScore.coalesce(8190).write.mode(SaveMode.Overwrite).parquet(writePath)
     }
 
