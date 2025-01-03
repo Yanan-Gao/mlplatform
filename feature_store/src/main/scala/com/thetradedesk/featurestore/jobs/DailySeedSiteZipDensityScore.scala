@@ -34,9 +34,15 @@ object DailySeedSiteZipDensityScore extends FeatureStoreBaseJob {
       .withColumn("SiteZipHashed", xxhash64(concat(concat(col("Site"), col("Zip")), lit(salt))))
   }
 
+  // load hourly seed counts for last 7 days
   def loadHourlySeedCounts(date: LocalDate) = {
-    val dateStr = getDateStr(date)
-    spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/features/feature_store/$ttdEnv/profiles/source=bidsimpression/index=SeedId/config=HourlySeedSiteZipCount/v=1/date=$dateStr/")
+    spark
+      .read
+      .option("basePath", s"s3://thetradedesk-mlplatform-us-east-1/features/feature_store/$ttdEnv/profiles/source=bidsimpression/index=SeedId/config=HourlySeedSiteZipCount/v=1/")
+      .parquet((0 to 6)
+        .map(e => getDateStr(date.minusDays(e)))
+        .map(e => s"s3://thetradedesk-mlplatform-us-east-1/features/feature_store/$ttdEnv/profiles/source=bidsimpression/index=SeedId/config=HourlySeedSiteZipCount/v=1/date=$e/"): _*
+      )
   }
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {

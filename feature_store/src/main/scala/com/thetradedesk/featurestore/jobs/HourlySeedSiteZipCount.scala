@@ -7,6 +7,7 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{Column, DataFrame, SaveMode}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
+import com.thetradedesk.spark.util.io.FSUtils
 import org.apache.spark.sql.expressions.Window
 
 import java.time.LocalDate
@@ -36,9 +37,21 @@ object HourlySeedSiteZipCount extends FeatureStoreBaseJob {
       .withColumn("SiteZipHashed", xxhash64(concat(concat(col("Site"), col("Zip")), lit(salt))))
   }
 
+  def readLatestAggregatedSeed() : DataFrame = {
+    for (i <- 0 to 6) {
+      val sourcePath = s"s3://thetradedesk-mlplatform-us-east-1/data/prod/audience/aggregatedSeed/v=1/date=${getDateStr(date.minusDays(i))}"
+      val sourceSuccessFilePath = s"/${sourcePath}/_SUCCESS"
+
+      if (FSUtils.fileExists(sourceSuccessFilePath)(spark)) {
+        return spark.read.parquet(sourcePath)
+      }
+    }
+    throw new RuntimeException("aggregated seed dataset not existing")
+  }
+
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
     val bidreq = loadInputData(date, hourInt)
-    val aggregatedSeed = spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/data/prod/audience/aggregatedSeed/v=1/date=${getDateStr(date)}/")
+    val aggregatedSeed = readLatestAggregatedSeed()
 
     val hourlySeedDensity = bidreq.join(aggregatedSeed.select("TDID", "SeedIds"), "TDID")
       .withColumn("SeedId", explode(col("SeedIds")))
