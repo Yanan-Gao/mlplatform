@@ -1,6 +1,7 @@
 package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore._
+import com.thetradedesk.featurestore.rsm.CommonEnums.{CrossDeviceVendor, DataSource}
 import com.thetradedesk.featurestore.transform._
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -53,10 +54,11 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
       .repartition(repartitionNum, 'SiteZipHashed, 'random)
   }
 
-  def loadPolicyTable(date: LocalDate) = {
+  def loadPolicyTable(date: LocalDate, sources: Int*) = {
     // read the given date's RSM policy table and filter for only seeds
     spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/configdata/prod/audience/policyTable/RSM/v=1/${getDateStr(date)}000000/")
-      .filter(col("Source") === lit(3) || col("Source") === lit(6))
+      // filter non graph data only
+      .filter(col("CrossDeviceVendorId") === lit(CrossDeviceVendor.None.id) && col("Source").isin(sources))
       .select(col("SourceId").as("SeedId"), col("MappingId"), col("SyntheticId"))
   }
 
@@ -65,7 +67,7 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
     val numPartitions = 10
 
     val seedDensity = loadSeedDensity(date)
-    val policyTable = loadPolicyTable(date)
+    val policyTable = loadPolicyTable(date, DataSource.Seed.id, DataSource.TTDOwnData.id)
 
     val maxDensityScoreAggUDF = udaf(MaxDensityScoreAgg)
 
@@ -79,8 +81,7 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
       .cache()
 
     val syntheticIdToMappingId =
-      spark.sparkContext.broadcast(policyTable
-        .where(col("Source") === lit(3))
+      spark.sparkContext.broadcast(loadPolicyTable(date, DataSource.Seed.id)
         .select('SyntheticId, 'MappingId.cast("short").as("MappingId"))
         .as[(Int, Short)]
         .collect()
