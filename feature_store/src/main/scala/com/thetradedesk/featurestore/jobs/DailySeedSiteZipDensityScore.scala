@@ -2,6 +2,7 @@ package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore._
 import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.expressions.Window
@@ -39,7 +40,7 @@ object DailySeedSiteZipDensityScore extends FeatureStoreBaseJob {
     spark
       .read
       .option("basePath", s"s3://thetradedesk-mlplatform-us-east-1/features/feature_store/$ttdEnv/profiles/source=bidsimpression/index=SeedId/config=HourlySeedSiteZipCount/v=1/")
-      .parquet((0 to 6)
+      .parquet((0 until  config.getInt("maxNumMappingIdsInAerospike", default = 1))
         .map(e => getDateStr(date.minusDays(e)))
         .map(e => s"s3://thetradedesk-mlplatform-us-east-1/features/feature_store/$ttdEnv/profiles/source=bidsimpression/index=SeedId/config=HourlySeedSiteZipCount/v=1/date=$e/"): _*
       )
