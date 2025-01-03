@@ -40,7 +40,7 @@ object HourlySeedSiteZipCount extends FeatureStoreBaseJob {
   def readLatestAggregatedSeed() : DataFrame = {
     for (i <- 0 to 6) {
       val sourcePath = s"s3://thetradedesk-mlplatform-us-east-1/data/prod/audience/aggregatedSeed/v=1/date=${getDateStr(date.minusDays(i))}"
-      val sourceSuccessFilePath = s"/${sourcePath}/_SUCCESS"
+      val sourceSuccessFilePath = s"${sourcePath}/_SUCCESS"
 
       if (FSUtils.fileExists(sourceSuccessFilePath)(spark)) {
         return spark.read.parquet(sourcePath)

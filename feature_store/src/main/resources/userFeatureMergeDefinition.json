@@ -3,7 +3,7 @@
   "featureSourceDefinitions": [
     {
       "name": "bidimp",
-      "dataSetPath": "features/feature_store/prodTest/user_bid_impression_feature/v=1",
+      "dataSetPath": "features/feature_store/prod/user_bid_impression_feature/v=1",
       "features": [
         {
           "name": "seenCount1D",
