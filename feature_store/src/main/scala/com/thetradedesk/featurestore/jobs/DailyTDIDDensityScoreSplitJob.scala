@@ -12,6 +12,7 @@ import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import scala.util.Random
 
 object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
 
@@ -88,8 +89,12 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
         .toMap)
 
     val syntheticIdToMappingIdUdf = udf(
-      (pairs: Seq[Int]) =>
-        pairs.flatMap(e => syntheticIdToMappingId.value.get(e))
+      (pairs: Seq[Int], maxLength: Int) =>
+        {
+          val result = pairs.flatMap(e => syntheticIdToMappingId.value.get(e))
+          if (pairs.length <= maxLength) result
+          else Random.shuffle(result).take(maxLength)
+        }
     )
 
     val siteZipToTDIDDF = spark.read.parquet(s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=TDID/config=DailyTDIDSiteZipMapping/v=1/date=${dateStr}")
@@ -97,6 +102,7 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
       .cache()
 
     val overrideOutput = config.getBoolean("overrideOutput", default = false)
+    val maxNumMappingIdsInAerospike = config.getInt("maxNumMappingIdsInAerospike", default = 1500)
 
     def processSplit(splitIndex: Int): Unit = {
       val writePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=TDID/config=$jobConfigName/v=1/date=$dateStr/split=$splitIndex"
@@ -114,11 +120,11 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
         .groupBy('TDID)
         .agg(maxDensityScoreAggUDF(col("SyntheticIdDensityScores")).as("SyntheticIdDensityScores"))
         .withColumn("SyntheticId_Level2", DensityScoreFilterUDF.apply(0.99f, 1.01f)('SyntheticIdDensityScores))
-        .withColumn("MappingId_Level2", syntheticIdToMappingIdUdf('SyntheticId_Level2))
+        .withColumn("MappingId_Level2", syntheticIdToMappingIdUdf('SyntheticId_Level2, lit(maxNumMappingIdsInAerospike)))
         .withColumn("SyntheticId_Level1", DensityScoreFilterUDF.apply(0.8f, 0.99f)('SyntheticIdDensityScores))
-        .withColumn("MappingId_Level1", syntheticIdToMappingIdUdf('SyntheticId_Level1))
+        .withColumn("MappingId_Level1", syntheticIdToMappingIdUdf('SyntheticId_Level1, lit(maxNumMappingIdsInAerospike) - size('MappingId_Level2)))
 
-      tdidDensityScore.coalesce(8190).write.mode(SaveMode.Overwrite).parquet(writePath)
+      tdidDensityScore.coalesce(16380).write.mode(SaveMode.Overwrite).parquet(writePath)
     }
 
     splitIndex.foreach(
