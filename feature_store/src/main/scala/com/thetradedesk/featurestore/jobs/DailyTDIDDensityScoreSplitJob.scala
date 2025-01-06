@@ -59,7 +59,7 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
     // read the given date's RSM policy table and filter for only seeds
     spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/configdata/prod/audience/policyTable/RSM/v=1/${getDateStr(date)}000000/")
       // filter non graph data only
-      .filter(col("CrossDeviceVendorId") === lit(CrossDeviceVendor.None.id) && col("Source").isin(sources))
+      .filter(col("CrossDeviceVendorId") === lit(CrossDeviceVendor.None.id) && col("Source").isin(sources: _*))
       .select(col("SourceId").as("SeedId"), col("MappingId"), col("SyntheticId"))
   }
 
@@ -122,7 +122,7 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
         .withColumn("SyntheticId_Level2", DensityScoreFilterUDF.apply(0.99f, 1.01f)('SyntheticIdDensityScores))
         .withColumn("MappingIdLevel2", syntheticIdToMappingIdUdf('SyntheticId_Level2, lit(maxNumMappingIdsInAerospike)))
         .withColumn("SyntheticId_Level1", DensityScoreFilterUDF.apply(0.8f, 0.99f)('SyntheticIdDensityScores))
-        .withColumn("MappingIdLevel1", syntheticIdToMappingIdUdf('SyntheticId_Level1, lit(maxNumMappingIdsInAerospike) - size('MappingId_Level2)))
+        .withColumn("MappingIdLevel1", syntheticIdToMappingIdUdf('SyntheticId_Level1, lit(maxNumMappingIdsInAerospike) - size('MappingIdLevel2)))
 
       tdidDensityScore.coalesce(16380).write.mode(SaveMode.Overwrite).parquet(writePath)
     }

@@ -28,12 +28,12 @@
       "dataSetPath": "features/feature_store/prod/profiles/source=bidsimpression/index=TDID/config=TDIDDensityScoreSplit/v=1/",
       "features": [
         {
-          "name": "MappingId_Level1",
+          "name": "MappingIdLevel1",
           "dtype": 3,
           "arrayLength": 1
         },
         {
-          "name": "MappingId_Level2",
+          "name": "MappingIdLevel2",
           "dtype": 3,
           "arrayLength": 1
         }

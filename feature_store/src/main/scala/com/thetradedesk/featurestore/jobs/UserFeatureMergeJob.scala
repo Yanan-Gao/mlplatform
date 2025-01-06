@@ -26,14 +26,17 @@ object UserFeatureMergeJob {
 
   def main(args: Array[String]): Unit = {
     val start = System.currentTimeMillis()
-    runETLPipeline()
-    telemetry.jobRunningTime.labels(dateTime.toString).set(System.currentTimeMillis() - start)
-    prometheus.pushMetrics()
+    try {
+      runETLPipeline()
+    } finally {
+      telemetry.jobRunningTime.labels(dateTime.toString).set(System.currentTimeMillis() - start)
+      prometheus.pushMetrics()
+    }
   }
 
   def runETLPipeline(): Unit = {
     // step 1: collect feature definitions
-    val definition = FileHelper.readStringFromFile(Config.userFeatureMergeDefinitionPath,  true)(spark)
+    val definition = FileHelper.readStringFromFile(Config.userFeatureMergeDefinitionPath, true)(spark)
     val userFeatureMergeDefinition = read[UserFeatureMergeDefinition](definition)
     // step 2: join features, generate feature data (byte array) <multi data generator supported> and feature schema (verify data length at the same time)
     val (df, schema) = new CustomBufferDataGenerator()(spark, telemetry).generate(dateTime, userFeatureMergeDefinition)
