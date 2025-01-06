@@ -78,8 +78,8 @@ object GenerateTrainSetLastTouch extends KongmingBaseJob {
         .drop("BRConv", "ratio", "rand")
 
       val campaignDS = CampaignDataSet().readLatestPartitionUpTo(ImpDate, true)
-      val sampledAttrWithWeight = 
-        sampledAttr.join(broadcast(campaignDS.select($"CampaignId", $"CustomCPATypeId")), Seq("CampaignId"), "inner")
+      val sampledAttrWithWeight =
+        campaignDS.select($"CampaignId", $"CustomCPATypeId").join(broadcast(sampledAttr), Seq("CampaignId"), "inner")
         .withColumn("CPACountWeight", when($"CustomCPATypeId"===0, 1).otherwise($"CustomCPACount".cast("double")))
 
       val impWithAttr = dailyImp.join(broadcast(sampledAttrWithWeight.select($"BidRequestId".alias("BidRequestIdStr"), $"Target", $"Revenue",$"CPACountWeight",$"ConversionTrackerLogEntryTime")), Seq("BidRequestIdStr"), "left")
@@ -94,22 +94,16 @@ object GenerateTrainSetLastTouch extends KongmingBaseJob {
         .withColumn("UserDataOptIn", lit(2))
 
       impWithAttr
-        .filter($"Target" === lit(1))
         .withColumn("rand", rand(seed = samplingSeed))
-        .filter($"rand" <= $"PosRatio").drop("rand")
-      .union(
-          impWithAttr.filter($"Target" ===lit(0))
-          .withColumn("rand", rand(seed = samplingSeed))
-          .filter($"rand" < $"NegRatio").drop("rand")
-        ).withColumn("Weight", lit(1))
-        .drop("PosCount","NegCount","NegRatio","PosRatio")
+        .filter("(Target = 1 and rand <= PosRatio) or (Target = 0 and rand < NegRatio)")
+        .withColumn("Weight", lit(1))
+        .drop("PosCount","NegCount","NegRatio","PosRatio", "rand")
     }).reduce(_.union(_)).cache()
 
-    val preFeatureSamples = sampledImpressionWithAttribution.selectAs[PreFeatureJoinRecordV2].cache()
+    val preFeatureSamples = sampledImpressionWithAttribution.selectAs[PreFeatureJoinRecordV2]
     val positiveSamples = preFeatureSamples.filter($"Target" === lit(1))
     val negativeSamples = preFeatureSamples.filter($"Target" ===lit(0))
 
-    preFeatureSamples.unpersist()
     //adjust weight for positive samples
     val positiveSampleWithAdjustedWeight = 
       if (applyPositiveReweight) {
