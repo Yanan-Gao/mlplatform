@@ -1,6 +1,7 @@
 package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore._
+import com.thetradedesk.featurestore.rsm.CommonEnums.DataSource
 import com.thetradedesk.spark.TTDSparkContext.spark
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
@@ -42,7 +43,7 @@ object DailyTDIDSiteZipMapping extends FeatureStoreBaseJob {
   def loadPolicyTable(date: LocalDate) = {
     // read the given date's RSM policy table and filter for only seeds
     spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/configdata/prod/audience/policyTable/RSM/v=1/${getDateStr(date)}000000/")
-      .filter(col("Source") === lit(3))
+      .filter(col("Source") === lit(DataSource.Seed.id))
       .withColumnRenamed("SourceId", "SeedId")
   }
 

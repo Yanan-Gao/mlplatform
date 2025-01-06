@@ -387,7 +387,7 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
       return postValidationResult
     }
 
-    val shouldConsiderTDIDUDF = shouldConsiderTDID3(config.getInt("postValidationSampleHit", default = 10000), "fpVq")(_)
+    val shouldConsiderTDIDUDF = shouldConsiderTDID3(config.getInt("postValidationSampleHit", default = 100), "fpVq")(_)
 
     val origin = dataSource.where(shouldConsiderTDIDUDF(col(FeatureConstants.UserIDKey)))
 
