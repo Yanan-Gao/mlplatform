@@ -21,6 +21,7 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
   val incTrain = config.getBoolean("incTrain", false)
   val trainRatio = config.getDouble("trainRatio", 0.8)
   val desiredNegOverPos = config.getInt(path = "desiredPosOverNeg", 9)
+  val maxPositiveCount = config.getInt(path="maxPositiveCount", 250000)
   val conversionLookback = config.getInt("conversionLookback", 15)
 
   val saveParquetData = config.getBoolean("saveParquetData", false)
@@ -75,7 +76,18 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
         ).withColumn("Weight", lit(1))
         .drop("PosCount","NegCount","NegRatio")
 
-    }).reduce(_.union(_)).cache()
+    }).reduce(_.union(_))
+      .withColumn("PosCount", sum(when($"Target" === lit(1), 1).otherwise(0)).over(win))
+      .withColumn("NegCount", sum(when($"Target" === lit(0), 1).otherwise(0)).over(win))
+      .withColumn("SampleRatio",
+        when($"Target" === lit(1), lit(maxPositiveCount) / $"PosCount") // pos sampling ratio
+          .otherwise(when($"PosCount" < lit(maxPositiveCount), $"PosCount").otherwise(lit(maxPositiveCount))
+            * lit(desiredNegOverPos) / $"NegCount")
+      )
+      .withColumn("rand", rand(seed = samplingSeed))
+      .filter($"rand" < $"SampleRatio").drop("rand")
+      .drop("PosCount","NegCount","SampleRatio","rand")
+      .cache()
 
     val cols = sampledImpressions.columns.map(c=>col(c))
     val cappedImpressions = sampledImpressions.filter($"Revenue" > lit(1))

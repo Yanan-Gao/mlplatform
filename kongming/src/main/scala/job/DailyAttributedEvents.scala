@@ -105,10 +105,15 @@ object DailyAttributedEvents extends KongmingBaseJob {
           }
 
         // partitioned by AttrDate/ImpDate
-        val attrRowCount = DailyAttributionEventsDataset().writePartition(attrEventsByImpDate, date, ImpDate.format(DefaultTimeFormatStrings.dateTimeFormatter), Some(1))
+        if (!attrEventsByImpDate.isEmpty) {
+          val attrRowCount = DailyAttributionEventsDataset().writePartition(attrEventsByImpDate, date, ImpDate.format(DefaultTimeFormatStrings.dateTimeFormatter), Some(1))
 
-        rowCounts(i) = attrRowCount
-        attrRowCount
+          rowCounts(i) = attrRowCount
+          attrRowCount
+        } else {
+          rowCounts(i) = ("", 0L)
+          rowCounts(i)
+        }
       } else {
         rowCounts(i) = ("", 0L)
         rowCounts(i)
