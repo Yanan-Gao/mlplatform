@@ -62,7 +62,7 @@ case class AudienceModelPolicyReadableDataset(model: Model) extends
 
 object Model extends Enumeration {
   type Model = Value
-  val None, AEM, RSM = Value
+  val None, AEM, RSM, RSMV2 = Value
 }
 
 object DataSource extends Enumeration {
