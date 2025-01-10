@@ -34,6 +34,8 @@ case class CampaignAdjustmentsMergedDataset (
   BBFPC_OptOut_ShareOfBidAmount: Option[Double],
   HadesBackoff_PCAdjustment_Current: Option[Double],
   HadesBackoff_PCAdjustment_Old: Option[Double],
+  CampaignType: Option[String],
+  CampaignType_Yesterday: Option[String],
 )
 
 object CampaignAdjustmentsMergedDataset {

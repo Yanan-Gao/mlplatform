@@ -4,6 +4,7 @@ import com.thetradedesk.geronimo.bidsimpression.schema._
 import com.thetradedesk.plutus.data.MediaTypeId
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
 import com.thetradedesk.plutus.data.schema._
+import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform.{CampaignType_NewCampaignNotInThrottleDataset, CampaignType_NewCampaignNotPacing}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.{AdFormatRecord, AdGroupRecord, CampaignRecord, CountryRecord, PrivateContractRecord, ROIGoalTypeRecord, SupplyVendorRecord}
 import com.thetradedesk.streaming.records.rtb._
@@ -618,15 +619,17 @@ object MockData {
     )).toDS()
   }
 
-  def campaignAdjustmentsHadesMock(campaignId: String, hadesPCAdjustment: Double = 1.0, hadesProblemCampaign: Boolean = true, hadesPCAdjustmentCurrent: Option[Double] = None, hadesPCAdjustmentOld: Option[Double] = None ): Dataset[CampaignAdjustmentsHadesSchema] = {
+  def campaignAdjustmentsHadesMock(campaignId: String, campaignType: String = CampaignType_NewCampaignNotPacing, hadesPCAdjustment: Double = 1.0, hadesProblemCampaign: Boolean = true, hadesPCAdjustmentCurrent: Option[Double] = None, hadesPCAdjustmentOld: Option[Double] = None ): Dataset[CampaignAdjustmentsHadesSchema] = {
     Seq(CampaignAdjustmentsHadesSchema(
       CampaignId = campaignId,
+      CampaignType = campaignType,
       HadesBackoff_PCAdjustment = hadesPCAdjustment,
       Hades_isProblemCampaign = hadesProblemCampaign,
       BBFPC_OptOut_ShareOfBids = Some(0.75),
       BBFPC_OptOut_ShareOfBidAmount = Some(0.75),
       HadesBackoff_PCAdjustment_Current = hadesPCAdjustmentCurrent,
-      HadesBackoff_PCAdjustment_Old = hadesPCAdjustmentOld
+      HadesBackoff_PCAdjustment_Old = hadesPCAdjustmentOld,
+      CampaignType_Yesterday = None
     )).toDS()
   }
 
@@ -645,8 +648,8 @@ object MockData {
   )
 
   val campaignBBFOptOutRateMock = Seq(
-    ("abc123", 0.2, 0.1, 0.3, 0.3, 0.6),
-    ("jkl789", 0.5, 0.25, 0.75, 0.75, 0.7884867455687953)
-  ).toDF("CampaignId", "BBFPC_OptOut_Variable_ShareOfBidAmount", "BBFPC_OptOut_Fixed_ShareOfBidAmount", "BBFPC_OptOut_ShareOfBidAmount", "BBFPC_OptOut_ShareOfBids", "HadesBackoff_PCAdjustment")
+    ("abc123", CampaignType_NewCampaignNotPacing, 0.2, 0.1, 0.3, 0.3, 0.6, null),
+    ("jkl789", CampaignType_NewCampaignNotInThrottleDataset, 0.5, 0.25, 0.75, 0.75, 0.7884867455687953, null)
+  ).toDF("CampaignId", "CampaignType", "BBFPC_OptOut_Variable_ShareOfBidAmount", "BBFPC_OptOut_Fixed_ShareOfBidAmount", "BBFPC_OptOut_ShareOfBidAmount", "BBFPC_OptOut_ShareOfBids", "HadesBackoff_PCAdjustment", "CampaignType_Yesterday")
 
 }
