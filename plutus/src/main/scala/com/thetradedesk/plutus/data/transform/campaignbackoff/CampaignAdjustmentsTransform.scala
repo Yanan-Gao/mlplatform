@@ -550,7 +550,7 @@ object CampaignAdjustmentsTransform extends Logger {
   }
 
   def getLatestCampaignAdjustmentsUpTo(yesterdayDate: LocalDate): Dataset[CampaignAdjustmentsMergedDataset] = {
-    val s3BaseDirectory = CampaignAdjustmentsMergedDataset.S3_PATH(envForRead)
+    val s3BaseDirectory = CampaignAdjustmentsMergedDataset.S3_PATH(envForWrite)
     val listEntries = listDirectoryContents(s3BaseDirectory)(spark)
     val listPaths = listEntries
       .filter(_.isDirectory)
@@ -563,7 +563,7 @@ object CampaignAdjustmentsTransform extends Logger {
         s3BaseDirectory,
         CampaignAdjustmentsMergedDataset.S3_PATH_DATE_GEN,
         maxDateOption.get,
-        nullIfColAbsent = false // Setting this to false since we want this query to fail if data doesn't exist
+        nullIfColAbsent = true
       )
       println(f"(${maxDateOption.get})'s CampaignAdjustmentsMergedDataset exists and loaded successfully.")
       data
@@ -638,7 +638,7 @@ object CampaignAdjustmentsTransform extends Logger {
     val hadesAdjustmentsYesterdaysDataset = campaignAdjustmentsMergedData
       .filter($"HadesBackoff_PCAdjustment".isNotNull && $"HadesBackoff_PCAdjustment" < 1.0)
       .as[CampaignAdjustmentsHadesSchema]
-    val (hadesAdjustmentsDataset, underdeliveringCampaignsCount) = HadesCampaignAdjustmentsTransform.transform(date, testSplit, underdeliveryThreshold, hadesAdjustmentsYesterdaysDataset)
+    val (hadesAdjustmentsDataset, hadesMetrics) = HadesCampaignAdjustmentsTransform.transform(date, testSplit, underdeliveryThreshold, hadesAdjustmentsYesterdaysDataset)
 
     // Merging Campaign Backoff with Hades Backoff
     val finalMergedAdjustments = mergeBackoffDatasets(campaignAdjustmentsPacingDataset, hadesAdjustmentsDataset)
@@ -679,7 +679,8 @@ object CampaignAdjustmentsTransform extends Logger {
     campaignCounts.labels("DACampaigns").set(isValuePacingRatioOfAdjustedCampaigns)
     hadesCampaignCounts.labels("HadesProblemCampaigns").set(hadesIsProblemCampaignsCount)
     hadesCampaignCounts.labels("HadesAdjustedCampaigns").set(hadesTotalAdjustmentsCount)
-    hadesCampaignCounts.labels("UnderdeliveringCampaigns").set(underdeliveringCampaignsCount)
-
+    hadesMetrics.foreach { case (key, count) =>
+      hadesCampaignCounts.labels(key).set(count)
+    }
   }
 }

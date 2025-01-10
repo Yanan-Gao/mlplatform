@@ -30,9 +30,8 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
   test("Validating plutus adjustment calculations") {
     val campaignId = "pmbcej3"
-    val underdeliveringCampaigns = Array(campaignId)
+    val underdeliveringCampaigns = Seq(FilteredCampaignData(campaignId, CampaignType_NewCampaignNotPacing)).toDS()
 
-    // getCampaignBidData
     val pcResultsMergedData = Seq(
       pcResultsMergedMock(campaignId = Some(campaignId), dealId = "0000", adjustedBidCPMInUSD = 6.8800, discrepancy = 1.1, floorPrice = 1, mu = -0.3071f, sigma =  0.6923f, auctionType = 3)
     ).toDS().as[PcResultsMergedDataset]
@@ -45,7 +44,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     )
 
     val results_campaignBidData = campaignBidData.collectAsList().get(0)
-    val gen_plutusPushdown = results_campaignBidData.getAs[Double]("gen_plutusPushdown")
+    val gen_plutusPushdown = results_campaignBidData.getAs[Double]("gen_gss_pushdown")
     assert(math.abs(gen_plutusPushdown - 0.2426) <= tolerance)
   }
 
@@ -55,7 +54,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val yesterdaysData = spark.emptyDataset[CampaignAdjustmentsHadesSchema]
 
     // identifyAndHandleProblemCampaigns
-    val hadesAdjustmentsData = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData)
+    val (hadesAdjustmentsData, metrics) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData)
 
     // Check non-problem campaign
     val nonProblemCampaign = hadesAdjustmentsData.collectAsList().get(0)
@@ -66,6 +65,10 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val problemCampaign = hadesAdjustmentsData.collectAsList().get(1)
     assert(problemCampaign.HadesBackoff_PCAdjustment == 0.7884867455687953)
     assert(problemCampaign.Hades_isProblemCampaign)
+
+    // Checking that metrics are properly aggregated
+    assert(metrics.filter(_._1==CampaignType_NewCampaignNotInThrottleDataset).head._2 == 1)
+    assert(metrics.filter(_._1==CampaignType_NewCampaignNotPacing).head._2 == 1)
   }
 
   test("Hades Backoff transform test for schema/column correctness") {
@@ -77,7 +80,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
     val bidData = getAllBidData(plutusLogsData, adgroupData, pcResultsMergedData)
 
-    val underDeliveringCampaigns = Array(campaignId)
+    val underDeliveringCampaigns = Seq(FilteredCampaignData(campaignId, CampaignType_NewCampaignNotPacing)).toDS()
     val campaignBidData = getUnderdeliveringCampaignBidData(bidData, underDeliveringCampaigns)
 
     val campaignBBFOptOutRate = aggregateCampaignBBFOptOutRate(campaignBidData)
@@ -86,9 +89,11 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val optOutRates = campaignBBFOptOutRate.collectAsList()
     assert(optOutRates.size() == 1)
 
-    val hadesAdjustmentsData = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData)
+    val (hadesAdjustmentsData, metrics) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData)
     val res = hadesAdjustmentsData.collectAsList()
     assert(res.size() == 1)
+
+    assert(metrics.filter(_._1==CampaignType_NewCampaignNotPacing).head._2 == 1)
   }
 
 
@@ -151,11 +156,26 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     // In these test, we drop `HadesBackoff_PCAdjustment_Old`
     // because that shouldn't exist in the dataframe going into mergeTodayWithYesterdaysData
 
-    // Testing if yesterday's pushdown is maintained
-    var todaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustmentCurrent = Some(1.0))
+
+    // Testing if yesterday's pushdown is discarded if the campaignType was CampaignType_NewCampaignNoUnderdelivery
+    var todaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustmentCurrent = Some(0.8), campaignType = CampaignType_AdjustedCampaignPacing)
       .toDF()
-    var yesterdaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustment = 0.4)
+    var yesterdaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustment = 0.4, campaignType = CampaignType_NewCampaignNotInThrottleDataset)
     var res = mergeTodayWithYesterdaysData(todaysData, yesterdaysData).collect().head
+
+    assert(res.CampaignId == "campaign3")
+    assert(res.HadesBackoff_PCAdjustment == 0.8)
+    assert(res.CampaignType == CampaignType_AdjustedCampaignPacing)
+    assert(res.CampaignType_Yesterday.contains(CampaignType_NewCampaignNotInThrottleDataset))
+    assert(res.HadesBackoff_PCAdjustment_Current.contains(0.8))
+    assert(res.HadesBackoff_PCAdjustment_Old.contains(0.4))
+
+
+    // Testing if yesterday's pushdown is maintained
+    todaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustmentCurrent = Some(1.0))
+      .toDF()
+    yesterdaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustment = 0.4)
+    res = mergeTodayWithYesterdaysData(todaysData, yesterdaysData).collect().head
 
     assert(res.CampaignId == "campaign3")
     assert(res.HadesBackoff_PCAdjustment == 0.4)
@@ -183,6 +203,40 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     assert(res.HadesBackoff_PCAdjustment == 0.5)
     assert(res.HadesBackoff_PCAdjustment_Current.isEmpty)
     assert(res.HadesBackoff_PCAdjustment_Old.contains(0.5))
+  }
+
+  test("Testing splitting merged dataset") {
+    val campaignAdjustmentsMergedData = spark.emptyDataset[CampaignAdjustmentsMergedDataset]
+    campaignAdjustmentsMergedData.filter($"CampaignPCAdjustment".isNotNull).selectAs[CampaignAdjustmentsPacingSchema].collect()
+    campaignAdjustmentsMergedData
+      .filter($"HadesBackoff_PCAdjustment".isNotNull && $"HadesBackoff_PCAdjustment" < 1.0)
+      .as[CampaignAdjustmentsHadesSchema].collect()
+
+    // These two will throw an error if there is an issue with the schema
+  }
+
+  test("Testing GetFilteredCampaigns") {
+    val campaignUnderdeliveryData = Seq(campaignUnderdeliveryForHadesMock).toDS()
+
+    val liveCampaigns = Seq("pmbcej3")
+      .toDF()
+      .withColumnRenamed("value", "CampaignId")
+      .as[Campaign]
+
+    val yesterdaysCampaigns = Seq("jkl789")
+      .toDF()
+      .withColumnRenamed("value", "CampaignId")
+      .as[Campaign]
+
+    val filteredCampaigns = getFilteredCampaigns(
+      campaignUnderdeliveryData = campaignUnderdeliveryData,
+      potentiallyNewCampaigns = liveCampaigns,
+      yesterdaysCampaigns = yesterdaysCampaigns,
+      0.1,
+      Some(0.9)
+    )
+
+    assert(filteredCampaigns.count() == 2)
   }
 
 }
