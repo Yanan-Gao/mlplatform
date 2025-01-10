@@ -6,7 +6,7 @@ import com.thetradedesk.audience.datasets.Model.Model
 import com.thetradedesk.audience.datasets.SeedTagOperations.dataSourceTag
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJob.prometheus
-import com.thetradedesk.audience.utils.{BitwiseOrAgg, S3Utils}
+import com.thetradedesk.audience.utils.{BitwiseOrAgg, S3Utils, SeedPolicyUtils}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -86,9 +86,28 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
 
     val start = System.currentTimeMillis()
 
+    // read the seeddetail data again to join the advertiserid back to here
+    val seedDataFullPath = SeedPolicyUtils.getRecentVersion(
+      Config.seedMetadataS3Bucket,
+      Config.seedMetadataS3Path,
+      Config.seedMetaDataRecentVersion
+    )
+    val seedAdvertiserMetaDataset = spark.read.parquet(seedDataFullPath)
+        .select('SeedId.alias("SourceId"), 'AdvertiserId)
+        .cache()
+    val advertiserDataset = AdvertiserDataset().readPartition(date)(spark)
+
+    val seedAdvertiserDataset = seedAdvertiserMetaDataset.join(advertiserDataset, Seq("AdvertiserId"), "inner")
+        .withColumn(
+          "IsSensitive",
+          when(col("IndustryCategoryId").isin(SensitiveIndustryIds.sensitive_industy_id: _*), lit(true)).otherwise(false)
+        )
+
     val policyTable = retrieveSourceData(dateTime.toLocalDate)
 
     val policyTableResult = allocateSyntheticId(dateTime, policyTable)
+                            .join(seedAdvertiserDataset, Seq("SourceId"), "left")
+                            .withColumn("IsSensitive", coalesce(col("IsSensitive"), lit(false))) // in case ttd segment data does not include in seeddetail
 
     AudienceModelPolicyWritableDataset(model)
       .writePartition(

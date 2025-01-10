@@ -3,7 +3,7 @@ package com.thetradedesk.audience.jobs.policytable
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJob.prometheus
-import com.thetradedesk.audience.utils.{S3Utils, MapDensity}
+import com.thetradedesk.audience.utils.{S3Utils, MapDensity, SeedPolicyUtils}
 import com.thetradedesk.spark.datasets.sources.ThirdPartyDataDataSet
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -23,11 +23,11 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
     .add("SeedIds", ArrayType(StringType))
 
   private def retrieveSeedMeta(date: LocalDate): DataFrame = {
-    val recentVersion =
-      if (Config.seedMetaDataRecentVersion != null) Config.seedMetaDataRecentVersion
-      else S3Utils.queryCurrentDataVersion(Config.seedMetadataS3Bucket, Config.seedMetadataS3Path)
-
-    val seedDataFullPath = "s3a://" + Config.seedMetadataS3Bucket + "/" + Config.seedMetadataS3Path + "/" + recentVersion
+    val seedDataFullPath = SeedPolicyUtils.getRecentVersion(
+      Config.seedMetadataS3Bucket,
+      Config.seedMetadataS3Path,
+      Config.seedMetaDataRecentVersion
+    )
 
     val country = CountryDataset().readPartition(date).select('ShortName, 'LongName).distinct()
     val countryMap: Map[String, String] = country.collect()

@@ -29,3 +29,14 @@ object S3Utils {
     path.stripPrefix("s3:").stripPrefix("s3a:").stripPrefix("s3n:").stripPrefix("/").stripSuffix("/")
   }
 }
+
+object SeedPolicyUtils {
+  def getRecentVersion(bucket: String, path: String, recentVersion: String): String = {
+    val resolvedVersion = 
+      if (recentVersion != null) recentVersion 
+      else S3Utils.queryCurrentDataVersion(bucket, path)
+    
+    s"s3a://$bucket/$path/$resolvedVersion"
+  }
+}
+
