@@ -52,6 +52,9 @@ final case class AudienceModelPolicyRecord(TargetingDataId: Long,
                                           PermissionTag: Int,
                                           // incremental id from 1, used to map between source ids and the new Id
                                           MappingId: Int,
+                                          AdvertiserId: String,
+                                          IndustryCategoryId: BigInt,
+                                          IsSensitive: Boolean
                                           )
 
 case class AudienceModelPolicyWritableDataset(model: Model) extends
