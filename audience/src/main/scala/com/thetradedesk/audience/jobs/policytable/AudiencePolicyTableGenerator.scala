@@ -54,7 +54,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     val policyS3Bucket = S3Utils.refinePath(config.getString("policyS3Bucket", "thetradedesk-mlplatform-us-east-1"))
     val policyS3Path = S3Utils.refinePath(config.getString("policyS3Path", s"configdata/${ttdEnv}/audience/policyTable/${model}/v=1"))
     val maxVersionsToKeep = config.getInt("maxVersionsToKeep", 30)
-    val reuseAggregatedSeedIfPossible = config.getBoolean("reuseAggregatedSeedIfPossible", false)
+    val reuseAggregatedSeedIfPossible = config.getBoolean("reuseAggregatedSeedIfPossible", true)
     val bidImpressionRepartitionNum = config.getInt("bidImpressionRepartitionNum", 4096)
     val seedRepartitionNum = config.getInt("seedRepartitionNum", 32)
     val bidImpressionLookBack = config.getInt("bidImpressionLookBack", 1)
@@ -190,9 +190,10 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
 
   // todo assign synthetic id, weight, tag, and isActive
 
-  private def updateSyntheticId(date: LocalDate, policyTable: DataFrame, previousPolicyTable: Dataset[AudienceModelPolicyRecord], previousPolicyTableDate: LocalDate): DataFrame = {
+  private def updateSyntheticId(date: LocalDate, policyTable: DataFrame, previousPolicyTableRaw: Dataset[AudienceModelPolicyRecord], previousPolicyTableDate: LocalDate): DataFrame = {
     // use current date's seed id as active id, should be replaced with other table later
     val activeIds = policyTable.select('SourceId, 'Source, 'CrossDeviceVendorId, 'StorageCloud).distinct().cache
+    val previousPolicyTable = previousPolicyTableRaw.drop("AdvertiserId", "IndustryCategoryId", "IsSensitive")
     // get retired sourceId
     val policyTableDayChange = ChronoUnit.DAYS.between(previousPolicyTableDate, date).toInt
 
