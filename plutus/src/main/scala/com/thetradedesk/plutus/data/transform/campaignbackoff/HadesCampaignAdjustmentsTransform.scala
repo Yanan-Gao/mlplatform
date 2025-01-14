@@ -176,11 +176,18 @@ object HadesCampaignAdjustmentsTransform {
   val CampaignType_AdjustedCampaignNotInThrottleDataset = "AdjustedCampaignNotInThrottleDataset";
   val CampaignType_AdjustedCampaignNoBids = "AdjustedCampaignNoBids";
 
-  def getFilteredCampaigns(campaignUnderdeliveryData: Dataset[CampaignThrottleMetricSchema],
+  def getFilteredCampaigns(campaignThrottleData: Dataset[CampaignThrottleMetricSchema],
                            potentiallyNewCampaigns: Dataset[Campaign],
                            yesterdaysCampaigns: Dataset[Campaign],
                            underdeliveryThreshold: Double,
                            testSplit: Option[Double]): Dataset[FilteredCampaignData] = {
+
+    val campaignUnderdeliveryData = campaignThrottleData
+      .groupBy("CampaignId")
+      .agg(
+        first($"IsValuePacing").as("IsValuePacing"),
+        max($"UnderdeliveryFraction").as("UnderdeliveryFraction")
+      )
 
     val newOrNonSpendingCampaigns = potentiallyNewCampaigns
       .join(campaignUnderdeliveryData, Seq("CampaignId"), "left_anti")
@@ -241,7 +248,7 @@ object HadesCampaignAdjustmentsTransform {
 
     todaysData
       .drop("HadesBackoff_PCAdjustment_Old", "CampaignType_Yesterday")
-      .join(broadcast(oldAdjustments.alias("yesterday")), Seq("CampaignId") , "outer")
+      .join(broadcast(oldAdjustments), Seq("CampaignId") , "outer")
       .withColumn("HadesBackoff_PCAdjustment",
         // We dont want to carry forward yesterday's NewNoUnderdeliveryCampaigns' pushdown as is
         // Since the initial filteredCampaigns list has these campaigns, if the campaign needs a pushdown,
@@ -315,7 +322,7 @@ object HadesCampaignAdjustmentsTransform {
       .selectAs[Campaign].distinct()
 
     val filteredCampaigns = getFilteredCampaigns(
-      campaignUnderdeliveryData = campaignUnderdeliveryData,
+      campaignThrottleData = campaignUnderdeliveryData,
       potentiallyNewCampaigns = liveCampaigns,
       yesterdaysCampaigns = yesterdaysData.selectAs[Campaign],
       underdeliveryThreshold,
