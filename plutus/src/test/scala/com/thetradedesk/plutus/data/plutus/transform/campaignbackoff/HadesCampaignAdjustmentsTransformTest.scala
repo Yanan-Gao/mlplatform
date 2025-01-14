@@ -229,7 +229,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
       .as[Campaign]
 
     val filteredCampaigns = getFilteredCampaigns(
-      campaignUnderdeliveryData = campaignUnderdeliveryData,
+      campaignThrottleData = campaignUnderdeliveryData,
       potentiallyNewCampaigns = liveCampaigns,
       yesterdaysCampaigns = yesterdaysCampaigns,
       0.1,
