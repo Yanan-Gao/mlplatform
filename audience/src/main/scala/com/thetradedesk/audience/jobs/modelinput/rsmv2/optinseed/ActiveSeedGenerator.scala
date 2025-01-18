@@ -6,6 +6,7 @@ import com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface.OptInSeedRe
 import org.apache.spark.sql.Dataset
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.{RSMV2UserSampleRatio, lowerLimitPosCntPerSeed}
 
 import java.time.format.DateTimeFormatter
 
@@ -13,6 +14,7 @@ object ActiveSeedGenerator extends OptInSeedGenerator {
   override def generate(): Dataset[OptInSeedRecord] = {
     val seedId2SyntheticId = AudienceModelPolicyReadableDataset(Model.RSM).readSinglePartition(dateTime)
       .filter('CrossDeviceVendorId === CrossDeviceVendor.None.id && 'IsActive)
+      .filter('ActiveSize * RSMV2UserSampleRatio >= lowerLimitPosCntPerSeed * 10)
       .withColumnRenamed("SourceId", "SeedId")
       .select("SeedId", "SyntheticId")
     val startDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.plusDays(2))

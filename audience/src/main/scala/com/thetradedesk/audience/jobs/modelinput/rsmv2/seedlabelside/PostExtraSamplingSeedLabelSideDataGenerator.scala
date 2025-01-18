@@ -45,14 +45,21 @@ object PostExtraSamplingSeedLabelSideDataGenerator extends SeedLabelSideDataGene
         Math.floor(length).toInt
       }
 
-      (0 until lengthPerRow).map { _ =>
+      
+      (0 until lengthPerRow).flatMap { _ =>
         var chosenId = tm.iteratorFrom(ThreadLocalRandom.current().nextDouble()).next()._2
+        var retryCount = 0
         // loop until find a neg id don't in posIds
-        while (posIds.contains(chosenId)) {
+        while (posIds.contains(chosenId) && retryCount<5) {
           val newRand = ThreadLocalRandom.current().nextDouble()
           chosenId = tm.iteratorFrom(newRand).next()._2
+          retryCount += 1
         }
-        chosenId
+        if (retryCount==5) {
+          None
+        } else {
+          Some(chosenId)
+        }
       }
     })
 
@@ -109,7 +116,6 @@ object PostExtraSamplingSeedLabelSideDataGenerator extends SeedLabelSideDataGene
 
     // prepare pos randIndicator
     val indicator = positiveCntPerSeed
-      .filter('count >= lowerLimitPosCntPerSeed)
       .join(optInSeed, "SeedId")
       .withColumn("PositiveRandIndicator", least(lit(upLimitPosCntPerSeed), col("count")) / col("count"))
       .withColumn("NegativeCount", least(lit(upLimitPosCntPerSeed), col("count")) * posNegRatio)
