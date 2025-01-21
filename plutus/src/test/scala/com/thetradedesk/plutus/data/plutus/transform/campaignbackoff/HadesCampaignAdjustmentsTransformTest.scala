@@ -68,7 +68,8 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
     // Checking that metrics are properly aggregated
     assert(metrics.filter(_._1==CampaignType_NewCampaignNotInThrottleDataset).head._2 == 1)
-    assert(metrics.filter(_._1==CampaignType_NewCampaignNotPacing).head._2 == 1)
+    // This should be filtered out since it doesn't have an adjustment
+    assert(!metrics.exists(_._1 == CampaignType_NewCampaignNotPacing))
   }
 
   test("Hades Backoff transform test for schema/column correctness") {
@@ -89,11 +90,9 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val optOutRates = campaignBBFOptOutRate.collectAsList()
     assert(optOutRates.size() == 1)
 
-    val (hadesAdjustmentsData, metrics) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData)
+    val (hadesAdjustmentsData, _) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData)
     val res = hadesAdjustmentsData.collectAsList()
     assert(res.size() == 1)
-
-    assert(metrics.filter(_._1==CampaignType_NewCampaignNotPacing).head._2 == 1)
   }
 
 

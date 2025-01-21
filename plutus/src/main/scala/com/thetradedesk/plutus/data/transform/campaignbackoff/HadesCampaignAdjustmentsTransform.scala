@@ -223,7 +223,10 @@ object HadesCampaignAdjustmentsTransform {
       .withColumn("HadesBackoff_PCAdjustment_Current", when(col("Hades_isProblemCampaign"), col("HadesBackoff_PCAdjustment")).otherwise(lit(1)))
 
     val res = mergeTodayWithYesterdaysData(todaysData, yesterdaysData)
-    val metrics = res.groupBy("CampaignType").count().as[(String, Long)].collect()
+    val metrics = res.filter($"HadesBackoff_PCAdjustment" < 1.0)
+      .groupBy("CampaignType")
+      .count().as[(String, Long)]
+      .collect()
 
     (res, metrics)
   }
