@@ -19,6 +19,7 @@ import org.apache.commons.lang3.exception.ExceptionUtils
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode, SparkSession}
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
 
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -44,9 +45,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
 
   val jobRunningTime = prometheus.createGauge(s"relevance_online_bidding_generation_job_running_time", "RelevanceOnlineBiddingDataGenerator running time", "date")
   val onlineRelevanceBiddingTableSize = prometheus.createGauge(s"online_relevance_bidding_table_size", "OnlineRelevanceBiddingTableGenerator table size", "date")
-  // TODO: once TRM pipeline ready, need to use another hash function to collect the data to avoid data leakage on the measurement!
-  val sampleUDF = shouldConsiderTDID3(config.getInt("onlineBiddingDownSampleRate", default = 1000000), config.getString("saltToSampleHitRate", default = "RelevanceOnline"))(_)
-
+  val sampler = SamplerFactory.fromString("RSMV2Measurement")
 
   def generate(date: LocalDate): Unit = {
 
@@ -56,7 +55,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
 
     val aggSeed = AggregatedSeedReadableDataset()
       .readPartition(date)(spark)
-      .where(sampleUDF(Symbol(config.getString("hashSampleObject", default = "TDID")))) // use this to control the filtering object, if error, then the object is not in aggregatedseed table
+      .filter(sampler.samplingFunction('TDID))
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .cache()
 
@@ -66,7 +65,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
       .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdType))
       .withColumn("TDID", when(col("TDID") === "00000000-0000-0000-0000-000000000000", null).otherwise(col("TDID")))
       .filter(col("TDID").isNotNull)
-      .where(sampleUDF(Symbol(config.getString("hashSampleObject", default = "TDID"))))
+      .filter(sampler.samplingFunction('TDID))
       .select('BidRequestId, // use to connect with bidrequest, to get more features
         'AdvertiserId,
         'AdGroupId,
@@ -220,7 +219,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
 
     val feature_store_user = TDIDDensityScoreReadableDataset().readPartition(date.minusDays(1))(spark)
                               .select('TDID, 'SyntheticId_Level1, 'SyntheticId_Level2)
-                              .where(sampleUDF(Symbol(config.getString("hashSampleObject", default = "TDID"))))
+                              .filter(sampler.samplingFunction('TDID))
 
     val feature_store_seed = DailySeedDensityScoreReadableDataset().readPartition(date.minusDays(1))(spark).select('SeedId, 'SiteZipHashed, 'DensityScore)
 
