@@ -7,7 +7,7 @@ final case class OfflineScoredImpressionRecord(
                                               BidRequestId: String,
                                               BaseAdGroupId: String,
                                               AdGroupId: String,
-                                              Score: Double
+                                              Score: Array[Double]
                                               )
 
 

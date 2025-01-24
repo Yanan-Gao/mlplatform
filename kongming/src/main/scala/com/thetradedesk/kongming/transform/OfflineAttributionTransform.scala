@@ -26,7 +26,7 @@ object OfflineAttributionTransform {
                                      CampaignId: String,
                                      BidRequestId: String,
                                      BidFeedbackId: String,
-                                     Score: Double,
+                                     Score: Array[Double],
                                      ClickRedirectId: Option[String]
   )
 
@@ -34,7 +34,7 @@ object OfflineAttributionTransform {
                                                    AdGroupId: String,
                                                    CampaignId: String,
                                                    BidFeedbackId: String,
-                                                   Score: Double,
+                                                   Score: Array[Double],
                                                    Label:Int,
                                                    AttributedEventTypeId: Option[String],
                                                    TrackingTagId: Option[String],
@@ -46,7 +46,7 @@ object OfflineAttributionTransform {
   final case class OfflineScoreAttributionResultRecord(
                                                   AdGroupId: String,
                                                   CampaignId: String,
-                                                  Score: Double,
+                                                  Score: Array[Double],
                                                   Label:Int,
                                                   ImpressionWeightForCalibrationModel: Double
   )
