@@ -113,7 +113,7 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
     SourceDataWithDifferentGraphType(
       seedSourceDataWithDifferentGraphType.NoneGraphData
         .join(ttdSourceRawData._1.withColumnRenamed("SeedIds", "SeedIds1"), Seq("TDID"), "outer")
-        .select('TDID, concat('SeedIds, 'SeedIds1).alias("SeedIds"))
+        .select('TDID, concat(coalesce('SeedIds, typedLit(Array.empty[String])), coalesce('SeedIds1, typedLit(Array.empty[String]))).alias("SeedIds"))
         .as[AggregatedGraphTypeRecord],
       seedSourceDataWithDifferentGraphType.PersonGraphData,
       seedSourceDataWithDifferentGraphType.HouseholdGraphData,
