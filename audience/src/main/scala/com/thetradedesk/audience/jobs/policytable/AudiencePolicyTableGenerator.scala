@@ -228,7 +228,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     val otherSourcePreviousPolicyTable = previousPolicyTable.filter('StorageCloud =!= Config.storageCloud).toDF()
 
     val updatedPolicyTable =
-      if (newIdsCount == 0) {
+      if (newIdsCount > 0) {
         val syntheticIdPool = spark
           .range(1, maxId + 1)
           .toDF("SyntheticId")
