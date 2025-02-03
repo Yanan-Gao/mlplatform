@@ -19,7 +19,7 @@ object DAPlutusDashboardDataTransform extends Logger {
 
   import spark.implicits._
 
-  def getDAPlutusMetrics(pcResultsMerged: Dataset[PcResultsMergedDataset],
+  def getDAPlutusMetrics(pcResultsMerged: Dataset[PcResultsMergedSchema],
                          roiGoalTypeData: Dataset[ROIGoalTypeRecord],
                          adGroupData: Dataset[AdGroupRecord],
                          campaignData: Dataset[CampaignRecord],
@@ -128,7 +128,7 @@ object DAPlutusDashboardDataTransform extends Logger {
 
   def transform(date: LocalDate, fileCount: Int): Unit = {
 
-    val pcResultsMergedData = loadParquetDataDailyV2[PcResultsMergedDataset](
+    val pcResultsMergedData = loadParquetDataDailyV2[PcResultsMergedSchema](
       PcResultsMergedDataset.S3_PATH(Some(envForRead)),
       PcResultsMergedDataset.S3_PATH_DATE_GEN,
       date,

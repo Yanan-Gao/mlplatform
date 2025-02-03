@@ -1,27 +1,27 @@
 package com.thetradedesk.plutus.data.transform.campaignbackoff
 
 import com.thetradedesk.logging.Logger
-import com.thetradedesk.plutus.data.schema.PcResultsMergedDataset
-import com.thetradedesk.plutus.data.schema.campaignbackoff.CampaignFlightDataset.loadParquetCampaignFlightLatestPartitionUpTo
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
+import com.thetradedesk.plutus.data.schema.{PcResultsMergedDataset, PcResultsMergedSchema}
 import com.thetradedesk.plutus.data.transform.SharedTransforms.AddChannel
-import com.thetradedesk.plutus.data.{envForRead, envForWrite, getMaxDate, loadParquetDataDailyV2}
+import com.thetradedesk.plutus.data.utils.S3NoFilesFoundException
+import com.thetradedesk.plutus.data.{envForRead, envForReadInternal}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.vertica.UnifiedRtbPlatformReportDataSet
 import com.thetradedesk.spark.datasets.sources.{AdFormatDataSet, AdFormatRecord, CountryDataSet, CountryRecord}
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
-import com.thetradedesk.spark.util.io.FSUtils.listDirectoryContents
-import job.campaignbackoff.CampaignAdjustmentsJob.{campaignCounts, hadesCampaignCounts, numRowsWritten, testControlSplit}
+import job.campaignbackoff.CampaignAdjustmentsJob.campaignCounts
 import org.apache.spark.sql.expressions.{UserDefinedFunction, Window}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.{DataFrame, Dataset, SaveMode}
+import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
 import org.apache.spark.storage.StorageLevel
 
 import java.time.LocalDate
 
-object CampaignAdjustmentsTransform extends Logger {
+object PlutusCampaignAdjustmentsTransform extends Logger {
+
   // Constants
   val numPartitions = 200
 
@@ -67,7 +67,7 @@ object CampaignAdjustmentsTransform extends Logger {
                                     countryData: Dataset[CountryRecord],
                                     adFormatData: Dataset[AdFormatRecord],
                                     platformWideStatsData: Dataset[PlatformWideStatsSchema],
-                                    pcResultsMergedData: Dataset[PcResultsMergedDataset]
+                                    pcResultsMergedData: Dataset[PcResultsMergedSchema]
                                    ): DataFrame = {
 
     val rtb_agg = joinCampaignsToPlatformReportAndAggregate(underdeliveringCampaigns, platformReportData, countryData, adFormatData)
@@ -280,7 +280,7 @@ object CampaignAdjustmentsTransform extends Logger {
     )
   }
 
-  def checkDiscrepancyPC(pcResultsMergedData: Dataset[PcResultsMergedDataset], platWide_underdeliveringCampaigns: DataFrame): DataFrame = {
+  def checkDiscrepancyPC(pcResultsMergedData: Dataset[PcResultsMergedSchema], platWide_underdeliveringCampaigns: DataFrame): DataFrame = {
     // Compare with discrepancy to ensure it exceeds the average PC pushdown
     pcResultsMergedData.join(broadcast(platWide_underdeliveringCampaigns), "CampaignId")
       .select("CampaignId", "Discrepancy", "BidsFirstPriceAdjustment")//, "IsValuePacing")
@@ -542,78 +542,55 @@ object CampaignAdjustmentsTransform extends Logger {
 
   def mergeBackoffDatasets(campaignAdjustmentsPacingDataset: Dataset[CampaignAdjustmentsPacingSchema],
                            hadesCampaignAdjustmentsDataset: Dataset[CampaignAdjustmentsHadesSchema])
-  : Dataset[CampaignAdjustmentsMergedDataset] = {
+  : Dataset[MergedCampaignAdjustmentsSchema] = {
     campaignAdjustmentsPacingDataset
       .join(broadcast(hadesCampaignAdjustmentsDataset), Seq("CampaignId"), "fullouter")
       .withColumn("MergedPCAdjustment", least(col("CampaignPCAdjustment"), col("HadesBackoff_PCAdjustment")))
-      .selectAs[CampaignAdjustmentsMergedDataset]
+      .selectAs[MergedCampaignAdjustmentsSchema]
   }
 
-  def getLatestCampaignAdjustmentsUpTo(yesterdayDate: LocalDate): Dataset[CampaignAdjustmentsMergedDataset] = {
-    val s3BaseDirectory = CampaignAdjustmentsMergedDataset.S3_PATH(envForWrite)
-    val listEntries = listDirectoryContents(s3BaseDirectory)(spark)
-    val listPaths = listEntries
-      .filter(_.isDirectory)
-      .map(_.getPath.toString)
+  def transform(date: LocalDate, updateAdjustmentsVersion: String, fileCount: Int): Dataset[CampaignAdjustmentsPacingSchema] = {
+    implicit val implicitSpark: SparkSession = spark
 
-    val maxDateOption = getMaxDate(listPaths, yesterdayDate)
-    if (maxDateOption.isDefined) {
-      println(f"Attempting to read CampaignAdjustmentsDataset from date: ${maxDateOption.get}")
-      val data = loadParquetDataDailyV2[CampaignAdjustmentsMergedDataset](
-        s3BaseDirectory,
-        CampaignAdjustmentsMergedDataset.S3_PATH_DATE_GEN,
-        maxDateOption.get,
-        nullIfColAbsent = true
-      )
-      println(f"(${maxDateOption.get})'s CampaignAdjustmentsMergedDataset exists and loaded successfully.")
-      data
-    } else {
-      println("Couldn't find recent CampaignAdjustmentsMergedDataset.")
-      spark.emptyDataset[CampaignAdjustmentsMergedDataset]
+    val campaignUnderdeliveryData = CampaignThrottleMetricDataset
+      .readDate(env = envForRead, date = date, lookBack = 4)
+
+    // If yesterday's PlutusCampaignAdjustmentsData is available, use that else the merged dataset
+    // This is some transitional code. We should remove this once the transition is complete
+    val campaignAdjustmentsPacingData = try {
+      PlutusCampaignAdjustmentsDataset.readLatestDataUpToIncluding(
+        date.minusDays(1),
+        env = envForReadInternal,
+        nullIfColAbsent = true)
+    } catch {
+      case _: S3NoFilesFoundException =>
+        println("Previous day's CampaignAdjustmentsPacingSchema does not exist, so getting data from the merged Dataset.")
+        MergedCampaignAdjustmentsDataset.readLatestDataUpToIncluding(
+            date.minusDays(1),
+            env = envForRead,
+            nullIfColAbsent = true
+          ).filter($"CampaignPCAdjustment".isNotNull)
+          .as[CampaignAdjustmentsPacingSchema]
+      case unknown: Exception =>
+        println(s"Error occurred: ${unknown.getMessage}.")
+        throw unknown
     }
-  }
 
-  def transform(date: LocalDate, testSplit: Option[Double], updateAdjustmentsVersion: String, fileCount: Int, underdeliveryThreshold: Double): Unit = {
+    val campaignFlightData = CampaignFlightDataset
+      .readLatestDataUpToIncluding(date, nullIfColAbsent = true)
 
-    // This dataset contains multiple entries with different dates - 5 day look-back.
-    val campaignUnderdeliveryData = loadParquetDataDailyV2[CampaignThrottleMetricSchema](
-      CampaignThrottleMetricDataset.S3PATH,
-      CampaignThrottleMetricDataset.S3PATH_DATE_GEN,
-      date,
-      4,
-      nullIfColAbsent = false // Setting this to false since nullIfColAbsent sets date to null (its a bug with selectAs)
-    ).withColumn(
-      "Date",
-      to_date(col("Date"))
-    ).selectAs[CampaignThrottleMetricSchema]
+    val platformWideStatsData = PlatformWideStatsDataset
+      .readDate(date, env = envForReadInternal)
 
-    val campaignAdjustmentsMergedData = getLatestCampaignAdjustmentsUpTo(date.minusDays(1))
+    val pcResultsMergedData = PcResultsMergedDataset
+      .readDate(date, env = envForRead, nullIfColAbsent = true)
 
-    val campaignFlightData = loadParquetCampaignFlightLatestPartitionUpTo(
-      CampaignFlightDataset.S3PATH,
-      CampaignFlightDataset.S3PATH_DATE_GEN,
-      date
-    )
-
-    val platformWideStatsData = loadParquetDataDailyV2[PlatformWideStatsSchema](
-      PlatformWideStatsDataset.S3_PATH(envForWrite),
-      PlatformWideStatsDataset.S3_PATH_DATE_GEN,
-      date
-    )
-
-    val pcResultsMergedData = loadParquetDataDailyV2[PcResultsMergedDataset](
-      PcResultsMergedDataset.S3_PATH(Some(envForRead)),
-      PcResultsMergedDataset.S3_PATH_DATE_GEN,
-      date,
-      nullIfColAbsent = true
-    )
-
-    val platformReportData = UnifiedRtbPlatformReportDataSet.readRange(date, date.plusDays(1))
+    val platformReportData = UnifiedRtbPlatformReportDataSet
+      .readRange(date, date.plusDays(1))
       .selectAs[RtbPlatformReportCondensedData]
 
     val countryData = CountryDataSet().readLatestPartitionUpTo(date)
     val adFormatData = AdFormatDataSet().readLatestPartitionUpTo(date)
-
 
     // Get Campaign Backoff PC Adjustments
     val (campaignInfo, underdeliveringCampaigns) = getUnderdelivery(campaignUnderdeliveryData, campaignFlightData, date)
@@ -621,9 +598,10 @@ object CampaignAdjustmentsTransform extends Logger {
     val pc_underdeliveringCampaigns = getUnderdeliveringDueToPlutus(underdeliveringCampaigns, platformReportData, countryData, adFormatData, platformWideStatsData, pcResultsMergedData)
 
     val campaignAdjustmentPacingTestSplit = Some(1.0) // We want all campaigns to be in test since this is not in testing phase
-    val campaignAdjustmentsPacingData = campaignAdjustmentsMergedData.filter($"CampaignPCAdjustment".isNotNull).as[CampaignAdjustmentsPacingSchema]
     val campaignAdjustmentsPacingDataset = updateAdjustments(campaignInfo, date, pc_underdeliveringCampaigns, campaignAdjustmentsPacingData, campaignAdjustmentPacingTestSplit, updateAdjustmentsVersion)
       .persist(StorageLevel.MEMORY_ONLY_2)
+
+    PlutusCampaignAdjustmentsDataset.writeData(date, campaignAdjustmentsPacingDataset, fileCount)
 
     // Counts to monitor Campaign Backoff
     val newCampaignsCount = campaignAdjustmentsPacingDataset.filter(col("AddedDate") === date && col("Pacing") === 0 && col("ImprovedNotPacing") === 0 && col("WorseNotPacing") === 0).count()
@@ -634,53 +612,12 @@ object CampaignAdjustmentsTransform extends Logger {
     val isValuePacingCount = campaignAdjustmentsPacingDataset.filter(col("IsValuePacing") === true && col("AddedDate").isNotNull && col("CampaignPCAdjustment") =!= 1).count()
     val isValuePacingRatioOfAdjustedCampaigns = isValuePacingCount.toDouble / activeAdjustedCampaignsCount.toDouble
 
-    // Get Hades Campaign PC Adjustments
-    val hadesAdjustmentsYesterdaysDataset = campaignAdjustmentsMergedData
-      .filter($"HadesBackoff_PCAdjustment".isNotNull && $"HadesBackoff_PCAdjustment" < 1.0)
-      .as[CampaignAdjustmentsHadesSchema]
-    val (hadesAdjustmentsDataset, hadesMetrics) = HadesCampaignAdjustmentsTransform.transform(date, testSplit, underdeliveryThreshold, hadesAdjustmentsYesterdaysDataset)
-
-    // Merging Campaign Backoff with Hades Backoff
-    val finalMergedAdjustments = mergeBackoffDatasets(campaignAdjustmentsPacingDataset, hadesAdjustmentsDataset)
-      .persist(StorageLevel.MEMORY_ONLY_2)
-
-    val finalCampaignCount = finalMergedAdjustments.count()
-
-    val hadesIsProblemCampaignsCount = finalMergedAdjustments.filter(col("Hades_isProblemCampaign") === true).count()
-    val hadesTotalAdjustmentsCount = finalMergedAdjustments.filter(col("HadesBackoff_PCAdjustment") < 1.0).count()
-
-    // Writing the full dataset used in future jobs
-    val campaignAdjustmentsPacing_outputPath = CampaignAdjustmentsMergedDataset.S3_PATH_DATE(date, envForWrite)
-    finalMergedAdjustments.coalesce(fileCount)
-      .write.mode(SaveMode.Overwrite)
-      .parquet(campaignAdjustmentsPacing_outputPath)
-
-    // Writing just the adjustments to s3; This is imported to provisioning
-    // The provisioning import job expects the final adjustment to be called CampaignPCAdjustment
-    val onlyCampaignAdjustments = finalMergedAdjustments
-      .select("CampaignId", "MergedPCAdjustment")
-      .withColumnRenamed("MergedPCAdjustment", "CampaignPCAdjustment")
-      .filter(col("CampaignPCAdjustment").isNotNull && col("CampaignPCAdjustment") < 1)
-      .selectAs[CampaignAdjustmentsSchema]
-
-    val campaignAdjustments_outputPath = CampaignAdjustmentsDataset.S3_PATH_DATE(date, envForWrite)
-    onlyCampaignAdjustments.coalesce(fileCount)
-      .write.mode(SaveMode.Overwrite)
-      .parquet(campaignAdjustments_outputPath)
-
-    println(s"CampaignAdjustmentsPacingOutputPath: $campaignAdjustmentsPacing_outputPath")
-    println(s"CampaignAdjustmentsOutputPath: $campaignAdjustments_outputPath")
-
-    numRowsWritten.set(finalCampaignCount)
     campaignCounts.labels("NewCampaigns").set(newCampaignsCount)
     campaignCounts.labels("EndedFlightCampaigns").set(endedFlightResetCampaignsCount)
     campaignCounts.labels("WorsePacingCampaigns").set(worsePacingResetCampaignsCount)
     campaignCounts.labels("ActiveAdjustedCampaigns").set(activeAdjustedCampaignsCount)
     campaignCounts.labels("DACampaigns").set(isValuePacingRatioOfAdjustedCampaigns)
-    hadesCampaignCounts.labels("HadesProblemCampaigns").set(hadesIsProblemCampaignsCount)
-    hadesCampaignCounts.labels("HadesAdjustedCampaigns").set(hadesTotalAdjustmentsCount)
-    hadesMetrics.foreach { case (key, count) =>
-      hadesCampaignCounts.labels(key).set(count)
-    }
+
+    campaignAdjustmentsPacingDataset
   }
 }

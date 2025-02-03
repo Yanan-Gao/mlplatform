@@ -35,7 +35,7 @@ object PlutusDataTransform extends Logger {
   val NON_FEATURE_STRINGS: Seq[String] = Seq("BidRequestId", "UIID", "Model", COL_NAME_SUPPLYVENDOR, COL_NAME_CHANNEL)
 
 
-  def EncodeLatLong(df: Dataset[PcResultsMergedDataset]): DataFrame = {
+  def EncodeLatLong(df: Dataset[PcResultsMergedSchema]): DataFrame = {
     //    val R = lit(6371)
     val R = lit(1)
 
@@ -83,12 +83,12 @@ object PlutusDataTransform extends Logger {
 
     val versionedOutputPath = s"$outputPath/v=$dataVersion"
     val datePrefix = explicitDatePart(date)
-    val mergedDataset: Dataset[PcResultsMergedDataset] = loadParquetData[PcResultsMergedDataset](PcResultsMergedDataset.S3_PATH(Some(envForRead)), date, nullIfColAbsent = true)
+    val mergedDataset: Dataset[PcResultsMergedSchema] = loadParquetData[PcResultsMergedSchema](PcResultsMergedDataset.S3_PATH(Some(envForRead)), date, nullIfColAbsent = true)
       .filter(! (col("IsImp") === false && col("BidBelowFloorExceptedSource") =!= 0)) // remove BBF bids (keep the impressions)
       // We only want to use location data from InApp Rendering Context. Rest is not good data.
       .withColumn("Latitude", when(col("RenderingContext") === lit(RenderingContext.InApp), col("Latitude")).otherwise(lit(0.0f)))
       .withColumn("Longitude", when(col("RenderingContext") === lit(RenderingContext.InApp), col("Longitude")).otherwise(lit(0.0f)))
-      .as[PcResultsMergedDataset]
+      .as[PcResultsMergedSchema]
 
     // should just check that the data contains these rather than filtering to this list
     val modelFeatures = loadModelFeatures(featuresJson)
@@ -182,7 +182,7 @@ object PlutusDataTransform extends Logger {
 
 
     val versionedOutputPath = s"$outputPath/v=$dataVersion"
-    val mergedDataset: Dataset[PcResultsMergedDataset] = loadParquetData[PcResultsMergedDataset](PcResultsMergedDataset.S3_PATH(Some(envForRead)), date, nullIfColAbsent = true)
+    val mergedDataset: Dataset[PcResultsMergedSchema] = loadParquetData[PcResultsMergedSchema](PcResultsMergedDataset.S3_PATH(Some(envForRead)), date, nullIfColAbsent = true)
     val datePrefix = explicitDatePart(date)
 
     // should just check that the data contains these rather than filtering to this list
@@ -253,7 +253,7 @@ object PlutusDataTransform extends Logger {
   }
 
 
-  def cleanImplicitData(mergedDataset: Dataset[PcResultsMergedDataset], samplingRate: Option[Double] = None, randomSeed: Int = 123): Dataset[PcResultsMergedDataset] = {
+  def cleanImplicitData(mergedDataset: Dataset[PcResultsMergedSchema], samplingRate: Option[Double] = None, randomSeed: Int = 123): Dataset[PcResultsMergedSchema] = {
     stratification(
       validPlatformCPM(mergedDataset),
       sampleRate = samplingRate.getOrElse(DEFAULT_IMPLICIT_STRATIFICATION),
@@ -261,18 +261,18 @@ object PlutusDataTransform extends Logger {
     ).filter(col("AuctionType").isin(AuctionType.FirstPrice))
   }
 
-  def validPlatformCPM(rawDs: Dataset[PcResultsMergedDataset], maybeMaxBid: Option[Double] = None, maybeMinBid: Option[Double] = None): Dataset[PcResultsMergedDataset] = {
+  def validPlatformCPM(rawDs: Dataset[PcResultsMergedSchema], maybeMaxBid: Option[Double] = None, maybeMinBid: Option[Double] = None): Dataset[PcResultsMergedSchema] = {
     rawDs.filter(
       (col("FinalBidPrice") < maybeMaxBid.getOrElse(DEFAULT_MAX_BID))
         && (col("FinalBidPrice") > maybeMinBid.getOrElse(DEFAULT_MIN_BID))
     )
   }
 
-  def stratification(mergedDataset: Dataset[PcResultsMergedDataset],
+  def stratification(mergedDataset: Dataset[PcResultsMergedSchema],
                      sampleRate: Double,
                      randomSeed: Int = 123,
                      stratificationColumns: Seq[Column] = Seq(col("SupplyVendor"), col("IsImp")),
-                     stratificationColumnName: String = "stratify_col"): Dataset[PcResultsMergedDataset] = {
+                     stratificationColumnName: String = "stratify_col"): Dataset[PcResultsMergedSchema] = {
 
     if (sampleRate == 1.0) {
       mergedDataset
@@ -289,7 +289,7 @@ object PlutusDataTransform extends Logger {
 
       implicitData.stat.sampleBy(
         stratificationColumnName, fractions, randomSeed
-      ).drop(stratificationColumnName).as[PcResultsMergedDataset]
+      ).drop(stratificationColumnName).as[PcResultsMergedSchema]
     }
   }
 }

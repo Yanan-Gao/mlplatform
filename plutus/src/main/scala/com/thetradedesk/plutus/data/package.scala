@@ -17,6 +17,7 @@ import java.time.temporal.TemporalAmount
 import java.time.{LocalDate, LocalDateTime}
 import java.util.UUID
 import java.util.regex.Pattern
+import scala.annotation.nowarn
 import scala.util.Try
 
 package object data {
@@ -209,7 +210,7 @@ package object data {
       .selectAs[T]
   }
 
-
+  @deprecated("Use the Dataset classes instead")
   def loadParquetDataDailyV2[T: Encoder](basePath: String, extGenerator: LocalDate => String, date: LocalDate, lookBack: Int = 0, nullIfColAbsent: Boolean = false): Dataset[T] = {
     val paths = generateDataPathsDaily(basePath, extGenerator, date, lookBack)
     spark.read.parquet(paths: _*)

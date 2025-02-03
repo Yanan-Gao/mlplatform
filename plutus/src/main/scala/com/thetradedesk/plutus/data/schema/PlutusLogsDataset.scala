@@ -1,6 +1,6 @@
 package com.thetradedesk.plutus.data.schema
 
-import com.thetradedesk.plutus.data.utils.localDatetimeToTicks
+import com.thetradedesk.plutus.data.utils.{S3HourlyParquetDataset, localDatetimeToTicks}
 import com.thetradedesk.plutus.data.{envForWrite, paddedDatePart, utils}
 import com.thetradedesk.protologreader.protoformat.PredictiveClearingResults
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -93,7 +93,7 @@ case object PlutusLogsData {
         i.getBidBelowFloorExceptedSource,
         i.getFullPush,
         i.getFloorBufferAdjustment,
-        i.getUseUncappedBidForPushdown, 
+        i.getUseUncappedBidForPushdown,
         i.getUncappedFirstPriceAdjustment,
         i.getLogEntryTime,
         i.getSupplyVendor,
@@ -149,20 +149,28 @@ case class PredictiveClearingStrategy(
                                        Strategy: Int
                                      )
 
-object PlutusLogsDataset {
-  def S3PATH_DATE_GEN = (date: LocalDate) => {
+object PlutusOptoutBidsDataset extends S3HourlyParquetDataset[PlutusLogsData]{
+  override protected def genHourSuffix(datetime: LocalDateTime): String =
+    f"hour=${datetime.getHour}"
+
+  /** Base S3 path, derived from the environment */
+  override protected def genBasePath(env: String): String =
+    f"s3://ttd-identity/datapipeline/${env}/pc_optout_bids/v=1"
+
+  /* DEPRECATED */
+  @deprecated def S3PATH_DATE_GEN = (date: LocalDate) => {
     f"date=${paddedDatePart(date)}"
   }
 
-  def S3PATH_GEN = (dateTime: LocalDateTime) => {
+  @deprecated def S3PATH_GEN = (dateTime: LocalDateTime) => {
     f"date=${paddedDatePart(dateTime.toLocalDate)}/hour=${dateTime.getHour}"
   }
 
-  def S3PATH_BASE = (env: Option[String]) => {
+  @deprecated def S3PATH_BASE = (env: Option[String]) => {
     f"s3://ttd-identity/datapipeline/${env.getOrElse(envForWrite)}/pc_optout_bids/v=1/"
   }
 
-  def S3PATH_FULL_HOUR = (dateTime: LocalDateTime, env: Option[String]) => {
+  @deprecated def S3PATH_FULL_HOUR = (dateTime: LocalDateTime, env: Option[String]) => {
     f"${S3PATH_BASE(env)}${S3PATH_GEN(dateTime)}"
   }
 }

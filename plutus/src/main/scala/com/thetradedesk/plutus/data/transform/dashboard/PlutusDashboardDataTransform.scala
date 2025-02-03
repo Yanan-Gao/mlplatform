@@ -14,7 +14,7 @@ import java.time.LocalDate
 
 object PlutusDashboardDataTransform extends Logger {
 
-  def getMarginAttribution(pcResultsMerged: Dataset[PcResultsMergedDataset],
+  def getMarginAttribution(pcResultsMerged: Dataset[PcResultsMergedSchema],
                            supplyVendorData: Dataset[SupplyVendorRecord]
                           ): DataFrame = {
 
@@ -227,7 +227,7 @@ object PlutusDashboardDataTransform extends Logger {
 
   def transform(date: LocalDate, fileCount: Int): Unit = {
 
-    val pcResultsMergedData = loadParquetDataDailyV2[PcResultsMergedDataset](
+    val pcResultsMergedData = loadParquetDataDailyV2[PcResultsMergedSchema](
       PcResultsMergedDataset.S3_PATH(Some(envForRead)),
       PcResultsMergedDataset.S3_PATH_DATE_GEN,
       date,

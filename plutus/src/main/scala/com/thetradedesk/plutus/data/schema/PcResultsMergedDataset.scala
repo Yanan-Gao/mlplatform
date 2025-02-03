@@ -1,11 +1,12 @@
 package com.thetradedesk.plutus.data.schema
 
+import com.thetradedesk.plutus.data.utils.S3HourlyParquetDataset
 import com.thetradedesk.plutus.data.{paddedDatePart, paddedDateTimePart}
 import com.thetradedesk.spark.datasets.core.S3Roots
 
 import java.time.{LocalDate, LocalDateTime}
 
-case class PcResultsMergedDataset(
+case class PcResultsMergedSchema(
                                    // bidrequest cols
                                    BidRequestId: String,
                                    DealId: String,
@@ -169,19 +170,31 @@ case class PcResultsMergedDataset(
                                    // PlutusTfModel: Option[String],
                                  )
 
-object PcResultsMergedDataset {
-  val DEFAULT_TTD_ENV = "prod"
+object PcResultsMergedDataset extends S3HourlyParquetDataset[PcResultsMergedSchema]  {
   val DATA_VERSION = 3
 
-  val S3_PATH: Option[String] => String = (ttdEnv: Option[String]) => f"${S3Roots.IDENTITY_ROOT}/${ttdEnv.getOrElse(DEFAULT_TTD_ENV)}/pcresultsgeronimo/v=${DATA_VERSION}"
+  override protected def genHourSuffix(datetime: LocalDateTime): String =
+    f"hour=${datetime.getHour}"
 
-  val S3_PATH_HOUR: (LocalDateTime, Option[String]) => String = (dateTime: LocalDateTime, ttdEnv: Option[String]) => f"${S3_PATH(ttdEnv)}/${paddedDateTimePart(dateTime)}"
-  val S3_PATH_DATE: (LocalDate, Option[String]) => String = (date: LocalDate, ttdEnv: Option[String]) => f"${S3_PATH(ttdEnv)}/date=${paddedDatePart(date)}"
+  /** Base S3 path, derived from the environment */
+  override protected def genBasePath(env: String): String =
+    f"${S3Roots.IDENTITY_ROOT}/${env}/pcresultsgeronimo/v=${DATA_VERSION}"
 
-  def S3_PATH_DATE_GEN = (date: LocalDate) => {
+  /** DEPRECATED */
+  @deprecated val DEFAULT_TTD_ENV = "prod"
+
+  @deprecated val S3_PATH: Option[String] => String = (ttdEnv: Option[String]) => f"${S3Roots.IDENTITY_ROOT}/${ttdEnv.getOrElse(DEFAULT_TTD_ENV)}/pcresultsgeronimo/v=${DATA_VERSION}"
+
+  @deprecated val S3_PATH_HOUR: (LocalDateTime, Option[String]) => String = (dateTime: LocalDateTime, ttdEnv: Option[String]) => f"${S3_PATH(ttdEnv)}/${paddedDateTimePart(dateTime)}"
+  @deprecated val S3_PATH_DATE: (LocalDate, Option[String]) => String = (date: LocalDate, ttdEnv: Option[String]) => f"${S3_PATH(ttdEnv)}/date=${paddedDatePart(date)}"
+
+  @deprecated def S3_PATH_DATE_GEN = (date: LocalDate) => {
     f"/date=${paddedDatePart(date)}"
   }
-  def S3_PATH_HOUR_GEN = (dateTime: LocalDateTime) => {
+
+  @deprecated def S3_PATH_HOUR_GEN = (dateTime: LocalDateTime) => {
     f"/date=${paddedDatePart(dateTime.toLocalDate)}/hour=${dateTime.getHour}%02d"
   }
+
+
 }

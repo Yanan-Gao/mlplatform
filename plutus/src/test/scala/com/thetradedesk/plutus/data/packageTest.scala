@@ -1,7 +1,5 @@
 package com.thetradedesk.plutus.data
-import com.thetradedesk.plutus.data.schema.{PlutusLogsDataset, RawLostBidDataset}
-import org.apache.spark.unsafe.types.UTF8String
-import org.scalatest._
+import com.thetradedesk.plutus.data.schema.{PlutusOptoutBidsDataset, RawLostBidDataset}
 import org.scalatest.flatspec.AnyFlatSpec
 import org.scalatest.matchers.should.Matchers._
 
@@ -118,7 +116,7 @@ class packageTest extends AnyFlatSpec {
     val expected = Seq("s3_path/date=20210101/hour=1", "s3_path/date=20210101/hour=0", "s3_path/date=20201231/hour=23", "s3_path/date=20201231/hour=22")
     val result = generateDataPathsHourly(
       "s3_path/",
-      PlutusLogsDataset.S3PATH_GEN,
+      PlutusOptoutBidsDataset.S3PATH_GEN,
       dateTime=LocalDateTime.of(2021, 1, 1, 1, 30),
       lookBack = Some(3)
     )

@@ -1,16 +1,18 @@
 package com.thetradedesk.plutus.data.transform.campaignbackoff
 
-import com.thetradedesk.plutus.data.schema.campaignbackoff.CampaignFlightDataset.loadParquetCampaignFlightLatestPartitionUpTo
-import com.thetradedesk.plutus.data.{AuctionType, envForRead, loadParquetDataDailyV2}
-import com.thetradedesk.plutus.data.schema.{PcResultsMergedDataset, PlutusLogsData, PlutusLogsDataset}
-import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsHadesSchema, CampaignFlightDataset, CampaignThrottleMetricDataset, CampaignThrottleMetricSchema}
-import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
+import com.thetradedesk.plutus.data.schema.campaignbackoff._
+import com.thetradedesk.plutus.data.schema.{PcResultsMergedDataset, PcResultsMergedSchema, PlutusLogsData, PlutusOptoutBidsDataset}
+import com.thetradedesk.plutus.data.utils.S3NoFilesFoundException
+import com.thetradedesk.plutus.data.{AuctionType, envForRead, envForReadInternal}
+import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.{AdGroupDataSet, AdGroupRecord, CampaignDataSet}
+import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
+import job.campaignbackoff.CampaignAdjustmentsJob.hadesCampaignCounts
 import org.apache.hadoop.shaded.org.apache.commons.math3.special.Erf
-import org.apache.spark.sql.{DataFrame, Dataset, Row}
-import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
+import org.apache.spark.storage.StorageLevel
 
 import java.time.LocalDate
 import scala.util.hashing.MurmurHash3
@@ -70,7 +72,8 @@ object HadesCampaignAdjustmentsTransform {
     val gss = udf((m: Double, s: Double, b: Double, e: Double) => gssFunc(m, s, b, e))
 
     bidData
-      .filter(col("FloorPrice") < col("InitialBid")) // Exclude rare cases with initial bids below the floor to avoid skewing the median
+      // Exclude rare cases with initial bids below the floor to avoid skewing the median (this includes BBF Gauntlet bids)
+      .filter(col("FloorPrice") < col("InitialBid"))
       .join(broadcast(filteredCampaigns), Seq("CampaignId"), "inner")
       .withColumn("Market", // Define Market only using AuctionType and if has DealId
         when(col("DealId").isNotNull,
@@ -82,6 +85,8 @@ object HadesCampaignAdjustmentsTransform {
       .withColumn("gen_gss_pushdown", when(col("AuctionType") =!= AuctionType.FixedPrice, $"GSS").otherwise(gss(col("Mu"), col("Sigma"), col("InitialBid"), lit(0.1)) / col("InitialBid")))
       .withColumn("gen_effectiveDiscrepancy", least(lit(1), lit(1) / col("gen_discrepancy")))
       .withColumn("gen_excess", col("gen_effectiveDiscrepancy") - col("gen_gss_pushdown"))
+
+      // Exclude cases where we just apply the minimum pushdown (discrepancy)
       .filter(col("gen_excess") > 0)
       .withColumn("gen_bufferFloor", (col("FloorPrice") * lit(1 - buffer)))
       .withColumn("gen_plutusPushdownAtBufferFloor", col("gen_bufferFloor") / col("InitialBid"))
@@ -263,7 +268,7 @@ object HadesCampaignAdjustmentsTransform {
       .as[CampaignAdjustmentsHadesSchema]
   }
 
-  def getAllBidData(pcOptoutData: Dataset[PlutusLogsData], adGroupData: Dataset[AdGroupRecord], pcResultsMergedData: Dataset[PcResultsMergedDataset]): DataFrame = {
+  def getAllBidData(pcOptoutData: Dataset[PlutusLogsData], adGroupData: Dataset[AdGroupRecord], pcResultsMergedData: Dataset[PcResultsMergedSchema]): DataFrame = {
 
     val adGroupDistinctData = adGroupData.select("AdGroupId", "CampaignId").distinct()
 
@@ -284,43 +289,46 @@ object HadesCampaignAdjustmentsTransform {
   def transform(date: LocalDate,
                 testSplit: Option[Double],
                 underdeliveryThreshold: Double,
-                yesterdaysData: Dataset[CampaignAdjustmentsHadesSchema]
-               ): (Dataset[CampaignAdjustmentsHadesSchema], Array[(String, Long)]) = {
+                fileCount: Int
+               ): Dataset[CampaignAdjustmentsHadesSchema] = {
+    implicit val implicitSpark: SparkSession = spark
 
-    val campaignUnderdeliveryData = loadParquetDataDailyV2[CampaignThrottleMetricSchema](
-      CampaignThrottleMetricDataset.S3PATH,
-      CampaignThrottleMetricDataset.S3PATH_DATE_GEN,
-      date,
-      nullIfColAbsent = false // Setting this to false since nullIfColAbsent sets date to null (its a bug with selectAs)
-    ).withColumn(
-      "Date",
-      to_date(col("Date"))
-    ).selectAs[CampaignThrottleMetricSchema]
+    // If yesterday's CampaignAdjustmentsHadesSchema is available, use that else the merged dataset
+    // This is some transitional code. We should remove this once the transition is complete
+    val yesterdaysData = try {
+      HadesCampaignAdjustmentsDataset.readLatestDataUpToIncluding(
+        date.minusDays(1),
+        env = envForReadInternal,
+        nullIfColAbsent = true)
+        .filter($"HadesBackoff_PCAdjustment".isNotNull && $"HadesBackoff_PCAdjustment" < 1.0)
+        .as[CampaignAdjustmentsHadesSchema]
+    } catch {
+      case _: S3NoFilesFoundException =>
+        println("Previous day's CampaignAdjustmentsHadesSchema does not exist, so getting data from the merged Dataset.")
+        MergedCampaignAdjustmentsDataset.readLatestDataUpToIncluding(
+            date.minusDays(1),
+            env = envForRead,
+            nullIfColAbsent = true
+          ).filter($"HadesBackoff_PCAdjustment".isNotNull && $"HadesBackoff_PCAdjustment" < 1.0)
+          .as[CampaignAdjustmentsHadesSchema]
+      case unknown: Exception =>
+        println(s"Error occurred: ${unknown.getMessage}.")
+        throw unknown
+    }
 
-    val pcResultsMergedData = loadParquetDataDailyV2[PcResultsMergedDataset](
-      PcResultsMergedDataset.S3_PATH(Some(envForRead)),
-      PcResultsMergedDataset.S3_PATH_DATE_GEN,
-      date,
-      nullIfColAbsent = true
-    )
+    val campaignUnderdeliveryData = CampaignThrottleMetricDataset.readDate(env = envForRead, date = date)
 
-    val pcOptoutData = loadParquetDataDailyV2[PlutusLogsData](
-      PlutusLogsDataset.S3PATH_BASE(Some(envForRead)),
-      PlutusLogsDataset.S3PATH_DATE_GEN,
-      date,
-      nullIfColAbsent = true
-    )
+    val pcResultsMergedData = PcResultsMergedDataset.readDate(env = envForRead, date = date, nullIfColAbsent = true)
+
+    val pcOptoutData = PlutusOptoutBidsDataset.readDate(env = envForRead, date = date, nullIfColAbsent = true)
 
     // day 1's campaign data is exported at the end of day 0
     val nonArchivedCampaigns = CampaignDataSet().readLatestPartitionUpTo(date.plusDays(1))
       .filter($"IsVisible")
       .select("CampaignId").distinct()
 
-    val liveCampaigns = loadParquetCampaignFlightLatestPartitionUpTo(
-      CampaignFlightDataset.S3PATH,
-      CampaignFlightDataset.S3PATH_DATE_GEN,
-      date.plusDays(1)
-    ).filter($"IsCurrent" === 1 && $"StartDateInclusiveUTC" <= date && $"EndDateExclusiveUTC" >= date)
+    val liveCampaigns = CampaignFlightDataset.readLatestDataUpToIncluding(date.plusDays(1))
+      .filter($"IsCurrent" === 1 && $"StartDateInclusiveUTC" <= date && $"EndDateExclusiveUTC" >= date)
       .join(nonArchivedCampaigns, Seq("CampaignId"), "inner")
       .selectAs[Campaign].distinct()
 
@@ -349,6 +357,19 @@ object HadesCampaignAdjustmentsTransform {
     // Get final pushdowns
     val (res, metrics) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData)
 
-    (res, metrics)
+    val hadesAdjustmentsDataset = res.persist(StorageLevel.MEMORY_ONLY_2)
+
+    HadesCampaignAdjustmentsDataset.writeData(date, hadesAdjustmentsDataset, fileCount)
+
+    val hadesIsProblemCampaignsCount = hadesAdjustmentsDataset.filter(col("Hades_isProblemCampaign") === true).count()
+    val hadesTotalAdjustmentsCount = hadesAdjustmentsDataset.filter(col("HadesBackoff_PCAdjustment") < 1.0).count()
+
+    hadesCampaignCounts.labels("HadesProblemCampaigns").set(hadesIsProblemCampaignsCount)
+    hadesCampaignCounts.labels("HadesAdjustedCampaigns").set(hadesTotalAdjustmentsCount)
+    metrics.foreach { case (key, count) =>
+      hadesCampaignCounts.labels(key).set(count)
+    }
+
+    hadesAdjustmentsDataset
   }
 }
