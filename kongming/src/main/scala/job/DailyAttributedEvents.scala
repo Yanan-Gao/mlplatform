@@ -76,10 +76,10 @@ object DailyAttributedEvents extends KongmingBaseJob {
         val invalidCurrency = Seq("Currency", "{Currency}", "{¥}")
         val dailyAttrEvents = dailyAttr.filter($"AttributedEventTypeId" === lit("2")).join(dailyBF, Seq("AttributedEventId", "AdGroupId", "CampaignId", "AdvertiserId"), "inner")
           .union(dailyAttr.filter($"AttributedEventTypeId" === lit("1")).join(dailyClick, Seq("AttributedEventId", "AdGroupId", "CampaignId", "AdvertiserId"), "inner"))
-          .select("AdGroupId", "CampaignId", "AdvertiserId", "BidRequestId", "ConversionTrackerLogEntryTime", "AttributedEventLogEntryTime", "MonetaryValue", "MonetaryValueCurrency", "CustomCPACount", "CustomRevenue")
+          .select("AdGroupId", "CampaignId", "AdvertiserId", "TDID", "BidRequestId", "ConversionTrackerLogEntryTime", "AttributedEventLogEntryTime", "MonetaryValue", "MonetaryValueCurrency", "CustomCPACount", "CustomRevenue")
           .withColumn("MonetaryValueCurrency", when($"MonetaryValueCurrency".isin(invalidCurrency: _*), null).otherwise($"MonetaryValueCurrency"))
           .withColumn("ConversionTrackerLogEntryTime", date_trunc(RoundUpTimeUnit, $"ConversionTrackerLogEntryTime"))
-          .groupBy("AdGroupId", "CampaignId", "AdvertiserId", "BidRequestId", "AttributedEventLogEntryTime", "ConversionTrackerLogEntryTime")
+          .groupBy("AdGroupId", "CampaignId", "AdvertiserId", "BidRequestId", "AttributedEventLogEntryTime", "ConversionTrackerLogEntryTime", "TDID")
           .agg(
             sum("MonetaryValue").alias("MonetaryValue"),
             max("MonetaryValueCurrency").alias("MonetaryValueCurrency"),
