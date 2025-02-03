@@ -32,7 +32,7 @@ object PcResultsGeronimoTransform extends Logger {
                                adFormatData: Dataset[AdFormatRecord],
                                productionAdgroupBudgetData: Dataset[ProductionAdgroupBudgetData],
                                joinCols: Seq[String] = Seq("BidRequestId")
-                              ): (Dataset[PcResultsMergedDataset], Dataset[PlutusLogsData], sql.DataFrame) = {
+                              ): (Dataset[PcResultsMergedSchema], Dataset[PlutusLogsData], sql.DataFrame) = {
 
     var res = geronimo.join(plutusLogs.drop(excludeFromPlutusLogsData: _*), joinCols, "left")
       .join(mbtw, joinCols, "left")
@@ -133,7 +133,7 @@ object PcResultsGeronimoTransform extends Logger {
       .as[PlutusLogsData]
     val mbtwAbsentDataset = mbtw.join(geronimo, joinCols, "leftanti")
 
-    (res.selectAs[PcResultsMergedDataset], pcResultsAbsentDataset, mbtwAbsentDataset)
+    (res.selectAs[PcResultsMergedSchema], pcResultsAbsentDataset, mbtwAbsentDataset)
   }
 
 
@@ -192,7 +192,7 @@ object PcResultsGeronimoTransform extends Logger {
 
     pcResultsAbsentDataset.coalesce(fileCount)
       .write.mode(SaveMode.Overwrite)
-      .parquet(PlutusLogsDataset.S3PATH_FULL_HOUR(dateTime, ttdEnv))
+      .parquet(PlutusOptoutBidsDataset.S3PATH_FULL_HOUR(dateTime, ttdEnv))
 
     numRowsAbsent.labels("pcResultsLog").set(optoutDataListener.rowsWritten)
     numRowsAbsent.labels("mbtw").set(mbtwAbsentCount)

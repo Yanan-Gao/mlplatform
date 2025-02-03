@@ -1,6 +1,7 @@
 package com.thetradedesk.plutus.data.schema.campaignbackoff
 
 import com.thetradedesk.plutus.data.paddedDatePart
+import com.thetradedesk.plutus.data.utils.S3DailyParquetDataset
 
 import java.time.LocalDate
 
@@ -17,15 +18,9 @@ case class PlatformWideStatsSchema(
                                   Med_FirstPriceAdjustment: BigDecimal
                                    )
 
-object PlatformWideStatsDataset {
+object PlatformWideStatsDataset extends S3DailyParquetDataset[PlatformWideStatsSchema]{
   val DATA_VERSION = 1
 
-  val S3_PATH: String => String = (ttdEnv: String) => f"s3://thetradedesk-mlplatform-us-east-1/env=${ttdEnv}/data/plutusbackoff/platformwidestats/v=${DATA_VERSION}"
-  // use for write
-  val S3_PATH_DATE: (LocalDate, String) => String = (date: LocalDate, ttdEnv: String) => f"${S3_PATH(ttdEnv)}/date=${paddedDatePart(date)}"
-
-  // use for read
-  def S3_PATH_DATE_GEN = (date: LocalDate) => {
-    f"/date=${paddedDatePart(date)}"
-  }
+  /** Base S3 path, derived from the environment */
+  override protected def genBasePath(env: String): String = f"s3://thetradedesk-mlplatform-us-east-1/env=${env}/data/plutusbackoff/platformwidestats/v=${DATA_VERSION}"
 }

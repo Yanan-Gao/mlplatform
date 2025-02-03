@@ -82,9 +82,6 @@ object PlatformWideStatsTransform extends Logger {
 
     val platformwide_agg = getPlatformWideRegionChannelStats(platformReportData, countryData, adFormatData)
 
-    val outputPath = PlatformWideStatsDataset.S3_PATH_DATE(date, envForWrite)
-    platformwide_agg.coalesce(fileCount)
-      .write.mode(SaveMode.Overwrite)
-      .parquet(outputPath)
+    PlatformWideStatsDataset.writeData(date, platformwide_agg, fileCount)
   }
 }

@@ -22,7 +22,7 @@ object CampaignDAPlutusDashboardDataTransform extends Logger {
 
   val numPartitions = 200
 
-  def getCampaignDAPlutusMetrics(pcResultsMerged: Dataset[PcResultsMergedDataset],
+  def getCampaignDAPlutusMetrics(pcResultsMerged: Dataset[PcResultsMergedSchema],
                                  adGroupData: Dataset[AdGroupRecord]
                                 ): Dataset[CampaignDAPlutusDashboardSchema] = {
 
@@ -98,7 +98,7 @@ object CampaignDAPlutusDashboardDataTransform extends Logger {
 
   def transform(date: LocalDate, fileCount: Int): Unit = {
 
-    val pcResultsMergedData = loadParquetDataDailyV2[PcResultsMergedDataset](
+    val pcResultsMergedData = loadParquetDataDailyV2[PcResultsMergedSchema](
       PcResultsMergedDataset.S3_PATH(Some(envForRead)),
       PcResultsMergedDataset.S3_PATH_DATE_GEN,
       date,

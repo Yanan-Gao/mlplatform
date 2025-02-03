@@ -1,12 +1,12 @@
 package com.thetradedesk.plutus.data.mockdata
 
-import MockData.{platformReportMock, _}
+import MockData._
 import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsHadesSchema, CampaignAdjustmentsPacingSchema, CampaignFlightRecord, CampaignThrottleMetricSchema, RtbPlatformReportCondensedData}
 import com.thetradedesk.spark.datasets.sources.CountryRecord
 import org.apache.spark.sql.Dataset
 
 import java.sql.Timestamp
-import java.time.{LocalDateTime}
+import java.time.LocalDateTime
 
 object DataGenerator {
 

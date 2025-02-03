@@ -2,7 +2,7 @@ package com.thetradedesk.plutus.data.plutus.transform.dashboard
 
 import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.plutus.data.mockdata.MockData.{adGroupMock, pcResultsMergedMock}
-import com.thetradedesk.plutus.data.schema.PcResultsMergedDataset
+import com.thetradedesk.plutus.data.schema.PcResultsMergedSchema
 import com.thetradedesk.plutus.data.transform.dashboard.CampaignDAPlutusDashboardDataTransform.getCampaignDAPlutusMetrics
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.AdGroupRecord
@@ -11,7 +11,7 @@ class CampaignDAPlutusDashboardTransformTest extends TTDSparkTest {
 
   test("Campaign DA Plutus Dashboard data transform test for schema/column correctness") {
 
-    val pcResultsMergedData = Seq(pcResultsMergedMock()).toDS().as[PcResultsMergedDataset]
+    val pcResultsMergedData = Seq(pcResultsMergedMock()).toDS().as[PcResultsMergedSchema]
     val adGroupData = Seq(adGroupMock.copy()).toDS().as[AdGroupRecord]
 
     val agg_daplutusmetrics = getCampaignDAPlutusMetrics(pcResultsMergedData, adGroupData)
@@ -37,7 +37,7 @@ class CampaignDAPlutusDashboardTransformTest extends TTDSparkTest {
 
   test("Campaign DA Plutus Dashboard data transform test 2 for schema/column correctness") {
 
-    val pcResultsMergedData = Seq(pcResultsMergedMock(fpa = null, pcMode = 0, model = "noPcApplied")).toDS().as[PcResultsMergedDataset]
+    val pcResultsMergedData = Seq(pcResultsMergedMock(fpa = null, pcMode = 0, model = "noPcApplied")).toDS().as[PcResultsMergedSchema]
     val adGroupData = Seq(adGroupMock.copy()).toDS().as[AdGroupRecord]
 
     val agg_daplutusmetrics = getCampaignDAPlutusMetrics(pcResultsMergedData, adGroupData)

@@ -3,9 +3,9 @@ package com.thetradedesk.plutus.data.plutus.transform.campaignbackoff
 import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.plutus.data.mockdata.DataGenerator
 import com.thetradedesk.plutus.data.mockdata.MockData._
-import com.thetradedesk.plutus.data.schema.{PcResultsMergedDataset, PlutusLogsData}
+import com.thetradedesk.plutus.data.schema.{PcResultsMergedSchema, PlutusLogsData}
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
-import com.thetradedesk.plutus.data.transform.campaignbackoff.CampaignAdjustmentsTransform.mergeBackoffDatasets
+import com.thetradedesk.plutus.data.transform.campaignbackoff.PlutusCampaignAdjustmentsTransform.mergeBackoffDatasets
 import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.AdGroupRecord
@@ -34,7 +34,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
     val pcResultsMergedData = Seq(
       pcResultsMergedMock(campaignId = Some(campaignId), dealId = "0000", adjustedBidCPMInUSD = 6.8800, discrepancy = 1.1, floorPrice = 1, mu = -0.3071f, sigma =  0.6923f, auctionType = 3)
-    ).toDS().as[PcResultsMergedDataset]
+    ).toDS().as[PcResultsMergedSchema]
 
     val bidData = getAllBidData(spark.emptyDataset[PlutusLogsData], spark.emptyDataset[AdGroupRecord], pcResultsMergedData)
 
@@ -74,7 +74,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
   test("Hades Backoff transform test for schema/column correctness") {
     val campaignId = "abcd"
-    val pcResultsMergedData = Seq(pcResultsMergedMock(campaignId = Some(campaignId), dealId = "0000", adjustedBidCPMInUSD = 25.01, discrepancy = 1.1, floorPrice = 25, mu = -4.1280107498168945f, sigma = 1.0384914875030518f)).toDS().as[PcResultsMergedDataset]
+    val pcResultsMergedData = Seq(pcResultsMergedMock(campaignId = Some(campaignId), dealId = "0000", adjustedBidCPMInUSD = 25.01, discrepancy = 1.1, floorPrice = 25, mu = -4.1280107498168945f, sigma = 1.0384914875030518f)).toDS().as[PcResultsMergedSchema]
 
     val plutusLogsData = Seq(pcResultsLogMock("abcd")).toDS().as[PlutusLogsData]
     val adgroupData = Seq(adGroupMock).toDS()
@@ -205,7 +205,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
   }
 
   test("Testing splitting merged dataset") {
-    val campaignAdjustmentsMergedData = spark.emptyDataset[CampaignAdjustmentsMergedDataset]
+    val campaignAdjustmentsMergedData = spark.emptyDataset[MergedCampaignAdjustmentsSchema]
     campaignAdjustmentsMergedData.filter($"CampaignPCAdjustment".isNotNull).selectAs[CampaignAdjustmentsPacingSchema].collect()
     campaignAdjustmentsMergedData
       .filter($"HadesBackoff_PCAdjustment".isNotNull && $"HadesBackoff_PCAdjustment" < 1.0)

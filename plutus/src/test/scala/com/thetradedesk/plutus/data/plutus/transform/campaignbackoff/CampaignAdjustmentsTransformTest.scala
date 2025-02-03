@@ -3,9 +3,9 @@ package com.thetradedesk.plutus.data.plutus.transform.campaignbackoff
 import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.plutus.data.mockdata.DataGenerator
 import com.thetradedesk.plutus.data.mockdata.MockData.{adFormatMock, pcResultsMergedMock, platformWideStatsMock}
-import com.thetradedesk.plutus.data.schema.PcResultsMergedDataset
+import com.thetradedesk.plutus.data.schema.PcResultsMergedSchema
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
-import com.thetradedesk.plutus.data.transform.campaignbackoff.CampaignAdjustmentsTransform._
+import com.thetradedesk.plutus.data.transform.campaignbackoff.PlutusCampaignAdjustmentsTransform._
 import com.thetradedesk.plutus.data.generateDataPathsDaily
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.AdFormatRecord
@@ -59,17 +59,17 @@ class CampaignAdjustmentsTransformTest extends TTDSparkTest {
     val platformWideStatsData = Seq(platformWideStatsMock.copy()).toDS().as[PlatformWideStatsSchema]
 
     // use for pc and discrepancy comparison --> create separate pcresultsmerged data for all 5 new campaigns that are underdelivering
-    val pcResultsMergedData1 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign1"))).toDS().as[PcResultsMergedDataset]
-    val pcResultsMergedData2 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign2"))).toDS().as[PcResultsMergedDataset]
-    val pcResultsMergedData3 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign3"))).toDS().as[PcResultsMergedDataset]
-    val pcResultsMergedData4 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign4"))).toDS().as[PcResultsMergedDataset]
-    val pcResultsMergedData5 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign5"))).toDS().as[PcResultsMergedDataset]
-    val pcResultsMergedData6 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign6"))).toDS().as[PcResultsMergedDataset]
-    val pcResultsMergedDataold1 = Seq(pcResultsMergedMock(campaignId = Some("campaign4"))).toDS().as[PcResultsMergedDataset]
-    val pcResultsMergedDataold2 = Seq(pcResultsMergedMock(campaignId = Some("campaign2"))).toDS().as[PcResultsMergedDataset]
-    val pcResultsMergedDataold3 = Seq(pcResultsMergedMock(campaignId = Some("campaign5"))).toDS().as[PcResultsMergedDataset]
-    val pcResultsMergedDataold4 = Seq(pcResultsMergedMock(campaignId = Some("ccampaign4"))).toDS().as[PcResultsMergedDataset]
-    val pcResultsMergedDataold5 = Seq(pcResultsMergedMock(campaignId = Some("ccampaign5"))).toDS().as[PcResultsMergedDataset]
+    val pcResultsMergedData1 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign1"))).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedData2 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign2"))).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedData3 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign3"))).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedData4 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign4"))).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedData5 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign5"))).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedData6 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign6"))).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedDataold1 = Seq(pcResultsMergedMock(campaignId = Some("campaign4"))).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedDataold2 = Seq(pcResultsMergedMock(campaignId = Some("campaign2"))).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedDataold3 = Seq(pcResultsMergedMock(campaignId = Some("campaign5"))).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedDataold4 = Seq(pcResultsMergedMock(campaignId = Some("ccampaign4"))).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedDataold5 = Seq(pcResultsMergedMock(campaignId = Some("ccampaign5"))).toDS().as[PcResultsMergedSchema]
     val pcResultsMergedData = pcResultsMergedData1
       .union(pcResultsMergedData2)
       .union(pcResultsMergedData3)
@@ -217,11 +217,11 @@ class CampaignAdjustmentsTransformTest extends TTDSparkTest {
     val platformWideStatsData = Seq(platformWideStatsMock.copy()).toDS().as[PlatformWideStatsSchema]
 
     // use for pc and discrepancy comparison --> create separate pcresultsmerged data for all 5 new campaigns that are underdelivering
-    val pcResultsMergedData1 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign1"))).toDS().as[PcResultsMergedDataset]
-    val pcResultsMergedData2 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign2"))).toDS().as[PcResultsMergedDataset]
-    val pcResultsMergedData3 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign3"))).toDS().as[PcResultsMergedDataset]
-    val pcResultsMergedData4 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign4"))).toDS().as[PcResultsMergedDataset]
-    val pcResultsMergedData5 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign5"))).toDS().as[PcResultsMergedDataset]
+    val pcResultsMergedData1 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign1"))).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedData2 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign2"))).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedData3 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign3"))).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedData4 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign4"))).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedData5 = Seq(pcResultsMergedMock(campaignId = Some("newcampaign5"))).toDS().as[PcResultsMergedSchema]
     val pcResultsMergedData = pcResultsMergedData1
       .union(pcResultsMergedData2)
       .union(pcResultsMergedData3)

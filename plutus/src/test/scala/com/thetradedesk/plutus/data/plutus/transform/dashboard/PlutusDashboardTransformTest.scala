@@ -2,7 +2,7 @@ package com.thetradedesk.plutus.data.plutus.transform.dashboard
 
 import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.plutus.data.mockdata.MockData._
-import com.thetradedesk.plutus.data.schema.PcResultsMergedDataset
+import com.thetradedesk.plutus.data.schema.PcResultsMergedSchema
 import com.thetradedesk.plutus.data.transform.dashboard.PlutusDashboardDataTransform.{getAggMetrics, getMarginAttribution}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.SupplyVendorRecord
@@ -11,7 +11,7 @@ class PlutusDashboardTransformTest extends TTDSparkTest {
 
   test("Plutus Dashboard data transform test 1 for schema/column correctness - ex with winning imp, open path adjustment, PC pushing down without hitting floor") {
 
-    val pcResultsMergedData = Seq(pcResultsMergedMock(supplyVendor = Some("cafemedia"), feeAmount = Some(0.000012), strategy = 30, mu = -0.9295179843902588f, sigma = 0.9264574646949768f)).toDS().as[PcResultsMergedDataset]
+    val pcResultsMergedData = Seq(pcResultsMergedMock(supplyVendor = Some("cafemedia"), feeAmount = Some(0.000012), strategy = 30, mu = -0.9295179843902588f, sigma = 0.9264574646949768f)).toDS().as[PcResultsMergedSchema]
     val supplyVendorData = Seq(supplyVendorMock(supplyVendorName = "cafemedia", openPathEnabled = true)).toDS().as[SupplyVendorRecord]
 
     // Calculations behind Margin Attribution
@@ -60,7 +60,7 @@ class PlutusDashboardTransformTest extends TTDSparkTest {
 
   test("Plutus Dashboard data transform test 2 for schema/column correctness - ex with losing bid, campaign pc adjustment, Strategy < 100, PC pushing down without hitting floor") {
 
-    val pcResultsMergedData = Seq(pcResultsMergedMock(channel = "Display", isImp = false, feeAmount = Some(0.000012), finalBidPrice = 17, strategy = 75)).toDS().as[PcResultsMergedDataset]
+    val pcResultsMergedData = Seq(pcResultsMergedMock(channel = "Display", isImp = false, feeAmount = Some(0.000012), finalBidPrice = 17, strategy = 75)).toDS().as[PcResultsMergedSchema]
     val supplyVendorData = Seq(supplyVendorMock(supplyVendorName = "casale")).toDS().as[SupplyVendorRecord]
 
     // Calculations behind Margin Attribution
@@ -85,7 +85,7 @@ class PlutusDashboardTransformTest extends TTDSparkTest {
 
   test("Plutus Dashboard data transform test 3 for schema/column correctness - ex with winning imp, pressure reducer adjustment (remaining at 100%), BBAO<1, PC pushing down below floor") {
 
-    val pcResultsMergedData = Seq(pcResultsMergedMock(channel = "Display", feeAmount = Some(0.000012), baseBidAutoOpt = 0.9, finalBidPrice = 30.0, floorPrice = 30.0, strategy = 100)).toDS().as[PcResultsMergedDataset]
+    val pcResultsMergedData = Seq(pcResultsMergedMock(channel = "Display", feeAmount = Some(0.000012), baseBidAutoOpt = 0.9, finalBidPrice = 30.0, floorPrice = 30.0, strategy = 100)).toDS().as[PcResultsMergedSchema]
     val supplyVendorData = Seq(supplyVendorMock()).toDS().as[SupplyVendorRecord]
 
 
@@ -120,7 +120,7 @@ class PlutusDashboardTransformTest extends TTDSparkTest {
 
   test("Plutus Dashboard data transform test 4 for schema/column correctness - ex with lost bid, pressure reducer adjustment, DealId=null, Floor=0, Mu=0") {
 
-    val pcResultsMergedData = Seq(pcResultsMergedMock(dealId = null, pcMode = 0, isImp = false, feeAmount = None, floorPrice = 0, mu = 0.0f)).toDS().as[PcResultsMergedDataset]
+    val pcResultsMergedData = Seq(pcResultsMergedMock(dealId = null, pcMode = 0, isImp = false, feeAmount = None, floorPrice = 0, mu = 0.0f)).toDS().as[PcResultsMergedSchema]
     val supplyVendorData = Seq(supplyVendorMock()).toDS().as[SupplyVendorRecord]
 
 
