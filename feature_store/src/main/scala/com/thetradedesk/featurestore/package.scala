@@ -28,6 +28,7 @@ package object featurestore {
   var splitIndex: Array[Int] = config.getString("splitIndex", "0").split(",").map(_.toInt)
   var dateTime: LocalDateTime = config.getDateTime("dateTime", date.atStartOfDay())
   var ttdEnv: String = config.getString("ttd.env", "dev")
+  var readEnv: String = config.getString("readEnv", "prod")
   val aggLevel: String = config.getString("aggLevel", "UIID")
   var writeThroughHdfs: Boolean = config.getBoolean("writeThroughHdfs", true)
   val s3Client = AmazonS3ClientBuilder.standard.withRegion(Regions.US_EAST_1).build
