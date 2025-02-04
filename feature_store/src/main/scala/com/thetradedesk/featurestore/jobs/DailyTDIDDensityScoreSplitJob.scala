@@ -9,6 +9,7 @@ import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.io.FSUtils
 import org.apache.spark.sql.{DataFrame, SaveMode}
 import org.apache.spark.sql.functions._
+import org.apache.spark.storage.StorageLevel
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -33,7 +34,7 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
     val mm = dateStr.substring(4, 6)
     val dd = dateStr.substring(6, 8)
 
-    spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/features/data/koav4/v=1/prod/bidsimpressions/year=$yyyy/month=$mm/day=$dd/")
+    spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/features/data/koav4/v=1/$readEnv/bidsimpressions/year=$yyyy/month=$mm/day=$dd/")
       .select("UIID", "Site", "Zip")
       .na.drop()
       .withColumnRenamed("UIID", "TDID")
@@ -43,7 +44,7 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
 
   def loadSeedDensity(date: LocalDate) = {
     val dateStr = getDateStr(date)
-    spark.read.parquet(s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/config=DailySeedDensityScore/v=1/date=${dateStr}")
+    spark.read.parquet(s"$MLPlatformS3Root/$readEnv/profiles/source=bidsimpression/index=SeedId/config=DailySeedDensityScore/v=1/date=${dateStr}")
   }
 
   def loadTDIDSiteZipMappingRDD(siteZipToTDIDDF: DataFrame, splitIndex: Int, numPartitions: Int) = {
@@ -57,29 +58,23 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
 
   def loadPolicyTable(date: LocalDate, sources: Int*) = {
     // read the given date's RSM policy table and filter for only seeds
-    spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/configdata/prod/audience/policyTable/RSM/v=1/${getDateStr(date)}000000/")
+    spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/configdata/$readEnv/audience/policyTable/RSM/v=1/${getDateStr(date)}000000/")
       // filter non graph data only
       .filter(col("CrossDeviceVendorId") === lit(CrossDeviceVendor.None.id) && col("Source").isin(sources: _*))
       .select(col("SourceId").as("SeedId"), col("MappingId"), col("SyntheticId"))
+  }
+
+  def loadSyntheticIdDensityScore(date: LocalDate) = {
+    spark.read.parquet(s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SiteZipHashed/config=SyntheticIdDensityScorePolicyTableJoined/date=${getDateStr(date)}")
+      .cache()
   }
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
     val dateStr = getDateStr(date)
     val numPartitions = 10
 
-    val seedDensity = loadSeedDensity(date)
-    val policyTable = loadPolicyTable(date, DataSource.Seed.id, DataSource.TTDOwnData.id)
-
     val maxDensityScoreAggUDF = udaf(MaxDensityScoreAgg)
-
-    val syntheticIdSiteZipHashedDensityScore = seedDensity.join(policyTable.select("SeedId", "SyntheticId"), Seq("SeedId"))
-      .select('SyntheticId, 'SiteZipHashed, 'DensityScore.cast("float").as("DensityScore"), (rand() * lit(numPartitions)).cast("int").as("random"))
-      .repartition(repartitionNum, 'SiteZipHashed, 'random)
-      .groupBy('SiteZipHashed, 'random)
-      .agg(
-        arrays_zip(collect_list('SyntheticId).as("SyntheticId"), collect_list('DensityScore).as("DensityScore")).as("SyntheticIdDensityScores")
-      )
-      .cache()
+    val syntheticIdDensityScore = loadSyntheticIdDensityScore(date)
 
     val syntheticIdToMappingId =
       spark.sparkContext.broadcast(loadPolicyTable(date, DataSource.Seed.id)
@@ -97,7 +92,7 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
         }
     )
 
-    val siteZipToTDIDDF = spark.read.parquet(s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=TDID/config=DailyTDIDSiteZipMapping/v=1/date=${dateStr}")
+    val siteZipToTDIDDF = spark.read.parquet(s"$MLPlatformS3Root/$readEnv/profiles/source=bidsimpression/index=TDID/config=DailyTDIDSiteZipMapping/v=1/date=${dateStr}")
       .select("SiteZipHashed", "TDID")
       .cache()
 
@@ -113,7 +108,7 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
       }
 
       val tdidSiteZipHashed = loadTDIDSiteZipMappingRDD(siteZipToTDIDDF, splitIndex, numPartitions)
-      val joinedDf = tdidSiteZipHashed.join(syntheticIdSiteZipHashedDensityScore, Seq("SiteZipHashed", "random"))
+      val joinedDf = tdidSiteZipHashed.join(syntheticIdDensityScore, Seq("SiteZipHashed", "random"))
         .select('TDID, 'SyntheticIdDensityScores)
 
       val tdidDensityScore = joinedDf
@@ -131,7 +126,7 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
       processSplit
     )
 
-    syntheticIdSiteZipHashedDensityScore.unpersist()
+    syntheticIdDensityScore.unpersist()
     siteZipToTDIDDF.unpersist()
 
     Array(("", 0))
