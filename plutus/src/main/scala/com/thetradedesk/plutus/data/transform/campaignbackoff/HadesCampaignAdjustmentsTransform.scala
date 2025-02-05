@@ -291,7 +291,6 @@ object HadesCampaignAdjustmentsTransform {
                 underdeliveryThreshold: Double,
                 fileCount: Int
                ): Dataset[CampaignAdjustmentsHadesSchema] = {
-    implicit val implicitSpark: SparkSession = spark
 
     // If yesterday's CampaignAdjustmentsHadesSchema is available, use that else the merged dataset
     // This is some transitional code. We should remove this once the transition is complete

@@ -71,7 +71,7 @@ abstract class IDataGenerator(implicit sparkSession: SparkSession, telemetry: Us
 
     val df = userFeatureMergeDefinition
       .featureSourceDefinitions
-      .map(e => (e, featureDataLoader.readFeatureSourceData(dateTime, e)))
+      .map(e => (e, featureDataLoader.readFeatureSourceData(dateTime, e)(sparkSession)))
       .map(p =>
         p._2.select(
           p._1.features.map(

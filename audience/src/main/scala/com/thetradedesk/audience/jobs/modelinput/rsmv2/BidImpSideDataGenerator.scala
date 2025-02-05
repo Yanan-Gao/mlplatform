@@ -4,10 +4,9 @@ import com.thetradedesk.audience.date
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.{intermediateResultBasePathEndWithoutSlash, overrideMode, samplerName, saveIntermediateResult}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface.{BidResult, BidSideDataRecord}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
-import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
+import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import job.PlatformWeightCalculationProcessor.bidImpressionsS3Path
 import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
@@ -16,6 +15,7 @@ object BidImpSideDataGenerator {
 
   def readBidImpressionWithNecessary(): Dataset[BidSideDataRecord] = {
     val sampler = SamplerFactory.fromString(samplerName)
+    val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
     val bidsImpressionsLong = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))
       .withColumnRenamed("UIID", "TDID")

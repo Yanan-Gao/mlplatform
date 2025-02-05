@@ -550,8 +550,6 @@ object PlutusCampaignAdjustmentsTransform extends Logger {
   }
 
   def transform(date: LocalDate, updateAdjustmentsVersion: String, fileCount: Int): Dataset[CampaignAdjustmentsPacingSchema] = {
-    implicit val implicitSpark: SparkSession = spark
-
     val campaignUnderdeliveryData = CampaignThrottleMetricDataset
       .readDate(env = envForRead, date = date, lookBack = 4)
 
