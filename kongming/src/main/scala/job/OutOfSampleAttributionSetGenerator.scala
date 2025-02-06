@@ -26,6 +26,8 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
   override def jobName: String = "OutOfSampleAttributionSetGenerator"
   val applyCustomCPACountAsWeight = config.getBoolean("applyCustomCPACountAsWeight", true)
+  val isExactAttributionLookBack = config.getBoolean("isExactAttributionLookBack", true)
+  val isSampledNegativeWeight = config.getBoolean("isSampledNegativeWeight", false)
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
@@ -40,8 +42,8 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
     val TrackedAttributionSet = attributionSet._2.filter($"IsTracked" === lit(1)).selectAs[OldOutOfSampleAttributionRecord]
     val UntrackedAttributionSet = attributionSet._2.filter($"IsTracked" =!= lit(1)).selectAs[OldOutOfSampleAttributionRecord]
 
-    val numTrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSetWithUserData, scoreDate, "tracked", Some(1000))
-    val numUntrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(UntrackedAttributionSetWithUserData, scoreDate, "untracked", Some(200))
+    val numTrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSetWithUserData, scoreDate, "tracked", Some(partCount.OOSTracked))
+    val numUntrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(UntrackedAttributionSetWithUserData, scoreDate, "untracked", Some(partCount.OOSUntracked))
 
     OldOutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSet, scoreDate, "tracked", Some(200))
     OldOutOfSampleAttributionDataset(delayNDays).writePartition(UntrackedAttributionSet, scoreDate, "untracked", Some(200))
@@ -86,9 +88,19 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
       val campaignDS = CampaignDataSet().readLatestPartitionUpTo(ImpDate, true)
 
-      val filteredAttr = 
-        attr.filter(unix_timestamp($"ConversionTrackerLogEntryTime") - unix_timestamp($"AttributedEventLogEntryTime")<= Config.AttributionLookBack*86400)
-        .join(broadcast(campaignDS.select($"CampaignId", $"CustomCPATypeId")), Seq("CampaignId"), "inner")
+      val selectedAttr =
+        if (isExactAttributionLookBack) {
+          attr.filter(
+            unix_timestamp($"ConversionTrackerLogEntryTime") -
+              unix_timestamp($"AttributedEventLogEntryTime") <= Config.AttributionLookBack * 86400
+          )
+        } else {
+          attr
+        }
+
+      val filteredAttr = campaignDS.select($"CampaignId", $"CustomCPATypeId").join(
+        selectedAttr, Seq("CampaignId"), "inner"
+      )
 
       val filteredAttrWithWeight = 
         if(applyCustomCPACountAsWeight && task=="cpa"){
@@ -110,14 +122,18 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
         .withColumn("AdGroupNegCount", sum(lit(1) - $"Target").over(win))
         .withColumn("SamplingRate", $"AdGroupPosCount" * lit(NegPosRatio) / $"AdGroupNegCount")
         .withColumn("SamplingRate", when($"Target" === lit(1), 1).otherwise($"SamplingRate"))
-        .withColumn("rand", rand(seed = samplingSeed))
-        .filter($"rand" <= $"SamplingRate")
-        .drop("AdGroupId", "AdGroupPosCount", "AdGroupNegCount", "SamplingRate", "rand")
+        .filter(rand(seed = samplingSeed) <= $"SamplingRate")
+
+      val impWithAttrWeight = if (isSampledNegativeWeight) {
+        impWithAttr.withColumn("Weight", $"Weight" / $"SamplingRate")
+      } else { impWithAttr }
+
+      val impWithAttrFeature = impWithAttrWeight.drop("AdGroupId", "AdGroupPosCount", "AdGroupNegCount", "SamplingRate")
         .join(dailyImp, Seq("BidRequestIdStr"), "inner")
 
       dailyImp.unpersist()
-      
-      impWithAttr
+
+      impWithAttrFeature
     }).reduce(_.union(_)).cache()
 
     val campaignsWithPosSamples = rawOOS.filter('Target === lit(1)).select('CampaignId).distinct
