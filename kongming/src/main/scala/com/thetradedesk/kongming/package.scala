@@ -55,6 +55,11 @@ package object kongming {
     val ImpressionLookBack = config.getInt("OutOfSampleAttributeSetGenerator.ImpressionLookBack", 3)
     val AttributionLookBack = config.getInt("OutOfSampleAttributeSetGenerator.AttributionLookBack", 7)
     val OosNegPosRatio = config.getInt("OutOfSampleAttributeSetGenerator.OosNegPosRatio", 1000)
+    val CalibrationImpLookBack = config.getInt("GenerateCalibrationData.CalibrationImpLookBack", 12)
+    val CalibrationAttLookBack = config.getInt("GenerateCalibrationData.CalibrationAttLookBack", 2)
+    val IsotonicPosCntMin = config.getInt("GenerateCalibrationData.IsotonicPosCntMin", 10)
+    val IsotonicNegCntMax = config.getInt("GenerateCalibrationData.IsotonicNegCntMax", 100000)
+    val IsotonicNegSampleRateMax = config.getDouble("GenerateCalibrationData.IsotonicNegSampleRateMax", 1.0/3)
   }
 
   def getJobNameWithExperimentName(jobName: String): String = {
@@ -117,11 +122,12 @@ package object kongming {
     var TrainSetFeatureMapping = 100
     var DailyPositiveBidRequest = 100
     var DailyPositiveCountSummary = 1
-    var WatchlistTrainset = 50
-    var WatchlistOOS = 50
+    var OOSTracked = 1000
+    var OOSUntracked = 200
     var TrainsetBalanced = 50
     var DailyTrainsetWithFeature = 50
     var ImpressionForIsoReg = 1000
+    var SampledImpressionForIsoReg = 2000
     var CvrRescaling = 1
   }
 
