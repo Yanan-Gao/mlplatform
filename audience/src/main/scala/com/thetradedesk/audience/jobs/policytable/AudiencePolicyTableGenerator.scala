@@ -241,10 +241,10 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
         // get max SyntheticId over source type and CrossDeviceVendor from previous policy table
 
         val maxIdOverSourceNGraph = previousPolicyTable.groupBy('Source, 'CrossDeviceVendorId).agg(max('SyntheticId).as("MaxSyntheticId"))
-          .join(previousPolicyTable.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("Count")), Seq("Source", "CrossDeviceVendorId"))
-          .join(releasedIds.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("ReleasedCount")), Seq("Source", "CrossDeviceVendorId"))
-          .join(newIds.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("NewCount")), Seq("Source", "CrossDeviceVendorId"))
-          .select('Source, 'CrossDeviceVendorId, greatest('MaxSyntheticId, 'Count + 'NewCount - 'ReleasedCount).cast(IntegerType).as("Value"))
+          .join(previousPolicyTable.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("Count")), Seq("Source", "CrossDeviceVendorId"), "outer")
+          .join(releasedIds.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("ReleasedCount")), Seq("Source", "CrossDeviceVendorId"), "outer")
+          .join(newIds.groupBy('Source, 'CrossDeviceVendorId).agg(count("*").alias("NewCount")), Seq("Source", "CrossDeviceVendorId"), "right")
+          .select('Source, 'CrossDeviceVendorId, greatest(coalesce('MaxSyntheticId, lit(1)), coalesce('Count, lit(0)) + 'NewCount - coalesce('ReleasedCount, lit(0))).cast(IntegerType).as("Value"))
           .as[SourceNGraphValue].collect()
         val mappingIdPool = maxIdOverSourceNGraph.map(e =>
             spark
@@ -267,8 +267,9 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
           .drop("order")
           // assign available mapping ids randomly over source and crossdevicevendorid to new source ids
           .withColumn("order", row_number().over(Window.partitionBy('Source, 'CrossDeviceVendorId).orderBy(rand())))
-          .join(mappingIdPool, Seq("order", "Source", "CrossDeviceVendorId"))
+          .join(mappingIdPool, Seq("order", "Source", "CrossDeviceVendorId"), "left")
           .drop("order")
+          .withColumn("MappingId", coalesce('MappingId, lit(-1))) // assign to -1 so we could re-verify in @see [[com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGenerator.evaluatePolicyTable]] in case any missing data
           .join(policyTable.drop("SyntheticId"), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "inner")
           .withColumn("ExpiredDays", lit(0))
           .withColumn("IsActive", lit(true))
@@ -290,6 +291,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     require(policyTable.count() == policyTable.select('Source, 'CrossDeviceVendorId, 'MappingId).distinct().count(), "conflict mapping ids")
     require(policyTable.agg(max('SyntheticId)).collect()(0)(0).asInstanceOf[Int] <= 500000, "maximal synthetic id is 500000")
     require(policyTable.agg(max('MappingId)).collect()(0)(0).asInstanceOf[Int] < 65536, "maximal mapping id is 65535")
+    require(policyTable.agg(min('MappingId)).collect()(0)(0).asInstanceOf[Int] >= 0, "minimal mapping id is 0")
   }
 
   def retrieveSourceData(date: LocalDate): DataFrame
