@@ -36,8 +36,12 @@ case class PlutusLogsData(
                            BidBelowFloorExceptedSource: Int,
                            FullPush: Boolean,
 
+                           // maxbid cap on bids before plutus
                            UseUncappedBidForPushdown:Boolean,
                            UncappedFirstPriceAdjustment:Double,
+                           UncappedBidPrice: Double,
+                           SnapbackMaxBid: Double,
+                           MaxBidMultiplierCap: Double,
 
                            // Fields From PlutusLog
                            Mu: Float,
@@ -101,6 +105,9 @@ case object PlutusLogsData {
         i.getIsValuePacing,
         i.getAuctionType,
         i.getDealId,
+        i.getUncappedBidPrice,
+        i.getSnapbackMaxBid,
+        i.getMaxBidMultiplierCap
       )).toDS()
 
     transformPcResultsRawLog(pcResultData, dateTime)
@@ -134,7 +141,10 @@ case class PcResultsRawLogs(
                              AdgroupId: String,
                              IsValuePacing: Boolean,
                              AuctionType: Int,
-                             DealId: String
+                             DealId: String,
+                             UncappedBidPrice: Double,
+                             SnapbackMaxBid: Double,
+                             MaxBidMultiplierCap: Double
                            )
 
 case class PlutusLog(

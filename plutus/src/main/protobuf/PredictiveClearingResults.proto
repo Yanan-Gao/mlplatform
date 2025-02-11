@@ -27,6 +27,9 @@ message PcResultLog {
   optional bool IsValuePacing=21;
   optional int32 AuctionType=22;
   optional string DealId=23;
+  optional double UncappedBidPrice=24;
+  optional double SnapbackMaxBid=25;
+  optional double MaxBidMultiplierCap=26;
 }
 
 message PlutusLog {

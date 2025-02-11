@@ -75,6 +75,9 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
     // Test for BidCap change columns
     assert(res.UseUncappedBidForPushdown == true, "Validating we use the value from the raw log")
     assert(res.UncappedFirstPriceAdjustment == 1.023, "Validating that Uncapped FPA results in a the raw log value")
+    assert(res.UncappedBidPrice == 2.0, "Validating we use the value from the raw log")
+    assert(res.SnapbackMaxBid == 3.0, "Validating we use the value from the raw log")
+    assert(res.MaxBidMultiplierCap == 1.2, "Validating we use the value from the raw log")
 
     assert(resultList.get(1).FeeAmount == None, "Validating that null feeFeatureUsage results in a none value\"")
     assert(resultList.get(2).FeeAmount == Some(feeFeatureUsageLogMock.FeeAmount), "Validating that the actual feeFeatureUsage.FeeAmount value is propogated")

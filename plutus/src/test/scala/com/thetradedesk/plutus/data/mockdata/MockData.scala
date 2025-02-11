@@ -247,7 +247,10 @@ object MockData {
     AuctionType = 1,
     DealId = null,
     SupplyVendor = "ads",
-    AdgroupId = "asdasd"
+    AdgroupId = "asdasd",
+    UncappedBidPrice = 2.0,
+    SnapbackMaxBid = 3.0,
+    MaxBidMultiplierCap = 1.2
   )
 
   val pcResultsRawLogMock = PcResultsRawLogs(
@@ -272,7 +275,10 @@ object MockData {
     AuctionType = 1,
     DealId = null,
     SupplyVendor = "ads",
-    AdgroupId = "asdasd"
+    AdgroupId = "asdasd",
+    UncappedBidPrice = 2.0,
+    SnapbackMaxBid = 3.0,
+    MaxBidMultiplierCap = 1.2
   )
 
   val mbtwDataMock = MinimumBidToWinData(
@@ -298,7 +304,7 @@ object MockData {
       IsMargin = false
   )
 
-  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0, auctionType: Int = 1) = PcResultsMergedSchema(
+  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0, auctionType: Int = 1, uncappedBidPrice:Double = 0, snapbackMaxBid:Double = 0, maxBidMultiplierCap:Double = 0) = PcResultsMergedSchema(
     BidRequestId = "1",
     DealId = dealId,
 
@@ -444,7 +450,10 @@ object MockData {
     IsUsingPIDController = Some(false),
 
     UseUncappedBidForPushdown = useUncappedBidForPushdown,
-    UncappedFirstPriceAdjustment = uncappedFpa
+    UncappedFirstPriceAdjustment = uncappedFpa,
+    UncappedBidPrice = uncappedBidPrice,
+    SnapbackMaxBid = snapbackMaxBid,
+    MaxBidMultiplierCap = maxBidMultiplierCap
   )
 
   def supplyVendorMock(supplyVendorName: String = "google", openPathEnabled: Boolean = false) = SupplyVendorRecord(
