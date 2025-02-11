@@ -152,8 +152,12 @@ case class PcResultsMergedSchema(
                                    IsValuePacing: Option[Boolean], // from ProductionAdgroupBudgetData
                                    IsUsingPIDController: Option[Boolean], // from ProductionAdgroupBudgetData
 
+                                   // maxbid cap on bids before plutus 
                                    UseUncappedBidForPushdown:Boolean,
                                    UncappedFirstPriceAdjustment:Double,
+                                   UncappedBidPrice: Double,
+                                   SnapbackMaxBid: Double,
+                                   MaxBidMultiplierCap: Double,
                                  
                                    // Note: I've removed a bunch of fields from the Geronimo schema since
                                    // these fields dont seem relevant to plutus.
