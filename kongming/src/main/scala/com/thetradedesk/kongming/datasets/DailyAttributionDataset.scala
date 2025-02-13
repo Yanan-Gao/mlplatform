@@ -45,6 +45,7 @@ final case class DailyAttributionEventsRecord(
                                                CustomCPACount: Double,
                                                ConversionTrackerLogEntryTime: java.sql.Timestamp,
                                                AttributedEventLogEntryTime: java.sql.Timestamp,
+                                               TDID: String,
                                        )
 
 
