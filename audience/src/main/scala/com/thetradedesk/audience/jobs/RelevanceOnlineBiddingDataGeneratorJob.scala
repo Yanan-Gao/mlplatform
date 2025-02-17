@@ -229,16 +229,15 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
       "ZipSiteLevel_Seed",
       when(array_contains(col("SyntheticId_Level2"), col("SyntheticIds")), 3)
         .when(array_contains(col("SyntheticId_Level1"), col("SyntheticIds")), 2)
-        .otherwise(0)
+        .otherwise(1)
     )
     .drop("SyntheticId_Level1", "SyntheticId_Level2")
     .join(feature_store_seed, Seq("SiteZipHashed","SeedId"), "left")
     .withColumn(
       "score_category",
-      when(col("DensityScore") < 0.8, 1)
-      .when((col("DensityScore") >= 0.8) && (col("DensityScore") < 0.99), 2)
+      when((col("DensityScore") >= 0.8) && (col("DensityScore") < 0.99), 2)
       .when(col("DensityScore") >= 0.99, 3)
-      .otherwise(0)
+      .otherwise(1)
       )
     .withColumn(
       "ZipSiteLevel_Seed",
