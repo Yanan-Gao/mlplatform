@@ -35,7 +35,7 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-mllib" % sparkVersion % "provided",
 
   "com.typesafe" % "config" % "1.3.0",
-  "com.thetradedesk" %% "geronimo" % "0.2.10-SNAPSHOT",
+  "com.thetradedesk" %% "geronimo" % "0.2.28-SNAPSHOT",
   "com.thetradedesk" %% "eldorado-core" % "1.0.285-spark-3.2.1",
   "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
   "io.circe" %% "circe-yaml" % "0.14.1",

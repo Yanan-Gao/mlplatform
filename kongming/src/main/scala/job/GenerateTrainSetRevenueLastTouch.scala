@@ -124,30 +124,12 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
     val adjustedValParquet = trainDataWithFeature.filter($"split" === lit("val"))
 
     var trainsetRows = Array.fill(2)("", 0L)
-    // 7. save as parquet and tfrecord
-    if (saveParquetData) {
-      val parquetTrainRows = ValidationDataForModelTrainingDataset().writePartition(adjustedTrainParquet.selectAs[ValidationDataForModelTrainingRecord], date, "train", Some(trainSetPartitionCount))
-      val parquetValRows = ValidationDataForModelTrainingDataset().writePartition(adjustedValParquet.selectAs[ValidationDataForModelTrainingRecord], date, "val", Some(valSetPartitionCount))
-      trainsetRows = Array(parquetTrainRows, parquetValRows)
-    }
-
     var tfDropColumnNames = if (addBidRequestId) {
       rawModelFeatureNames(seqDirectFields)
     } else {
       aliasedModelFeatureNames(keptFields) ++ rawModelFeatureNames(seqDirectFields)
     }
 
-    if (saveTrainingDataAsTFRecord) {
-      val tfDS = if (incTrain) DataIncForModelTrainingDataset() else DataForModelTrainingDataset()
-      val tfTrainRows = tfDS.writePartition(
-        adjustedTrainParquet.drop(tfDropColumnNames: _*).selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
-        date, "train", Some(trainSetPartitionCount))
-      val tfValRows = tfDS.writePartition(
-        adjustedValParquet.drop(tfDropColumnNames: _*).selectAs[DataForModelTrainingRecord](nullIfAbsent = true),
-        date, "val", Some(valSetPartitionCount))
-
-      trainsetRows = Array(tfTrainRows, tfValRows)
-    }
 
     // save with user data
     if (saveTrainingDataAsCSV) {
