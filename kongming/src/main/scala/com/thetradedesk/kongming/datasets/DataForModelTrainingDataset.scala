@@ -385,53 +385,11 @@ final case class DataForModelTrainingRecord(
                                  AudienceId_Column29: Int
                                           )
 
-case class DataForModelTrainingDataset(experimentOverride: Option[String] = None)
-  extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/trainset/tfrecord/v=1",
-    fileFormat = TFRecord.Example,
-    experimentOverride = experimentOverride
-  ) {
-}
 
-case class DataIncForModelTrainingDataset(experimentOverride: Option[String] = None)
-  extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/trainset_inc/tfrecord/v=1",
-    fileFormat = TFRecord.Example,
-    experimentOverride = experimentOverride
-  ) {
-}
 
-case class UserDataCsvForModelTrainingDataset(experimentOverride: Option[String] = None)
-  extends DateSplitPartitionedS3Dataset[UserDataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/trainset_userdata/csv/v=1",
-    fileFormat = Csv.WithHeader,
-    experimentOverride = experimentOverride
-  ) {
-}
 
-case class UserDataIncCsvForModelTrainingDataset(experimentOverride: Option[String] = None)
-  extends DateSplitPartitionedS3Dataset[UserDataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/trainset_userdata_inc/csv/v=1",
-    fileFormat = Csv.WithHeader,
-    experimentOverride = experimentOverride
-  ) {
-}
 
-case class DataCsvForModelTrainingDataset(experimentOverride: Option[String] = None)
-  extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/trainset/csv/v=1",
-    fileFormat = Csv.WithHeader,
-    experimentOverride = experimentOverride
-  ) {
-}
 
-case class DataIncCsvForModelTrainingDataset(experimentOverride: Option[String] = None)
-  extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/trainset_inc/csv/v=1",
-    fileFormat = Csv.WithHeader,
-    experimentOverride = experimentOverride
-  ) {
-}
 
 case class DataCsvForModelTrainingDatasetLastTouch(experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](

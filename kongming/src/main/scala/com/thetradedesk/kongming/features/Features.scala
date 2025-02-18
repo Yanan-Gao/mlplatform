@@ -62,8 +62,6 @@ object Features {
   val keptFields = Array(
     ModelFeature("BidRequestId", STRING_FEATURE_TYPE, None, 0, None),
     ModelFeature("IsTracked", INT_FEATURE_TYPE, None, 0, None),
-//    ModelFeature("IndustryCategoryId", INT_FEATURE_TYPE, None, 0),
-//    ModelFeature("AudienceId", ARRAY_INT_FEATURE_TYPE, Some(30), 0, Some(Shape(Seq(30))))
   )
 
   val modelWeights: Array[ModelFeature] = Array(ModelFeature("Weight", FLOAT_FEATURE_TYPE, None, 0, None))

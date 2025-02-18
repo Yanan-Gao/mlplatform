@@ -8,7 +8,7 @@ import com.thetradedesk.spark.datasets.generated.SeenInBiddingV2DeviceDataRecord
 import com.thetradedesk.spark.datasets.sources.ThirdPartyDataRecord
 import com.thetradedesk.streaming.records.rtb.bidfeedback.BidFeedbackRecord
 import com.thetradedesk.streaming.records.rtb.bidrequest.BidRequestRecord
-import com.thetradedesk.streaming.records.rtb.{AdsTxtSellerTypeLookupRecord, BrowserLookupRecord, ContextTypeLookupRecord, CrossDeviceVendorIdLookupRecord, CurrencyCodeLookupRecord, DataGroupUsage, DataUsageRecord, DeviceTypeLookupRecord, DoNotTrackLookupRecord, ElementUsage, ExperimentPgForcedBidTypeLookupRecord, IdiosyncraticSegmentLookupRecord, InternetConnectionTypeLookupRecord, InventoryPublisherTypeLookupRecord, MediaTypeLookupRecord, OSFamilyLookupRecord, OSLookupRecord, PredictiveClearingModeLookupRecord, ProductionQualityLookupRecord, RenderingContextLookupRecord, SkippabilityConstraintLookupRecord, VideoPlaybackTypeLookupRecord, VideoPlayerSizeLookupRecord, VideoQualityLookupRecord}
+import com.thetradedesk.streaming.records.rtb.{AdsTxtSellerTypeLookupRecord, BrowserLookupRecord, ContextTypeLookupRecord, CrossDeviceVendorIdLookupRecord, CurrencyCodeLookupRecord, DataGroupUsage, DataUsageRecord, DeviceTypeLookupRecord, DoNotTrackLookupRecord, ElementUsage, ExperimentPgForcedBidTypeLookupRecord, FeeFeatureUsageLogBackingData, IdiosyncraticSegmentLookupRecord, InternetConnectionTypeLookupRecord, InventoryPublisherTypeLookupRecord, MediaTypeLookupRecord, OSFamilyLookupRecord, OSLookupRecord, PredictiveClearingModeLookupRecord, ProductionQualityLookupRecord, RenderingContextLookupRecord, SkippabilityConstraintLookupRecord, VideoPlaybackTypeLookupRecord, VideoPlayerSizeLookupRecord, VideoQualityLookupRecord}
 import com.thetradedesk.geronimo.sib.schema.GeronimoSibSchema
 import job.ModelEligibleUserDataRecord
 import org.apache.spark.sql.{DataFrame, Row}
@@ -489,6 +489,11 @@ object MockData {
     SubmittedBidAmountInUSD = 10.0,
     ImpressionsFirstPriceAdjustment = Some(1.0),
 
+    AdvertiserCostInUSD = Some(14),
+    PartnerCostInUSD = Some(12.5),
+    TTDCostInUSD = Some(12.7),
+    AdvertiserCurrencyExchangeRateFromUSD = Some(0.7),
+
     IsImp = true,
 
     sin_hour_week = 0.0d,
@@ -503,20 +508,31 @@ object MockData {
     DoNotTrack = Option(DoNotTrackLookupRecord()),
     CreativeId = Option(""),
 
-    PrivateContractId = "", //16,777,217
+    PrivateContractId =  "", //16,777,217
     ReferrerUrl = Some("https://www.usnews.com//best-schools/cs"),
-    ContextualCategories = Some(Seq[Long](123456789, 267891234)),
+    ContextualCategories = Some(Seq[Long](123456789,267891234)),
     IsAdFormatOptimizationEnabled = Some(true),
     IsGeoSegmentOptimizationEnabled = Some(false),
     KoaCanBidUpEnabled = Some(false), // assist only with performance
     IsEnabled = Some(true),
     UserSegmentCount = Some(1000),
-    MatchedSegments = Seq[Long](20000001, 20000002),
+    MatchedSegments = Seq[Long](20000001,20000002),
     ExpectedValue = Option(0.001),
     RPacingValue = Option(0.1),
     JanusVariantMap = Option(Map.apply("modelA" -> "versionA1", "modelB" -> "versionB2")),
+    ModelVersionsUsed = Option(Map.apply("plutus" -> 111, "kongming" -> 56, "philo" -> 151)),
     BillingEventId = None,
-    UserAgeInDays = Some(1.5)
+    FeeFeatureUsage = Seq[FeeFeatureUsageLogBackingData](),
+    UserAgeInDays = Some(1.5),
+    VolumeControlPriorityKeepRate = Some(0.7),
+
+    // SPO holdout field columns
+    AdInfoSpoInventoryIdHash = Some(0L),
+    AdInfoSpoFilteredStatusId = Some(0),
+
+    VideoPlaybackType = Option(VideoPlaybackTypeLookupRecord()),
+
+    TransactionId = Some(""),
   )
 
   val advertiserRecordMock = AdvertiserRecord(
@@ -710,7 +726,9 @@ object MockData {
   var featureLogDataMock: GeronimoCommonFeatureInBidderCache = GeronimoCommonFeatureInBidderCache(
     BidRequestId = "1",
     UserAgeInDays = 7,
-    FCapCounterArray = Array[FCapCounter]()
+    FCapCounterArray = Array[FCapCounter](),
+    AdInfoSpoInventoryIdHash = 0l,
+    AdInfoSpoFilteredStatusId = 0
   )
 
 
