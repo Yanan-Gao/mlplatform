@@ -440,7 +440,7 @@ object CrossDeviceGraphSampler {
 
   private val dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
 
-  def downSampleGraph(graph: Dataset[_], samplingFunction: (Symbol => Column)) = {
+  def downSampleGraph(graph: Dataset[_], samplingFunction: (Column => Column)) = {
     val sibSampledPersonIDs = graph
       .filter(samplingFunction('TDID))
       .select("personID")

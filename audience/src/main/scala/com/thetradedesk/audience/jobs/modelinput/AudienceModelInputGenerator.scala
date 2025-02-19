@@ -2,31 +2,23 @@ package com.thetradedesk.audience.jobs.modelinput
 
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
-import com.thetradedesk.audience.datasets.CrossDeviceVendor.CrossDeviceVendor
 import com.thetradedesk.audience.datasets._
-import com.thetradedesk.audience.sample.WeightSampling.{getLabels, negativeSampleUDFGenerator, positiveSampleUDFGenerator, zipAndGroupUDFGenerator}
+import com.thetradedesk.audience.jobs.modelinput.MultipleIdTypesSupporter.mergeLabels
+import com.thetradedesk.audience.sample.WeightSampling.{getLabels, negativeSampleUDFGenerator, positiveSampleUDFGenerator}
 import com.thetradedesk.audience.transform.ContextualTransform.generateContextualFeatureTier1
-import com.thetradedesk.audience.transform.ExtendArrayTransforms.seedIdToSyntheticIdMapping
-import com.thetradedesk.audience.utils.DateUtils
+import com.thetradedesk.audience.transform.IDTransform.{allIdWithType, filterOnIdTypes, joinOnIdTypes}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, readModelFeatures}
-import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
-import com.thetradedesk.spark.util.io.FSUtils
-import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import com.thetradedesk.spark.util.TTDConfig.config
+import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.{DoubleType, IntegerType, StringType, StructField, StructType}
-import org.apache.spark.sql.{Column, DataFrame, Row, SaveMode}
+import org.apache.spark.sql.types.DoubleType
 
-import java.nio.ByteBuffer
-import java.security.MessageDigest
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import java.util.{Base64, UUID}
-import scala.util.Try
+import scala.reflect.runtime.universe._
 
 /**
  * This is the base class for audience model training data generation
@@ -47,28 +39,24 @@ abstract class AudienceModelInputGenerator(name: String, val sampleRate: Double)
    */
   def generateDataset(date: LocalDate, policyTable: Array[AudienceModelPolicyRecord]):
   DataFrame = {
-    val (sampledBidsImpressionsKeys, bidsImpressionsLong, uniqueTDIDs) = getBidImpressions(date, AudienceModelInputGeneratorConfig.lastTouchNumberInBR,
+    val (sampledBidsImpressionsKeys, bidsImpressionsLong) = getBidImpressions(date, AudienceModelInputGeneratorConfig.lastTouchNumberInBR,
       AudienceModelInputGeneratorConfig.tdidTouchSelection)
-
 
     val rawLabels = generateLabels(date, policyTable)
 
-    val filteredLabels = rawLabels.join(uniqueTDIDs, Seq("TDID"), "inner")
+    val refinedLabels = sampleLabels(rawLabels, policyTable)
 
-
-    val refinedLabels = sampleLabels(filteredLabels, policyTable)
+    val mergedLabels = mergeLabels(joinOnIdTypes(sampledBidsImpressionsKeys, refinedLabels), Seq("GroupId"))
 
     val roughResult = bidsImpressionsLong
-      .drop("CampaignId", "LogEntryTime")
+      .drop("LogEntryTime", "TDID")
+      .repartition(16384, 'BidRequestId)
       .join(
-        refinedLabels
-          .join(
-            sampledBidsImpressionsKeys, Seq("TDID"), "inner"),
-        Seq("TDID", "BidRequestId"), "inner")
+        mergedLabels,
+        Seq("BidRequestId"), "inner")
     //      .where(stringEqUdf('BidRequestId, 'BidRequestId2))
 
     if (AudienceModelInputGeneratorConfig.recordIntermediateResult) {
-      filteredLabels.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/filteredLabels/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
       rawLabels.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/rawLabels/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
       refinedLabels.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/refinedLabels/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
       roughResult.write.mode("overwrite").parquet(s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/uniEtlTestIntermediate/${name}/roughResult/date=${date.format(DateTimeFormatter.BASIC_ISO_DATE)}")
@@ -95,9 +83,21 @@ abstract class AudienceModelInputGenerator(name: String, val sampleRate: Double)
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
     val bidsImpressionsLong = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack=Some(AudienceModelInputGeneratorConfig.bidImpressionLookBack), source = Some(GERONIMO_DATA_SOURCE))
-      .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdType))
-      .filter(samplingFunction('TDID))
+      .filter(filterOnIdTypes(samplingFunction))
+      .withColumn("CookieTDID", when('CookieTDID === doNotTrackTDIDColumn, null).otherwise('CookieTDID))
+      .withColumn("DeviceAdvertisingId", when('DeviceAdvertisingId === doNotTrackTDIDColumn, null).otherwise('DeviceAdvertisingId))
+      .withColumn("UnifiedId2", when('UnifiedId2 === doNotTrackTDIDColumn, null).otherwise('UnifiedId2))
+      .withColumn("EUID", when('EUID === doNotTrackTDIDColumn, null).otherwise('EUID))
+      .withColumn("IdentityLinkId", when('IdentityLinkId === doNotTrackTDIDColumn, null).otherwise('IdentityLinkId))
+      .withColumn("DATId", when('DATId === doNotTrackTDIDColumn, null).otherwise('DATId))
+      .withColumn("TDID", coalesce('DeviceAdvertisingId, 'CookieTDID, 'UnifiedId2, 'EUID, 'IdentityLinkId, 'DATId))
       .select('BidRequestId, // use to connect with bidrequest, to get more features
+        'CookieTDID,
+        'DeviceAdvertisingId,
+        'UnifiedId2,
+        'EUID,
+        'IdentityLinkId,
+        'DATId,
         'AdvertiserId,
         'AdGroupId,
         'SupplyVendor,
@@ -156,17 +156,14 @@ abstract class AudienceModelInputGenerator(name: String, val sampleRate: Double)
       .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(DoubleType)))
       .withColumn("HasMatchedSegments", when('MatchedSegments.isNull,0).otherwise(1))
       .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(DoubleType)))
-      .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .cache()
 
     val sampledBidsImpressionsKeys = ApplyNTouchOnSameTdid(
-      bidsImpressionsLong.select('BidRequestId, 'TDID, 'CampaignId, 'LogEntryTime),
+      bidsImpressionsLong.select('BidRequestId, 'TDID, 'CookieTDID, 'DeviceAdvertisingId, 'UnifiedId2, 'EUID, 'IdentityLinkId, 'DATId, 'CampaignId, 'LogEntryTime),
       Ntouch, tdidTouchSelection)
       .cache()
 
-    val uniqueTDIDs = sampledBidsImpressionsKeys.select('TDID).distinct().cache()
-
-    (sampledBidsImpressionsKeys, bidsImpressionsLong, uniqueTDIDs)
+    (sampledBidsImpressionsKeys, bidsImpressionsLong)
   }
 
   def ApplyNTouchOnSameTdid(sampledBidsImpressionsKeys: DataFrame, Ntouch: Int, tdidTouchSelection: Int = 0): DataFrame = {
@@ -178,26 +175,20 @@ abstract class AudienceModelInputGenerator(name: String, val sampleRate: Double)
       touchSample = sampledBidsImpressionsKeys
       .withColumn("row", row_number().over(lastWindow))
       .filter('row <= Ntouch)
-      .drop('LogEntryTime)
-      .drop('row)
     } else if (tdidTouchSelection==1) {
       touchSample = sampledBidsImpressionsKeys
       .withColumn("row", row_number().over(lastWindow))
       .withColumn("TDIDCount", count("TDID").over(stepWindow))
       .filter('row % ceil('TDIDCount/Ntouch.toDouble) === lit(1.0))
-      .drop('LogEntryTime)
-      .drop('row)
       .drop('TDIDCount)
     } else {
       touchSample = sampledBidsImpressionsKeys
       .withColumn("randomRow", rand())
       .withColumn("row", row_number().over(randomWindow))
       .filter('row <= Ntouch)
-      .drop('LogEntryTime)
-      .drop('row)
       .drop('randomRow)
     }
-    touchSample
+    touchSample.drop("CampaignId", "LogEntryTime", "row")
   }
 
   /** https://atlassian.thetradedesk.com/confluence/display/EN/ETL+and+model+training+pipline+based+on+SIB+dataset
@@ -245,15 +236,11 @@ abstract class AudienceModelInputGenerator(name: String, val sampleRate: Double)
       .withColumn("PositiveSamples", positiveSampleUDF('PositiveSyntheticIds))
       .withColumn("NegativeSamples", negativeSampleUDF(lit(AudienceModelInputGeneratorConfig.negativeSampleRatio) * size(col("PositiveSamples"))))
       .withColumn("NegativeSamples", array_except(col("NegativeSamples"), 'PositiveSyntheticIds))
-      .withColumn("PositiveTargets", getLabels(1f)(size($"PositiveSamples")))
-      .withColumn("NegativeTargets", getLabels(0f)(size($"NegativeSamples")))
+      .withColumn("PositiveTargets", getLabels(TypeTag.Boolean)(true)(size($"PositiveSamples")))
+      .withColumn("NegativeTargets", getLabels(TypeTag.Boolean)(false)(size($"NegativeSamples")))
       .withColumn("SyntheticIds", concat($"PositiveSamples", $"NegativeSamples"))
       .withColumn("Targets", concat($"PositiveTargets", $"NegativeTargets"))
-      .select('TDID, 'GroupId, 'SyntheticIds, 'Targets)
-      // partialy explode the result to keep the target array within the max length
-      .withColumn("ZippedTargets", zipAndGroupUDFGenerator(AudienceModelInputGeneratorConfig.labelMaxLength)('SyntheticIds, 'Targets))
-      .select(col("TDID"), 'GroupId, explode(col("ZippedTargets")).as("ZippedTargets"))
-      .select(col("TDID"), 'GroupId, col("ZippedTargets").getField("_1").as("SyntheticIds"), col("ZippedTargets").getField("_2").as("Targets"))
+      .select('TDID, 'idType, 'GroupId, 'SyntheticIds, 'Targets)
 
     labelResult
   }

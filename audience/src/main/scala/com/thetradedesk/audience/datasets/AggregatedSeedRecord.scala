@@ -5,6 +5,7 @@ import com.thetradedesk.audience.{seedCoalesceAfterFilter, ttdEnv, getClassName}
 import com.thetradedesk.spark.util.TTDConfig.config
 
 final case class AggregatedSeedRecord(TDID: String,
+                                      idType: Int,
                                       SeedIds: Seq[String],
                                       PersonGraphSeedIds: Seq[String],
                                       HouseholdGraphSeedIds: Seq[String],

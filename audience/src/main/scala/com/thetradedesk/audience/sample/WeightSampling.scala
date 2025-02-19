@@ -4,6 +4,7 @@ import com.thetradedesk.audience.datasets.AudienceModelPolicyRecord
 import org.apache.spark.sql.functions._
 
 import java.util.concurrent.ThreadLocalRandom
+import scala.reflect.runtime.universe._
 
 object WeightSampling {
 
@@ -50,11 +51,11 @@ object WeightSampling {
       })
   }
 
-  val getLabels = (label: Float) => udf((size: Int) => Seq.fill(size)(label))
+  def getLabels[T](implicit ttag: TypeTag[T]) = (label: T) => udf((size: Int) => Seq.fill(size)(label))
 
   val zipAndGroupUDFGenerator =
     (maxLength: Int) =>
-      udf((ids: Seq[Int], targets: Seq[Float]) => {
+      udf((ids: Seq[Int], targets: Seq[Boolean]) => {
         ids.zip(targets).grouped(maxLength).toArray
       })
 
