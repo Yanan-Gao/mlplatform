@@ -1,26 +1,18 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
-import com.thetradedesk.audience.datasets.{AggregatedSeedReadableDataset, CampaignSeedDataset, HitRateReadableDataset, HitRateRecord, HitRateWritableDataset}
-import com.thetradedesk.audience.utils.Logger.Log
-import com.thetradedesk.audience.{shouldConsiderTDID3, _}
+import com.thetradedesk.audience.datasets.{AggregatedSeedReadableDataset, CampaignSeedDataset, HitRateRecord, HitRateWritableDataset}
 import com.thetradedesk.audience.jobs.HitRateReportingTableGeneratorJob.prometheus
+import com.thetradedesk.audience.transform.IDTransform.{IDType, filterOnIdTypes, joinOnIdType}
+import com.thetradedesk.audience._
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
-import com.thetradedesk.spark.util.io.FSUtils
+import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.commons.lang3.exception.ExceptionUtils
+import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.{ArrayType, StringType, StructType}
-import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode, SparkSession}
-
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
-import java.time.{LocalDate, LocalDateTime}
-import scala.util.Random
 
 object HitRateReportingTableGeneratorJob {
   val prometheus = new PrometheusClient("AudienceMeasurementJob", "HitRateReportingTableGeneratorJob")
@@ -61,23 +53,40 @@ abstract class HitRateTableGenerator(prometheus: PrometheusClient) {
 
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))
-      .withColumnRenamed("UIID", "TDID")
-      .where(sampleUDF('TDID))
+      .where(filterOnIdTypes(sampleUDF))
       .withColumn("ReportDate", to_date('LogEntryTime))
       .select('BidRequestId, // use to connect with bidrequest, to get more features
         'AdvertiserId,
         'CampaignId,
         'AdGroupId,
         'ReportDate,
-        'TDID
+        'CookieTDID,
+        'DeviceAdvertisingId,
+        'UnifiedId2,
+        'EUID,
+        'IdentityLinkId,
+        'DATId
       )
       .filter('IsImp)
-      .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .cache()
 
-    val result = bidsImpressions
-      .join(campaignSeed.select('CampaignId, 'SeedId), Seq("CampaignId"), "left")
-      .join(seedData, Seq("TDID"), "left")
+    val result = joinOnIdType(bidsImpressions, seedData.toDF(), IDType.CookieTDID ,"left")
+      .union(IDType.values
+        .filter(e => e != IDType.Unknown && e != IDType.CookieTDID)
+        .map(e => joinOnIdType(bidsImpressions, seedData.toDF(), e))
+        .reduce(_ union _))
+      .withColumn("SeedIds", coalesce('SeedIds, array()))
+      .withColumn("PersonGraphSeedIds", coalesce('PersonGraphSeedIds, array()))
+      .withColumn("HouseholdGraphSeedIds", coalesce('HouseholdGraphSeedIds, array()))
+      .groupBy('BidRequestId,
+        'AdvertiserId,
+        'CampaignId,
+        'AdGroupId,
+        'ReportDate)
+      .agg(flatten(collect_list('SeedIds)).as("SeedIds"),
+        flatten(collect_list('PersonGraphSeedIds)).as("PersonGraphSeedIds"),
+          flatten(collect_list('HouseholdGraphSeedIds)).as("HouseholdGraphSeedIds"))
+      .join(broadcast(campaignSeed.select('CampaignId, 'SeedId)), Seq("CampaignId"), "left")
       .withColumn("hit", array_contains($"SeedIds", $"SeedId"))
       .withColumn("personGraphHit", ('hit || array_contains($"PersonGraphSeedIds", $"SeedId")).cast("integer"))
       .withColumn("HHGraphHit", ('hit || array_contains($"HouseholdGraphSeedIds", $"SeedId")).cast("integer"))

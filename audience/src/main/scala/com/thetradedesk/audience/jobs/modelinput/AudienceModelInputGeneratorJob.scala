@@ -140,8 +140,6 @@ object AudienceModelInputGeneratorJob {
         .withColumn("Targets", col("f._2"))
         .drop("f")
 
-      resultSet.cache()
-
       val subFolder = if (AudienceModelInputGeneratorConfig.subFolder != null) AudienceModelInputGeneratorConfig.subFolder else typePolicyTable._1._3.toString
 
       AudienceModelInputDataset(AudienceModelInputGeneratorConfig.model.toString, s"${typePolicyTable._1._1}_${typePolicyTable._1._2}").writePartition(

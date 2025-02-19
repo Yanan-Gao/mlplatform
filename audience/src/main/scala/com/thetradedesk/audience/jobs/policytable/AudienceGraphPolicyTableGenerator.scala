@@ -119,13 +119,13 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
     val allFinalSeedData =
       allSeedData.join(uniqueTDIDs, Seq("TDID"), "inner")
         .join(sampledGraph, Seq("TDID"), "left")
-        .select('TDID,
+        .select('TDID, 'idType,
           coalesce('SeedIds, typedLit(Array.empty[String])).alias("SeedIds"),
           coalesce('PersonGraphSeedIds, typedLit(Array.empty[String])).alias("PersonGraphSeedIds"),
           coalesce('HouseholdGraphSeedIds, typedLit(Array.empty[String])).alias("HouseholdGraphSeedIds"),
           coalesce('personId, 'TDID).alias("personId"),
           coalesce('householdId, 'TDID).alias("householdId"))
-        .select('TDID, 'SeedIds,
+        .select('TDID, 'idType, 'SeedIds,
           array_except('PersonGraphSeedIds, 'SeedIds).alias("PersonGraphSeedIds"),
           array_except('HouseholdGraphSeedIds, 'SeedIds).alias("HouseholdGraphSeedIds"),
           'personId,

@@ -1,30 +1,25 @@
 package com.thetradedesk.audience.jobs.policytable
 
 import com.thetradedesk.audience._
-import com.thetradedesk.audience.datasets.CrossDeviceVendor.{CrossDeviceVendor, IAV2Person}
+import com.thetradedesk.audience.datasets.CrossDeviceVendor.CrossDeviceVendor
 import com.thetradedesk.audience.datasets.Model.Model
-import com.thetradedesk.audience.datasets.SeedTagOperations.dataSourceTag
 import com.thetradedesk.audience.datasets._
-import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJob.prometheus
-import com.thetradedesk.audience.utils.{BitwiseOrAgg, S3Utils, SeedPolicyUtils}
+import com.thetradedesk.audience.transform.IDTransform.{allIdWithType, filterOnIdTypes}
+import com.thetradedesk.audience.utils.{S3Utils, SeedPolicyUtils}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.datasets.core.AnnotatedSchemaBuilder
-import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
-import com.thetradedesk.spark.util.io.FSUtils
+import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql._
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.{ArrayType, IntegerType, StringType, StructType}
+import org.apache.spark.sql.types.IntegerType
 
-import java.sql.Timestamp
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
-import java.time.{LocalDate, LocalDateTime, ZoneOffset}
-import scala.util.Random
+import java.time.{LocalDate, LocalDateTime}
 
 abstract class AudiencePolicyTableGenerator(model: Model, prometheus: PrometheusClient) {
 
@@ -130,9 +125,9 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
     val uniqueTDIDs = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(Config.bidImpressionLookBack), source = Some(GERONIMO_DATA_SOURCE))
-      .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdType))
-      .filter(samplingFunction('TDID))
-      .select('TDID)
+      .filter(filterOnIdTypes(samplingFunction))
+      .select(allIdWithType.alias("x"))
+      .select(col("x._1").as("TDID"), col("x._2").as("idType"))
       .repartition(Config.bidImpressionRepartitionNum, 'TDID)
       .distinct()
       .cache()

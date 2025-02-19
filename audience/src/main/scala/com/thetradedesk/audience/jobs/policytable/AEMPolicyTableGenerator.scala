@@ -50,7 +50,7 @@ object AEMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.AEM, p
   }
 
   private def retrieveConversionData(date: LocalDate): DataFrame = {
-    val uniqueTDIDsFromBidImp = getBidImpUniqueTDIDs(date)
+    val uniqueTDIDsFromBidImp = getBidImpUniqueTDIDs(date).select("TDID")
 
     // conversion
     val activeConversionTrackerTagId = retrieveActiveCampaignConversionTrackerTagIds();

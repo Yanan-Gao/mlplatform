@@ -37,8 +37,8 @@ package object audience {
   val audienceVersionDateFormat = "yyyyMMddHHmmss"
 
   val userIsInSampleUDF = udf[Boolean, String, Long, Long](userIsInSample)
-  private val doNotTrackTDID = "00000000-0000-0000-0000-000000000000"
-  private val doNotTrackTDIDColumn = lit("00000000-0000-0000-0000-000000000000")
+  val doNotTrackTDID = "00000000-0000-0000-0000-000000000000"
+  val doNotTrackTDIDColumn = lit("00000000-0000-0000-0000-000000000000")
 
   val seedCoalesceAfterFilter = config.getInt("seedCoalesceAfterFilter", 4)
 
@@ -47,16 +47,16 @@ package object audience {
   val featuresJsonSourcePath = "/features.json"
   val featuresJsonDestPath = s"s3a://thetradedesk-mlplatform-us-east-1/configdata/${ttdEnv}/audience/schema/${modelName}/v=1/${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}/features.json"
 
-  def shouldConsiderTDID(symbol: Symbol) = {
-    shouldTrackTDID(symbol) && substring(symbol, 9, 1) === lit("-") && userIsInSampleUDF(symbol, lit(userDownSampleBasePopulation), lit(userDownSampleHitPopulation))
+  def shouldConsiderTDID(column: Column) = {
+    shouldTrackTDID(column) && substring(column, 9, 1) === lit("-") && userIsInSampleUDF(column, lit(userDownSampleBasePopulation), lit(userDownSampleHitPopulation))
   }
 
-  def shouldConsiderTDID2(symbol: Symbol) = {
-    shouldTrackTDID(symbol) && substring(symbol, 9, 1) === lit("-") && userIsInSampleUDF(symbol, lit(userDownSampleBasePopulation), lit(userDownSampleHitPopulationV2))
+  def shouldConsiderTDID2(column: Column) = {
+    shouldTrackTDID(column) && substring(column, 9, 1) === lit("-") && userIsInSampleUDF(column, lit(userDownSampleBasePopulation), lit(userDownSampleHitPopulationV2))
   }
 
-  def shouldConsiderTDID3(userDownSampleHitPopulation: Int, salt: String)(symbol: Symbol) = {
-    shouldTrackTDID(symbol) && substring(symbol, 9, 1) === lit("-") && (abs(xxhash64(concat(symbol, lit(salt)))) % lit(userDownSampleBasePopulation) < lit(userDownSampleHitPopulation))
+  def shouldConsiderTDID3(userDownSampleHitPopulation: Int, salt: String)(column: Column) = {
+    shouldTrackTDID(column) && substring(column, 9, 1) === lit("-") && (abs(xxhash64(concat(column, lit(salt)))) % lit(userDownSampleBasePopulation) < lit(userDownSampleHitPopulation))
   }
 
   def shouldConsiderTDIDInArray3(userDownSampleHitPopulation: Int, salt: String)
@@ -74,8 +74,8 @@ package object audience {
     XxHash64Function.hash(str.getBytes(), null, 42L)
   }
 
-  def shouldTrackTDID(symbol: Symbol): Column = {
-    symbol.isNotNullOrEmpty && symbol =!= doNotTrackTDIDColumn
+  def shouldTrackTDID(column: Column): Column = {
+    column.isNotNullOrEmpty && column =!= doNotTrackTDIDColumn
   }
 
   def getUiid(uiid: Symbol, uid2: Symbol, euid: Symbol, idType: Symbol): Column = {

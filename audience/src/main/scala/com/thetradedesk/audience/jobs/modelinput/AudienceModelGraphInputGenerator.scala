@@ -54,13 +54,13 @@ abstract class AudienceModelGraphInputGenerator(name: String, crossDeviceVendor:
         val personGraphMapping = seedIdToSyntheticIdWithSamplingMapping(graphExtendPolicyTable.filter(e => e.crossDeviceVendorId == CrossDeviceVendor.IAV2Person.id).map(e => (e.sourceId, WeightPair(e.syntheticId, e.weight))).toMap)
         val houseHoldGraphMapping = seedIdToSyntheticIdWithSamplingMapping(graphExtendPolicyTable.filter(e => e.crossDeviceVendorId == CrossDeviceVendor.IAV2Household.id).map(e => (e.sourceId, WeightPair(e.syntheticId, e.weight))).toMap)
         return seedData
-          .select('TDID, groupColumn.alias("GroupId"), array_union(mapping(seedIdsColumn), array_union(personGraphMapping('PersonGraphSeedIds), houseHoldGraphMapping('HouseholdGraphSeedIds))).alias("PositiveSyntheticIds"))
+          .select('TDID, 'idType, groupColumn.alias("GroupId"), array_union(mapping(seedIdsColumn), array_union(personGraphMapping('PersonGraphSeedIds), houseHoldGraphMapping('HouseholdGraphSeedIds))).alias("PositiveSyntheticIds"))
           .where(size('PositiveSyntheticIds) > 0)
           .cache()
       }
     }
     seedData
-      .select('TDID, groupColumn.alias("GroupId"), mapping(seedIdsColumn).alias("PositiveSyntheticIds"))
+      .select('TDID, 'idType, groupColumn.alias("GroupId"), mapping(seedIdsColumn).alias("PositiveSyntheticIds"))
       .where(size('PositiveSyntheticIds) > 0)
       .cache()
   }
