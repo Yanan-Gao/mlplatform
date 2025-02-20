@@ -5,14 +5,11 @@ import com.thetradedesk.featurestore.rsm.CommonEnums.{CrossDeviceVendor, DataSou
 import com.thetradedesk.featurestore.transform._
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.config
-import com.thetradedesk.spark.util.io.FSUtils
+import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{DataFrame, SaveMode}
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import scala.util.Random
 
 object DailySyntheticIdDensityScorePolicyTableJoinJob extends FeatureStoreBaseJob {
 
@@ -21,6 +18,7 @@ object DailySyntheticIdDensityScorePolicyTableJoinJob extends FeatureStoreBaseJo
 
   val salt = "TRM"
   val repartitionNum = 32768
+  val writePartitions = 2048
 
   def getDateStr(date: LocalDate): String = {
     val dtf = DateTimeFormatter.ofPattern("yyyyMMdd")
@@ -55,10 +53,20 @@ object DailySyntheticIdDensityScorePolicyTableJoinJob extends FeatureStoreBaseJo
         arrays_zip(collect_list('SyntheticId).as("SyntheticId"), collect_list('DensityScore).as("DensityScore")).as("SyntheticIdDensityScores")
       )
 
+    val siteZipDensityScoreCategorized = siteZipDensityScoreDf.groupBy('SiteZipHashed)
+      .agg(flatten(collect_list("SyntheticIdDensityScores")).as("SyntheticIdDensityScores"))
+      .withColumn("SyntheticIdLevel2", DensityScoreFilterUDF.apply(0.99f, 1.01f)('SyntheticIdDensityScores))
+      .withColumn("SyntheticIdLevel1", DensityScoreFilterUDF.apply(0.8f, 0.99f)('SyntheticIdDensityScores))
+      .filter(!(size(col("SyntheticIdLevel1")) === lit(0) && size(col("SyntheticIdLevel2")) === lit(0)))
+      .select("SiteZipHashed", "SyntheticIdLevel1", "SyntheticIdLevel2")
+
     // save this to be used in downstream processing in rest of the TDID splits
     val writePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SiteZipHashed/config=SyntheticIdDensityScorePolicyTableJoined/date=$dateStr"
+    siteZipDensityScoreDf.repartition(writePartitions).write.mode(SaveMode.Overwrite).parquet(writePath)
 
-    siteZipDensityScoreDf.write.mode(SaveMode.Overwrite).parquet(writePath)
+    // save categorized dataset for offline model score processing
+    val writePathCategorized = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SiteZipHashed/config=SyntheticIdDensityScoreCategorized/date=$dateStr"
+    siteZipDensityScoreCategorized.repartition(writePartitions).write.mode(SaveMode.Overwrite).parquet(writePathCategorized)
 
     Array(("", 0))
   }
