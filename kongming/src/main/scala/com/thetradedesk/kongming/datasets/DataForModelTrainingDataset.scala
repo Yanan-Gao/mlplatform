@@ -11,9 +11,9 @@ final case class UserDataForModelTrainingRecord(
                                                  AdvertiserIdStr: String,
                                                  AdvertiserId: Int,
                                                  BidRequestIdStr: String,
-                                                 Weight: Double,
-                                                 Target: Int,
-                                                 Revenue: Option[BigDecimal],
+                                                 Weight: Float,
+                                                 Target: Float,
+                                                 Revenue: Option[Float],
 
                                                  SupplyVendor: Option[Int],
                                                  SupplyVendorPublisherId: Option[Int],
@@ -39,7 +39,7 @@ final case class UserDataForModelTrainingRecord(
                                                  MatchedFoldPosition: Int,
 
                                                  HasContextualCategoryTier1: Int,
-                                                 ContextualCategoryLengthTier1: Double,
+                                                 ContextualCategoryLengthTier1: Float,
 
                                                  ContextualCategoriesTier1_Column0: Int,
                                                  ContextualCategoriesTier1_Column1: Int,
@@ -73,14 +73,14 @@ final case class UserDataForModelTrainingRecord(
                                                  ContextualCategoriesTier1_Column29: Int,
                                                  ContextualCategoriesTier1_Column30: Int,
 
-                                                 sin_hour_week: Double,
-                                                 cos_hour_week: Double,
-                                                 sin_hour_day: Double,
-                                                 cos_hour_day: Double,
-                                                 sin_minute_hour: Double,
-                                                 cos_minute_hour: Double,
-                                                 latitude: Option[Double],
-                                                 longitude: Option[Double],
+                                                 sin_hour_week: Float,
+                                                 cos_hour_week: Float,
+                                                 sin_hour_day: Float,
+                                                 cos_hour_day: Float,
+                                                 sin_minute_hour: Float,
+                                                 cos_minute_hour: Float,
+                                                 latitude: Option[Float],
+                                                 longitude: Option[Float],
 
                                                  IndustryCategoryId: Option[Int],
                                                  AudienceId_Column0: Int,
@@ -255,22 +255,78 @@ final case class UserDataForModelTrainingRecord(
                                                  UserData_Column138: Int,
                                                  UserData_Column139: Int,
                                                  UserData_Column140: Int,
-//                                                 UserData_Column141: Int,
-//                                                 UserData_Column142: Int,
-//                                                 UserData_Column143: Int,
-//                                                 UserData_Column144: Int,
-//                                                 UserData_Column145: Int,
-//                                                 UserData_Column146: Int,
-//                                                 UserData_Column147: Int,
-//                                                 UserData_Column148: Int,
-//                                                 UserData_Column149: Int,
-//                                                 UserData_Column150: Int,
+                                                 //UserData_Column141: Int,
+                                                 //UserData_Column142: Int,
+                                                 //UserData_Column143: Int,
+                                                 //UserData_Column144: Int,
+                                                 //UserData_Column145: Int,
+                                                 //UserData_Column146: Int,
+                                                 //UserData_Column147: Int,
+                                                 //UserData_Column148: Int,
+                                                 //UserData_Column149: Int,
+                                                 //UserData_Column150: Int,
 //                                                 UserData_Column151: Int,
 
                                                  HasUserData: Int,
-                                                 UserDataLength: Double,
+                                                 UserDataLength: Float,
                                                  UserDataOptIn: Int
                                                // 256 columns in total
+                                               )
+
+final case class ArrayUserDataForModelTrainingRecord(
+                                                 AdGroupIdEncoded: Long,
+                                                 AdGroupId: Int,
+                                                 CampaignIdEncoded: Long,
+                                                 CampaignId: Int,
+                                                 AdvertiserIdEncoded: Long,
+                                                 AdvertiserId: Int,
+                                                 Weight: Float,
+                                                 Target: Float,
+                                                 Revenue: Option[Float],
+
+                                                 SupplyVendor: Option[Int],
+                                                 SupplyVendorPublisherId: Option[Int],
+                                                 AliasedSupplyPublisherId: Option[Int],
+                                                 // ImpressionPlacementId: Option[String],
+                                                 Site: Option[Int],
+                                                 AdFormat: Int,
+
+                                                 Country: Option[Int],
+                                                 Region: Option[Int],
+                                                 City: Option[Int],
+                                                 Zip: Option[Int],
+
+                                                 DeviceMake: Option[Int],
+                                                 DeviceModel: Option[Int],
+                                                 RequestLanguages: Int,
+
+                                                 RenderingContext: Option[Int],
+                                                 DeviceType: Option[Int],
+                                                 OperatingSystem: Option[Int],
+                                                 Browser: Option[Int],
+                                                 InternetConnectionType: Option[Int],
+                                                 MatchedFoldPosition: Int,
+
+                                                 HasContextualCategoryTier1: Int,
+                                                 ContextualCategoryLengthTier1: Float,
+                                                 ContextualCategoriesTier1: Array[Int],
+
+                                                 sin_hour_week: Float,
+                                                 cos_hour_week: Float,
+                                                 sin_hour_day: Float,
+                                                 cos_hour_day: Float,
+                                                 sin_minute_hour: Float,
+                                                 cos_minute_hour: Float,
+                                                 latitude: Option[Float],
+                                                 longitude: Option[Float],
+
+                                                 IndustryCategoryId: Option[Int],
+                                                 AudienceId: Array[Int],
+
+                                                 UserData: Array[Int],
+                                                 HasUserData: Int,
+                                                 UserDataLength: Float,
+                                                 UserDataOptIn: Int,
                                                )
 
 final case class DataForModelTrainingRecord(
@@ -281,9 +337,9 @@ final case class DataForModelTrainingRecord(
                                  AdvertiserIdStr: String,
                                  AdvertiserId: Int,
                                  BidRequestIdStr: String,
-                                 Weight: Double,
-                                 Target: Int,
-                                 Revenue: Option[BigDecimal],
+                                 Weight: Float,
+                                 Target: Float,
+                                 Revenue: Option[Float],
 
                                  SupplyVendor: Option[Int],
                                  SupplyVendorPublisherId: Option[Int],
@@ -309,7 +365,7 @@ final case class DataForModelTrainingRecord(
                                  MatchedFoldPosition: Int,
 
                                  HasContextualCategoryTier1: Int,
-                                 ContextualCategoryLengthTier1: Double,
+                                 ContextualCategoryLengthTier1: Float,
 
                                  ContextualCategoriesTier1_Column0: Int,
                                  ContextualCategoriesTier1_Column1: Int,
@@ -343,14 +399,14 @@ final case class DataForModelTrainingRecord(
                                  ContextualCategoriesTier1_Column29: Int,
                                  ContextualCategoriesTier1_Column30: Int,
 
-                                 sin_hour_week: Double,
-                                 cos_hour_week: Double,
-                                 sin_hour_day: Double,
-                                 cos_hour_day: Double,
-                                 sin_minute_hour: Double,
-                                 cos_minute_hour: Double,
-                                 latitude: Option[Double],
-                                 longitude: Option[Double],
+                                 sin_hour_week: Float,
+                                 cos_hour_week: Float,
+                                 sin_hour_day: Float,
+                                 cos_hour_day: Float,
+                                 sin_minute_hour: Float,
+                                 cos_minute_hour: Float,
+                                 latitude: Option[Float],
+                                 longitude: Option[Float],
 
                                  IndustryCategoryId: Option[Int],
                                  AudienceId_Column0: Int,
@@ -384,12 +440,6 @@ final case class DataForModelTrainingRecord(
                                  AudienceId_Column28: Int,
                                  AudienceId_Column29: Int
                                           )
-
-
-
-
-
-
 
 case class DataCsvForModelTrainingDatasetLastTouch(experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3Dataset[DataForModelTrainingRecord](
@@ -453,4 +503,24 @@ case class UserDataIncCsvForModelTrainingDatasetClick(experimentOverride: Option
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
   ) {
+}
+
+case class ArrayUserDataIncCsvForModelTrainingDatasetLastTouch(experimentOverride: Option[String] = None)
+  extends DateSplitPartitionedS3CBufferDataset[ArrayUserDataForModelTrainingRecord](
+    MLPlatformS3Root, s"${BaseFolderPath}/trainset_userdata_inc/cb/v=1", Some("split"), experimentOverride = experimentOverride) {
+}
+
+case class ArrayUserDataCsvForModelTrainingDatasetLastTouch(experimentOverride: Option[String] = None)
+  extends DateSplitPartitionedS3CBufferDataset[ArrayUserDataForModelTrainingRecord](
+    MLPlatformS3Root, s"${BaseFolderPath}/trainset_userdata/cb/v=1", Some("split"), experimentOverride = experimentOverride) {
+}
+
+case class ArrayUserDataCsvForModelTrainingDatasetClick(experimentOverride: Option[String] = None)
+  extends DateSplitPartitionedS3CBufferDataset[ArrayUserDataForModelTrainingRecord](
+    MLPlatformS3Root, s"${BaseFolderPath}/trainset_click_userdata/cb/v=1", Some("split"), experimentOverride = experimentOverride) {
+}
+
+case class ArrayUserDataIncCsvForModelTrainingDatasetClick(experimentOverride: Option[String] = None)
+  extends DateSplitPartitionedS3CBufferDataset[ArrayUserDataForModelTrainingRecord](
+    MLPlatformS3Root, s"${BaseFolderPath}/trainset_click_userdata_inc/cb/v=1", Some("split"), experimentOverride = experimentOverride) {
 }

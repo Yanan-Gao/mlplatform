@@ -7,6 +7,10 @@ final case class TrainSetFeaturesRecord (
                                           CampaignId: String,
                                           AdvertiserId: String,
 
+                                          AdGroupIdEncoded: Long,
+                                          CampaignIdEncoded: Long,
+                                          AdvertiserIdEncoded: Long,
+
                                           LogEntryTime: String,
                                           Weight: Double,
                                           Target: Int,

@@ -1,10 +1,10 @@
 package job
 
-import com.thetradedesk.geronimo.shared.loadParquetData
+import com.thetradedesk.geronimo.shared.{encodeStringIdUdf, loadParquetData}
 import com.thetradedesk.geronimo.shared.schemas.BidFeedbackDataset
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
-import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, seqDirectFields, seqHashFields}
+import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, encodeDatasetForCBuffer, seqDirectFields, seqHashFields}
 import com.thetradedesk.kongming.transform.TrainSetTransformation.getValidTrackingTags
 import com.thetradedesk.kongming.transform._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -17,7 +17,6 @@ import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import com.thetradedesk.kongming.transform.TrainSetTransformation._
 import org.apache.spark.sql.expressions.Window
-import org.apache.spark.sql.types.DoubleType
 import com.thetradedesk.spark.datasets.core.DefaultTimeFormatStrings
 
 import java.time.LocalDate
@@ -29,6 +28,10 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
   val isExactAttributionLookBack = config.getBoolean("isExactAttributionLookBack", true)
   val isSampledNegativeWeight = config.getBoolean("isSampledNegativeWeight", false)
 
+  val saveTrainingDataAsTFRecord = config.getBoolean("saveTrainingDataAsTFRecord", true)
+  val saveTrainingDataAsCSV = config.getBoolean("saveTrainingDataAsCSV", true)
+  val saveTrainingDataAsCBuffer = config.getBoolean("saveTrainingDataAsCBuffer", true)
+
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
     val delayNDays = Config.ImpressionLookBack + Config.AttributionLookBack
@@ -36,19 +39,37 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
     val attributionSet = generateAttributionSet(scoreDate)(getPrometheus)
 
-    val TrackedAttributionSetWithUserData = attributionSet._1.filter($"IsTracked" === lit(1)).selectAs[OutOfSampleAttributionRecord]
-    val UntrackedAttributionSetWithUserData = attributionSet._1.filter($"IsTracked" =!= lit(1)).selectAs[OutOfSampleAttributionRecord]
+    val parquetSelectionTabular = attributionSet.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqDirectFields ++ seqHashFields)
 
-    val TrackedAttributionSet = attributionSet._2.filter($"IsTracked" === lit(1)).selectAs[OldOutOfSampleAttributionRecord]
-    val UntrackedAttributionSet = attributionSet._2.filter($"IsTracked" =!= lit(1)).selectAs[OldOutOfSampleAttributionRecord]
+    var datasetRows = Array.fill(2)("", 0L)
 
-    val numTrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSetWithUserData, scoreDate, "tracked", Some(partCount.OOSTracked))
-    val numUntrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(UntrackedAttributionSetWithUserData, scoreDate, "untracked", Some(partCount.OOSUntracked))
+    if (saveTrainingDataAsTFRecord) {
+      val TrackedAttributionSet = attributionSet.filter($"IsTracked" === lit(1)).select(parquetSelectionTabular: _*).selectAs[OldOutOfSampleAttributionRecord]
+      val UntrackedAttributionSet = attributionSet.filter($"IsTracked" =!= lit(1)).select(parquetSelectionTabular: _*).selectAs[OldOutOfSampleAttributionRecord]
+      val numTrackedRows = OldOutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSet, scoreDate, "tracked", Some(200))
+      val numUntrackedRows = OldOutOfSampleAttributionDataset(delayNDays).writePartition(UntrackedAttributionSet, scoreDate, "untracked", Some(200))
+      datasetRows = Array(numTrackedRows, numUntrackedRows)
+    }
 
-    OldOutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSet, scoreDate, "tracked", Some(200))
-    OldOutOfSampleAttributionDataset(delayNDays).writePartition(UntrackedAttributionSet, scoreDate, "untracked", Some(200))
+    if (saveTrainingDataAsCSV) {
+      val TrackedAttributionSetWithUserData = attributionSet.filter($"IsTracked" === lit(1)).select(parquetSelectionTabular: _*).selectAs[OutOfSampleAttributionRecord]
+      val UntrackedAttributionSetWithUserData = attributionSet.filter($"IsTracked" =!= lit(1)).select(parquetSelectionTabular: _*).selectAs[OutOfSampleAttributionRecord]
 
-    Array(numTrackedRows, numUntrackedRows)
+      val numTrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSetWithUserData, scoreDate, "tracked", Some(partCount.OOSTracked))
+      val numUntrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(UntrackedAttributionSetWithUserData, scoreDate, "untracked", Some(partCount.OOSUntracked))
+      datasetRows = Array(numTrackedRows, numUntrackedRows)
+    }
+
+    if (saveTrainingDataAsCBuffer) {
+      val TrackedAttributionSetWithUserData = attributionSet.filter($"IsTracked" === lit(1))
+      val UntrackedAttributionSetWithUserData = attributionSet.filter($"IsTracked" =!= lit(1))
+
+      val numTrackedRows = ArrayOutOfSampleAttributionDataset(delayNDays).writePartition(encodeDatasetForCBuffer[ArrayOutOfSampleAttributionRecord](TrackedAttributionSetWithUserData), scoreDate, Some("tracked"), partCount.OOSTracked, evalBatchSize)
+      val numUntrackedRows = ArrayOutOfSampleAttributionDataset(delayNDays).writePartition(encodeDatasetForCBuffer[ArrayOutOfSampleAttributionRecord](UntrackedAttributionSetWithUserData), scoreDate, Some("untracked"), partCount.OOSUntracked, evalBatchSize)
+      datasetRows = Array(numTrackedRows, numUntrackedRows)
+    }
+
+    datasetRows
 
   }
 
@@ -64,8 +85,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
                                                   ConfigValue: String
                                                   )
 
-  def generateAttributionSet(scoreDate: LocalDate)(implicit prometheus: PrometheusClient):
-  (Dataset[OutOfSampleAttributionRecord], Dataset[OldOutOfSampleAttributionRecord]) = {
+  def generateAttributionSet(scoreDate: LocalDate)(implicit prometheus: PrometheusClient): Dataset[UnionOutOfSampleAttributionRecord] = {
     val adGroupPolicy = AdGroupPolicyDataset().readDate(scoreDate)
     val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(scoreDate)
     val policy = getMinimalPolicy(adGroupPolicy, adGroupPolicyMapping).cache()
@@ -116,8 +136,8 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
       val impWithAttr = impressionsToScore.join(broadcast(filteredAttrWithWeight.select($"BidRequestId".alias("BidRequestIdStr"), $"Target", $"Revenue", $"Weight")), Seq("BidRequestIdStr"), "left")
         .withColumn("Target", coalesce('Target, lit(0)))
-        .withColumn("Revenue", coalesce('Revenue, lit(0)))
-        .withColumn("Weight", coalesce('Weight,lit(1)))
+        .withColumn("Revenue", coalesce('Revenue, lit(0)).cast("float"))
+        .withColumn("Weight", coalesce('Weight,lit(1)).cast("float"))
         .withColumn("AdGroupPosCount", sum($"Target").over(win))
         .withColumn("AdGroupNegCount", sum(lit(1) - $"Target").over(win))
         .withColumn("SamplingRate", $"AdGroupPosCount" * lit(NegPosRatio) / $"AdGroupNegCount")
@@ -137,19 +157,27 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
     }).reduce(_.union(_)).cache()
 
     val campaignsWithPosSamples = rawOOS.filter('Target === lit(1)).select('CampaignId).distinct
-    val parquetSelectionTabular = rawOOS.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqDirectFields ++ seqHashFields)
 
     val rawOOSFiltered =  
       rawOOS.join(broadcast(campaignsWithPosSamples), Seq("CampaignId"), "left_semi")
-      .select(parquetSelectionTabular: _*)
+      .withColumn("AdGroupIdEncoded", encodeStringIdUdf('AdGroupId))
+      .withColumn("CampaignIdEncoded", encodeStringIdUdf('CampaignId))
+      .withColumn("AdvertiserIdEncoded", encodeStringIdUdf('AdvertiserId))
+      .withColumn("UserDataOptIn",lit(2)) // hashmod 1 ->2
+      .withColumn("sin_hour_week", $"sin_hour_week".cast("float"))
+      .withColumn("cos_hour_week", $"cos_hour_week".cast("float"))
+      .withColumn("sin_hour_day", $"sin_hour_day".cast("float"))
+      .withColumn("cos_hour_day", $"cos_hour_day".cast("float"))
+      .withColumn("sin_minute_hour", $"sin_minute_hour".cast("float"))
+      .withColumn("cos_minute_hour", $"cos_minute_hour".cast("float"))
+      .withColumn("latitude", $"latitude".cast("float"))
+      .withColumn("longitude", $"longitude".cast("float"))
+      .withColumn("UserDataLength", $"UserDataLength".cast("float"))
+      .withColumn("ContextualCategoryLengthTier1", $"ContextualCategoryLengthTier1".cast("float"))
+      .withColumn("Target", $"Target".cast("float"))
+      .selectAs[UnionOutOfSampleAttributionRecord]
       .cache()
 
-    val rawOOSWithUserData = rawOOSFiltered
-      .withColumn("UserDataOptIn",lit(2)) // hashmod 1 ->2
-      .selectAs[OutOfSampleAttributionRecord]
-
-    val rawOOSdata = rawOOSFiltered.selectAs[OldOutOfSampleAttributionRecord]
-
-    (rawOOSWithUserData, rawOOSdata)
+    rawOOSFiltered
   }
 }

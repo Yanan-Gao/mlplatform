@@ -42,6 +42,7 @@ object TrainSetTransformation {
 
   case class PreFeatureJoinRecordV2(
                                    CampaignIdStr: String,
+                                   CampaignIdEncoded: Long,
                                    BidRequestIdStr: String,
                                    ConversionTrackerLogEntryTime: String,
                                    LogEntryTimeStr: String,
@@ -229,18 +230,18 @@ object TrainSetTransformation {
 
     val adGroupDailyConvDist = positiveSamples
       .withColumn("BidDiffDayInt", floor((unix_timestamp($"ConversionTrackerLogEntryTime") - unix_timestamp($"LogEntryTimeStr","yyyy-MM-dd HH:mm:ss")) / 86400).cast("int"))
-      .groupBy("CampaignIdStr", "BidDiffDayInt").agg(count($"BidRequestIdStr").alias("PosDailyCnt"))
+      .groupBy("CampaignIdEncoded", "BidDiffDayInt").agg(count($"BidRequestIdStr").alias("PosDailyCnt"))
 
     val dayRange = (0 to lookBackDays).toList
-    val adGroupRangeDF = adGroupDailyConvDist.select("CampaignIdStr").distinct()
+    val adGroupRangeDF = adGroupDailyConvDist.select("CampaignIdEncoded").distinct()
       .withColumn("DateRange", typedLit(dayRange))
       .withColumn("BidDiffDayInt", explode($"DateRange"))
       .drop("DateRange")
     val adGroupRangeConvDist = adGroupRangeDF
-      .join(adGroupDailyConvDist, Seq("CampaignIdStr", "BidDiffDayInt"), "left")
+      .join(adGroupDailyConvDist, Seq("CampaignIdEncoded", "BidDiffDayInt"), "left")
       .withColumn("PosDailyCnt", coalesce('PosDailyCnt, lit(0)))
-      .withColumn("CampaignGroupSize", sum("PosDailyCnt").over(Window.partitionBy("CampaignIdStr")))
-      .withColumn("PosPctInNDay", sum("PosDailyCnt").over(Window.partitionBy("CampaignIdStr").orderBy("BidDiffDayInt"))
+      .withColumn("CampaignGroupSize", sum("PosDailyCnt").over(Window.partitionBy("CampaignIdEncoded")))
+      .withColumn("PosPctInNDay", sum("PosDailyCnt").over(Window.partitionBy("CampaignIdEncoded").orderBy("BidDiffDayInt"))
         / $"CampaignGroupSize")
     val negativeWithAdjustedWeight = weightMethod match {
       case Some("PostDistVar") => {
@@ -253,7 +254,7 @@ object TrainSetTransformation {
         negativeSamples
         .withColumn("BidDiffDayInSeconds", (unix_timestamp(date_add(lit(date), 1)) - unix_timestamp($"LogEntryTimeStr","yyyy-MM-dd HH:mm:ss")) / 86400)
         .withColumn("BidDiffDayInt", floor($"BidDiffDayInSeconds"))
-        .join(broadcast(adGroupRangeConvDist), Seq("CampaignIdStr", "BidDiffDayInt"), "left")
+        .join(broadcast(adGroupRangeConvDist), Seq("CampaignIdEncoded", "BidDiffDayInt"), "left")
         .withColumn("WeightDecayFunc", lit(1) - lit(methodDistParams.Offset) * exp(lit(methodDistParams.Coefficient) * $"BidDiffDayInSeconds"))
         .withColumn("Weight", when($"CampaignGroupSize" > methodDistParams.Threshold, $"PosPctInNDay").otherwise($"WeightDecayFunc").cast(DoubleType))
       }
@@ -349,6 +350,7 @@ object TrainSetTransformation {
   // will use this function and retire the one above once we switch on daily trainset gen.
   def attachTrainsetWithFeature(
                                       trainset: Dataset[PreFeatureJoinRecord],
+                                      mapping: Dataset[AdGroupPolicyMappingRecord],
                                       date: LocalDate,
                                       lookbackDays: Int
                                       )(implicit prometheus: PrometheusClient): Dataset[TrainSetFeaturesRecord] = {
@@ -357,6 +359,11 @@ object TrainSetTransformation {
     } else {
       DailyBidsImpressionsDataset().readRange(date.minusDays(lookbackDays), date, isInclusive = true)
     }
+
+    val encodedAdGroupId = mapping.select('AdGroupId, 'AdGroupIdEncoded).distinct()
+    val encodedCampaignId = mapping.select('CampaignId, 'CampaignIdEncoded).distinct()
+    val encodedAdvertiserId = mapping.select('AdvertiserId, 'AdvertiserIdEncoded).distinct()
+
 
     // attachTrainsetWithFeature function
     val df = trainset.join(bidimpression.drop("AdGroupId", "LogEntryTime"), Seq("BidRequestId"), joinType = "inner")
@@ -373,6 +380,9 @@ object TrainSetTransformation {
       .withColumn("UserData", when($"HasUserData"===lit(0), lit(null)).otherwise($"MatchedSegments"))
       .withColumn("UserDataOptIn", lit(1))
       .withColumnRenamed("ConfigValue", "AdGroupId")
+      .join(broadcast(encodedAdGroupId), Seq("AdGroupId"), "inner")
+      .join(broadcast(encodedCampaignId), Seq("CampaignId"), "inner")
+      .join(broadcast(encodedAdvertiserId), Seq("AdvertiserId"), "inner")
       .cache()
 
     val bidsImpContextual = df.select("BidRequestId", "ContextualCategories")
@@ -585,17 +595,17 @@ object TrainSetTransformation {
     // Cache the trainset as we are using it multiple times
     val cachedTrainset = trainset.cache()
 
-    val sumWeight = cachedTrainset.filter(col("Target") === 0).groupBy("AdGroupIdStr").agg(sum("Weight").as("NegSumWeight"))
-    .join(cachedTrainset.filter(col("Target") === 1).groupBy("AdGroupIdStr").agg(sum("Weight").as("PosSumWeight")), Seq("AdGroupIdStr"), "inner")
+    val sumWeight = cachedTrainset.filter(col("Target") === 0).groupBy("AdGroupIdEncoded").agg(sum("Weight").as("NegSumWeight"))
+    .join(cachedTrainset.filter(col("Target") === 1).groupBy("AdGroupIdEncoded").agg(sum("Weight").as("PosSumWeight")), Seq("AdGroupIdEncoded"), "inner")
 
     // Repartition to distribute data evenly across partitions
     val repartitionedSumWeight = 
       sumWeight
       .withColumn("Coefficient", when($"PosSumWeight" > 0, $"NegSumweight" / $"PosSumWeight").otherwise($"NegSumWeight"))
-      .repartition(col("AdGroupIdStr"))
+      .repartition(col("AdGroupIdEncoded"))
 
-    val adjustedTrainset = cachedTrainset.join(broadcast(repartitionedSumWeight), Seq("AdGroupIdStr"), "inner")
-          .withColumn("Weight", when(col("Target") === 1, col("Weight") * col("Coefficient") / lit(desiredNegOverPos)).otherwise(col("Weight")))
+    val adjustedTrainset = cachedTrainset.join(broadcast(repartitionedSumWeight), Seq("AdGroupIdEncoded"), "inner")
+          .withColumn("Weight", when(col("Target") === 1, col("Weight") * col("Coefficient") / lit(desiredNegOverPos)).otherwise(col("Weight")).cast("float"))
 
     adjustedTrainset.selectAs[UserDataValidationDataForModelTrainingRecord]
   }

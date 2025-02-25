@@ -3,17 +3,22 @@ package job
 import com.thetradedesk.geronimo.shared.intModelFeaturesCols
 import com.thetradedesk.kongming.features.Features._
 import com.thetradedesk.kongming._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyMappingDataset, BidsImpressionsSchema, DailyBidsImpressionsDataset, DailyOfflineScoringDataset, DailyOfflineScoringRecord, OldDailyOfflineScoringDataset}
+import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.transform.OfflineScoringSetTransform
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
-import org.apache.spark.sql.functions.col
+import com.thetradedesk.spark.util.TTDConfig.config
+import org.apache.spark.sql.functions.{col, unix_timestamp}
 
 import java.time.format.DateTimeFormatter
 
 object DailyOfflineScoringSet extends KongmingBaseJob {
 
   override def jobName: String = "DailyOfflineScoringSet"
+
+  val saveTrainingDataAsTFRecord = config.getBoolean("saveTrainingDataAsTFRecord", true)
+  val saveTrainingDataAsCSV = config.getBoolean("saveTrainingDataAsCSV", true)
+  val saveTrainingDataAsCBuffer = config.getBoolean("saveTrainingDataAsCBuffer", true)
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
     val mapping = AdGroupPolicyMappingDataset().readDate(date)
@@ -23,6 +28,7 @@ object DailyOfflineScoringSet extends KongmingBaseJob {
 
     var hashFeatures = modelDimensions ++ modelFeatures
     hashFeatures = hashFeatures.filter(x => !(seqDirectFields ++ directFields ++ flagFields).contains(x))
+
     val selectionTabular = intModelFeaturesCols(hashFeatures) ++ rawModelFeatureCols(seqDirectFields) ++ aliasedModelFeatureCols(keptFields ++ directFields)
 
     //val dailyOfflineScoringRows = if (task == "roas") {
@@ -32,16 +38,26 @@ object DailyOfflineScoringSet extends KongmingBaseJob {
       selectionTabular
     )(getPrometheus)
 
-    val dailyOfflineScoringRows = OldDailyOfflineScoringDataset().writePartition(oldScoringFeatureDS, date, Some(partCount.DailyOfflineScoring))
-    //} else {
-//    val oldScoringFeatureDS = OfflineScoringSetTransform.dailyTransform(date, bidsImpression, selectionTabular)(getPrometheus)
-    val reselectionTabular = oldScoringFeatureDS.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqHashFields ++ seqDirectFields)
-    val scoringFeatureDS = oldScoringFeatureDS
-      .select(reselectionTabular: _*)
-      .selectAs[DailyOfflineScoringRecord]
+    var dailyOfflineScoringRows = ("", 0L)
 
-    DailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(partCount.DailyOfflineScoring))
-    //}
+    if (saveTrainingDataAsTFRecord) {
+      dailyOfflineScoringRows = OldDailyOfflineScoringDataset().writePartition(oldScoringFeatureDS.selectAs[OldDailyOfflineScoringRecord], date, Some(partCount.DailyOfflineScoring))
+    }
+
+    if (saveTrainingDataAsCSV) {
+      val reselectionTabular = oldScoringFeatureDS.columns.map { c => col(c) }.toArray ++ aliasedModelFeatureCols(seqHashFields ++ seqDirectFields)
+      val scoringFeatureDS = oldScoringFeatureDS
+        .select(reselectionTabular: _*)
+        .selectAs[DailyOfflineScoringRecord]
+
+      dailyOfflineScoringRows = DailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(partCount.DailyOfflineScoring))
+    }
+
+    if (saveTrainingDataAsCBuffer) {
+      dailyOfflineScoringRows = ArrayDailyOfflineScoringDataset().writePartition(
+        encodeDatasetForCBuffer[ArrayDailyOfflineScoringRecord](oldScoringFeatureDS),
+        date, None, partCount.DailyOfflineScoring, evalBatchSize)
+    }
 
     Array(dailyOfflineScoringRows)
 

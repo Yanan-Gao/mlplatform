@@ -1,6 +1,7 @@
 package com.thetradedesk.kongming.datasets
 
 import com.thetradedesk.spark.datasets.core._
+import com.thetradedesk.kongming.{BaseFolderPath, MLPlatformS3Root}
 
 //TODO: will need to be able to extend what Yuehan has as final result for trainingset.
 final case class DailyOfflineScoringRecord(
@@ -37,7 +38,7 @@ final case class DailyOfflineScoringRecord(
                                            MatchedFoldPosition: Int,
 
                                            HasContextualCategoryTier1: Int,
-                                           ContextualCategoryLengthTier1: Double,
+                                           ContextualCategoryLengthTier1: Float,
 
                                            ContextualCategoriesTier1_Column0: Int,
                                            ContextualCategoriesTier1_Column1: Int,
@@ -71,14 +72,14 @@ final case class DailyOfflineScoringRecord(
                                            ContextualCategoriesTier1_Column29: Int,
                                            ContextualCategoriesTier1_Column30: Int,
 
-                                           sin_hour_week: Double,
-                                           cos_hour_week: Double,
-                                           sin_hour_day: Double,
-                                           cos_hour_day: Double,
-                                           sin_minute_hour: Double,
-                                           cos_minute_hour: Double,
-                                           latitude: Option[Double],
-                                           longitude: Option[Double],
+                                           sin_hour_week: Float,
+                                           cos_hour_week: Float,
+                                           sin_hour_day: Float,
+                                           cos_hour_day: Float,
+                                           sin_minute_hour: Float,
+                                           cos_minute_hour: Float,
+                                           latitude: Option[Float],
+                                           longitude: Option[Float],
                                            IndustryCategoryId: Option[Int],
                                            AudienceId_Column0: Int,
                                            AudienceId_Column1: Int,
@@ -253,7 +254,7 @@ final case class DailyOfflineScoringRecord(
                                            UserData_Column139: Int,
                                            UserData_Column140: Int,
                                            HasUserData: Int,
-                                           UserDataLength: Double,
+                                           UserDataLength: Float,
                                           )
 
 case class DailyOfflineScoringDataset(experimentOverride: Option[String] = None) extends KongMingDataset[DailyOfflineScoringRecord](
@@ -296,22 +297,22 @@ final case class OldDailyOfflineScoringRecord(
                                            MatchedFoldPosition: Int,
 
                                            HasContextualCategoryTier1: Int,
-                                           ContextualCategoryLengthTier1: Double,
+                                           ContextualCategoryLengthTier1: Float,
                                            ContextualCategoriesTier1: Array[Int],
 
-                                           sin_hour_week: Double,
-                                           cos_hour_week: Double,
-                                           sin_hour_day: Double,
-                                           cos_hour_day: Double,
-                                           sin_minute_hour: Double,
-                                           cos_minute_hour: Double,
-                                           latitude: Option[Double],
-                                           longitude: Option[Double],
+                                           sin_hour_week: Float,
+                                           cos_hour_week: Float,
+                                           sin_hour_day: Float,
+                                           cos_hour_day: Float,
+                                           sin_minute_hour: Float,
+                                           cos_minute_hour: Float,
+                                           latitude: Option[Float],
+                                           longitude: Option[Float],
                                            IndustryCategoryId: Option[Int],
                                            AudienceId: Array[Int],
 
                                            HasUserData: Int,
-                                           UserDataLength: Double,
+                                           UserDataLength: Float,
                                            UserData: Array[Int]
                                           )
 
@@ -320,3 +321,113 @@ case class OldDailyOfflineScoringDataset(experimentOverride: Option[String] = No
   experimentOverride = experimentOverride,
   fileFormat = TFRecord.Example
 )
+
+final case class ArrayDailyOfflineScoringRecord(
+                                           AdGroupId: Int,
+                                           CampaignId: Int,
+                                           AdvertiserId: Int,
+                                           AdGroupIdEncoded: Long,
+                                           CampaignIdEncoded: Long,
+                                           AdvertiserIdEncoded: Long,
+                                           // ImpressionPlacementId: Option[String],
+                                           SupplyVendor: Option[Int],
+                                           SupplyVendorPublisherId: Option[Int],
+                                           AliasedSupplyPublisherId: Option[Int],
+                                           Site: Option[Int],
+                                           AdFormat: Int,
+
+                                           Country: Option[Int],
+                                           Region: Option[Int],
+                                           City: Option[Int],
+                                           Zip: Option[Int],
+
+                                           DeviceMake: Option[Int],
+                                           DeviceModel: Option[Int],
+                                           RequestLanguages: Int,
+
+                                           RenderingContext: Option[Int],
+                                           DeviceType: Option[Int],
+                                           OperatingSystem: Option[Int],
+                                           Browser: Option[Int],
+                                           InternetConnectionType: Option[Int],
+                                           MatchedFoldPosition: Int,
+
+                                           HasContextualCategoryTier1: Int,
+                                           ContextualCategoryLengthTier1: Float,
+                                           ContextualCategoriesTier1: Array[Int],
+
+                                           sin_hour_week: Float,
+                                           cos_hour_week: Float,
+                                           sin_hour_day: Float,
+                                           cos_hour_day: Float,
+                                           sin_minute_hour: Float,
+                                           cos_minute_hour: Float,
+                                           latitude: Option[Float],
+                                           longitude: Option[Float],
+                                           IndustryCategoryId: Option[Int],
+                                           AudienceId: Array[Int],
+
+                                           HasUserData: Int,
+                                           UserDataLength: Float,
+                                           UserData: Array[Int]
+                                          )
+
+case class ArrayDailyOfflineScoringDataset(experimentOverride: Option[String] = None)
+  extends DateSplitPartitionedS3CBufferDataset[ArrayDailyOfflineScoringRecord](
+    MLPlatformS3Root, s"${BaseFolderPath}/dailyofflinescore/v=3", experimentOverride = experimentOverride)
+
+final case class UnionDailyOfflineScoringRecord(
+                                           AdGroupId: Int,
+                                           CampaignId: Int,
+                                           AdvertiserId: Int,
+                                           AdGroupIdEncoded: Long,
+                                           CampaignIdEncoded: Long,
+                                           AdvertiserIdEncoded: Long,
+                                           BidRequestIdStr: String,
+                                           AdGroupIdStr: String,
+                                           CampaignIdStr: String,
+                                           AdvertiserIdStr: String,
+                                           IsTracked: Int,
+                                           LogEntryTimeStr: String,
+                                           // ImpressionPlacementId: Option[String],
+                                           SupplyVendor: Option[Int],
+                                           SupplyVendorPublisherId: Option[Int],
+                                           AliasedSupplyPublisherId: Option[Int],
+                                           Site: Option[Int],
+                                           AdFormat: Int,
+
+                                           Country: Option[Int],
+                                           Region: Option[Int],
+                                           City: Option[Int],
+                                           Zip: Option[Int],
+
+                                           DeviceMake: Option[Int],
+                                           DeviceModel: Option[Int],
+                                           RequestLanguages: Int,
+
+                                           RenderingContext: Option[Int],
+                                           DeviceType: Option[Int],
+                                           OperatingSystem: Option[Int],
+                                           Browser: Option[Int],
+                                           InternetConnectionType: Option[Int],
+                                           MatchedFoldPosition: Int,
+
+                                           HasContextualCategoryTier1: Int,
+                                           ContextualCategoryLengthTier1: Float,
+                                           ContextualCategoriesTier1: Array[Int],
+
+                                           sin_hour_week: Float,
+                                           cos_hour_week: Float,
+                                           sin_hour_day: Float,
+                                           cos_hour_day: Float,
+                                           sin_minute_hour: Float,
+                                           cos_minute_hour: Float,
+                                           latitude: Option[Float],
+                                           longitude: Option[Float],
+                                           IndustryCategoryId: Option[Int],
+                                           AudienceId: Array[Int],
+
+                                           HasUserData: Int,
+                                           UserDataLength: Float,
+                                           UserData: Array[Int]
+                                          )

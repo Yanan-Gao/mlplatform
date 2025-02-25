@@ -13,9 +13,9 @@ final case class OutOfSampleAttributionRecord(
                                                AdvertiserIdStr: String,
                                                IsTracked: Int,
 
-                                               Target: Int,
-                                               Revenue: Option[BigDecimal],
-                                               Weight: Double,
+                                               Target: Float,
+                                               Revenue: Option[Float],
+                                               Weight: Float,
 
                                                SupplyVendor: Option[Int],
                                                SupplyVendorPublisherId: Option[Int],
@@ -41,7 +41,7 @@ final case class OutOfSampleAttributionRecord(
                                                MatchedFoldPosition: Int,
 
                                                HasContextualCategoryTier1: Int,
-                                               ContextualCategoryLengthTier1: Double,
+                                               ContextualCategoryLengthTier1: Float,
 
                                                ContextualCategoriesTier1_Column0: Int,
                                                ContextualCategoriesTier1_Column1: Int,
@@ -75,14 +75,14 @@ final case class OutOfSampleAttributionRecord(
                                                ContextualCategoriesTier1_Column29: Int,
                                                ContextualCategoriesTier1_Column30: Int,
 
-                                               sin_hour_week: Double,
-                                               cos_hour_week: Double,
-                                               sin_hour_day: Double,
-                                               cos_hour_day: Double,
-                                               sin_minute_hour: Double,
-                                               cos_minute_hour: Double,
-                                               latitude: Option[Double],
-                                               longitude: Option[Double],
+                                               sin_hour_week: Float,
+                                               cos_hour_week: Float,
+                                               sin_hour_day: Float,
+                                               cos_hour_day: Float,
+                                               sin_minute_hour: Float,
+                                               cos_minute_hour: Float,
+                                               latitude: Option[Float],
+                                               longitude: Option[Float],
                                                IndustryCategoryId: Option[Int],
                                                AudienceId_Column0: Int,
                                                AudienceId_Column1: Int,
@@ -117,7 +117,7 @@ final case class OutOfSampleAttributionRecord(
 
 
                                                HasUserData: Int,
-                                               UserDataLength: Double,
+                                               UserDataLength: Float,
                                                UserDataOptIn: Int,
 
                                                UserData_Column0: Int,
@@ -275,14 +275,14 @@ final case class OldOutOfSampleAttributionRecord(
                                                   CampaignId: Int,
                                                   AdvertiserId: Int,
                                                   BidRequestIdStr: String,
-                                                  AdGroupIdStr: String,
-                                                  CampaignIdStr: String,
-                                                  AdvertiserIdStr: String,
+                                                  AdGroupIdEncoded: Long,
+                                                  CampaignIdEncoded: Long,
+                                                  AdvertiserIdEncoded: Long,
                                                   IsTracked: Int,
 
-                                                  Target: Int,
-                                                  Revenue: Option[BigDecimal],
-                                                  Weight: Double,
+                                                  Target: Float,
+                                                  Revenue: Option[Float],
+                                                  Weight: Float,
 
                                                   SupplyVendor: Option[Int],
                                                   SupplyVendorPublisherId: Option[Int],
@@ -308,7 +308,7 @@ final case class OldOutOfSampleAttributionRecord(
                                                   MatchedFoldPosition: Int,
 
                                                   HasContextualCategoryTier1: Int,
-                                                  ContextualCategoryLengthTier1: Double,
+                                                  ContextualCategoryLengthTier1: Float,
 
                                                   ContextualCategoriesTier1_Column0: Int,
                                                   ContextualCategoriesTier1_Column1: Int,
@@ -342,14 +342,14 @@ final case class OldOutOfSampleAttributionRecord(
                                                   ContextualCategoriesTier1_Column29: Int,
                                                   ContextualCategoriesTier1_Column30: Int,
 
-                                                  sin_hour_week: Double,
-                                                  cos_hour_week: Double,
-                                                  sin_hour_day: Double,
-                                                  cos_hour_day: Double,
-                                                  sin_minute_hour: Double,
-                                                  cos_minute_hour: Double,
-                                                  latitude: Option[Double],
-                                                  longitude: Option[Double],
+                                                  sin_hour_week: Float,
+                                                  cos_hour_week: Float,
+                                                  sin_hour_day: Float,
+                                                  cos_hour_day: Float,
+                                                  sin_minute_hour: Float,
+                                                  cos_minute_hour: Float,
+                                                  latitude: Option[Float],
+                                                  longitude: Option[Float],
                                                   IndustryCategoryId: Option[Int],
                                                   AudienceId_Column0: Int,
                                                   AudienceId_Column1: Int,
@@ -390,3 +390,125 @@ case class OldOutOfSampleAttributionDataset(delayNDays: Int, experimentOverride:
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
   )
+
+final case class ArrayOutOfSampleAttributionRecord(
+                                               AdGroupId: Int,
+                                               CampaignId: Int,
+                                               AdvertiserId: Int,
+                                               AdGroupIdEncoded: Long,
+                                               CampaignIdEncoded: Long,
+                                               AdvertiserIdEncoded: Long,
+
+                                               Target: Float,
+                                               Revenue: Option[Float],
+                                               Weight: Float,
+
+                                               SupplyVendor: Option[Int],
+                                               SupplyVendorPublisherId: Option[Int],
+                                               AliasedSupplyPublisherId: Option[Int],
+                                               //ImpressionPlacementId: Option[String],
+                                               Site: Option[Int],
+                                               AdFormat: Int,
+
+                                               Country: Option[Int],
+                                               Region: Option[Int],
+                                               City: Option[Int],
+                                               Zip: Option[Int],
+
+                                               DeviceMake: Option[Int],
+                                               DeviceModel: Option[Int],
+                                               RequestLanguages: Int,
+
+                                               RenderingContext: Option[Int],
+                                               DeviceType: Option[Int],
+                                               OperatingSystem: Option[Int],
+                                               Browser: Option[Int],
+                                               InternetConnectionType: Option[Int],
+                                               MatchedFoldPosition: Int,
+
+                                               HasContextualCategoryTier1: Int,
+                                               ContextualCategoryLengthTier1: Float,
+                                               ContextualCategoriesTier1: Array[Int],
+
+                                               sin_hour_week: Float,
+                                               cos_hour_week: Float,
+                                               sin_hour_day: Float,
+                                               cos_hour_day: Float,
+                                               sin_minute_hour: Float,
+                                               cos_minute_hour: Float,
+                                               latitude: Option[Float],
+                                               longitude: Option[Float],
+                                               IndustryCategoryId: Option[Int],
+                                               AudienceId: Array[Int],
+
+                                               HasUserData: Int,
+                                               UserDataLength: Float,
+                                               UserDataOptIn: Int,
+
+                                               UserData: Array[Int]
+                                             )
+case class ArrayOutOfSampleAttributionDataset(delayNDays: Int, experimentOverride: Option[String] = None)
+  extends DateSplitPartitionedS3CBufferDataset[ArrayOutOfSampleAttributionRecord](
+    MLPlatformS3Root, s"${BaseFolderPath}/outofsampleattributionset/v=2/delay=${delayNDays}D/", experimentOverride = experimentOverride)
+
+final case class UnionOutOfSampleAttributionRecord(
+                                               AdGroupId: Int,
+                                               CampaignId: Int,
+                                               AdvertiserId: Int,
+                                               BidRequestIdStr: String,
+                                               AdGroupIdStr: String,
+                                               CampaignIdStr: String,
+                                               AdvertiserIdStr: String,
+                                               AdGroupIdEncoded: Long,
+                                               CampaignIdEncoded: Long,
+                                               AdvertiserIdEncoded: Long,
+                                               IsTracked: Int,
+
+                                               Target: Float,
+                                               Revenue: Option[Float],
+                                               Weight: Float,
+
+                                               SupplyVendor: Option[Int],
+                                               SupplyVendorPublisherId: Option[Int],
+                                               AliasedSupplyPublisherId: Option[Int],
+                                               //ImpressionPlacementId: Option[String],
+                                               Site: Option[Int],
+                                               AdFormat: Int,
+
+                                               Country: Option[Int],
+                                               Region: Option[Int],
+                                               City: Option[Int],
+                                               Zip: Option[Int],
+
+                                               DeviceMake: Option[Int],
+                                               DeviceModel: Option[Int],
+                                               RequestLanguages: Int,
+
+                                               RenderingContext: Option[Int],
+                                               DeviceType: Option[Int],
+                                               OperatingSystem: Option[Int],
+                                               Browser: Option[Int],
+                                               InternetConnectionType: Option[Int],
+                                               MatchedFoldPosition: Int,
+
+                                               HasContextualCategoryTier1: Int,
+                                               ContextualCategoryLengthTier1: Float,
+                                               ContextualCategoriesTier1: Array[Int],
+
+                                               sin_hour_week: Float,
+                                               cos_hour_week: Float,
+                                               sin_hour_day: Float,
+                                               cos_hour_day: Float,
+                                               sin_minute_hour: Float,
+                                               cos_minute_hour: Float,
+                                               latitude: Option[Float],
+                                               longitude: Option[Float],
+                                               IndustryCategoryId: Option[Int],
+                                               AudienceId: Array[Int],
+
+                                               HasUserData: Int,
+                                               UserDataLength: Float,
+                                               UserDataOptIn: Int,
+
+                                               UserData: Array[Int]
+                                             )
