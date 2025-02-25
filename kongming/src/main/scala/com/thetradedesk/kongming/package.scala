@@ -51,6 +51,9 @@ package object kongming {
   val JobExperimentName = config.getStringOption("jobExperimentName")
   val ExperimentName = config.getStringOption("ttd.experiment")
 
+  val trainingBatchSize = config.getInt("trainingBatchSize", 32768)
+  val evalBatchSize = config.getInt("evalBatchSize", 65536)
+
   object Config {
     val ImpressionLookBack = config.getInt("OutOfSampleAttributeSetGenerator.ImpressionLookBack", 3)
     val AttributionLookBack = config.getInt("OutOfSampleAttributeSetGenerator.AttributionLookBack", 7)

@@ -1,14 +1,16 @@
 package com.thetradedesk.kongming.features
 
+import com.thetradedesk.featurestore.data.cbuffer._
 import com.thetradedesk.geronimo.shared._
 import com.thetradedesk.geronimo.shared.schemas.{ModelFeature, ModelFeatureLists, Shape}
 import com.thetradedesk.kongming.{optionalFeature, task}
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.TTDConfig.config
-import org.apache.spark.sql.Column
+import org.apache.spark.sql.{Column, Dataset, Encoder}
 import org.apache.spark.sql.functions._
 
 object Features {
-
   val defaultFeaturesJsonS3Location = "s3://thetradedesk-mlplatform-us-east-1/features/data/kongming/v=1/prod/features/feature_userdata_subtower_featuretable_aliased_sv.json"
   val defaultROASFeaturesJsonS3Location = "s3://thetradedesk-mlplatform-us-east-1/features/data/roas/v=1/prod/schemas/feature_roas_aud_aliased_sv.json"
 
@@ -54,7 +56,10 @@ object Features {
     ModelFeature("AdGroupId", STRING_FEATURE_TYPE, None, 0, None),
     ModelFeature("CampaignId", STRING_FEATURE_TYPE, None, 0, None),
     ModelFeature("AdvertiserId", STRING_FEATURE_TYPE, None, 0, None),
-    ModelFeature("LogEntryTime", STRING_FEATURE_TYPE, None, 0, None)
+    ModelFeature("LogEntryTime", STRING_FEATURE_TYPE, None, 0, None),
+    ModelFeature("AdGroupIdEncoded", LONG_FEATURE_TYPE, None, 0, None),
+    ModelFeature("CampaignIdEncoded", LONG_FEATURE_TYPE, None, 0, None),
+    ModelFeature("AdvertiserIdEncoded", LONG_FEATURE_TYPE, None, 0, None)
     //ModelFeature("ImpressionPlacementId", STRING_FEATURE_TYPE, Some(500002), 1)
   )
 
@@ -106,6 +111,31 @@ object Features {
     }.toArray.flatMap(_.toList)
   }
 
+  def encodeDatasetForCBuffer[T: Encoder](ds: Dataset[_]): Dataset[T] = {
+    val arrayFeatures = seqHashFields ++ seqDirectFields
+    val scalarFeatures = ds.drop(rawModelFeatureNames(arrayFeatures) ++ aliasedModelFeatureNames(keptFields): _*).columns.map { c => col(c) }.toArray
+
+    val arrayPadder = arrayFeatures.map {
+      case ModelFeature(name, ARRAY_INT_FEATURE_TYPE, Some(cardinality), _, Some(shape),_) =>
+        array((0 until shape.dimensions(0)).map(c => when(col(name).isNotNull && size(col(name)) > c, col(name)(c)).otherwise(0)): _*).alias(name)
+      case ModelFeature(name, ARRAY_LONG_FEATURE_TYPE, Some(cardinality), _, Some(shape),_) =>
+        array((0 until shape.dimensions(0)).map(c => when(col(name).isNotNull && size(col(name)) > c, col(name)(c)).otherwise(0)): _*).alias(name)
+      case ModelFeature(name, ARRAY_FLOAT_FEATURE_TYPE, Some(cardinality), _, Some(shape),_) =>
+        array((0 until shape.dimensions(0)).map(c => when(col(name).isNotNull && size(col(name)) > c, col(name)(c)).otherwise(0)): _*).alias(name)
+      case ModelFeature(name, _, _, _, _, _) => col(name)
+    }.toArray
+
+    val lengthIndicator = arrayFeatures.map {
+      case ModelFeature(name, ARRAY_INT_FEATURE_TYPE, _, _, Some(shape), _) => SchemaHelper.indicateArrayLength(name, shape.dimensions(0)).alias(name)
+      case ModelFeature(name, ARRAY_LONG_FEATURE_TYPE, _, _, Some(shape), _) => SchemaHelper.indicateArrayLength(name, shape.dimensions(0)).alias(name)
+      case ModelFeature(name, ARRAY_FLOAT_FEATURE_TYPE, _, _, Some(shape), _) => SchemaHelper.indicateArrayLength(name, shape.dimensions(0)).alias(name)
+      case ModelFeature(name, _, _, _, _, _) => col(name)
+    }.toArray
+
+    ds.select(scalarFeatures ++ arrayPadder: _*)
+      .select(scalarFeatures ++ lengthIndicator: _*)
+      .selectAs[T](nullIfAbsent = true)
+  }
 
   def rawModelFeatureCols(features: Seq[ModelFeature]): Array[Column] = {
     features.map(f => col(f.name)).toArray

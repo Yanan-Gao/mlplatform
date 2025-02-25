@@ -1,7 +1,8 @@
 package com.thetradedesk.kongming.transform
 
+import com.thetradedesk.geronimo.shared.encodeStringIdUdf
 import com.thetradedesk.spark.sql.SQLFunctions._
-import com.thetradedesk.kongming.datasets.{AdGroupPolicyMappingRecord, AdGroupPolicyRecord, BidsImpressionsSchema, OldDailyOfflineScoringRecord, UnifiedAdGroupFeatureDataSet,AdvertiserFeatureDataSet}
+import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -26,7 +27,7 @@ object OfflineScoringSetTransform {
                      bidsImpressions: Dataset[BidsImpressionsSchema],
                      selectionTabular: Array[Column]
                     )
-                    (implicit prometheus: PrometheusClient): Dataset[OldDailyOfflineScoringRecord] = {
+                    (implicit prometheus: PrometheusClient): Dataset[UnionDailyOfflineScoringRecord] = {
     val bidsImp = bidsImpressions.filter('IsImp)
       //Assuming ConfigKey will always be adgroupId.
       .withColumn("LogEntryTime", date_format($"LogEntryTime", "yyyy-MM-dd HH:mm:ss"))
@@ -55,7 +56,20 @@ object OfflineScoringSetTransform {
       .join(bidsImpContextual, Seq("BidRequestId"), "left")
       .join(dimAudienceId, Seq("CampaignId", "AdvertiserId"), "left")
       .join(dimIndustryCategoryId, Seq("AdvertiserId"), "left")
+      .withColumn("AdGroupIdEncoded", encodeStringIdUdf('AdGroupId))
+      .withColumn("CampaignIdEncoded", encodeStringIdUdf('CampaignId))
+      .withColumn("AdvertiserIdEncoded", encodeStringIdUdf('AdvertiserId))
+      .withColumn("sin_hour_week", $"sin_hour_week".cast("float"))
+      .withColumn("cos_hour_week", $"cos_hour_week".cast("float"))
+      .withColumn("sin_hour_day", $"sin_hour_day".cast("float"))
+      .withColumn("cos_hour_day", $"cos_hour_day".cast("float"))
+      .withColumn("sin_minute_hour", $"sin_minute_hour".cast("float"))
+      .withColumn("cos_minute_hour", $"cos_minute_hour".cast("float"))
+      .withColumn("latitude", $"latitude".cast("float"))
+      .withColumn("longitude", $"longitude".cast("float"))
+      .withColumn("UserDataLength", $"UserDataLength".cast("float"))
+      .withColumn("ContextualCategoryLengthTier1", $"ContextualCategoryLengthTier1".cast("float"))
       .select(selectionTabular: _*)
-      .selectAs[OldDailyOfflineScoringRecord]
+      .selectAs[UnionDailyOfflineScoringRecord]
   }
 }
