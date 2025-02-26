@@ -136,8 +136,8 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
       val impWithAttr = impressionsToScore.join(broadcast(filteredAttrWithWeight.select($"BidRequestId".alias("BidRequestIdStr"), $"Target", $"Revenue", $"Weight")), Seq("BidRequestIdStr"), "left")
         .withColumn("Target", coalesce('Target, lit(0)))
-        .withColumn("Revenue", coalesce('Revenue, lit(0)).cast("float"))
-        .withColumn("Weight", coalesce('Weight,lit(1)).cast("float"))
+        .withColumn("Revenue", coalesce('Revenue, lit(0)))
+        .withColumn("Weight", coalesce('Weight,lit(1)))
         .withColumn("AdGroupPosCount", sum($"Target").over(win))
         .withColumn("AdGroupNegCount", sum(lit(1) - $"Target").over(win))
         .withColumn("SamplingRate", $"AdGroupPosCount" * lit(NegPosRatio) / $"AdGroupNegCount")
@@ -175,6 +175,8 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
       .withColumn("UserDataLength", $"UserDataLength".cast("float"))
       .withColumn("ContextualCategoryLengthTier1", $"ContextualCategoryLengthTier1".cast("float"))
       .withColumn("Target", $"Target".cast("float"))
+      .withColumn("Weight", $"Weight".cast("float"))
+      .withColumn("Revenue", $"Revenue".cast("float"))
       .selectAs[UnionOutOfSampleAttributionRecord]
       .cache()
 
