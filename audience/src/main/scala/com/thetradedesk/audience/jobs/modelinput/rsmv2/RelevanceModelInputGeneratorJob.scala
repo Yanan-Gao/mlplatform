@@ -1,13 +1,13 @@
 package com.thetradedesk.audience.jobs.modelinput.rsmv2
 
 import com.thetradedesk.audience.datasets._
-import com.thetradedesk.audience.dateTime
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.SubFolder
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig._
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface.{BidSideDataRecord, SeedLabelSideDataRecord}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.feature.userzipsite.{UserZipSiteLevelFeatureExternalReader, UserZipSiteLevelFeatureGenerator}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.optinseed.OptInSeedFactory
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.seedlabelside.PostExtraSamplingSeedLabelSideDataGenerator
+import com.thetradedesk.audience.{audienceResultCoalesce, dateTime}
 import com.thetradedesk.geronimo.shared.readModelFeatures
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -37,8 +37,10 @@ object RelevanceModelInputGeneratorJob {
       FSUtils.writeStringToFile(rsmV2FeatureDestPath, rawJson)(spark)
     }
 
+    // totalSplits default is 10 which train:val:holdout -> 8:1:1
+    val totalSplits = trainValHoldoutTotalSplits
     val resultSet = ModelFeatureTransform.modelFeatureTransform[RelevanceModelInputRecord](res, rawJson)
-      .withColumn("SplitRemainder", abs(xxhash64(concat('TDID, lit(splitRemainderHashSalt)))) % 10)
+      .withColumn("SplitRemainder", abs(xxhash64(concat('TDID, lit(splitRemainderHashSalt)))) % totalSplits)
       .withColumn("SubFolder",
         when('SplitRemainder === lit(SubFolder.Val.id), SubFolder.Val.id)
           .when('SplitRemainder === lit(SubFolder.Holdout.id), SubFolder.Holdout.id)
@@ -47,10 +49,15 @@ object RelevanceModelInputGeneratorJob {
       .orderBy("rand").drop("rand")
       .cache()
 
+    // ensure one file at least 30k rows to make model learn well
+    val rowCounts = res.count() / totalSplits
+    val partitionsForValHoldout = math.min(math.max(1, rowCounts / minRowNumsPerPartition), audienceResultCoalesce).toInt
+    val partitionsForTrain = math.min(math.max(1, (totalSplits - 2) * rowCounts / minRowNumsPerPartition), audienceResultCoalesce).toInt
     // TODO: remove hardcode seed_none
     RelevanceModelInputDataset(RelevanceModelInputGeneratorConfig.model.toString, "Seed_None").writePartition(
       resultSet.filter('SubFolder === lit(SubFolder.Val.id)).as[RelevanceModelInputRecord],
       dateTime,
+      numPartitions = Some(partitionsForValHoldout),
       subFolderKey = Some(subFolder),
       subFolderValue = Some(SubFolder.Val.toString),
       format = Some("tfrecord"),
@@ -61,6 +68,7 @@ object RelevanceModelInputGeneratorJob {
       RelevanceModelInputDataset(RelevanceModelInputGeneratorConfig.model.toString, "Seed_None").writePartition(
         resultSet.filter('SubFolder === lit(SubFolder.Holdout.id)).as[RelevanceModelInputRecord],
         dateTime,
+        numPartitions = Some(partitionsForValHoldout),
         subFolderKey = Some(subFolder),
         subFolderValue = Some(SubFolder.Holdout.toString),
         format = Some("tfrecord"),
@@ -71,6 +79,7 @@ object RelevanceModelInputGeneratorJob {
     RelevanceModelInputDataset(RelevanceModelInputGeneratorConfig.model.toString, "Seed_None").writePartition(
       resultSet.filter('SubFolder === lit(SubFolder.Train.id)).as[RelevanceModelInputRecord],
       dateTime,
+      numPartitions = Some(partitionsForTrain),
       subFolderKey = Some(subFolder),
       subFolderValue = Some(SubFolder.Train.toString),
       format = Some("tfrecord"),
