@@ -29,6 +29,8 @@ object RelevanceModelInputGeneratorConfig {
   val saveIntermediateResult = config.getBoolean("saveIntermediateResult", false)
   val intermediateResultBasePathEndWithoutSlash = config.getString("intermediateResultBasePathEndWithoutSlash", s"thetradedesk-mlplatform-us-east-1/users/yixuan.zheng/allinone/dataset/${subFolder}")
   val maxLabelLengthPerRow = config.getInt("maxLabelLengthPerRow", 50)
+  val minRowNumsPerPartition = config.getInt("minRowNumsPerPartition", 100000)
+  val trainValHoldoutTotalSplits = config.getInt("trainValHoldoutTotalSplits", 10)
 
   val activeSeedIdWhiteList = config.getString("activeSeedIdWhiteList", "")
 }
