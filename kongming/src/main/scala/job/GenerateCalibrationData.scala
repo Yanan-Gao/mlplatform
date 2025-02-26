@@ -29,7 +29,7 @@ object GenerateCalibrationData extends KongmingBaseJob {
     attDataToSample.withColumn(
         "NegSampleRate", least(lit(Config.IsotonicNegSampleRateMax), lit(Config.IsotonicNegCntMax) / $"CampaignNegatives")
       ).filter(($"Target" === 0 && rand(seed = samplingSeed) < $"NegSampleRate") || ($"Target" === 1))
-      .withColumn("Weight", when($"Target" === lit(0), $"Weight" / $"NegSampleRate").otherwise($"Weight"))
+      .withColumn("Weight", when($"Target" === lit(0), $"Weight" / $"NegSampleRate").otherwise($"Weight").cast("float"))
       .drop("NegSampleRate")
       .selectAs[OutOfSampleAttributionRecord]
 
