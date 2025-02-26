@@ -27,7 +27,7 @@ object AudienceCalculateThresholdsJob {
 
     val campaignSeedDF = CampaignSeedDataset().readLatestPartition()
     // policy folder: s3://thetradedesk-mlplatform-us-east-1/configdata/prod/audience/policyTable/RSM/v=1/20241101000000
-    val policyDF = AudienceModelPolicyReadableDataset(Config.model).readSinglePartition(dateTime)(spark)
+    val policyDF = AudienceModelPolicyReadableDataset(Model.RSM).readSinglePartition(dateTime)(spark)
     val ialDF = spark.read.parquet(Config.IALFolder)
     val adgroupDF = AdGroupDataSet().readLatestPartitionUpTo(date, true)
 
