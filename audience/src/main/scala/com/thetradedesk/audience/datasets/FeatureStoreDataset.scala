@@ -24,6 +24,18 @@ case class TDIDDensityScoreReadableDataset()
     FEATURE_STORE_ROOT,
     dateFormat = audienceVersionDateFormat.substring(0, 8) // Extract the first 8 characters
   )
+final case class SeedDensityScoreRecord(
+        SiteZipHashed: Option[BigInt],
+        SyntheticIdLevel2: Option[Seq[Option[Int]]],
+        SyntheticIdLevel1: Option[Seq[Option[Int]]],
+)
+
+case class SeedDensityScoreReadableDataset() 
+  extends LightReadableDataset[SeedDensityScoreRecord](
+    s"${config.getString(s"${getClassName(SeedDensityScoreReadableDataset)}ReadEnv", ttdEnv)}/profiles/source=bidsimpression/index=SiteZipHashed/config=SyntheticIdDensityScoreCategorized/",
+    FEATURE_STORE_ROOT,
+    dateFormat = audienceVersionDateFormat.substring(0, 8) // Extract the first 8 characters
+  )
 
 final case class DailySeedDensityScoreRecord(
         SiteZipHashed: Option[Long],
