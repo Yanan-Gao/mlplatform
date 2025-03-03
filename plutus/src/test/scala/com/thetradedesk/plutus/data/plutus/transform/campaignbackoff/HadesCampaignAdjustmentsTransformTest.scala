@@ -3,15 +3,15 @@ package com.thetradedesk.plutus.data.plutus.transform.campaignbackoff
 import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.plutus.data.mockdata.DataGenerator
 import com.thetradedesk.plutus.data.mockdata.MockData._
-import com.thetradedesk.plutus.data.schema.{PcResultsMergedSchema, PlutusLogsData}
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
-import com.thetradedesk.plutus.data.transform.campaignbackoff.PlutusCampaignAdjustmentsTransform.mergeBackoffDatasets
+import com.thetradedesk.plutus.data.schema.{PcResultsMergedSchema, PlutusLogsData}
 import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform._
+import com.thetradedesk.plutus.data.transform.campaignbackoff.MergeCampaignBackoffAdjustments.mergeBackoffDatasets
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.AdGroupRecord
-import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
-import org.apache.spark.sql.{DataFrame, Dataset, Row}
+import org.apache.spark.sql.Row
 import org.apache.spark.sql.functions._
+import org.scalatest.matchers.should.Matchers._
 
 
 class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
@@ -30,7 +30,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
   test("Validating plutus adjustment calculations") {
     val campaignId = "pmbcej3"
-    val underdeliveringCampaigns = Seq(FilteredCampaignData(campaignId, CampaignType_NewCampaignNotPacing)).toDS()
+    val underdeliveringCampaigns = Seq(CampaignMetaData(campaignId, CampaignType_NewCampaign)).toDS()
 
     val pcResultsMergedData = Seq(
       pcResultsMergedMock(campaignId = Some(campaignId), dealId = "0000", adjustedBidCPMInUSD = 6.8800, discrepancy = 1.1, floorPrice = 1, mu = -0.3071f, sigma =  0.6923f, auctionType = 3)
@@ -50,30 +50,40 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
   test("Testing Problem Campaign filtering") {
     // aggregateCampaignBBFOptOutRate
-    val campaignBBFOptOutRate = campaignBBFOptOutRateMock.select("*")
-    val yesterdaysData = spark.emptyDataset[CampaignAdjustmentsHadesSchema]
+    val campaignBBFOptOutRate = campaignBBFOptOutRateMock
+    val yesterdaysData = spark.emptyDataset[HadesAdjustmentSchemaV2]
+
+    val underdeliveryThreshold = 0.05
 
     // identifyAndHandleProblemCampaigns
-    val (hadesAdjustmentsData, metrics) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData)
+    val (hadesAdjustmentsData, metrics) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData, underdeliveryThreshold)
 
     // Check non-problem campaign
-    val nonProblemCampaign = hadesAdjustmentsData.collectAsList().get(0)
-    assert(nonProblemCampaign.HadesBackoff_PCAdjustment == 1)
-    assert(!nonProblemCampaign.Hades_isProblemCampaign)
+    val campaignA = hadesAdjustmentsData.filter(_.CampaignId == "campaignA").collect().head
+    assert(campaignA.HadesBackoff_PCAdjustment == 1)
+    assert(!campaignA.Hades_isProblemCampaign)
+
+    // Check campaign with no underdelivery data
+    val campaignB = hadesAdjustmentsData.filter(_.CampaignId == "campaignB").collect().head
+    assert(campaignB.HadesBackoff_PCAdjustment == 0.7884867455687953)
+    // Even though it has an adjustment, this is not a problem campaign since it doesn't have underdelivery data
+    assert(!campaignB.Hades_isProblemCampaign)
 
     // Check problem campaign
-    val problemCampaign = hadesAdjustmentsData.collectAsList().get(1)
-    assert(problemCampaign.HadesBackoff_PCAdjustment == 0.7884867455687953)
-    assert(problemCampaign.Hades_isProblemCampaign)
+    val campaignC = hadesAdjustmentsData.filter(_.CampaignId == "campaignC").collect().head
+    assert(campaignC.HadesBackoff_PCAdjustment == 0.6)
+    assert(campaignC.Hades_isProblemCampaign)
 
     // Checking that metrics are properly aggregated
-    assert(metrics.filter(_._1==CampaignType_NewCampaignNotInThrottleDataset).head._2 == 1)
-    // This should be filtered out since it doesn't have an adjustment
-    assert(!metrics.exists(_._1 == CampaignType_NewCampaignNotPacing))
+    assert(metrics.filter(m => m.CampaignType == CampaignType_NewCampaign && m.PacingType == PacingStatus_NoPacingData ).head.Count == 1)
+    // This is Campaign A
+    assert(metrics.filter(m => m.CampaignType == CampaignType_NoAdjustment).head.Count == 1)
   }
 
   test("Hades Backoff transform test for schema/column correctness") {
-    val campaignId = "abcd"
+    val campaignId = campaignUnderdeliveryForHadesMock.CampaignId
+    val throttleMetricDataset = Seq(campaignUnderdeliveryForHadesMock).toDS()
+
     val pcResultsMergedData = Seq(pcResultsMergedMock(campaignId = Some(campaignId), dealId = "0000", adjustedBidCPMInUSD = 25.01, discrepancy = 1.1, floorPrice = 25, mu = -4.1280107498168945f, sigma = 1.0384914875030518f)).toDS().as[PcResultsMergedSchema]
 
     val plutusLogsData = Seq(pcResultsLogMock("abcd")).toDS().as[PlutusLogsData]
@@ -81,16 +91,18 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
     val bidData = getAllBidData(plutusLogsData, adgroupData, pcResultsMergedData)
 
-    val underDeliveringCampaigns = Seq(FilteredCampaignData(campaignId, CampaignType_NewCampaignNotPacing)).toDS()
+    val underDeliveringCampaigns = Seq(CampaignMetaData(campaignId, CampaignType_NewCampaign)).toDS()
     val campaignBidData = getUnderdeliveringCampaignBidData(bidData, underDeliveringCampaigns)
 
-    val campaignBBFOptOutRate = aggregateCampaignBBFOptOutRate(campaignBidData)
-    val yesterdaysData = spark.emptyDataset[CampaignAdjustmentsHadesSchema]
+    val campaignBBFOptOutRate = aggregateCampaignBBFOptOutRate(campaignBidData, throttleMetricDataset )
+    val yesterdaysData = spark.emptyDataset[HadesAdjustmentSchemaV2]
 
     val optOutRates = campaignBBFOptOutRate.collectAsList()
     assert(optOutRates.size() == 1)
 
-    val (hadesAdjustmentsData, _) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData)
+    val underdeliveryThreshold = 0.05
+
+    val (hadesAdjustmentsData, _) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData, underdeliveryThreshold)
     val res = hadesAdjustmentsData.collectAsList()
     assert(res.size() == 1)
   }
@@ -101,117 +113,82 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val campaignAdjustmentsHadesData = DataGenerator.generateCampaignAdjustmentsHadesData
     val campaignAdjustmentsData = DataGenerator.generateCampaignAdjustmentsPacingData.limit(3)
     val finalMergedCampaignAdjustments = mergeBackoffDatasets(campaignAdjustmentsData, campaignAdjustmentsHadesData)
-    val res = finalMergedCampaignAdjustments.collect()
-
+    val res = finalMergedCampaignAdjustments.select(
+      "CampaignId",
+      "hd_Hades_isProblemCampaign",
+      "hd_HadesBackoff_PCAdjustment",
+      "pc_CampaignPCAdjustment",
+      "MergedPCAdjustment"
+    ).collect()
 
     // Test for campaign that is not Hades Backoff test campaign but in Campaign Backoff.
     // Campaign backoff adjustment should be final adjustment.
-    val justCampaignBackoff = res.filter(_.CampaignId == "campaign1").head
-    assert(justCampaignBackoff.Hades_isProblemCampaign.isEmpty)
-    assert(justCampaignBackoff.HadesBackoff_PCAdjustment.isEmpty)
-    assert(justCampaignBackoff.CampaignPCAdjustment.contains(0.75))
-    assert(justCampaignBackoff.MergedPCAdjustment == 0.75)
-
+    assert(res.contains(Row("campaign1", null, null, 0.75, 0.75)))
 
     // Test for campaign that is Hades Backoff test campaign and in Campaign Backoff. This is a Hades problem campaign.
     // The minimum backoff adjustment should be final adjustment.
-    val bothHadesAndCampaignBackoff = res.filter(_.CampaignId == "campaign2").head
-    assert(bothHadesAndCampaignBackoff.Hades_isProblemCampaign.contains(true))
-    assert(bothHadesAndCampaignBackoff.HadesBackoff_PCAdjustment.contains(0.6))
-    assert(bothHadesAndCampaignBackoff.CampaignPCAdjustment.contains(0.75))
-    assert(bothHadesAndCampaignBackoff.MergedPCAdjustment == 0.6)
+    assert(res.contains(Row("campaign2", true, 0.6, 0.75, 0.6)))
 
 
     // Test for campaign that is Hades Backoff test campaign and in Campaign Backoff. This is not a Hades problem campaign.
     // The Campaign Backoff adjustment should be final adjustment.
-    val notHadesProblemCampaign = res.filter(_.CampaignId == "campaign3").head
-    assert(notHadesProblemCampaign.Hades_isProblemCampaign.contains(false))
-    assert(notHadesProblemCampaign.HadesBackoff_PCAdjustment.contains(1.0))
-    assert(notHadesProblemCampaign.CampaignPCAdjustment.contains(0.75))
-    assert(notHadesProblemCampaign.MergedPCAdjustment == 0.75)
+    assert(res.contains(Row("campaign3", false, 1.0, 0.75, 0.75)))
 
 
     // Test for campaign that is Hades Backoff test campaign and not in Campaign Backoff. This is a Hades problem campaign.
     // The Hades Backoff adjustment should be final adjustment.
-    val hadesProblemCampaign = res.filter(_.CampaignId == "jkl789").head
-    assert(hadesProblemCampaign.Hades_isProblemCampaign.contains(true))
-    assert(hadesProblemCampaign.HadesBackoff_PCAdjustment.contains(0.9))
-    assert(hadesProblemCampaign.CampaignPCAdjustment.isEmpty)
-    assert(hadesProblemCampaign.MergedPCAdjustment == 0.9)
-  }
-
-
-  test("Test that reading the merged data back into campaign adjustments works") {
-    val campaignAdjustmentsHadesData = DataGenerator.generateCampaignAdjustmentsHadesData
-    val campaignAdjustmentsData = DataGenerator.generateCampaignAdjustmentsPacingData.limit(3)
-    val finalMergedCampaignAdjustments = mergeBackoffDatasets(campaignAdjustmentsData, campaignAdjustmentsHadesData)
-    val campaignAdjustmentsPacingData = finalMergedCampaignAdjustments.filter($"CampaignPCAdjustment".isNotNull).selectAs[CampaignAdjustmentsPacingSchema]
-
-    assert(campaignAdjustmentsPacingData.collect().length == 3)
-
+    assert(res.contains(Row("jkl789", true, 0.9, null, 0.9)))
   }
 
   test("test for mergeTodayWithYesterdaysData") {
-    // In these test, we drop `HadesBackoff_PCAdjustment_Old`
-    // because that shouldn't exist in the dataframe going into mergeTodayWithYesterdaysData
+    val underdeliveryThreshold = 0.05
 
+    val todaysData = Seq(
+      campaignStatsHadesMock(campaignId = "campaign1", hadesBackoff_PCAdjustment_Options = Array(1.1, 0.9, 1.0), campaignType = CampaignType_AdjustedCampaign),
+      campaignStatsHadesMock(campaignId = "campaign2", hadesBackoff_PCAdjustment_Options = Array(0.5, 0.4, 0.3), campaignType = CampaignType_AdjustedCampaign),
+      campaignStatsHadesMock(campaignId = "campaign3", hadesBackoff_PCAdjustment_Options = Array(0.5, 0.4, 0.3))
+      // No Campaign 4
+    ).toDS()
 
-    // Testing if yesterday's pushdown is discarded if the campaignType was CampaignType_NewCampaignNoUnderdelivery
-    var todaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustmentCurrent = Some(0.8), campaignType = CampaignType_AdjustedCampaignPacing)
-      .toDF()
-    var yesterdaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustment = 0.4, campaignType = CampaignType_NewCampaignNotInThrottleDataset)
-    var res = mergeTodayWithYesterdaysData(todaysData, yesterdaysData).collect().head
+    val yesterdaysData = Seq(
+      campaignAdjustmentsHadesMock(campaignId = "campaign1", hadesPCAdjustmentPrevious = Array(0.4), campaignType_Previous = Array(CampaignType_NewCampaign)),
+      campaignAdjustmentsHadesMock(campaignId = "campaign2", hadesPCAdjustmentPrevious = Array(0.4)),
+      // No Campaign 3
+      campaignAdjustmentsHadesMock(campaignId = "campaign4", hadesPCAdjustmentPrevious = Array(0.5), hadesProblemCampaign = false)
+    ).toDS()
 
-    assert(res.CampaignId == "campaign3")
-    assert(res.HadesBackoff_PCAdjustment == 0.8)
-    assert(res.CampaignType == CampaignType_AdjustedCampaignPacing)
-    assert(res.CampaignType_Yesterday.contains(CampaignType_NewCampaignNotInThrottleDataset))
-    assert(res.HadesBackoff_PCAdjustment_Current.contains(0.8))
-    assert(res.HadesBackoff_PCAdjustment_Old.contains(0.4))
+    val res = mergeTodayWithYesterdaysData(todaysData, yesterdaysData, underdeliveryThreshold)
+    assert(res.collect().length == 4)
 
+    // Testing if yesterday's pushdown is not discarded if the campaignType was CampaignType_NewCampaignNotInThrottleDataset
+    // Currently, we dont want to discard the adjustment immediately and since we're now doing rolling averages, it will eventually get discarded regardless.
+    val test1 = res.filter($"CampaignId" === "campaign1").collect().head
+    assert(test1.AdjustmentQuantile == 50)
+    assert(test1.HadesBackoff_PCAdjustment == 0.75) // = (0.4 + 1.1) / 2
+    assert(test1.CampaignType == CampaignType_AdjustedCampaign)
+    assert(test1.CampaignType_Previous.contains(CampaignType_NewCampaign))
+    assert(test1.HadesBackoff_PCAdjustment_Current == 1.1)
+    assert(test1.HadesBackoff_PCAdjustment_Previous.contains(0.4))
 
     // Testing if yesterday's pushdown is maintained
-    todaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustmentCurrent = Some(1.0))
-      .toDF()
-    yesterdaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustment = 0.4)
-    res = mergeTodayWithYesterdaysData(todaysData, yesterdaysData).collect().head
-
-    assert(res.CampaignId == "campaign3")
-    assert(res.HadesBackoff_PCAdjustment == 0.4)
-    assert(res.HadesBackoff_PCAdjustment_Current.contains(1.0))
-    assert(res.HadesBackoff_PCAdjustment_Old.contains(0.4))
+    val test2 = res.filter($"CampaignId" === "campaign2").collect().head
+    assert(test2.HadesBackoff_PCAdjustment == 0.45) // = (0.4 + 0.5) / 2
+    assert(test2.HadesBackoff_PCAdjustment_Current == 0.5)
+    assert(test2.HadesBackoff_PCAdjustment_Previous.contains(0.4))
 
     // Testing if todays's pushdown is maintained if yesterdays is missing
-    todaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustmentCurrent = Some(0.5))
-      .toDF()
-    yesterdaysData = spark.emptyDataset[CampaignAdjustmentsHadesSchema]
-    res = mergeTodayWithYesterdaysData(todaysData, yesterdaysData).collect().head
+    val test3 = res.filter($"CampaignId" === "campaign3").collect().head
+    assert(test3.HadesBackoff_PCAdjustment == 0.5)
+    assert(test3.HadesBackoff_PCAdjustment_Current == 0.5)
 
-    assert(res.CampaignId == "campaign3")
-    assert(res.HadesBackoff_PCAdjustment == 0.5)
-    assert(res.HadesBackoff_PCAdjustment_Current.contains(0.5))
-    assert(res.HadesBackoff_PCAdjustment_Old.isEmpty)
+    // This null is fine here. We will handle it on reading the next day
+    assert(test3.HadesBackoff_PCAdjustment_Previous == null)
 
     // Testing if yesterday's pushdown is maintained if todays is missing
-    todaysData = spark.emptyDataset[CampaignAdjustmentsHadesSchema]
-      .toDF()
-    yesterdaysData = campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustment = 0.5, hadesProblemCampaign = false)
-    res = mergeTodayWithYesterdaysData(todaysData, yesterdaysData).collect().head
-
-    assert(res.CampaignId == "campaign3")
-    assert(res.HadesBackoff_PCAdjustment == 0.5)
-    assert(res.HadesBackoff_PCAdjustment_Current.isEmpty)
-    assert(res.HadesBackoff_PCAdjustment_Old.contains(0.5))
-  }
-
-  test("Testing splitting merged dataset") {
-    val campaignAdjustmentsMergedData = spark.emptyDataset[MergedCampaignAdjustmentsSchema]
-    campaignAdjustmentsMergedData.filter($"CampaignPCAdjustment".isNotNull).selectAs[CampaignAdjustmentsPacingSchema].collect()
-    campaignAdjustmentsMergedData
-      .filter($"HadesBackoff_PCAdjustment".isNotNull && $"HadesBackoff_PCAdjustment" < 1.0)
-      .as[CampaignAdjustmentsHadesSchema].collect()
-
-    // These two will throw an error if there is an issue with the schema
+    val test4 = res.filter($"CampaignId" === "campaign4").collect().head
+    assert(test4.HadesBackoff_PCAdjustment == 0.5)
+    assert(test4.HadesBackoff_PCAdjustment_Current == 0.5)
+    assert(test4.HadesBackoff_PCAdjustment_Previous.contains(0.5))
   }
 
   test("Testing GetFilteredCampaigns") {
@@ -230,12 +207,145 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val filteredCampaigns = getFilteredCampaigns(
       campaignThrottleData = campaignUnderdeliveryData,
       potentiallyNewCampaigns = liveCampaigns,
-      yesterdaysCampaigns = yesterdaysCampaigns,
+      adjustedCampaigns = yesterdaysCampaigns,
       0.1,
       Some(0.9)
     )
 
     assert(filteredCampaigns.count() == 2)
   }
+
+  // <editor-fold desc="getAdjustmentQuantile Tests">
+
+  test("getAdjustmentQuantile when no adjustment is needed") {
+    val result = getAdjustmentQuantile(
+      previousQuantiles = Array(40, 40, 40),
+      underdeliveryFraction_Current = Some(0.1), // Underdelivery improves
+      underdeliveryFraction_Previous = Array(0.2, 0.2, 0.2).map(Some(_)),
+      total_BidCount = 9.0,
+      total_BidCount_Previous = Array(9.0, 9.0, 9.0),
+      bbf_pmp_BidCount = 5,
+      bbf_pmp_BidCount_Previous = Array(5, 5, 5),
+      underdeliveryThreshold = 0.05,
+      contextSize = 3)
+    result should be (40)
+  }
+
+  test("getAdjustmentQuantile when adjustment is needed because Underdelivery and OptOut % dropped") {
+    val result = getAdjustmentQuantile(
+      previousQuantiles = Array(40, 40, 40),
+      underdeliveryFraction_Current = Some(0.3), // Increased Underdelivery
+      underdeliveryFraction_Previous = Array(0.2, 0.2, 0.2).map(Some(_)),
+      total_BidCount = 9.0,
+      total_BidCount_Previous = Array(9.0, 9.0, 9.0),
+      bbf_pmp_BidCount = 6, // Increased PMP bidcount
+      bbf_pmp_BidCount_Previous = Array(5, 5, 5),
+      underdeliveryThreshold = 0.05,
+      contextSize = 3)
+    result should be (35)
+  }
+
+  test("getAdjustmentQuantile when adjustment is needed but we're at the minimum") {
+    val result = getAdjustmentQuantile(
+      previousQuantiles = Array(30, 30, 30),
+      underdeliveryFraction_Current = Some(0.3), // Increased Underdelivery
+      underdeliveryFraction_Previous = Array(0.2, 0.2, 0.2).map(Some(_)),
+      total_BidCount = 9.0,
+      total_BidCount_Previous = Array(9.0, 9.0, 9.0),
+      bbf_pmp_BidCount = 6, // Increased PMP bidcount
+      bbf_pmp_BidCount_Previous = Array(5, 5, 5),
+      underdeliveryThreshold = 0.05,
+      contextSize = 3)
+    result should be (30) // Quantile doesn't decrease because 0.3 is minimum rn
+  }
+
+
+  test("getAdjustmentQuantile when adjustment is needed because nothing changed") {
+    val result = getAdjustmentQuantile(
+      previousQuantiles = Array(40, 40, 40),
+      underdeliveryFraction_Current = Some(0.2), // Nothing changes
+      underdeliveryFraction_Previous = Array(0.2, 0.2, 0.2).map(Some(_)),
+      total_BidCount = 9.0,
+      total_BidCount_Previous = Array(9.0, 9.0, 9.0),
+      bbf_pmp_BidCount = 5, // Nothing changes
+      bbf_pmp_BidCount_Previous = Array(5, 5, 5),
+      underdeliveryThreshold = 0.05,
+      contextSize = 3)
+    result should be (35)
+  }
+  //</editor-fold>
+
+  // <editor-fold desc="getFinalAdjustment & isReducingOverTime Tests">
+  test("getFinalAdjustment with empty Previous Adjustments Array") {
+    val result = getFinalAdjustment(0.8, Array(), Some(0.5), 0.6)
+    result should be (0.8 +- tolerance) // Only current adjustment is considered
+  }
+
+  test("getFinalAdjustment with underdelivery Fraction Exactly at Threshold") {
+    val result = getFinalAdjustment(0.7, Array(0.6, 0.5, 0.4), Some(0.5), 0.5)
+    result should be (0.5333 +- tolerance) // (0.5 + 0.4 + 0.7) / 3
+  }
+
+  test("getFinalAdjustment with Previous Adjustments Array with One Element") {
+    val result = getFinalAdjustment(0.9, Array(0.8), Some(0.6), 0.5)
+    result should be (0.85 +- tolerance) // (0.8 + 0.9) / 2
+  }
+
+  test("getFinalAdjustment with two previous adjustments resulting in an average less than currentAdjustment") {
+    val result = getFinalAdjustment(0.7, Array(0.4, 0.3), None)
+    result should be (0.4666 +- tolerance) // Average of (0.4 + 0.3 + 0.7) / 3 is 0.4666, which is the min
+  }
+
+  test("getFinalAdjustment with currentAdjustment greater than 1") {
+    val result = getFinalAdjustment(1.5, Array(0.8, 0.9), None)
+    result should be (1.0 +- tolerance) // We truncate the final adjustment at 1
+  }
+
+  test("isReducingOverTime with slight decrease below threshold") {
+    val result = isReducingOverTime(Array(1.0, 0.95, 0.9, 0.85, 0.8), 0)
+    assert(result) // The slope is slightly below the threshold
+  }
+
+  test("isReducingOverTime with mixed values and reduction above threshold") {
+    val result = isReducingOverTime(Array(0.6, 0.6, 1.0, 1.0, 1.2), -0.02)
+    assert(!result) // Mixed values lead to a slope above the threshold
+  }
+
+  test("isReducingOverTime with a sharp decline") {
+    val result = isReducingOverTime(Array(10.0, 7.0, 4.0, 2.0, 1.0), 0.02)
+    assert(result) // The slope is significantly below the threshold
+  }
+
+  test("countTrailingZeros - General case with trailing zeros") {
+    val arr = Array(1, 2, 0, 0, 0)
+    assert(countTrailingZeros(arr) == 3)
+  }
+
+  test("countTrailingZeros - No trailing zeros") {
+    val arr = Array(1, 2, 3, 4)
+    assert(countTrailingZeros(arr) == 0)
+  }
+
+  test("countTrailingZeros - All elements are zero") {
+    val arr = Array(0, 0, 0, 0)
+    assert(countTrailingZeros(arr) == 4)
+  }
+
+  test("countTrailingZeros - Empty array case") {
+    val arr = Array[Int]()
+    assert(countTrailingZeros(arr) == 0)
+  }
+
+  test("countTrailingZeros - Single zero element") {
+    val arr = Array(0)
+    assert(countTrailingZeros(arr) == 1)
+  }
+
+  test("countTrailingZeros - Single non-zero element") {
+    val arr = Array(5)
+    assert(countTrailingZeros(arr) == 0)
+  }
+
+  //</editor-fold>
 
 }

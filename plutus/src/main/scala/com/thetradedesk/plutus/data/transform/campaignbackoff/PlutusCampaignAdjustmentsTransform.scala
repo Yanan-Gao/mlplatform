@@ -539,40 +539,14 @@ object PlutusCampaignAdjustmentsTransform extends Logger {
     (Math.abs(hash) < threshold)
   }
 
-
-  def mergeBackoffDatasets(campaignAdjustmentsPacingDataset: Dataset[CampaignAdjustmentsPacingSchema],
-                           hadesCampaignAdjustmentsDataset: Dataset[CampaignAdjustmentsHadesSchema])
-  : Dataset[MergedCampaignAdjustmentsSchema] = {
-    campaignAdjustmentsPacingDataset
-      .join(broadcast(hadesCampaignAdjustmentsDataset), Seq("CampaignId"), "fullouter")
-      .withColumn("MergedPCAdjustment", least(col("CampaignPCAdjustment"), col("HadesBackoff_PCAdjustment")))
-      .selectAs[MergedCampaignAdjustmentsSchema]
-  }
-
   def transform(date: LocalDate, updateAdjustmentsVersion: String, fileCount: Int): Dataset[CampaignAdjustmentsPacingSchema] = {
     val campaignUnderdeliveryData = CampaignThrottleMetricDataset
       .readDate(env = envForRead, date = date, lookBack = 4)
 
     // If yesterday's PlutusCampaignAdjustmentsData is available, use that else the merged dataset
     // This is some transitional code. We should remove this once the transition is complete
-    val campaignAdjustmentsPacingData = try {
-      PlutusCampaignAdjustmentsDataset.readLatestDataUpToIncluding(
-        date.minusDays(1),
-        env = envForReadInternal,
-        nullIfColAbsent = true)
-    } catch {
-      case _: S3NoFilesFoundException =>
-        println("Previous day's CampaignAdjustmentsPacingSchema does not exist, so getting data from the merged Dataset.")
-        MergedCampaignAdjustmentsDataset.readLatestDataUpToIncluding(
-            date.minusDays(1),
-            env = envForRead,
-            nullIfColAbsent = true
-          ).filter($"CampaignPCAdjustment".isNotNull)
-          .as[CampaignAdjustmentsPacingSchema]
-      case unknown: Exception =>
-        println(s"Error occurred: ${unknown.getMessage}.")
-        throw unknown
-    }
+    val campaignAdjustmentsPacingData = PlutusCampaignAdjustmentsDataset
+      .readLatestDataUpToIncluding(date.minusDays(1), env = envForRead, nullIfColAbsent = true)
 
     val campaignFlightData = CampaignFlightDataset
       .readLatestDataUpToIncluding(date, nullIfColAbsent = true)
