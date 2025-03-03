@@ -29,7 +29,8 @@ object RelevanceModelInputGeneratorJob {
         "Country","DeviceMake","DeviceModel","RequestLanguages","RenderingContext","DeviceType",
         "OperatingSystemFamily","Browser","Latitude","Longitude","Region","InternetConnectionType",
         "OperatingSystem","ZipSiteLevel_Seed","Targets","SyntheticIds","City","sin_hour_week","cos_hour_week",
-        "sin_hour_day","cos_hour_day","sin_minute_hour","cos_minute_hour","sin_minute_day","cos_minute_day")
+        "sin_hour_day","cos_hour_day","sin_minute_hour","cos_minute_hour","sin_minute_day","cos_minute_day",
+        "MatchedSegments", "MatchedSegmentsLength", "HasMatchedSegments", "UserSegmentCount")
 
     val rawJson = readModelFeatures(rsmV2FeatureSourcePath)()
 

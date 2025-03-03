@@ -34,7 +34,11 @@ final case class RelevanceModelInputRecord(
                                            BidRequestId: String,
                                            AdvertiserId: Option[Int],
                                            SyntheticIds: Seq[Int],
-                                           Targets: Seq[Float]
+                                           Targets: Seq[Float],
+                                           MatchedSegments: Array[Long],
+                                           MatchedSegmentsLength: Double,
+                                           HasMatchedSegments: Option[Int],
+                                           UserSegmentCount: Double
                                          )
 
 case class RelevanceModelInputDataset(model: String, tag: String, version: Int = 1) extends

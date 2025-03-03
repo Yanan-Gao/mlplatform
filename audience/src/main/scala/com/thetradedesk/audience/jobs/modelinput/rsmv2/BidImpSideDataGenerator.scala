@@ -10,6 +10,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types._
 
 object BidImpSideDataGenerator {
 
@@ -21,7 +22,37 @@ object BidImpSideDataGenerator {
       .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdType))
       .filter('TDID.isNotNull && 'TDID =!= lit("00000000-0000-0000-0000-000000000000"))
       .filter(sampler.samplingFunction('TDID))
-      .select("Site", "Zip", "TDID", "BidRequestId", "AdvertiserId", "AliasedSupplyPublisherId", "Country", "DeviceMake", "DeviceModel", "RequestLanguages", "RenderingContext", "DeviceType", "OperatingSystemFamily", "Browser", "Latitude", "Longitude", "Region", "City", "InternetConnectionType", "OperatingSystem", "sin_hour_week", "cos_hour_week", "sin_hour_day", "cos_hour_day", "sin_minute_hour", "cos_minute_hour", "sin_minute_day", "cos_minute_day"
+      .select(
+          "Site",
+          "Zip",
+          "TDID",
+          "BidRequestId",
+          "AdvertiserId",
+          "AliasedSupplyPublisherId",
+          "Country",
+          "DeviceMake",
+          "DeviceModel",
+          "RequestLanguages",
+          "RenderingContext",
+          "DeviceType",
+          "OperatingSystemFamily",
+          "Browser",
+          "Latitude",
+          "Longitude",
+          "Region",
+          "City",
+          "InternetConnectionType",
+          "OperatingSystem",
+          "sin_hour_week",
+          "cos_hour_week",
+          "sin_hour_day",
+          "cos_hour_day",
+          "sin_minute_hour",
+          "cos_minute_hour",
+          "sin_minute_day",
+          "cos_minute_day",
+          "MatchedSegments",
+          "UserSegmentCount"
       )
       .withColumn("OperatingSystemFamily", 'OperatingSystemFamily("value"))
       .withColumn("Browser", 'Browser("value"))
@@ -33,6 +64,9 @@ object BidImpSideDataGenerator {
       .withColumn("Latitude", when('Latitude.isNotNull, 'Latitude).otherwise(0))
       .withColumn("Longitude", ('Longitude + lit(180.0)) / lit(360.0)) //-180 - 180
       .withColumn("Longitude", when('Longitude.isNotNull, 'Longitude).otherwise(0))
+      .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(DoubleType)))
+      .withColumn("HasMatchedSegments", when('MatchedSegments.isNull,0).otherwise(1))
+      .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(DoubleType)))
     val dateStr = RSMV2SharedFunction.getDateStr()
     var writePath: String = null
     if (saveIntermediateResult) {
