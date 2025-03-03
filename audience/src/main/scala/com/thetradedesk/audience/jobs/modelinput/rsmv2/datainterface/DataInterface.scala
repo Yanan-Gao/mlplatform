@@ -34,6 +34,10 @@ case class BidSideDataRecord(TDID: String,
                              cos_minute_hour: Double,
                              sin_minute_day: Double,
                              cos_minute_day: Double,
+                             MatchedSegments: Array[Long],
+                             MatchedSegmentsLength: Double,
+                             HasMatchedSegments: Option[Int],
+                             UserSegmentCount: Double
                             )
 case class BidResult(rawBidReqData: Dataset[BidSideDataRecord],
                      bidSideTrainingData: Dataset[BidSideDataRecord])
