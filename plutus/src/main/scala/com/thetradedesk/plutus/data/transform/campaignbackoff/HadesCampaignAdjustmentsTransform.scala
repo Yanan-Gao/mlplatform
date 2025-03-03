@@ -8,10 +8,10 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.{AdGroupDataSet, AdGroupRecord, CampaignDataSet}
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
-import job.campaignbackoff.CampaignAdjustmentsJob.hadesCampaignCounts
 import org.apache.hadoop.shaded.org.apache.commons.math3.special.Erf
-import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{DataFrame, Dataset, SparkSession}
+import org.apache.spark.sql.expressions.UserDefinedFunction
+import org.apache.spark.sql.functions.{when, _}
+import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.storage.StorageLevel
 
 import java.time.LocalDate
@@ -28,6 +28,9 @@ object HadesCampaignAdjustmentsTransform {
   val floor = 0.0
   val goldenRatio = (math.sqrt(5.0) + 1.0) / 2.0
   val valCloseTo0 = 1e-10
+
+  val HistoryLength = 10
+  val DefaultAdjustmentQuantile = 50
 
   def computeBudgetBucketHash(entityId: String, bucketCount: Int): Short = {
     // Budget Bucket Hash Function
@@ -67,7 +70,7 @@ object HadesCampaignAdjustmentsTransform {
   }
 
   def getUnderdeliveringCampaignBidData(bidData: DataFrame,
-                                        filteredCampaigns: Dataset[FilteredCampaignData]): DataFrame = {
+                                        filteredCampaigns: Dataset[CampaignMetaData]): DataFrame = {
 
     val gss = udf((m: Double, s: Double, b: Double, e: Double) => gssFunc(m, s, b, e))
 
@@ -90,102 +93,92 @@ object HadesCampaignAdjustmentsTransform {
       .filter(col("gen_excess") > 0)
       .withColumn("gen_bufferFloor", (col("FloorPrice") * lit(1 - buffer)))
       .withColumn("gen_plutusPushdownAtBufferFloor", col("gen_bufferFloor") / col("InitialBid"))
-
-      // TODO: For CampaignType_AdjustedCampaignNotPacing campaigns, we could come up with a more aggressive
-      //       Pushdown if we can verify that it helps.
       .withColumn("gen_PCAdjustment", (col("gen_effectiveDiscrepancy") - col("gen_plutusPushdownAtBufferFloor")) / (col("gen_effectiveDiscrepancy") - col("gen_gss_pushdown")))
 
       // We ignore the strategy here because then we calculate an adjustment which is independent
       // of previous adjustments, allowing the backoff to adapt to current bidding environment.
       .withColumn("gen_proposedBid", col("InitialBid") * col("gen_gss_pushdown"))
       .withColumn("gen_isInBufferZone", col("gen_proposedBid") >= col("gen_bufferFloor"))
-      .withColumn("BBFPC_OptOutBid",
+      .withColumn("BBF_PMP_Bid",
         when((col("BidBelowFloorExceptedSource") === 2 && col("Market").isin("Variable", "Fixed") && !col("gen_isInBufferZone")), true)
+          .otherwise(false))
+      .withColumn("BBF_OM_Bid",
+        when((col("BidBelowFloorExceptedSource") === 2 && col("Market").isin("OpenMarket") && !col("gen_isInBufferZone")), true)
           .otherwise(false))
   }
 
-  def aggregateCampaignBBFOptOutRate(campaignBidData: DataFrame): DataFrame = {
+  def aggregateCampaignBBFOptOutRate(campaignBidData: DataFrame,
+                                     campaignThrottleData: Dataset[CampaignThrottleMetricSchema]): Dataset[HadesCampaignStats] = {
+
+    val campaignUnderdeliveryData = campaignThrottleData
+      .groupBy("CampaignId")
+      .agg(
+        max($"UnderdeliveryFraction").as("UnderdeliveryFraction")
+      )
+
     campaignBidData
       .groupBy("CampaignId", "CampaignType")
       .agg(
-        count("*").as("TotalBidCount_includingOptOut"),
-        sum(col("FloorPrice")).as("TotalFloorPrice"),
-        sum(col("FinalBidPrice")).as("TotalFinalBidPrice"),
+        count("*").as("Total_BidCount"),
         sum(
-          when(
-            col("BBFPC_OptOutBid") && col("Market") === "Variable",
-            col("FinalBidPrice")
-          ).otherwise(lit(0))
-        ).as("BBFPC_OptOut_Variable_BidAmount"),
+          when( col("Market").isin("Variable", "Fixed"), lit(1))
+            .otherwise(lit(0))
+        ).as("Total_PMP_BidCount"),
         sum(
-          when(
-            col("BBFPC_OptOutBid") && col("Market") === "Fixed",
-            col("FloorPrice")
-          ).otherwise(lit(0))
-        ).as("BBFPC_OptOut_Fixed_BidAmount"),
+          when( col("Market") === "Fixed", col("FloorPrice"))
+            .when( col("Market") === "Variable", col("FinalBidPrice"))
+            .otherwise(lit(0))
+        ).as("Total_PMP_BidAmount"),
         sum(
-          when(
-            col("BBFPC_OptOutBid") && col("Market") === "Variable",
-            lit(1)
-          ).otherwise(lit(0))
-        ).as("BBFPC_OptOut_Variable_BidCount"),
+          when(col("BBF_PMP_Bid"),lit(1)).otherwise(lit(0))
+        ).as("BBF_PMP_BidCount"),
         sum(
-          when(
-            col("BBFPC_OptOutBid") && col("Market") === "Fixed",
-            lit(1)
+          when(col("BBF_PMP_Bid"), when(col("Market") === "Fixed", col("FloorPrice"))
+              .otherwise(col("FinalBidPrice"))
           ).otherwise(lit(0))
-        ).as("BBFPC_OptOut_Fixed_BidCount"),
-        expr("percentile_approx(gen_PCAdjustment, 0.5, 1000)").as("HadesBackoff_PCAdjustment")
+        ).as("BBF_PMP_BidAmount"),
+        sum(
+          when( col("Market") === "OpenMarket", lit(1)).otherwise(lit(0))
+        ).as("Total_OM_BidCount"),
+        sum(
+          when( col("Market") === "OpenMarket", col("FinalBidPrice")).otherwise(lit(0))
+        ).as("Total_OM_BidAmount"),
+        sum(
+          when(col("BBF_OM_Bid"),col("FinalBidPrice")).otherwise(lit(0))
+        ).as("BBF_OM_BidAmount"),
+        sum(
+          when(col("BBF_OM_Bid"),lit(1)).otherwise(lit(0))
+        ).as("BBF_OM_BidCount"),
+        // This is a workaround we cannot use AdjustmentQuantile here
+        // because spark doesn't support column values in this function
+        // Also, AdjustmentQuantile is calculated later.
+        expr("percentile_approx(gen_PCAdjustment, array(0.5, 0.4, 0.3), 200)").as("HadesBackoff_PCAdjustment_Options")
       )
-      .withColumn("BBFPC_OptOut_Variable_ShareOfBidAmount",
-        coalesce(
-          col("BBFPC_OptOut_Variable_BidAmount"),
-          lit(0)
-        ) / col("TotalFinalBidPrice")
-      )
-      .withColumn("BBFPC_OptOut_Fixed_ShareOfBidAmount",
-        coalesce(
-          col("BBFPC_OptOut_Fixed_BidAmount"),
-          lit(0)
-        ) / col("TotalFloorPrice")
-      )
-      .withColumn("BBFPC_OptOut_ShareOfBidAmount",
-        coalesce(
-          col("BBFPC_OptOut_Variable_ShareOfBidAmount"),
-          lit(0)
-        ) + coalesce(
-          col("BBFPC_OptOut_Fixed_ShareOfBidAmount"),
-          lit(0)
-        )
-      )
-      .withColumn("BBFPC_OptOut_ShareOfBids",
-        (
-          coalesce(
-            col("BBFPC_OptOut_Variable_BidCount"),
-            lit(0)
-          ) + coalesce(
-            col("BBFPC_OptOut_Fixed_BidCount"),
-            lit(0)
-          )
-        ) / col("TotalBidCount_includingOptOut")
-      )
+      .join(broadcast(campaignUnderdeliveryData), Seq("CampaignId"), "left")
+      .as[HadesCampaignStats]
   }
 
-  case class FilteredCampaignData(CampaignId: String, CampaignType: String)
+  case class CampaignMetaData(CampaignId: String, CampaignType: String)
   case class Campaign(CampaignId: String)
+  case class HadesMetrics(CampaignType: String, PacingType: String, OptoutType: String, AdjustmentQuantile: Int, Count: Long)
 
-  val CampaignType_NewCampaignNotInThrottleDataset = "NewCampaignNotInThrottleDataset";
-  val CampaignType_NewCampaignNotPacing = "NewCampaignNotPacing";
-  val CampaignType_AdjustedCampaignPacing = "AdjustedCampaignPacing";
-  val CampaignType_AdjustedCampaignNotPacing = "AdjustedCampaignNotPacing";
-  val CampaignType_AdjustedCampaignNotInThrottleDataset = "AdjustedCampaignNotInThrottleDataset";
-  val CampaignType_AdjustedCampaignNoBids = "AdjustedCampaignNoBids";
+  val CampaignType_NewCampaign = "CampaignWithNewAdjustment";
+  val CampaignType_AdjustedCampaign = "CampaignWithOldAdjustment";
+  val CampaignType_NoAdjustment = "CampaignWithNoAdjustment";
+
+  val PacingStatus_NoPacingData = "NoPacingData"
+  val PacingStatus_NotPacing = "NotPacing"
+  val PacingStatus_Pacing = "Pacing"
+
+  val OptoutStatus_HighOptout = "HighOptOut"
+  val OptoutStatus_LowOptout = "LowOptOut"
+  val OptoutStatus_NoBids = "NoBids"
 
   def getFilteredCampaigns(campaignThrottleData: Dataset[CampaignThrottleMetricSchema],
                            potentiallyNewCampaigns: Dataset[Campaign],
-                           yesterdaysCampaigns: Dataset[Campaign],
+                           adjustedCampaigns: Dataset[Campaign],
                            underdeliveryThreshold: Double,
-                           testSplit: Option[Double]): Dataset[FilteredCampaignData] = {
+                           testSplit: Option[Double]): Dataset[CampaignMetaData] = {
 
     val campaignUnderdeliveryData = campaignThrottleData
       .groupBy("CampaignId")
@@ -194,78 +187,253 @@ object HadesCampaignAdjustmentsTransform {
         max($"UnderdeliveryFraction").as("UnderdeliveryFraction")
       )
 
+    // Campaigns with no prior adjustments and no underdelivery data
     val newOrNonSpendingCampaigns = potentiallyNewCampaigns
       .join(campaignUnderdeliveryData, Seq("CampaignId"), "left_anti")
-      .join(yesterdaysCampaigns, Seq("CampaignId"), "left_anti")
-      .withColumn("CampaignType", lit(CampaignType_NewCampaignNotInThrottleDataset))
+      .withColumn("TestBucket", getTestBucketUDF(col("CampaignId"), lit(bucketCount)))
+      .filter(col("TestBucket") < (lit(bucketCount) * testSplit.getOrElse(1.0))) // Filter for Test Campaigns only
+      .join(adjustedCampaigns, Seq("CampaignId"), "left_anti")
+      .select("CampaignId")
+      .withColumn("CampaignType", lit(CampaignType_NewCampaign))
 
+    // Campaigns with no prior adjustments and with underdelivery data
     val newUnderDeliveringCampaigns = campaignUnderdeliveryData
-      .join(yesterdaysCampaigns, Seq("CampaignId"), "left_anti")
+      .join(adjustedCampaigns, Seq("CampaignId"), "left_anti")
       .filter(col("UnderdeliveryFraction") >= underdeliveryThreshold)
       .withColumn("TestBucket", getTestBucketUDF(col("CampaignId"), lit(bucketCount)))
       .filter(col("TestBucket") < (lit(bucketCount) * testSplit.getOrElse(1.0)) && col("IsValuePacing")) // Filter for Test DA Campaigns only
       .select("CampaignId")
-      .withColumn("CampaignType", lit(CampaignType_NewCampaignNotPacing))
+      .withColumn("CampaignType", lit(CampaignType_NewCampaign))
 
-    val yesterdaysCampaignsWithCampaignType = yesterdaysCampaigns
-      .join(campaignUnderdeliveryData, Seq("CampaignId"), "left")
-      .withColumn("CampaignType",
-        when(col("UnderdeliveryFraction").isNull, CampaignType_AdjustedCampaignNotInThrottleDataset)
-          .when(col("UnderdeliveryFraction") < underdeliveryThreshold, CampaignType_AdjustedCampaignPacing)
-          .otherwise(CampaignType_AdjustedCampaignNotPacing)
-      )
+    val yesterdaysCampaigns = adjustedCampaigns
+      .withColumn("CampaignType", lit(CampaignType_AdjustedCampaign))
       .select("CampaignId", "CampaignType")
-
 
     val res = newOrNonSpendingCampaigns
       .union(newUnderDeliveringCampaigns)
-      .union(yesterdaysCampaignsWithCampaignType)
-      .selectAs[FilteredCampaignData]
+      .union(yesterdaysCampaigns)
+      .selectAs[CampaignMetaData]
       .cache()
 
     res
   }
 
   def identifyAndHandleProblemCampaigns(
-                                         campaignBBFOptOutRate: DataFrame,
-                                         yesterdaysData: Dataset[CampaignAdjustmentsHadesSchema]
-                                       ): (Dataset[CampaignAdjustmentsHadesSchema], Array[(String, Long)]) = {
-    val todaysData = campaignBBFOptOutRate
-      .withColumn("Hades_isProblemCampaign", col("BBFPC_OptOut_ShareOfBids") > 0.5 && col("HadesBackoff_PCAdjustment") < 1)
-      .withColumn("HadesBackoff_PCAdjustment_Current", when(col("Hades_isProblemCampaign"), col("HadesBackoff_PCAdjustment")).otherwise(lit(1)))
+                                         todaysData: Dataset[HadesCampaignStats],
+                                         yesterdaysData: Dataset[HadesAdjustmentSchemaV2],
+                                         underdeliveryThreshold: Double
+                                       ): (Dataset[HadesAdjustmentSchemaV2], Array[HadesMetrics]) = {
+    val res = mergeTodayWithYesterdaysData(todaysData, yesterdaysData, underdeliveryThreshold).persist(StorageLevel.MEMORY_ONLY_2)
 
-    val res = mergeTodayWithYesterdaysData(todaysData, yesterdaysData)
-    val metrics = res.filter($"HadesBackoff_PCAdjustment" < 1.0)
-      .groupBy("CampaignType")
-      .count().as[(String, Long)]
+    val metrics = res
+      .withColumn("PacingType",
+        when($"UnderdeliveryFraction".isNull, PacingStatus_NoPacingData)
+          .when($"UnderdeliveryFraction" > underdeliveryThreshold, PacingStatus_NotPacing)
+          .otherwise(PacingStatus_Pacing))
+      .withColumn("OptoutType",
+        when(col("Total_BidCount") === lit(0), OptoutStatus_NoBids)
+        .when(col("BBF_PMP_BidAmount") / (col("Total_PMP_BidAmount") + col("Total_OM_BidAmount")) > lit(0.5), OptoutStatus_HighOptout)
+          .otherwise(OptoutStatus_LowOptout))
+      .groupBy("CampaignType", "PacingType", "OptoutType", "AdjustmentQuantile")
+      .count().as[HadesMetrics]
       .collect()
 
     (res, metrics)
   }
 
-  def mergeTodayWithYesterdaysData(todaysData: DataFrame, yesterdaysData: Dataset[CampaignAdjustmentsHadesSchema]) : Dataset[CampaignAdjustmentsHadesSchema] = {
+  def getFinalAdjustment(currentAdjustment: Double, previousAdjustments: Array[Double], underdeliveryFraction: Option[Double], underdeliveryThreshold: Double = 0.05, contextSize: Int = 3): Double = {
+    if (previousAdjustments == null || previousAdjustments.length == 0) {
+      return Math.min(1, currentAdjustment)
+    }
+
+    val adjustmentsToConsider = previousAdjustments.takeRight(contextSize - 1) // Including the current adjustment
+    val rollingAverageAdjustment = (adjustmentsToConsider.sum + currentAdjustment) / (adjustmentsToConsider.length + 1)
+    if (underdeliveryFraction.isEmpty || underdeliveryFraction.get < underdeliveryThreshold) {
+      // If campaign is delivering, we dont need to make big changes
+      Math.min(1, rollingAverageAdjustment)
+    } else {
+      // If campaign is not delivering, we will take the most aggressive pushdown
+      Array(1, currentAdjustment, rollingAverageAdjustment).min
+    }
+  }
+
+  def getCurrentAdjustment(adjustmentQuantile: Int, adjustmentOptions: Array[Double]): Double = {
+    adjustmentQuantile match {
+      case 50 => adjustmentOptions(0)
+      case 45 => (adjustmentOptions(0) + adjustmentOptions(1))/2
+      case 40 => adjustmentOptions(1)
+      case 35 => (adjustmentOptions(1) + adjustmentOptions(2))/2
+      case 30 => adjustmentOptions(3)
+      case _ => throw new IllegalArgumentException(s"Unexpected adjustmentQuantile: $adjustmentQuantile")
+    }
+  }
+
+  val quantileAdjustmentMinimum = 30
+
+  val quantileAdjustmentSlopeThreshold = -0.02
+
+  /**
+   * AdjustmentQuantile should be decreased if the following conditions are met:
+   * - No previous Quantile Adjustment within context window
+   * - The campaign always needed adjustment within the context window (had high underdelivery & high optout rate)
+   * - Underdelivery is almost the same or increasing within the context window
+   * - Optout Rate is almost the same or increasing within the context window
+   *
+   * If the above conditions are met, we reduce the adjustment quantile by 5 points
+   *
+   */
+  def getAdjustmentQuantile(previousQuantiles: Array[Int],
+                            underdeliveryFraction_Current: Option[Double], underdeliveryFraction_Previous: Array[Option[Double]],
+                            total_BidCount: Double, total_BidCount_Previous: Array[Double],
+                            bbf_pmp_BidCount: Double, bbf_pmp_BidCount_Previous: Array[Double],
+                            underdeliveryThreshold: Double,
+                            contextSize: Int = 4): Int = {
+
+    if (previousQuantiles == null || previousQuantiles.length == 0)
+      return DefaultAdjustmentQuantile
+
+    val yesterdaysQuantile = previousQuantiles.last
+    val quantilesInContext = previousQuantiles.takeRight(contextSize)
+
+    // ensure that no adjustment has been made to the quantile for the past x days
+    val isQuantileEligibleForChange = quantilesInContext.forall(_ == yesterdaysQuantile) && previousQuantiles.length >= contextSize && yesterdaysQuantile != quantileAdjustmentMinimum
+
+    val bidcount_all = total_BidCount_Previous.takeRight(contextSize-1) :+ total_BidCount
+    val bidcount_bbf_pmp = bbf_pmp_BidCount_Previous.takeRight(contextSize-1) :+ bbf_pmp_BidCount
+    val shareOfBids_bbf_pmp = bidcount_bbf_pmp.zip(bidcount_all).map { case (a, b) => a / b }
+
+    val underdelivery = underdeliveryFraction_Previous.takeRight(contextSize-1) :+ underdeliveryFraction_Current
+
+    // ensure that campaign has been not pacing due to Optout for the past x days
+    val doesCampaignNeedAdjustment = shareOfBids_bbf_pmp.forall( _ > (yesterdaysQuantile / 100)) &&
+      underdelivery.forall(u => {
+        u.nonEmpty && u.get > underdeliveryThreshold
+      })
+
+    if (!isQuantileEligibleForChange || !doesCampaignNeedAdjustment) {
+      yesterdaysQuantile
+    } else {
+      val isBBFShareOfBidsReducingOverTime = isReducingOverTime(shareOfBids_bbf_pmp, quantileAdjustmentSlopeThreshold)
+      val isUnderdeliveryReducingOverTime = isReducingOverTime(underdelivery.map(_.get), quantileAdjustmentSlopeThreshold)
+
+      if (!isBBFShareOfBidsReducingOverTime && !isUnderdeliveryReducingOverTime) {
+        yesterdaysQuantile - 5
+      } else {
+        yesterdaysQuantile
+      }
+    }
+  }
+
+  /**
+   * Slope of  1 is /
+   * Slope of  0 is -
+   * Slope of -1 is \
+   * To check if an array is reducing over time,
+   * we want the slope to be < threshold
+   *
+   * @param arr
+   * @param threshold If threshold is slightly less than 0, we will only
+   *                  return false if arr is holding steady
+   * @return
+   */
+  def isReducingOverTime(arr: Array[Double], threshold: Double): Boolean = {
+    val n = arr.length
+    if (n < 2) throw new IllegalArgumentException("Array must have at least two elements")
+
+    val x = arr.indices.map(_.toDouble)  // x values (indices)
+    val y = arr                          // y values (array elements)
+
+    val sumX = x.sum
+    val sumY = y.sum
+    val sumXY = (x zip y).map { case (xi, yi) => xi * yi }.sum
+    val sumX2 = x.map(xi => xi * xi).sum
+
+    val numerator = sumXY - (sumX * sumY) / n
+    val denominator = sumX2 - (sumX * sumX) / n
+
+    val slope = numerator / denominator
+
+    println(f"For values: ${arr.mkString("Array(", ", ", ")")}, Slope: $slope, Threshold: $threshold")
+    println(f"slope > threshold: ${slope > threshold}")
+
+    slope < threshold
+  }
+
+  def countTrailingZeros(arr: Array[Int]): Int = {
+    var count = 0
+    var i = arr.length - 1
+
+    while (i >= 0 && arr(i) == 0) {
+      count += 1
+      i -= 1
+    }
+    count
+  }
+
+  private def getFinalAdjustmentUDF: UserDefinedFunction = udf(getFinalAdjustment _)
+  private def getCurrentAdjustmentUDF: UserDefinedFunction = udf(getCurrentAdjustment _)
+  private def getAdjustmentQuantileUDF: UserDefinedFunction = udf(getAdjustmentQuantile _)
+  private def countTrailingZerosUDF: UserDefinedFunction = udf(countTrailingZeros _)
+
+  def mergeTodayWithYesterdaysData(todaysData: Dataset[HadesCampaignStats], yesterdaysData: Dataset[HadesAdjustmentSchemaV2], underdeliveryThreshold: Double) : Dataset[HadesAdjustmentSchemaV2] = {
+    val selectedCols = yesterdaysData.columns.filter(_.endsWith("_Previous")) :+ "AdjustmentQuantile"
+    val yesterdaysAdjustments = yesterdaysData.select("CampaignId", selectedCols: _*)
+
+    val currentAdjustments = todaysData
+      .join(broadcast(yesterdaysAdjustments), Seq("CampaignId") , "left_outer")
+      .withColumn("AdjustmentQuantile",
+        coalesce(getAdjustmentQuantileUDF(
+            col("AdjustmentQuantile_Previous"),
+            col("UnderdeliveryFraction"), col("UnderdeliveryFraction_Previous"),
+            col("Total_BidCount"), col("Total_BidCount_Previous"),
+            col("BBF_PMP_BidCount"), col("BBF_PMP_BidCount_Previous"),
+            lit(underdeliveryThreshold),
+            lit(4), // Context size of x: Adjustment Quantile will be adjusted only if not adjusted for *x* days
+          ), lit(DefaultAdjustmentQuantile)))
+      .withColumn("HadesBackoff_PCAdjustment_Current",
+        // We want to apply adjustment when PMP OptOut Fraction is high. We dont want to apply an adjustment when
+        // just OM BBF Fraction is high. This check makes sure that OM BBF Fraction is low.
+        when((col("BBF_OM_BidCount") === lit(0)) || col("BBF_OM_BidCount") / col("Total_BidCount") <= ((lit(100) - $"AdjustmentQuantile") / lit(100)),
+          getCurrentAdjustmentUDF(
+            col("AdjustmentQuantile"),
+            col("HadesBackoff_PCAdjustment_Options"))
+        ).otherwise(lit(1.0))
+      ).withColumn("HadesBackoff_PCAdjustment",
+        when(col("CampaignType") === CampaignType_AdjustedCampaign ||
+          col("BBF_PMP_BidCount") / col("Total_BidCount") > ($"AdjustmentQuantile" / lit(100)),
+          getFinalAdjustmentUDF(
+              col("HadesBackoff_PCAdjustment_Current"),
+              col("HadesBackoff_PCAdjustment_Previous"),
+              col("UnderdeliveryFraction"),
+              lit(underdeliveryThreshold),
+              lit(4) // Context Size of x: FinalAdjustment = min(average of last*x* adjustments including current, current adjustment)
+            )
+        ).otherwise(lit(1.0))
+      )
+      .withColumn("Hades_isProblemCampaign",
+        coalesce(
+          (col("BBF_PMP_BidAmount") / (col("Total_PMP_BidAmount") + col("Total_OM_BidAmount")) > ($"AdjustmentQuantile" / lit(100))) && (col("UnderdeliveryFraction") > underdeliveryThreshold),
+          lit(false)
+        )
+      )
+      .withColumn("CampaignType", when($"HadesBackoff_PCAdjustment" < 1.0, $"CampaignType")
+        .otherwise(lit(CampaignType_NoAdjustment)))
+      .selectAs[HadesAdjustmentSchemaV2]
+
     val oldAdjustments = yesterdaysData
-      .drop("HadesBackoff_PCAdjustment_Old", "CampaignType_Yesterday")
-      .withColumnRenamed("HadesBackoff_PCAdjustment", "HadesBackoff_PCAdjustment_Old")
-      .withColumnRenamed("CampaignType", "CampaignType_Yesterday")
-      .select("CampaignId", "HadesBackoff_PCAdjustment_Old", "CampaignType_Yesterday")
+      .join(broadcast(todaysData), Seq("CampaignId") , "left_anti")
+      .filter(countTrailingZerosUDF(col("Total_PMP_BidCount_Previous")) < 5 ||
+        countTrailingZerosUDF(col("Total_OM_BidCount_Previous")) < 5) // Drop adjustment if more than x if days of 0 bids in historical data
 
-    // TODO: If we see all of the old CampaignType_AdjustedCampaignPacing getting proper
-    //       adjustments, we could just ignore their previous day's adjustments
-    //       and just use the new one. That would make the backoff more dynamic
+      .withColumn("Hades_isProblemCampaign", lit(false))
+      .withColumn("HadesBackoff_PCAdjustment", element_at($"HadesBackoff_PCAdjustment_Previous", -1))
+      .withColumn("HadesBackoff_PCAdjustment_Current", col("HadesBackoff_PCAdjustment"))
+      .withColumn("CampaignType", when($"HadesBackoff_PCAdjustment" < 1.0, lit(CampaignType_AdjustedCampaign))
+        .otherwise(lit(CampaignType_NoAdjustment)))
+      .withColumn("HadesBackoff_PCAdjustment_Options", array())
+      .selectAs[HadesAdjustmentSchemaV2]
 
-    todaysData
-      .drop("HadesBackoff_PCAdjustment_Old", "CampaignType_Yesterday")
-      .join(broadcast(oldAdjustments), Seq("CampaignId") , "outer")
-      .withColumn("HadesBackoff_PCAdjustment",
-        // We dont want to carry forward yesterday's NewNoUnderdeliveryCampaigns' pushdown as is
-        // Since the initial filteredCampaigns list has these campaigns, if the campaign needs a pushdown,
-        // It should be calculated in the process.
-        when($"CampaignType_Yesterday".isNotNull && $"CampaignType_Yesterday" === CampaignType_NewCampaignNotInThrottleDataset, coalesce($"HadesBackoff_PCAdjustment_Current", lit(1.0)))
-        .otherwise(least(coalesce($"HadesBackoff_PCAdjustment_Current", lit(1.0)), coalesce($"HadesBackoff_PCAdjustment_Old", lit(1.0)))))
-      .withColumn("Hades_isProblemCampaign", coalesce($"Hades_isProblemCampaign", lit(false)))
-      .withColumn("CampaignType", coalesce($"CampaignType", lit(CampaignType_AdjustedCampaignNoBids)))
-      .as[CampaignAdjustmentsHadesSchema]
+    currentAdjustments union oldAdjustments
   }
 
   def getAllBidData(pcOptoutData: Dataset[PlutusLogsData], adGroupData: Dataset[AdGroupRecord], pcResultsMergedData: Dataset[PcResultsMergedSchema]): DataFrame = {
@@ -290,39 +458,55 @@ object HadesCampaignAdjustmentsTransform {
                 testSplit: Option[Double],
                 underdeliveryThreshold: Double,
                 fileCount: Int
-               ): Dataset[CampaignAdjustmentsHadesSchema] = {
+               ): Dataset[HadesAdjustmentSchemaV2] = {
 
-    // If yesterday's CampaignAdjustmentsHadesSchema is available, use that else the merged dataset
+    // If yesterday's HadesAdjustmentSchemaV2 is available, use that else the merged dataset
     // This is some transitional code. We should remove this once the transition is complete
-    val yesterdaysData = try {
+    val yesterdaysData = (try {
       HadesCampaignAdjustmentsDataset.readLatestDataUpToIncluding(
-        date.minusDays(1),
-        env = envForReadInternal,
-        nullIfColAbsent = true)
-        .filter($"HadesBackoff_PCAdjustment".isNotNull && $"HadesBackoff_PCAdjustment" < 1.0)
-        .as[CampaignAdjustmentsHadesSchema]
+        date.minusDays(1), env = envForReadInternal, nullIfColAbsent = true, historyLength = HistoryLength)
     } catch {
       case _: S3NoFilesFoundException =>
-        println("Previous day's CampaignAdjustmentsHadesSchema does not exist, so getting data from the merged Dataset.")
-        MergedCampaignAdjustmentsDataset.readLatestDataUpToIncluding(
-            date.minusDays(1),
-            env = envForRead,
-            nullIfColAbsent = true
-          ).filter($"HadesBackoff_PCAdjustment".isNotNull && $"HadesBackoff_PCAdjustment" < 1.0)
-          .as[CampaignAdjustmentsHadesSchema]
-      case unknown: Exception =>
-        println(s"Error occurred: ${unknown.getMessage}.")
-        throw unknown
-    }
+        HadesCampaignAdjustmentsDatasetV1.readLatestDataUpToIncluding(
+          date.minusDays(1),
+          env = envForRead,
+          nullIfColAbsent = true).map(row =>
+          // This gets us the useful data from the older schema
+          HadesAdjustmentSchemaV2(
+            CampaignId = row.CampaignId,
+            CampaignType = row.CampaignType,
+            HadesBackoff_PCAdjustment = row.HadesBackoff_PCAdjustment,
+            HadesBackoff_PCAdjustment_Previous = Array(row.HadesBackoff_PCAdjustment, row.HadesBackoff_PCAdjustment, row.HadesBackoff_PCAdjustment, row.HadesBackoff_PCAdjustment),
+            HadesBackoff_PCAdjustment_Current = row.HadesBackoff_PCAdjustment_Current.getOrElse(1.0),
+            Hades_isProblemCampaign = row.Hades_isProblemCampaign,
+            AdjustmentQuantile = DefaultAdjustmentQuantile,
+            UnderdeliveryFraction = None,
+            Total_BidCount = 0,
+            Total_PMP_BidCount = 0,
+            Total_PMP_BidAmount = 0,
+            BBF_PMP_BidCount = 0,
+            BBF_PMP_BidAmount = 0,
+            Total_OM_BidCount = 0,
+            Total_OM_BidAmount = 0,
+            BBF_OM_BidCount = 0,
+            BBF_OM_BidAmount = 0
+          ))
+          .filter($"HadesBackoff_PCAdjustment".isNotNull && $"HadesBackoff_PCAdjustment" < 1.0)
+    })
+      // We get rid of unadjusted campaigns because if they are still underdelivering, they'll
+      // get picked up anyways. If not, we dont need to carry on that data.
+      .as[HadesAdjustmentSchemaV2]
+      .cache()
 
     val campaignUnderdeliveryData = CampaignThrottleMetricDataset.readDate(env = envForRead, date = date)
+      .cache()
 
     val pcResultsMergedData = PcResultsMergedDataset.readDate(env = envForRead, date = date, nullIfColAbsent = true)
 
     val pcOptoutData = PlutusOptoutBidsDataset.readDate(env = envForRead, date = date, nullIfColAbsent = true)
 
     // day 1's campaign data is exported at the end of day 0
-    val nonArchivedCampaigns = CampaignDataSet().readLatestPartitionUpTo(date.plusDays(1))
+    val nonArchivedCampaigns = CampaignDataSet().readLatestPartitionUpTo(date.plusDays(1), isInclusive = true)
       .filter($"IsVisible")
       .select("CampaignId").distinct()
 
@@ -334,7 +518,9 @@ object HadesCampaignAdjustmentsTransform {
     val filteredCampaigns = getFilteredCampaigns(
       campaignThrottleData = campaignUnderdeliveryData,
       potentiallyNewCampaigns = liveCampaigns,
-      yesterdaysCampaigns = yesterdaysData.selectAs[Campaign],
+      adjustedCampaigns = yesterdaysData
+        .filter($"HadesBackoff_PCAdjustment".isNotNull && $"HadesBackoff_PCAdjustment" < 1.0)
+        .select("CampaignId").as[Campaign],
       underdeliveryThreshold,
       testSplit
     )
@@ -351,22 +537,22 @@ object HadesCampaignAdjustmentsTransform {
     val campaignBidData = getUnderdeliveringCampaignBidData(bidData, filteredCampaigns)
 
     // Get Optout Rates & potential pushdowns for underdelivering campaigns
-    val campaignBBFOptOutRate = aggregateCampaignBBFOptOutRate(campaignBidData)
+    val campaignBBFOptOutRate = aggregateCampaignBBFOptOutRate(campaignBidData, campaignUnderdeliveryData).cache()
 
     // Get final pushdowns
-    val (res, metrics) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData)
-
-    val hadesAdjustmentsDataset = res.persist(StorageLevel.MEMORY_ONLY_2)
+    val (hadesAdjustmentsDataset, metrics) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData, underdeliveryThreshold)
 
     HadesCampaignAdjustmentsDataset.writeData(date, hadesAdjustmentsDataset, fileCount)
 
     val hadesIsProblemCampaignsCount = hadesAdjustmentsDataset.filter(col("Hades_isProblemCampaign") === true).count()
     val hadesTotalAdjustmentsCount = hadesAdjustmentsDataset.filter(col("HadesBackoff_PCAdjustment") < 1.0).count()
 
+    import job.campaignbackoff.CampaignAdjustmentsJob.{hadesCampaignCounts, hadesMetrics}
+
     hadesCampaignCounts.labels("HadesProblemCampaigns").set(hadesIsProblemCampaignsCount)
     hadesCampaignCounts.labels("HadesAdjustedCampaigns").set(hadesTotalAdjustmentsCount)
-    metrics.foreach { case (key, count) =>
-      hadesCampaignCounts.labels(key).set(count)
+    metrics.foreach { metric =>
+      hadesMetrics.labels(metric.CampaignType, metric.PacingType, metric.OptoutType, metric.AdjustmentQuantile.toString).set(metric.Count)
     }
 
     hadesAdjustmentsDataset

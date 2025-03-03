@@ -25,7 +25,7 @@ class DatasetPathGenTest extends AnyFunSuite with Matchers {
 
   test("HadesCampaignAdjustmentsDataset should generate the right path") {
     val path = HadesCampaignAdjustmentsDataset.genPathForDate(LocalDate.of(2025, 11, 13), "prod")
-    path shouldEqual "s3://thetradedesk-mlplatform-us-east-1/env=prod/data/plutusbackoff/hadesadjustments/v=1/date=20251113"
+    path shouldEqual "s3://thetradedesk-mlplatform-us-east-1/env=prod/data/plutusbackoff/hadesadjustments/v=2/date=20251113"
   }
 
   test("MergedCampaignAdjustmentsDataset should generate the right path") {

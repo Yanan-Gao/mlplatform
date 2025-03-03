@@ -2,11 +2,11 @@ package com.thetradedesk.plutus.data.mockdata
 
 import com.thetradedesk.geronimo.bidsimpression.schema._
 import com.thetradedesk.plutus.data.MediaTypeId
-import com.thetradedesk.plutus.data.schema.campaignbackoff._
 import com.thetradedesk.plutus.data.schema._
-import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform.{CampaignType_NewCampaignNotInThrottleDataset, CampaignType_NewCampaignNotPacing}
+import com.thetradedesk.plutus.data.schema.campaignbackoff._
+import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform.{CampaignType_AdjustedCampaign, CampaignType_NewCampaign}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.datasets.sources.{AdFormatRecord, AdGroupRecord, CampaignRecord, CountryRecord, PrivateContractRecord, ROIGoalTypeRecord, SupplyVendorRecord}
+import com.thetradedesk.spark.datasets.sources._
 import com.thetradedesk.streaming.records.rtb._
 import org.apache.spark.sql.Dataset
 
@@ -628,18 +628,53 @@ object MockData {
     )).toDS()
   }
 
-  def campaignAdjustmentsHadesMock(campaignId: String, campaignType: String = CampaignType_NewCampaignNotPacing, hadesPCAdjustment: Double = 1.0, hadesProblemCampaign: Boolean = true, hadesPCAdjustmentCurrent: Option[Double] = None, hadesPCAdjustmentOld: Option[Double] = None ): Dataset[CampaignAdjustmentsHadesSchema] = {
-    Seq(CampaignAdjustmentsHadesSchema(
+  def campaignAdjustmentsHadesMock(campaignId: String,
+                                   campaignType: String = CampaignType_NewCampaign,
+                                   hadesPCAdjustmentCurrent: Double = 1.0,
+                                   hadesPCAdjustmentPrevious: Array[Double] = Array(),
+                                   hadesProblemCampaign: Boolean = true,
+                                   campaignType_Previous:Array[String] = Array()
+                                   ): HadesAdjustmentSchemaV2 = {
+    HadesAdjustmentSchemaV2(
       CampaignId = campaignId,
       CampaignType = campaignType,
-      HadesBackoff_PCAdjustment = hadesPCAdjustment,
+      CampaignType_Previous = campaignType_Previous,
+      HadesBackoff_PCAdjustment = hadesPCAdjustmentCurrent,
       Hades_isProblemCampaign = hadesProblemCampaign,
-      BBFPC_OptOut_ShareOfBids = Some(0.75),
-      BBFPC_OptOut_ShareOfBidAmount = Some(0.75),
+      UnderdeliveryFraction = None,
+      Total_BidCount = 300,
+      Total_PMP_BidCount = 100,
+      Total_PMP_BidAmount = 10000,
+      BBF_PMP_BidCount = 75,
+      BBF_PMP_BidAmount = 6600,
+      Total_OM_BidCount = 200,
+      Total_OM_BidAmount = 12000,
+      BBF_OM_BidCount = 120,
+      BBF_OM_BidAmount = 7000,
       HadesBackoff_PCAdjustment_Current = hadesPCAdjustmentCurrent,
-      HadesBackoff_PCAdjustment_Old = hadesPCAdjustmentOld,
-      CampaignType_Yesterday = None
-    )).toDS()
+      HadesBackoff_PCAdjustment_Previous = hadesPCAdjustmentPrevious,
+      AdjustmentQuantile = 50
+    )
+  }
+
+  def campaignStatsHadesMock(campaignId: String,
+                             campaignType: String = CampaignType_NewCampaign,
+                             hadesBackoff_PCAdjustment_Options: Array[Double] = Array()): HadesCampaignStats = {
+    HadesCampaignStats(
+      CampaignId = campaignId,
+      CampaignType = campaignType,
+      HadesBackoff_PCAdjustment_Options = hadesBackoff_PCAdjustment_Options,
+      UnderdeliveryFraction = Some(0.2),
+      Total_BidCount = 200,
+      Total_PMP_BidCount = 120,
+      Total_PMP_BidAmount = 12000,
+      BBF_PMP_BidCount = 110,
+      BBF_PMP_BidAmount = 1100,
+      Total_OM_BidCount = 80,
+      Total_OM_BidAmount = 1600,
+      BBF_OM_BidCount = 20,
+      BBF_OM_BidAmount = 400
+    )
   }
 
   val campaignUnderdeliveryForHadesMock = CampaignThrottleMetricSchema(
@@ -657,8 +692,13 @@ object MockData {
   )
 
   val campaignBBFOptOutRateMock = Seq(
-    ("abc123", CampaignType_NewCampaignNotPacing, 0.2, 0.1, 0.3, 0.3, 0.6, null),
-    ("jkl789", CampaignType_NewCampaignNotInThrottleDataset, 0.5, 0.25, 0.75, 0.75, 0.7884867455687953, null)
-  ).toDF("CampaignId", "CampaignType", "BBFPC_OptOut_Variable_ShareOfBidAmount", "BBFPC_OptOut_Fixed_ShareOfBidAmount", "BBFPC_OptOut_ShareOfBidAmount", "BBFPC_OptOut_ShareOfBids", "HadesBackoff_PCAdjustment", "CampaignType_Yesterday")
+    // Campaign is underdeliverying but doesn't have a high optout %
+    HadesCampaignStats("campaignA", CampaignType_NewCampaign, Array(1.1, 0.95, 0.8), Some(0.6), 10, 10, 100, 2, 20, 0, 0, 0, 0),
+    // Campaign has high optout but no underdelivery data
+    HadesCampaignStats("campaignB", CampaignType_NewCampaign, Array(0.7884867455687953, 0.85, 0.92), None, 10, 10, 100, 8, 80, 0, 0, 0, 0),
+    // Campaign has high optout and high underdelivery
+    HadesCampaignStats("campaignC", CampaignType_AdjustedCampaign,
+      Array(0.6, 0.5, 0.4), Some(0.5), 10, 10, 100, 8, 80, 0, 0, 0, 0)
+  ).toDS()
 
 }

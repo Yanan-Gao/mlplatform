@@ -3,31 +3,14 @@ package com.thetradedesk.plutus.data.utils
 import com.thetradedesk.plutus.data
 import com.thetradedesk.spark.sql.SQLFunctions.DataFrameExtensions
 import com.thetradedesk.spark.util.io.FSUtils.listDirectoryContents
-import org.apache.spark.sql.{Dataset, Encoder, SaveMode, SparkSession}
+import org.apache.spark.sql.{DataFrame, Dataset, Encoder, SaveMode, SparkSession}
 
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, LocalDateTime}
 import java.util.regex.Pattern
 import scala.util.Try
 
-abstract class S3DailyParquetDataset[T <: Product] {
-
-  protected def genDateSuffix(date: LocalDate): String = {
-    f"date=${date.getYear}${date.getMonthValue}%02d${date.getDayOfMonth}%02d"
-  }
-
-  /** Base S3 path, derived from the environment */
-  protected def genBasePath(env: String): String
-
-  /** Generates a full S3 path for a specific date */
-  def genPathForDate(date: LocalDate, env: String): String = {
-    s"${genBasePath(env)}/${genDateSuffix(date)}"
-  }
-
-  protected def genPathsForDateWithLookback(date: LocalDate, lookBack: Int, env: String): Seq[String] = {
-    (0 to lookBack).map(i => genPathForDate(date.minusDays(i), env))
-  }
-
+abstract class S3DailyParquetDataset[T <: Product] extends S3DailyParquetDataframe {
   def writeData(date: LocalDate, dataset: Dataset[T], filecount: Int = 100, env: String = data.envForWrite): Unit = {
     dataset.coalesce(filecount)
       .write.mode(SaveMode.Overwrite)
@@ -36,10 +19,7 @@ abstract class S3DailyParquetDataset[T <: Product] {
 
   def readDate(date: LocalDate, env: String, lookBack: Int = 0, nullIfColAbsent: Boolean = false)
                  (implicit encoder: Encoder[T], spark: SparkSession): Dataset[T] = {
-    val paths = genPathsForDateWithLookback(date, lookBack, env)
-    println(s"readDate called(date = $date, env=$env, lookback=$lookBack, nullIfColAbsent=$nullIfColAbsent)")
-    println(s"readDate paths: ${paths.mkString(", ")}")
-    spark.read.parquet(paths: _*)
+    readDataframe(date, env, lookBack, nullIfColAbsent)
       .selectAs[T](nullIfColAbsent)
   }
 
@@ -99,3 +79,35 @@ abstract class S3HourlyParquetDataset[T <: Product] extends S3DailyParquetDatase
 }
 
 class S3NoFilesFoundException(message: String) extends Exception(message)
+
+abstract class S3DailyParquetDataframe {
+  protected def genDateSuffix(date: LocalDate): String = {
+    f"date=${date.getYear}${date.getMonthValue}%02d${date.getDayOfMonth}%02d"
+  }
+
+  /** Base S3 path, derived from the environment */
+  protected def genBasePath(env: String): String
+
+  /** Generates a full S3 path for a specific date */
+  def genPathForDate(date: LocalDate, env: String): String = {
+    s"${genBasePath(env)}/${genDateSuffix(date)}"
+  }
+
+  protected def genPathsForDateWithLookback(date: LocalDate, lookBack: Int, env: String): Seq[String] = {
+    (0 to lookBack).map(i => genPathForDate(date.minusDays(i), env))
+  }
+
+  def writeDataframe(date: LocalDate, dataset: DataFrame, filecount: Int = 100, env: String = data.envForWrite): Unit = {
+    dataset.coalesce(filecount)
+      .write.mode(SaveMode.Overwrite)
+      .parquet(genPathForDate(date, env))
+  }
+
+  def readDataframe(date: LocalDate, env: String, lookBack: Int = 0, nullIfColAbsent: Boolean = false)
+                   (implicit spark: SparkSession): DataFrame = {
+    val paths = genPathsForDateWithLookback(date, lookBack, env)
+    println(s"readDate called(date = $date, env=$env, lookback=$lookBack, nullIfColAbsent=$nullIfColAbsent)")
+    println(s"readDate paths: ${paths.mkString(", ")}")
+    spark.read.parquet(paths: _*)
+  }
+}

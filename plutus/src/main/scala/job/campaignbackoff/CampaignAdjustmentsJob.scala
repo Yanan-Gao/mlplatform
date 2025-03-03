@@ -16,8 +16,9 @@ object CampaignAdjustmentsJob {
   val jobDurationGauge = prometheus.createGauge("campaignadjustments_run_time_seconds", "Job execution time in seconds")
   val numRowsWritten = prometheus.createGauge("campaignadjustments_num_rows", "Number of total rows in file (or campaigns)")
   val campaignCounts = prometheus.createGauge("campaignadjustments_plutus_campaign_count", "Number of new, removed, worse, and DA campaigns added to file", labelNames = "status")
-  val testControlSplit = prometheus.createGauge("campaignadjustments_campaign_split", "Rate of control vs test campaigns", labelNames = "test")
+//  val testControlSplit = prometheus.createGauge("campaignadjustments_campaign_split", "Rate of control vs test campaigns", labelNames = "test")
   val hadesCampaignCounts = prometheus.createGauge("campaignadjustments_hades_campaign_count", "Number of identified Hades problem campaigns", labelNames = "status")
+  val hadesMetrics = prometheus.createGauge("campaignadjustments_hades_campaign_types", "Different adjustment types", "CampaignType", "Pacing", "OptOut", "Quantile")
 
   def main(args: Array[String]): Unit = {
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
