@@ -20,6 +20,11 @@ resolvers += "TTDNexusReleases" at "https://nexus.adsrvr.org/repository/ttd-rele
 
 //unmanagedJars in Compile += baseDirectory.value / "geronimo.jar"
 
+val logback = ExclusionRule("ch.qos.logback")
+val jacksonCore = ExclusionRule("com.fasterxml.jackson.core")
+val guava = ExclusionRule("com.google.guava")
+val awsJavaSdkBundle = ExclusionRule("com.amazonaws", "aws-java-sdk-bundle")
+
 libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-sql" % sparkVersion % "provided",
   "org.apache.spark" %% "spark-mllib" % sparkVersion % "provided",
@@ -35,7 +40,12 @@ libraryDependencies ++= Seq(
 
   "org.scalatest" %% "scalatest" % "3.2.9" % "test",
   "org.scalatest" %% "scalatest-funsuite" % "3.2.10" % Test,
-  "com.github.mrpowers" %% "spark-fast-tests" % "1.2.0" % Test
+  "com.github.mrpowers" %% "spark-fast-tests" % "1.2.0" % Test,
+
+  "mobi.mtld.da"      % "deviceatlas-common"       % "1.2",
+  "mobi.mtld.da"      % "deviceatlas-deviceapi"    % "2.1.2",
+  "com.deviceatlas"   % "deviceatlas-enterprise-java"    % "3.2",
+  "com.adbrain" %% "neocortex-spark-3" % "3.0.1-SNAPSHOT" excludeAll(guava, awsJavaSdkBundle, logback, jacksonCore) withSources()
 )
 
 assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
