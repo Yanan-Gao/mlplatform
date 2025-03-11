@@ -179,7 +179,7 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
     val result = impData.join(labels,Seq("BidrequestId"),"inner")
 
     
-    result.coalesce(audienceResultCoalesce)
+    result.repartition(audienceResultCoalesce)
         .write.mode(SaveMode.Overwrite)
         .format("tfrecord")
         .option("recordType", "Example")
