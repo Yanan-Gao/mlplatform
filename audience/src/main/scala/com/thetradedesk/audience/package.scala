@@ -35,6 +35,7 @@ package object audience {
   val policyTableResultCoalesce = config.getInt("policyTableResultCoalesce", 8)
 
   val audienceVersionDateFormat = "yyyyMMddHHmmss"
+  val dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
 
   val userIsInSampleUDF = udf[Boolean, String, Long, Long](userIsInSample)
   val doNotTrackTDID = "00000000-0000-0000-0000-000000000000"

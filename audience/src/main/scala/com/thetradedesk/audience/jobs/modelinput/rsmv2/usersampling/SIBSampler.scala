@@ -110,7 +110,22 @@ object SIBSampler extends Sampler {
     userIsSampled(guidAsLongs.MostSigBits, guidAsLongs.LeastSigBits, 1000000, 100000)
   }
 
+  def _isDeviceIdSampled1Percent(deviceId: String): Boolean = {
+
+    if (deviceId == "") {
+      return false
+    }
+
+    // Parse GUID
+    val guidAsLongs = guidToLongs(deviceId)
+
+    // Must match Constants.UserIsSampled in AdPlatform.
+    // Also must stay constant between runs in prod as we read datasets produced from multiple runs.
+    userIsSampled(guidAsLongs.MostSigBits, guidAsLongs.LeastSigBits, 1000000, 10000) // sample 1%
+  }
+
   val isDeviceIdSampled = udf(_isDeviceIdSampled _)
+  val isDeviceIdSampled1Percent = udf(_isDeviceIdSampled1Percent _)
 
   override def samplingFunction(symbol: Symbol): Column = {
     isDeviceIdSampled(symbol)
