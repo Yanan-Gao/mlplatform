@@ -47,5 +47,8 @@ final case class CleanInputData(supplyVendor: String, // ImpressionContext.Biddi
                                 AuctionBidPrice: Double,
                                 RealMediaCost: Double,
                                 mb2w: Double,
-                                FloorPriceInUSD: Double
+                                FloorPriceInUSD: Double,
+
+                                UserSegmentCount: Option[Double],
+                                UserAgeInDays: Option[Double],
                                )
