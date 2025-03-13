@@ -274,7 +274,11 @@ object RawDataTransform extends Logger {
         // PC Features - useful for eval but will not be model input
         col("PredictiveClearingMode.value").alias("PredictiveClearingMode"),
         col("PredictiveClearingRandomControl"),
-        col("IsImp").cast(IntegerType)
+        col("IsImp").cast(IntegerType),
+        // User Data - if not present, give default value of 0
+        coalesce(col("UserAgeInDays"), lit(0)).cast(DoubleType).alias("UserAgeInDays"),
+        // converting this to a Double as it will be used as a numerical feature in modelling
+        coalesce(col("UserSegmentCount"), lit(0)).cast(DoubleType).alias("UserSegmentCount"),
       )
     bidsDf
 

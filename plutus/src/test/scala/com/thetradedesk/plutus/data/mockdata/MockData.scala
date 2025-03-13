@@ -15,9 +15,9 @@ import java.time.{LocalDate, LocalDateTime}
 
 object MockData {
 
-  val supplyVendorBidding = Svb(RequestName= "Google", SupplyVendorId = "1", DiscrepancyAdjustment = 0.1)
+  val supplyVendorBidding = Svb(RequestName = "Google", SupplyVendorId = "1", DiscrepancyAdjustment = 0.1)
   val partnerSupplyVendorDiscrepancyAdj = Pda(SupplyVendorName = "Google", PartnerId = "1", DiscrepancyAdjustment = 0.2)
-  val supplyVendorDealRecord = Deals(SupplyVendorId="1", SupplyVendorDealCode = "", IsVariablePrice = true)
+  val supplyVendorDealRecord = Deals(SupplyVendorId = "1", SupplyVendorDealCode = "", IsVariablePrice = true)
 
 
   def createMbToWinRow(
@@ -35,7 +35,7 @@ object MockData {
                         WinCPM: Double = 1.0d,
                         SupplyVendor: String = "",
                         BidRequestTime: String = "",
-                        mbtw: Double = 1.0d                      ) =
+                        mbtw: Double = 1.0d) =
     RawLostBidData(LogEntryTime, BidRequestId, CreativeId, AdGroupId, CampaignId, PrivateContractId, PartnerId, AdvertiserId, CampaignFlightId, SupplyVendorLossReason, LossReason, WinCPM, SupplyVendor, BidRequestTime, mbtw)
 
 
@@ -43,7 +43,8 @@ object MockData {
                           JanusVariantMap: Option[Map[String, String]] = None,
                           ModelVersionsUsed: Option[Map[String, Long]] = None,
                           SupplyVendorPublisherId: Option[String] = None,
-                          AliasedSupplyPublisherId: Option[Int] = None
+                          AliasedSupplyPublisherId: Option[Int] = None,
+                          SupplyVendorValue: Option[String] = None,
                          ) =
     BidsImpressionsSchema(
       // bidrequest cols
@@ -61,7 +62,7 @@ object MockData {
       CampaignId = Some(""),
       AdGroupId = Some("fakeadgroup123"),
 
-      SupplyVendor = Some(""),
+      SupplyVendor = Some(SupplyVendorValue.getOrElse("")),
       SupplyVendorPublisherId = SupplyVendorPublisherId,
       AliasedSupplyPublisherId = AliasedSupplyPublisherId,
       SupplyVendorSiteId = Some(""),
@@ -70,7 +71,7 @@ object MockData {
       AdWidthInPixels = 250,
       AdHeightInPixels = 250,
 
-      MatchedCategoryList =  Some(List("")),
+      MatchedCategoryList = Some(List("")),
       MatchedFoldPosition = 1,
       RenderingContext = Option(RenderingContextLookupRecord(1)),
       ReferrerCategories = Seq(""),
@@ -82,7 +83,6 @@ object MockData {
       AdsTxtSellerType = Option(AdsTxtSellerTypeLookupRecord()),
       PublisherType = InventoryPublisherTypeLookupRecord(),
       AuctionType = Some(1),
-
 
 
       Country = Some(""),
@@ -125,7 +125,7 @@ object MockData {
       ImpressionsFirstPriceAdjustment = Some(0.9),
 
       BillingEventId = None,
-      FeeFeatureUsage= FeeFeatureUsage,
+      FeeFeatureUsage = FeeFeatureUsage,
 
       IsImp = true,
 
@@ -138,9 +138,9 @@ object MockData {
       sin_minute_day = 0.0d,
       cos_minute_day = 0.0d,
 
-      DoNotTrack =  Option(DoNotTrackLookupRecord()),
-      CreativeId =  Some(""),
-      PrivateContractId =  "5416475",
+      DoNotTrack = Option(DoNotTrackLookupRecord()),
+      CreativeId = Some(""),
+      PrivateContractId = "5416475",
       // advertiser columns
       AdvertiserIndustryCategoryId = Some(math.BigInt.long2bigInt(1l)),
 
@@ -156,7 +156,7 @@ object MockData {
       IsAdFormatOptimizationEnabled = Option(false),
       IsGeoSegmentOptimizationEnabled = Option(false),
       KoaCanBidUpEnabled = Option(false), // assist only with performance
-      IsEnabled = Option(false),    //koa always on or always off
+      IsEnabled = Option(false), //koa always on or always off
       UserSegmentCount = Option(1000),
 
       MatchedSegments = Seq[Long](),
@@ -260,8 +260,8 @@ object MockData {
     Discrepancy = 0.1,
     BaseBidAutoOpt = 0.3,
     LegacyPcPushdown = 0,
-    PlutusLog = PlutusLog (0.2f, 0.1f, 3, 1),
-    PredictiveClearingStrategy = PredictiveClearingStrategy ("plutus", 0),
+    PlutusLog = PlutusLog(0.2f, 0.1f, 3, 1),
+    PredictiveClearingStrategy = PredictiveClearingStrategy("plutus", 0),
     OptOutDueToFloor = false,
     FloorPrice = 1,
     PartnerSample = false,
@@ -296,15 +296,15 @@ object MockData {
   )
 
   val feeFeatureUsageLogMock = FeeFeatureUsageLogBackingData(
-      FeeFeatureType = FeeFeatureLookupRecord(41),
-      FeeAmount = 0.000012,
-      MarginType = FeeFeatureMarginTypeLookupRecord(1),
-      PassThroughFeeCardId = None,
-      PassThroughFeeId = None,
-      IsMargin = false
+    FeeFeatureType = FeeFeatureLookupRecord(41),
+    FeeAmount = 0.000012,
+    MarginType = FeeFeatureMarginTypeLookupRecord(1),
+    PassThroughFeeCardId = None,
+    PassThroughFeeId = None,
+    IsMargin = false
   )
 
-  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0, auctionType: Int = 1, uncappedBidPrice:Double = 0, snapbackMaxBid:Double = 0, maxBidMultiplierCap:Double = 0) = PcResultsMergedSchema(
+  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0, auctionType: Int = 1, uncappedBidPrice: Double = 0, snapbackMaxBid: Double = 0, maxBidMultiplierCap: Double = 0) = PcResultsMergedSchema(
     BidRequestId = "1",
     DealId = dealId,
 
@@ -361,7 +361,7 @@ object MockData {
     Latitude = Some(0.0d),
     Longitude = Some(0.0d),
 
-    PredictiveClearingMode = pcMode,//3,
+    PredictiveClearingMode = pcMode, //3,
     PredictiveClearingRandomControl = false,
 
     // bidfeedback cols
@@ -376,7 +376,7 @@ object MockData {
     ImpressionsFirstPriceAdjustment = Some(0.75),
 
     // computed columns
-    IsImp = isImp,//true,
+    IsImp = isImp, //true,
 
     sin_hour_week = 0.0d,
     cos_hour_week = 0.0d,
@@ -392,10 +392,10 @@ object MockData {
 
     PrivateContractId = "5416475",
 
-    FeeAmount = feeAmount,//Some(0.000012), // Fee we charge our users for PC
+    FeeAmount = feeAmount, //Some(0.000012), // Fee we charge our users for PC
 
     MediaTypeId = 1, // from AdFormatDataSet
-    Channel = channel,//"MobileInApp",
+    Channel = channel, //"MobileInApp",
     ChannelSimple = "Display",
 
     DetailedMarketType = "Open Market", // from PrivateContractRecord
@@ -410,7 +410,7 @@ object MockData {
 
     // Fields from PCResults Log Dataset
     InitialBid = adjustedBidCPMInUSD,
-    FinalBidPrice = finalBidPrice,//36,
+    FinalBidPrice = finalBidPrice, //36,
     Discrepancy = discrepancy,
     BaseBidAutoOpt = baseBidAutoOpt, //1,
     OptOutDueToFloor = false,
@@ -430,7 +430,7 @@ object MockData {
     Strategy = strategy,
     LossReason = 1, // from MinimumBidToWin data
     WinCPM = 1.0d, // from MinimumBidToWin data
-    mbtw = 20.0d,//1.0d, // from MinimumBidToWin data
+    mbtw = 20.0d, //1.0d, // from MinimumBidToWin data
 
     isMbtwValidStrict = false,
     isMbtwValid = false,
@@ -458,7 +458,7 @@ object MockData {
 
   def supplyVendorMock(supplyVendorName: String = "google", openPathEnabled: Boolean = false) = SupplyVendorRecord(
     SupplyVendorId = 192,
-    SupplyVendorName = supplyVendorName,//"cafemedia",
+    SupplyVendorName = supplyVendorName, //"cafemedia",
     PermissionDefault = true,
     PermissionOverride = false,
     AllowNielsenGRPTracking = true,
@@ -527,7 +527,7 @@ object MockData {
   )
 
   def campaignAdjustmentsPacingMock(campaignId: String = "campaign1", campaignFlightId: Option[Long] = Some(1000000L), adjustment: Double = 0.75, istest: Option[Boolean] = Some(true), enddate: Timestamp = Timestamp.valueOf(LocalDateTime.of(2024, 12, 1, 14, 30)), pacing: Option[Int] = Some(1), improvedNotPacing: Option[Int] = Some(0), worseNotPacing: Option[Int] = Some(0)
-                             ): Dataset[CampaignAdjustmentsPacingSchema] = {
+                                   ): Dataset[CampaignAdjustmentsPacingSchema] = {
     Seq(CampaignAdjustmentsPacingSchema(
       CampaignId = campaignId,
       CampaignFlightId = campaignFlightId,
@@ -549,8 +549,8 @@ object MockData {
     )).toDS()
   }
 
-  def campaignFlightMock(campaignFlightId:Long = 1122330L, campaignId:String = "newcampaign1", enddate: Timestamp = Timestamp.valueOf(LocalDateTime.of(2024, 12, 1, 14, 30)), isCurrent: Int = 1
-                        ): Dataset[CampaignFlightRecord]= {
+  def campaignFlightMock(campaignFlightId: Long = 1122330L, campaignId: String = "newcampaign1", enddate: Timestamp = Timestamp.valueOf(LocalDateTime.of(2024, 12, 1, 14, 30)), isCurrent: Int = 1
+                        ): Dataset[CampaignFlightRecord] = {
     Seq(CampaignFlightRecord(
       CampaignFlightId = campaignFlightId,
       CampaignId = campaignId,
@@ -560,7 +560,7 @@ object MockData {
     )).toDS()
   }
 
-  def campaignUnderdeliveryMock(date: Timestamp = Timestamp.valueOf(LocalDateTime.of(2024, 6, 25, 0, 0)), campaignId: String = "newcampaign1", campaignFlightId: Long = 1122330, underdelivery: Double = 4100, spend: Double = 900, cappedpotential:Double = 4500, fraction: Double = 0.8
+  def campaignUnderdeliveryMock(date: Timestamp = Timestamp.valueOf(LocalDateTime.of(2024, 6, 25, 0, 0)), campaignId: String = "newcampaign1", campaignFlightId: Long = 1122330, underdelivery: Double = 4100, spend: Double = 900, cappedpotential: Double = 4500, fraction: Double = 0.8
                                ): Dataset[CampaignThrottleMetricSchema] = {
     Seq(CampaignThrottleMetricSchema(
       Date = date,
@@ -633,8 +633,8 @@ object MockData {
                                    hadesPCAdjustmentCurrent: Double = 1.0,
                                    hadesPCAdjustmentPrevious: Array[Double] = Array(),
                                    hadesProblemCampaign: Boolean = true,
-                                   campaignType_Previous:Array[String] = Array()
-                                   ): HadesAdjustmentSchemaV2 = {
+                                   campaignType_Previous: Array[String] = Array()
+                                  ): HadesAdjustmentSchemaV2 = {
     HadesAdjustmentSchemaV2(
       CampaignId = campaignId,
       CampaignType = campaignType,
@@ -700,5 +700,74 @@ object MockData {
     HadesCampaignStats("campaignC", CampaignType_AdjustedCampaign,
       Array(0.6, 0.5, 0.4), Some(0.5), 10, 10, 100, 8, 80, 0, 0, 0, 0)
   ).toDS()
+
+
+  def cleanInputDataMock(): CleanInputData = CleanInputData(
+    supplyVendor = "1",
+    dealId = "",
+    supplyVendorPublisherId = "1234",
+    aspSvpId = "567",
+    supplyVendorSiteId = "33",
+    site = "abc.com",
+    adFormat = "300x200",
+    impressionPlacementId = "x-123",
+    country = "Ireland",
+    region = "Leinster",
+    metro = "Dublin",
+    city = "Dublin",
+    zip = "D1",
+    deviceMake = "Apple",
+    deviceModel = "iPhone 15",
+    requestLanguages = "en",
+
+    aliasedSupplyPublisherId = 123,
+    renderingContext = 1,
+    userHourOfWeek = 73,
+    adsTxtSellerType = 0,
+    publisherType = 0,
+    deviceType = 0,
+    operatingSystemFamily = 0,
+    browser = 2,
+
+    latitude = 0.0,
+    longitude = 0.0,
+
+    sin_hour_day = 12.0,
+    cos_hour_day = 30.0,
+
+    sin_minute_hour = 0.0,
+    cos_minute_hour = 0.0,
+
+    sin_hour_week = 0.0,
+    cos_hour_week = 0.0,
+
+    is_imp = 0.0f,
+    AuctionBidPrice = 0.0,
+    RealMediaCost = 0.0,
+    mb2w = 0.0,
+    FloorPriceInUSD = 0.0,
+
+    UserSegmentCount = Some(1),
+    UserAgeInDays = Some(3.0),
+
+  )
+
+
+  def svbMock(): Dataset[Svb] =
+    Seq(Svb(
+      RequestName = "", SupplyVendorId = "1", DiscrepancyAdjustment = 1.2
+    )).toDS()
+
+  def pdaMock(): Dataset[Pda] = Seq(Pda(
+    SupplyVendorName = "1.com", PartnerId = "p1", DiscrepancyAdjustment = 1.3
+  )).toDS()
+
+  def dealsMock(): Dataset[Deals] = Seq(Deals(
+    SupplyVendorId = "1", SupplyVendorDealCode = "sv1-deal-1", IsVariablePrice = true
+  )).toDS()
+
+  def empiricalDiscrepancyMock(): Dataset[EmpiricalDiscrepancy] = Seq(EmpiricalDiscrepancy(
+    PartnerId = "p2", SupplyVendor = "2", DealId = "sv2-deal-1", AdFormat = "300x200", EmpiricalDiscrepancy = 1.5
+  )).toDS()
 
 }
