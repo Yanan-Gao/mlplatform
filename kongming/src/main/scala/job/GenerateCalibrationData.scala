@@ -9,12 +9,17 @@ import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 
+import java.time.format.DateTimeFormatter
+
 
 object GenerateCalibrationData extends KongmingBaseJob {
 
   override def jobName: String = "GenerateCalibrationData"
 
   val isIncCVR = config.getBoolean("isIncCVR", true)
+  val cvrChangeCap = config.getInt("cvrChangeCap", 20)
+  val cvrImpressionMin = config.getInt("cvrImpressionMin", 1000)
+  val defaultCvrPercentile = config.getDouble("defaultCvrPercentile", 0.75)
 
   private def sampledImpressionForCalibration(attributedData: Dataset[OutOfSampleAttributionRecord], adgroupCampaignCVR: Dataset[_]): Dataset[OutOfSampleAttributionRecord] = {
     val attDataToSample = attributedData.join(
@@ -41,6 +46,8 @@ object GenerateCalibrationData extends KongmingBaseJob {
     val NDelayDays = Config.CalibrationImpLookBack + Config.CalibrationAttLookBack
     val attributedData = OutOfSampleAttributionDataset(delayNDays=NDelayDays).readPartition(date.minusDays(NDelayDays))
 
+    val dateString = date.format(DateTimeFormatter.ofPattern("yyyyMMdd"))
+
     // 2. Calculate and save campaign cvr
 
     val campaignWin = Window.partitionBy("CampaignIdStr")
@@ -56,23 +63,39 @@ object GenerateCalibrationData extends KongmingBaseJob {
       .cache()
 
     val campaignCVR = adgroupCampaignCVR.select($"CampaignIdStr".alias("Id"), $"CampaignCVR".alias("CVR"))
+      .filter(col("CampaignImpressions") > cvrImpressionMin)
       .distinct()
       .withColumn("Level", lit("CampaignId"))
-      .withColumn("LastUpdateDate", date_format(lit(date), "yyyyMMdd"))
+      .withColumn("LastUpdateDate", lit(dateString))
+      .withColumn("CVRSmooth", col("CVR"))
       .selectAs[CvrForScalingRecord]
+
+    val defaultCVR = campaignCVR.selectExpr(s"percentile_approx(CVR, $defaultCvrPercentile) as default").first().getAs[Double]("default")
+    val defaultRow = Seq(CvrForScalingRecord("Default", "default", defaultCVR, defaultCVR, dateString)).toDF().selectAs[CvrForScalingRecord]
+    val campaignCVRWithDefault = campaignCVR.union(defaultRow)
 
     val allCampaignCVR = if (isIncCVR) {
       val previousCVR = CvrForScalingDataset().readLatestPartitionUpTo(date.minusDays(1), isInclusive = true)
+      val defaultCVRPrevious = previousCVR.filter(col("Level") === lit("Default")).first().CVRSmooth
+
       previousCVR.as("Prev")
-        .join(campaignCVR.as("Curr"), Seq("Level", "Id"), joinType = "outer")
+        .join(campaignCVRWithDefault.as("Curr"), Seq("Level", "Id"), joinType = "outer")
         .select(
           col("Level"),
           col("Id"),
+          col("Curr.CVR").alias("CVRCurr"),
+          coalesce(col("Prev.CVRSmooth"), lit(defaultCVRPrevious)).alias("CVRSmoothPrev"),
           coalesce(col("Curr.CVR"), col("Prev.CVR")).alias("CVR"),
           coalesce(col("Curr.LastUpdateDate"), col("Prev.LastUpdateDate")).alias("LastUpdateDate"),
-        ).selectAs[CvrForScalingRecord]
+        ).withColumn("CVRSmooth",
+          when(col("CVRCurr").isNull, col("CVRSmoothPrev"))
+            .otherwise(sqrt(col("CVRCurr") * col("CVRSmoothPrev")))
+        ).withColumn("CVRSmooth",
+          least(lit(cvrChangeCap) * col("CVRSmoothPrev"), greatest(col("CVRSmooth"), lit(1/cvrChangeCap) * col("CVRSmoothPrev"))))
+        .filter((col("CVR") > lit(0)) && (col("CVR") < lit(1)))
+        .selectAs[CvrForScalingRecord]
     } else {
-      campaignCVR
+      campaignCVRWithDefault
     }
 
     // 3. Sample adgroups that satisfy IsotonicPosCntMin for adgroup and campaign

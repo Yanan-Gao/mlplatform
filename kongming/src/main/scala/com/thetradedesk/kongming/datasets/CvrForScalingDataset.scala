@@ -4,6 +4,7 @@ final case class CvrForScalingRecord(
                                               Level: String,
                                               Id: String,
                                               CVR: Double,
+                                              CVRSmooth: Double,
                                               LastUpdateDate: String,
                                             )
 
