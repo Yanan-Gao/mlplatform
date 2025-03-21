@@ -11,7 +11,10 @@ object UploadEmbeddings {
   // and https://thetradedesk.atlassian.net/wiki/x/_OQlAQ
 
   val dateStr = date.format(dateFormatter)
-  val emb_bucket_dest = config.getString("emb_bucket_dest", "s3://ttd-user-embeddings/dataexport/")
+  val emb_bucket_dest = ttdEnv match {
+    case "prod" => config.getString("emb_bucket_dest", "s3://ttd-user-embeddings/dataexport/")
+    case _ => "s3://thetradedesk-mlplatform-us-east-1/data/prodTest/audience/emb/dataexport/"
+  }
   val tdid_emb_path = config.getString(
     "tdid_emb_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/RSMV2/emb/agg/v=1/date=${dateStr}/")  //from TdidEmbeddingAggregate job.
   val nonsensitive_emb_enum = config.getInt("nonsensitive_emb_enum", 301)
