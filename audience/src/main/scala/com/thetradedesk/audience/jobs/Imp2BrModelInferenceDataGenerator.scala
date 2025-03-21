@@ -1,6 +1,6 @@
 package com.thetradedesk.audience.jobs
 import com.thetradedesk.audience.datasets.{AudienceModelInputDataset, AudienceModelInputRecord, Model}
-import com.thetradedesk.audience.{audienceVersionDateFormat, date, dateTime, doNotTrackTDID}
+import com.thetradedesk.audience.{audienceVersionDateFormat, date, dateTime, doNotTrackTDID, ttdEnv}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler._isDeviceIdSampled1Percent
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
@@ -9,6 +9,7 @@ import org.apache.spark.sql.functions._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.types.FloatType
+import com.thetradedesk.spark.util.TTDConfig.config
 
 import java.time.format.DateTimeFormatter
 import scala.collection.mutable.ArrayBuffer
@@ -20,7 +21,9 @@ object Imp2BrModelInferenceDataGenerator {
    */
   val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
   val modelVersion = s"${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}"
-  val featuresJsonPath = s"s3://thetradedesk-mlplatform-us-east-1/models/prod/RSM/full_model/${modelVersion}/features.json"
+  val featuresJsonPath= config.getString(
+    "feature_path", s"s3://thetradedesk-mlplatform-us-east-1/models/prod/RSM/full_model/${modelVersion}/features.json")
+
   def getAllUiidsUdfWithSample(sampleFun: String => Boolean) = udf((tdid: String, deviceAdvertisingId: String, uid2: String, euid: String, identityLinkId: String) => {
     val uiids = ArrayBuffer[String]()
     if (tdid != null && tdid != doNotTrackTDID && sampleFun(tdid)) {

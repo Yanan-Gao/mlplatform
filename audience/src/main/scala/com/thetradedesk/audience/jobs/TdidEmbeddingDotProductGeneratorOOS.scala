@@ -21,20 +21,22 @@ object TdidEmbeddingDotProductGeneratorOOS {
   val tdid_emb_path= config.getString(
   "tdid_emb_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/RSMV2/emb/agg/v=1/date=${dateStr}/")
   val seed_emb_path= config.getString(
-  "seed_emb_path", s"s3://thetradedesk-mlplatform-us-east-1/configdata/test/audience/embedding/RSMV2/RSMv2TestTreatment/v=1/${dateStr}000000/embedding.parquet.gzip")
+  "seed_emb_path", s"s3://thetradedesk-mlplatform-us-east-1/configdata/test/audience/embedding/RSMV2/RSMv2SensitiveDensityTest/v=1/${dateStr}000000/")
   val density_feature_path= config.getString(
-  "density_feature_path", s"s3://thetradedesk-mlplatform-us-east-1/features/feature_store/prod/profiles/source=bidsimpression/index=TDID/config=TDIDDensityScoreSplit/v=1/date=${dateStr}/")
+  "density_feature_path", s"s3://thetradedesk-mlplatform-us-east-1/features/feature_store/prod/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/date=${dateStr}/")
   val policy_table_path = config.getString(
   "policy_table_path", s"s3://thetradedesk-mlplatform-us-east-1/configdata/prod/audience/policyTable/RSM/v=1/${dateStr}000000/")
   val seed_id_path = config.getString(
   "seed_id_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/seedids/v=2/date=${dateStr}/")
-  val out_path = config.getString("out_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/tdid2seedid/v=1/date=${dateStr}/") // "s3://thetradedesk-mlplatform-us-east-1/users/youjun.yuan/rsmv2/emb/tdid2seedid/"
+  val out_path = config.getString("out_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/tdid2seedid_raw/v=1/date=${dateStr}/") // "s3://thetradedesk-mlplatform-us-east-1/users/youjun.yuan/rsmv2/emb/tdid2seedid/"
   val density_split = config.getInt("density_split", -1)
   val density_limit = config.getInt("density_limit", -1)
   val tdid_limit = config.getInt("tdid_limit", -1)
   val debug = config.getBoolean("debug", false)
   val partition = config.getInt("partition", -1)
   val EmbeddingSize = 64
+  val sensitiveModel = config.getBoolean("sensitiveModel", true)
+  val minMaxSeedEmb = config.getDouble("minMaxSeedEmb", 1e-6)
 
   val sigmoid = (x: Float) => (1.0f / (1.0f + math.exp(-x))).toFloat
 
@@ -69,6 +71,9 @@ object TdidEmbeddingDotProductGeneratorOOS {
   /////
   def runETLPipeline(): Unit = {
     val df_seed_emb = spark.read.format("parquet").load(seed_emb_path)
+      .withColumn("maxEmbedding", array_max('Embedding))
+      .filter('maxEmbedding > lit(minMaxSeedEmb))
+      .drop("maxEmbedding")
     val df_density_features = new Array[DataFrame](10)
     for (i <- 0 until 10) {
       df_density_features(i) = if (density_limit > 1) spark.read.format("parquet").load(density_feature_path + s"split=${i}/").limit(density_limit) else spark.read.format("parquet").load(density_feature_path + s"split=${i}/")
@@ -95,13 +100,9 @@ object TdidEmbeddingDotProductGeneratorOOS {
     df.write.mode(SaveMode.Overwrite).parquet(seed_id_path)
 
     val df_seed_emb_sensitivity = spark.sparkContext.broadcast(
-      seedEmb.map(e => (e.SyntheticId, if(e.IsSensitive) e.Embedding.take(EmbeddingSize) else e.Embedding.drop(EmbeddingSize)))
+      seedEmb.map(e => (e.SyntheticId, e.Embedding, e.IsSensitive))
         .toSeq
     )
-
-    val r = 1e-8f
-    val smooth_factor = 30f
-    val loc_factor = 0.8f
 
     val relevanceScoreUDF = udf(
       (bdSenEmb: Array[Float], bdNonSenEmb: Array[Float], SyntheticIdsLevel1: Array[Int], SyntheticIdsLevel2: Array[Int], SeedSyntheticIdsLevel1: Array[Int], SeedSyntheticIdsLevel2: Array[Int]) => {
@@ -115,15 +116,24 @@ object TdidEmbeddingDotProductGeneratorOOS {
           .value
           .map(
             e => {
-              val pair = if (e._2.length == EmbeddingSize)
-                (embeddings2scores(bdSenEmb, e._2, 0), 0)
-              else {
-                val offset = syntheticIdToLevel.getOrElse(e._1, 0)
-                (embeddings2scores(bdNonSenEmb, e._2, offset), offset/EmbeddingSize + 1)
+              val offset = syntheticIdToLevel.getOrElse(e._1, 0)
+              if (sensitiveModel) {
+                // skip embedding 0, only use embedding 1-3
+                val pair = if (e._3)
+                  (embeddings2scores(bdSenEmb, e._2, offset), offset / EmbeddingSize) // sensitive advertiser
+                else
+                  (embeddings2scores(bdNonSenEmb, e._2, offset), offset / EmbeddingSize) // pair._2 is the density level
+
+                pair._1
+              } else {
+                // non sensitive model, for sensitive advertiser, always use embedding 0
+                val pair = if (e._3)
+                  (embeddings2scores(bdSenEmb, e._2, 0), offset / EmbeddingSize) // sensitive advertiser, always 0 embedding
+                else
+                  (embeddings2scores(bdNonSenEmb, e._2, offset + EmbeddingSize), offset / EmbeddingSize) // note: offset is 2 for level2, the corresponding offset should add another EmbeddingSize
+
+                pair._1
               }
-              val weight = r + (1 - r) * (1 - 1 / (1 + math.exp(-(-smooth_factor * (pair._1 - loc_factor)))))
-//              (e._1, (weight * pair._1).floatValue(), pair._1, pair._2)
-              (weight * pair._1).floatValue()
             }
           )
       }
