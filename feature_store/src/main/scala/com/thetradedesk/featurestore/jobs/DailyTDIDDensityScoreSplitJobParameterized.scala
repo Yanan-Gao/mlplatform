@@ -97,7 +97,7 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
         .withColumn("MappingIdLevel2", syntheticIdToMappingIdUdf('SyntheticId_Level2, lit(maxNumMappingIdsInAerospike)))
         .withColumn("MappingIdLevel1", syntheticIdToMappingIdUdf('SyntheticId_Level1, lit(maxNumMappingIdsInAerospike) - size('MappingIdLevel2)))
 
-      tdidDensityScore.coalesce(8192).write.mode(SaveMode.Overwrite).parquet(writePath)
+      tdidDensityScore.coalesce(16384).write.mode(SaveMode.Overwrite).parquet(writePath)
     }
 
     splitIndex.foreach(

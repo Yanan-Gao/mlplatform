@@ -25,7 +25,7 @@
     },
     {
       "name": "iddensity",
-      "dataSetPath": "features/feature_store/prod/profiles/source=bidsimpression/index=TDID/config=TDIDDensityScoreSplit/v=1/",
+      "dataSetPath": "features/feature_store/prod/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/",
       "features": [
         {
           "name": "MappingIdLevel1",
