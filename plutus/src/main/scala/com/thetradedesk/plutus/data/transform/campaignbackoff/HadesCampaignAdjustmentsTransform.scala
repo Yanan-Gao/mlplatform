@@ -257,14 +257,21 @@ object HadesCampaignAdjustmentsTransform {
     }
   }
 
-  def getCurrentAdjustment(adjustmentQuantile: Int, adjustmentOptions: Array[Double]): Double = {
-    adjustmentQuantile match {
-      case 50 => adjustmentOptions(0)
-      case 45 => (adjustmentOptions(0) + adjustmentOptions(1))/2
-      case 40 => adjustmentOptions(1)
-      case 35 => (adjustmentOptions(1) + adjustmentOptions(2))/2
-      case 30 => adjustmentOptions(3)
-      case _ => throw new IllegalArgumentException(s"Unexpected adjustmentQuantile: $adjustmentQuantile")
+  def getCurrentAdjustment(campaignId: String, adjustmentQuantile: Int, adjustmentOptions: Array[Double]): Double = {
+    // THIS IS A TEMP FIX FOR A DAG FAILURE WHERE adjustmentOptions SIZE IS LESS THAN 3 CAUSING ARRAY INDEX OUT OF BOUND.
+    // SEE MR DETAILS FOR INVESTIGATION LINKS.
+    if (adjustmentOptions.length < 3) {
+      println(s"Insufficient adjustment options for campaignId: $campaignId")
+      1.0
+    } else {
+      adjustmentQuantile match {
+        case 50 => adjustmentOptions(0)
+        case 45 => (adjustmentOptions(0) + adjustmentOptions(1))/2
+        case 40 => adjustmentOptions(1)
+        case 35 => (adjustmentOptions(1) + adjustmentOptions(2))/2
+        case 30 => adjustmentOptions(3)
+        case _ => throw new IllegalArgumentException(s"Unexpected adjustmentQuantile: $adjustmentQuantile")
+      }
     }
   }
 
@@ -395,6 +402,7 @@ object HadesCampaignAdjustmentsTransform {
         // just OM BBF Fraction is high. This check makes sure that OM BBF Fraction is low.
         when((col("BBF_OM_BidCount") === lit(0)) || col("BBF_OM_BidCount") / col("Total_BidCount") <= ((lit(100) - $"AdjustmentQuantile") / lit(100)),
           getCurrentAdjustmentUDF(
+            col("CampaignId"),
             col("AdjustmentQuantile"),
             col("HadesBackoff_PCAdjustment_Options"))
         ).otherwise(lit(1.0))
