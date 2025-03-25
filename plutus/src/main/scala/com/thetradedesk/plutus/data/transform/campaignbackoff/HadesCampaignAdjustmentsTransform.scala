@@ -152,6 +152,7 @@ object HadesCampaignAdjustmentsTransform {
         // This is a workaround we cannot use AdjustmentQuantile here
         // because spark doesn't support column values in this function
         // Also, AdjustmentQuantile is calculated later.
+        // todo: this is sus because it is generating 3 values, but getAdjustment requires a mininum of 4
         expr("percentile_approx(gen_PCAdjustment, array(0.5, 0.4, 0.3), 200)").as("HadesBackoff_PCAdjustment_Options")
       )
       .join(broadcast(campaignUnderdeliveryData), Seq("CampaignId"), "left")
@@ -258,20 +259,16 @@ object HadesCampaignAdjustmentsTransform {
   }
 
   def getCurrentAdjustment(campaignId: String, adjustmentQuantile: Int, adjustmentOptions: Array[Double]): Double = {
-    // THIS IS A TEMP FIX FOR A DAG FAILURE WHERE adjustmentOptions SIZE IS LESS THAN 3 CAUSING ARRAY INDEX OUT OF BOUND.
+    // TODO: THIS IS A TEMP FIX FOR A DAG FAILURE WHERE adjustmentOptions SIZE IS LESS THAN 4 CAUSING ARRAY INDEX OUT OF BOUND.
     // SEE MR DETAILS FOR INVESTIGATION LINKS.
-    if (adjustmentOptions.length < 3) {
-      println(s"Insufficient adjustment options for campaignId: $campaignId")
-      1.0
-    } else {
-      adjustmentQuantile match {
-        case 50 => adjustmentOptions(0)
-        case 45 => (adjustmentOptions(0) + adjustmentOptions(1))/2
-        case 40 => adjustmentOptions(1)
-        case 35 => (adjustmentOptions(1) + adjustmentOptions(2))/2
-        case 30 => adjustmentOptions(3)
-        case _ => throw new IllegalArgumentException(s"Unexpected adjustmentQuantile: $adjustmentQuantile")
-      }
+
+    adjustmentQuantile match {
+      case 50 => adjustmentOptions(0)
+      case 45 => (adjustmentOptions(0) + adjustmentOptions(1))/2
+      case 40 => adjustmentOptions(1)
+      case 35 => (adjustmentOptions(1) + adjustmentOptions(2))/2
+      case 30 => if (adjustmentOptions.length < 4) {println(s"Insufficient adjustment options for campaignId: $campaignId and quartile $adjustmentQuantile"); 1.0} else adjustmentOptions(3)
+      case _ => throw new IllegalArgumentException(s"Unexpected adjustmentQuantile: $adjustmentQuantile")
     }
   }
 
