@@ -21,6 +21,9 @@ final case class AudienceModelPolicyRecord(TargetingDataId: Long,
                                            // seed size of active users (seen in past day bidimpression)
                                            ActiveSize: Long,
 
+                                           // seed size of active users with idtype extension (seen in past day bidimpression)
+                                           ExtendedActiveSize: Long,
+
                                            // sample weight is used for weighted downsampling
                                            // we use it to control samples for each targeting data
                                            // default value is 1.0

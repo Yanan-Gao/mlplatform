@@ -32,8 +32,8 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
 
   private def rawSeedCount(allFinalSeedData: DataFrame): DataFrame = {
     allFinalSeedData
-      .select(explode('SourceIds).alias("SourceId"))
-      .groupBy('SourceId)
+      .select(explode('SourceIds).alias("SourceId"),'IsOriginal)
+      .groupBy('SourceId, 'IsOriginal)
       .count()
       .withColumn("CrossDeviceVendorId", lit(CrossDeviceVendor.None.id))
       .cache()
@@ -41,12 +41,13 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
 
   private def extendGraphSeedCount(nonGraphCount: DataFrame, allFinalSeedData: DataFrame, crossDeviceVendor: CrossDeviceVendor): DataFrame = {
     allFinalSeedData
-      .select(explode(if (crossDeviceVendor == IAV2Person) 'PersonGraphSeedIds else 'HouseholdGraphSeedIds).alias("SourceId"))
-      .groupBy('SourceId)
+      .select(explode(if (crossDeviceVendor == IAV2Person) 'PersonGraphSeedIds else 'HouseholdGraphSeedIds).alias("SourceId"), 'IsOriginal)
+      .groupBy('SourceId, 'IsOriginal)
       .count()
-      .join(nonGraphCount.select('SourceId, 'count.alias("RawCount"))
-        , Seq("SourceId"), "inner")
-      .select('SourceId, ('count + 'RawCount).alias("count"))
+      .join(nonGraphCount.select('SourceId, 'IsOriginal, 'count.alias("RawCount"))
+        , Seq("SourceId", "IsOriginal"), "left")
+      .withColumn("RawCount", coalesce(col("RawCount"), lit(0)))
+      .select('SourceId, 'IsOriginal, ('count + 'RawCount).alias("count"))
       .withColumn("CrossDeviceVendorId", lit(crossDeviceVendor.id))
   }
 
@@ -63,9 +64,15 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
       nonGraphCount
         .union(personGraphCount)
         .union(householdGraphCount)
-        .withColumnRenamed("count", "ActiveSize")
+        .groupBy("SourceId", "CrossDeviceVendorId")
+        .agg(
+          sum(when($"IsOriginal" === 1, 'count).otherwise(0)).as("ActiveSize"),
+          sum('count).as("ExtendedActiveSize")
+        )
         .join(sourceMeta, Seq("SourceId"), "inner")
-        .select(('ActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ActiveSize"), 'CrossDeviceVendorId, 'SourceId, 'Count.alias("Size"), 'TargetingDataId, 'Source, 'topCountryByDensity, 'PermissionTag)
+        .select(('ActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ActiveSize"),
+          ('ExtendedActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ExtendedActiveSize"),
+          'CrossDeviceVendorId, 'SourceId, 'Count.alias("Size"), 'TargetingDataId, 'Source, 'topCountryByDensity, 'PermissionTag)
         .withColumn("GoalType", lit(goalType.id))
         .withColumn("StorageCloud", lit(Config.storageCloud))
         .cache()
@@ -119,13 +126,13 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
     val allFinalSeedData =
       allSeedData.join(uniqueTDIDs, Seq("TDID"), "inner")
         .join(sampledGraph, Seq("TDID"), "left")
-        .select('TDID, 'idType,
+        .select('TDID, 'idType, 'IsOriginal,
           coalesce('SeedIds, typedLit(Array.empty[String])).alias("SeedIds"),
           coalesce('PersonGraphSeedIds, typedLit(Array.empty[String])).alias("PersonGraphSeedIds"),
           coalesce('HouseholdGraphSeedIds, typedLit(Array.empty[String])).alias("HouseholdGraphSeedIds"),
           coalesce('personId, 'TDID).alias("personId"),
           coalesce('householdId, 'TDID).alias("householdId"))
-        .select('TDID, 'idType, 'SeedIds,
+        .select('TDID, 'idType, 'IsOriginal, 'SeedIds,
           array_except('PersonGraphSeedIds, 'SeedIds).alias("PersonGraphSeedIds"),
           array_except('HouseholdGraphSeedIds, 'SeedIds).alias("HouseholdGraphSeedIds"),
           'personId,

@@ -6,6 +6,7 @@ import com.thetradedesk.spark.util.TTDConfig.config
 
 final case class AggregatedSeedRecord(TDID: String,
                                       idType: Int,
+                                      IsOriginal: Int,
                                       SeedIds: Seq[String],
                                       PersonGraphSeedIds: Seq[String],
                                       HouseholdGraphSeedIds: Seq[String],
