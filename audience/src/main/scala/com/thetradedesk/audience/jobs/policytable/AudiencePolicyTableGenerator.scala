@@ -124,15 +124,33 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
   def getBidImpUniqueTDIDs(date: LocalDate) = {
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
-    val uniqueTDIDs = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(Config.bidImpressionLookBack), source = Some(GERONIMO_DATA_SOURCE))
+    val baseDF = loadParquetData[BidsImpressionsSchema](
+      bidImpressionsS3Path,
+      date,
+      lookBack = Some(Config.bidImpressionLookBack),
+      source = Some(GERONIMO_DATA_SOURCE)
+    ).select('UIID, 'DeviceAdvertisingId, 'CookieTDID, 'IdentityLinkId, 'DATId, 'UnifiedId2, 'EUID, 'IdType)
+      .cache()
+
+    val uniqueTDIDsIdExtend = baseDF
       .filter(filterOnIdTypes(samplingFunction))
       .select(allIdWithType.alias("x"))
       .select(col("x._1").as("TDID"), col("x._2").as("idType"))
       .repartition(Config.bidImpressionRepartitionNum, 'TDID)
       .distinct()
-      .cache()
 
-    uniqueTDIDs
+    val uniqueTDIDsOriginal = baseDF
+      .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdType))
+      .filter(samplingFunction(col("TDID")))
+      .select("TDID")
+      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .distinct()
+      .withColumn("IsOriginal", lit(1))
+
+
+    uniqueTDIDsIdExtend.join(uniqueTDIDsOriginal, Seq("TDID"), "left")
+      .withColumn("IsOriginal", coalesce(col("IsOriginal"), lit(0)))
+      .cache()
   }
 
   def readGraphData(date: LocalDate, crossDeviceVendor: CrossDeviceVendor)(implicit spark: SparkSession): DataFrame = {
