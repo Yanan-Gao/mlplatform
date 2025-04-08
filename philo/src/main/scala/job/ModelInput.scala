@@ -2,7 +2,7 @@ package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{loadModelFeatures, loadParquetData, parseModelFeaturesSplitFromJson}
-import com.thetradedesk.philo.schema.{AdGroupRecord, AdvertiserExclusionList, AdvertiserExclusionRecord, CampaignROIGoalDataSet, CampaignROIGoalRecord, ClickTrackerDataSet, ClickTrackerRecord, CreativeLandingPageDataSet, CreativeLandingPageRecord, UnifiedAdGroupDataSet}
+import com.thetradedesk.philo.schema.{AdGroupRecord, AdvertiserExclusionList, AdvertiserExclusionRecord, CampaignROIGoalDataSet, CampaignROIGoalRecord, ClickTrackerDataSet, ClickTrackerRecord, CreativeLandingPageDataSet, CreativeLandingPageRecord, PartnerExclusionList, PartnerExclusionRecord, UnifiedAdGroupDataSet}
 import com.thetradedesk.philo.transform.ModelInputTransform
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -127,24 +127,24 @@ object ModelInput {
       Some(CreativeLandingPageDataSet().readLatestPartitionUpTo(date, isInclusive = true))
     } else None
     val countryFilter = countryFilePath.map(getCountryFilter)
-    val advertiserExclusionList = if (outputPrefix == "processed" || !advertiserFilter) {
+    val partnerExclusionList = if (outputPrefix == "processed" || !advertiserFilter) {
                                     None
                                   } else {
                                     val exclusionDF = spark.read.format("csv")
                                                            .option("header", false)
-                                                           .load(AdvertiserExclusionList.ADVERTISEREXCLUSIONS3)
-                                                           .withColumnRenamed("_c0", "AdvertiserId")
+                                                           .load(PartnerExclusionList.PARTNEREXCLUSIONS3)
+                                                           .withColumnRenamed("_c0", "PartnerId")
                                     // if nothing is in the list, assign None to the list so that file save for exclusion list
                                     // won't get triggered
                                     if (exclusionDF.isEmpty) None
-                                    else Some(exclusionDF.as[AdvertiserExclusionRecord])}
+                                    else Some(exclusionDF.as[PartnerExclusionRecord])}
 
 
     val modelFeatures = modelFeaturesSplit.bidRequest ++ modelFeaturesSplit.adGroup
     val (trainingData, labelCounts) = ModelInputTransform.transform(
       clicks, adgroup, bidsImpressions, roiFilter,
       creativeLandingPage, countryFilter, keptCols, modelFeatures, addUserData, filterClickBots, numUserCols,
-      advertiserExclusionList, debug
+      partnerExclusionList, debug
     )
     //TODO if non exclusion list, set all exclusion flag to 0
     if (writeFullData) {
@@ -153,7 +153,7 @@ object ModelInput {
         trainingData.filter($"excluded"===0).drop("excluded"),
         outputPath, writeEnv, outputPrefix, date, partitions, false
       )
-      if (advertiserExclusionList.isDefined) {
+      if (partnerExclusionList.isDefined) {
         val excluded_data = trainingData.filter($"excluded"===1).drop("excluded").cache()
         writeData(excluded_data, outputPath, writeEnv, outputPrefix+"excluded", date, 20, false)
         writeData(excluded_data.select("AdvertiserId").distinct(), outputPath, writeEnv, outputPrefix+"excludedadvertisers",
@@ -169,7 +169,7 @@ object ModelInput {
       }
       val lineCountsPerFileNonEx = countLinePerFile(outputPath, writeEnv, outputPrefix, date)(spark)
       writeData(lineCountsPerFileNonEx, outputPath, writeEnv, linesPerFileName, date, 1, false)
-      if (advertiserExclusionList.isDefined) {
+      if (partnerExclusionList.isDefined) {
         val lineCountsPerFileEx = countLinePerFile(outputPath, writeEnv, outputPrefix+"excluded", date)(spark)
         writeData(lineCountsPerFileEx, outputPath, writeEnv, linesPerFileName+"excluded", date, 1, false)
       }
@@ -181,7 +181,7 @@ object ModelInput {
         outputPrefix + "metadata"
       }
       writeData(labelCounts.filter($"excluded"===0).drop("excluded"), outputPath, writeEnv, metadataName, date, 1, false)
-      if (advertiserExclusionList.isDefined) {
+      if (partnerExclusionList.isDefined) {
         writeData(labelCounts.filter($"excluded" === 1).drop("excluded"), outputPath, writeEnv, metadataName + "excluded", date, 1, false)
       }
     }

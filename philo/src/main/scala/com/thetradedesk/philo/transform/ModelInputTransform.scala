@@ -5,7 +5,7 @@ import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, FLOAT_FEATURE_T
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.philo.{addOriginalCols, debugInfo, flattenData, schema, shiftModUdf}
-import com.thetradedesk.philo.schema.{AdGroupDataSet, AdGroupRecord, AdvertiserExclusionRecord, CampaignROIGoalDataSet, CampaignROIGoalRecord, ClickTrackerRecord, CreativeLandingPageRecord, ModelInputRecord, ModelInputUserRecord}
+import com.thetradedesk.philo.schema.{AdGroupDataSet, AdGroupRecord, AdvertiserExclusionRecord, CampaignROIGoalDataSet, CampaignROIGoalRecord, ClickTrackerRecord, CreativeLandingPageRecord, ModelInputRecord, ModelInputUserRecord, PartnerExclusionRecord}
 import com.thetradedesk.spark.sql.SQLFunctions._
 import org.apache.spark.sql.{Column, DataFrame, Dataset, SparkSession}
 import org.apache.spark.sql.functions.{col, concat_ws, count, expr, lit, max, mean, size, stddev, sum, udf, when, xxhash64}
@@ -46,12 +46,12 @@ object ModelInputTransform extends Logger {
                 addUserData: Boolean,
                 filterClickBots: Boolean,
                 numUserCols: Int,
-                advertiserExclusionList: Option[Dataset[AdvertiserExclusionRecord]],
+                partnerExclusionList: Option[Dataset[PartnerExclusionRecord]],
                 debug: Boolean): (DataFrame, DataFrame) = {
     val (clickLabels, bidsImpsPreJoin) = addBidAndClickLabels(clicks, bidsImpsDat)
     val preFilteredData = preFilterJoin(clickLabels, bidsImpsPreJoin)
     val filteredData = preFilteredData
-      .transform(ds => addExclusionFlag(ds, advertiserExclusionList))
+      .transform(ds => addExclusionFlag(ds, partnerExclusionList))
       // if not filterResults, filterAdGroup will be false and countryFilter will be None, it will just left join adgroup
       .transform(ds => filterDataset(ds, adgroup, filterAdGroup, countryFilter))
       .transform(ds => creativeLandingPage.map(clp => ModelInputTransform.matchLandingPage(ds, clp)).getOrElse(ds))
@@ -333,15 +333,15 @@ object ModelInputTransform extends Logger {
 
   }
 
-  def addExclusionFlag(df: DataFrame, advertiserExclusionList: Option[Dataset[AdvertiserExclusionRecord]]
+  def addExclusionFlag(df: DataFrame, partnerExclusionList: Option[Dataset[PartnerExclusionRecord]]
                       ): DataFrame = {
     // Check if the advertiser exclusion list is defined
-    if (advertiserExclusionList.isDefined) {
-      val exclusionList = advertiserExclusionList.get
+    if (partnerExclusionList.isDefined) {
+      val exclusionList = partnerExclusionList.get
       // Join with exclusion list and set the 'excluded' flag
       df.join(
         exclusionList.withColumn("excluded", lit(1)),
-        Seq("AdvertiserId"),
+        Seq("PartnerId"),
         "leftouter"
       ).withColumn(
         "excluded", when(col("excluded").isNull, 0).otherwise(1)
