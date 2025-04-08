@@ -1,6 +1,5 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.datasets.{CrossDeviceVendor, DataSource}
 import com.thetradedesk.audience.{date, dateFormatter, ttdEnv}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -17,28 +16,33 @@ object TdidSeedScoreScale {
     "seed_id_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/seedids/v=2/date=${dateStr}/")
   val policy_table_path = config.getString(
     "policy_table_path", s"s3://thetradedesk-mlplatform-us-east-1/configdata/prod/audience/policyTable/RSM/v=1/${dateStr}000000/")
-
   val out_path = config.getString("out_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/tdid2seedid/v=1/date=${dateStr}/")
   val population_score_path = config.getString("population_score_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/seedpopulationscore/v=1/date=${dateStr}/")
 
-  val r = config.getDouble("r", 1e-8f).toFloat
   val smooth_factor = config.getDouble("smooth_factor", 30f).toFloat
-  val loc_factor = config.getDouble("loc_factor", 0.8f).toFloat
   val userLevelUpperCap = config.getDouble("userLevelUpperCap", 1e6f).toFloat
+  val accuracy = config.getInt("accuracy", 1000)
+  val sampleRateForPercentile = config.getDouble("sampleRateForPercentile", 0.3)
+  val skipPercentile = config.getBoolean("skipPercentile", true)
 
   /////
   def runETLPipeline(): Unit = {
     val df_seed_list = spark.read.format("parquet").load(seed_id_path)
-    val arrayLength = df_seed_list.select("SeedId").as[Seq[String]].first().length
-    val elementWiseSumUdf = udaf(new ElementWiseAggregator(arrayLength, (a, b) => a + b, 0.0f))
-    val elementWiseMinUdf = udaf(new ElementWiseAggregator(arrayLength, math.min, Float.MaxValue))
-    val elementWiseMaxUdf = udaf(new ElementWiseAggregator(arrayLength, math.max, Float.MinValue))
+    val seed_info = df_seed_list.collect()
+    //val arrayLength = df_seed_list.select("SeedId").as[Seq[String]].first().length
+    val minScore = seed_info(0).getAs[Seq[Float]]("MinScore")
+    val maxScore = seed_info(0).getAs[Seq[Float]]("MaxScore")
+    val avgScore = seed_info(0).getAs[Seq[Float]]("PopulationRelevance")
+    val locationFactors = seed_info(0).getAs[Seq[Float]]("LocationFactor")
+    val baselineHitRate = seed_info(0).getAs[Seq[Float]]("BaselineHitRate")
 
-    def scoreScale_(rawScore: Array[Float], maxScore: Array[Float], minScore: Array[Float]):Array[Float] = {
+    val arrayLength = minScore.length
+    def scoreScale_(rawScore: Array[Float], maxScore: Array[Float], minScore: Array[Float],
+                    locationFactors:Array[Float], baselineHitRate:Array[Float]):Array[Float] = {
       val ret = new Array[Float](arrayLength)
       for (i <- 0 until arrayLength) {
         val scaled = math.min(math.max(rawScore(i)-minScore(i),0.0f)/(maxScore(i)-minScore(i)),1.0f )
-        val weight = r + (1 - r) * (1 - 1 / (1 + math.exp(-(-smooth_factor * (scaled - loc_factor)))))
+        val weight = baselineHitRate(i) + (1 - baselineHitRate(i)) * (1 - 1 / (1 + math.exp(-(-smooth_factor * (scaled - locationFactors(i))))))
 
         ret(i) = (weight * scaled).floatValue()
       }
@@ -49,27 +53,17 @@ object TdidSeedScoreScale {
 
     // we need to apply the normalization for the population score as well
     // otherwise the final avg (score) won't be near 1
-    val df_raw_score = spark.read.format("parquet").load(raw_score_path).cache()
-    val minMax = df_raw_score.agg(
-      elementWiseMinUdf('Score).alias("min_array"),
-      elementWiseMaxUdf('Score).alias("max_array"),
-      count("*").alias("cnt"))
-      .collect()
-    val minScore = minMax(0).getAs[Seq[Float]]("min_array")
-    val maxScore = minMax(0).getAs[Seq[Float]]("max_array")
-    val rowCnt = minMax(0).getAs[Long]("cnt")
+    val df_raw_score = spark.read.format("parquet").load(raw_score_path)
 
     val df_normalized = df_raw_score
       .withColumn("min_array", lit(minScore))
       .withColumn("max_array", lit(maxScore))
-      .withColumn("Score", scoreScale('Score, 'max_array, 'min_array))
+      .withColumn("locationFactors", lit(locationFactors))
+      .withColumn("baselineHitRate", lit(baselineHitRate))
+      .withColumn("Score", scoreScale('Score, 'max_array, 'min_array, 'locationFactors, 'baselineHitRate))
       .drop("max_array", "min_array")
+      .cache()
 
-    val avgs = df_normalized
-      .agg(elementWiseSumUdf('Score).alias("sum"))
-      .withColumn("avg_array", transform(col("sum"), x => x / lit(rowCnt)))
-      .collect()
-    val avgScore = avgs(0).getAs[Seq[Float]]("avg_array")
 
     val df_final = df_normalized
       .withColumn("avg_array", lit(avgScore))
@@ -86,19 +80,28 @@ object TdidSeedScoreScale {
       .save(out_path)
 
     // PopulationScore
-    val df_seed_action_size = spark.read.parquet(policy_table_path)
-      .where('Source === lit(DataSource.Seed.id) && 'CrossDeviceVendorId === lit(CrossDeviceVendor.None.id))
-      .select('SourceId.as("SeedId"), 'ActiveSize)
 
-    //min_max_avg.select("avg_array").crossJoin(df_seed_list.select('SeedId))
-    df_seed_list.select('SeedId)
-      .withColumn("avg_array", lit(avgScore))
-      .withColumn("seed_avg_score", arrays_zip('avg_array, 'SeedId))
-      .withColumn("seed_avg_score", explode('seed_avg_score))
-      .select(col("seed_avg_score.avg_array").alias("PopulationSeedScoreRaw"), col("seed_avg_score.SeedId").alias("SeedId"))
-      .join(df_seed_action_size, Seq("SeedId"))
+    // p25, p50, p75
+    val tiles = skipPercentile match {
+      case true => spark.range(1, 2).toDF("pos").withColumn("p25", lit(0.0f)).withColumn("p50", lit(0.0f)).withColumn("p75", lit(0.0f))
+      case false => df_normalized
+        .withColumn("rnd", rand())
+        .filter(s"rnd < ${sampleRateForPercentile}") // not necessary to process every row for the percentile, to speed up
+        .selectExpr("posexplode(Score) as (pos, score)")
+        .groupBy('pos)
+        .agg(percentile_approx('score, lit(Array(0.25, 0.5, 0.75)), lit(accuracy)).alias("percentile"))
+        .withColumn("p25", element_at(col("percentile"), 1))
+        .withColumn("p50", element_at(col("percentile"), 2))
+        .withColumn("p75", element_at(col("percentile"), 3))
+        .select("pos", "p25", "p50", "p75")
+    }
+
+    df_seed_list.selectExpr("posexplode(arrays_zip(SeedId, ActiveSize, PopulationRelevance)) as (pos, d)")
+      .selectExpr("pos", "d.SeedId", "d.ActiveSize", "d.PopulationRelevance as PopulationSeedScoreRaw")
+      .join(tiles, Seq("pos"), "left")
       .withColumn("PopulationSeedScore", lit(1.0))
-      .select("SeedId", "PopulationSeedScore", "ActiveSize", "PopulationSeedScoreRaw") // keep the raw population score, in case need it for debug
+      .select("SeedId", "PopulationSeedScore", "ActiveSize", "PopulationSeedScoreRaw", "p25", "p50", "p75") // keep the raw population score, in case need it for debug
+      .coalesce(1)
       .write
       .format("parquet")
       .mode("overwrite")

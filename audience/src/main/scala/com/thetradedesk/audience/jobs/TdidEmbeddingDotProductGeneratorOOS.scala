@@ -6,6 +6,7 @@ import com.thetradedesk.audience.{date, dateFormatter, shouldTrackTDID, ttdEnv}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.{DataFrame, Row, SaveMode}
 import org.apache.spark.sql.functions.{e, _}
 import org.apache.spark.sql.types.{ArrayType, FloatType, IntegerType}
@@ -16,6 +17,8 @@ import java.nio.ByteBuffer
 import java.security.MessageDigest
 
 object TdidEmbeddingDotProductGeneratorOOS {
+  val prometheus = new PrometheusClient("AudienceModelJob", "TdidEmbeddingDotProductGeneratorOOS")
+
   val salt="TRM"
   val dateStr = date.format(dateFormatter)
   val tdid_emb_path= config.getString(
@@ -37,6 +40,8 @@ object TdidEmbeddingDotProductGeneratorOOS {
   val EmbeddingSize = 64
   val sensitiveModel = config.getBoolean("sensitiveModel", true)
   val minMaxSeedEmb = config.getDouble("minMaxSeedEmb", 1e-6)
+  val r = config.getDouble("r", 1e-8f).toFloat
+  val loc_factor = config.getDouble("loc_factor", 0.8f).toFloat
 
   val sigmoid = (x: Float) => (1.0f / (1.0f + math.exp(-x))).toFloat
 
@@ -74,6 +79,7 @@ object TdidEmbeddingDotProductGeneratorOOS {
       .withColumn("maxEmbedding", array_max('Embedding))
       .filter('maxEmbedding > lit(minMaxSeedEmb))
       .drop("maxEmbedding")
+      .filter("PopulationRelevance is not null and MinScore is not null and MaxScore is not null and (MaxScore - MinScore) > 0.000001")
     val df_density_features = new Array[DataFrame](10)
     for (i <- 0 until 10) {
       df_density_features(i) = if (density_limit > 1) spark.read.format("parquet").load(density_feature_path + s"split=${i}/").limit(density_limit) else spark.read.format("parquet").load(density_feature_path + s"split=${i}/")
@@ -84,18 +90,27 @@ object TdidEmbeddingDotProductGeneratorOOS {
     }
 
     val df_sensitive_synthetic_ids = spark.read.parquet(policy_table_path)
-      .where('Source === lit(DataSource.Seed.id) && 'CrossDeviceVendorId === lit(CrossDeviceVendor.None.id))
-      .select('SourceId.as("SeedId"), 'SyntheticId.cast(IntegerType).as("SyntheticId"), 'IsSensitive)
+      .where('Source === lit(DataSource.Seed.id) && 'CrossDeviceVendorId === lit(CrossDeviceVendor.None.id) && 'Tag === lit(4) && 'ActiveSize >= lit(2000))
+      .select('SourceId.as("SeedId"), 'SyntheticId.cast(IntegerType).as("SyntheticId"), 'IsSensitive, 'ActiveSize)
 
     val seedEmb = df_seed_emb.withColumn("SyntheticId", 'SyntheticId.cast(IntegerType)).join(df_sensitive_synthetic_ids, Seq("SyntheticId"), "inner")
-      .select('SeedId, 'SyntheticId, 'IsSensitive, 'Embedding) //"SeedId",
-      .as[SyntheticEmbedding]
+      .select('SeedId, 'SyntheticId, 'IsSensitive, 'Embedding, 'ActiveSize, 'PopulationRelevance, 'MinScore, 'MaxScore,
+        coalesce('LocationFactor, lit(loc_factor)).alias("LocationFactor"),
+        coalesce('BaselineHitRate, lit(r)).alias("BaselineHitRate")
+      ) //"SeedId",
+      .as[SyntheticEmbeddingOOS]
       .collect()
 
     val seedIds = seedEmb.map(_.SeedId)
-    println(seedIds.mkString(","))
+    val activeSizes = seedEmb.map(_.ActiveSize)
+    val populationRelevances = seedEmb.map(_.PopulationRelevance)
+    val minScores = seedEmb.map(_.MinScore)
+    val maxScores = seedEmb.map(_.MaxScore)
+    val locationFactors = seedEmb.map(_.LocationFactor)
+    val baselineHitRates = seedEmb.map(_.BaselineHitRate)
 
-    val df = Seq(seedIds).toDF("SeedId")
+    val df = Seq((seedIds, activeSizes, populationRelevances, minScores, maxScores, locationFactors, baselineHitRates))
+      .toDF("SeedId", "ActiveSize", "PopulationRelevance", "MinScore", "MaxScore", "LocationFactor", "BaselineHitRate")
 
     df.write.mode(SaveMode.Overwrite).parquet(seed_id_path)
 
@@ -172,7 +187,8 @@ object TdidEmbeddingDotProductGeneratorOOS {
 
   def main(args: Array[String]): Unit = {
     runETLPipeline()
+    prometheus.pushMetrics()
   }
 }
 
-//case class SyntheticEmbedding(SeedId: String, SyntheticId: Int, IsSensitive: Boolean, Embedding: Array[Float])
+case class SyntheticEmbeddingOOS(SeedId: String, SyntheticId: Int, IsSensitive: Boolean, Embedding: Array[Float], ActiveSize: Long, PopulationRelevance: Float, MinScore: Float, MaxScore: Float, LocationFactor: Float, BaselineHitRate: Float)
