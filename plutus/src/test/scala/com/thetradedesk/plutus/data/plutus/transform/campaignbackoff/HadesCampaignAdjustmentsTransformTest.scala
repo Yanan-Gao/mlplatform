@@ -32,15 +32,20 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val campaignId = "pmbcej3"
     val underdeliveringCampaigns = Seq(CampaignMetaData(campaignId, CampaignType_NewCampaign)).toDS()
 
+    val adgroupId = "abc123"
+    val maxBid = BigDecimal("1.0")
+    val adGroupMaxBid = Seq(AdGroupMetaData(adgroupId, maxBid)).toDS()
+
     val pcResultsMergedData = Seq(
-      pcResultsMergedMock(campaignId = Some(campaignId), dealId = "0000", adjustedBidCPMInUSD = 6.8800, discrepancy = 1.1, floorPrice = 1, mu = -0.3071f, sigma =  0.6923f, auctionType = 3)
+      pcResultsMergedMock(campaignId = Some(campaignId), adgroupId = Some(adgroupId), dealId = "0000", adjustedBidCPMInUSD = 6.8800, discrepancy = 1.1, floorPrice = 1, mu = -0.3071f, sigma =  0.6923f, auctionType = 3)
     ).toDS().as[PcResultsMergedSchema]
 
     val bidData = getAllBidData(spark.emptyDataset[PlutusLogsData], spark.emptyDataset[AdGroupRecord], pcResultsMergedData)
 
     val campaignBidData = getUnderdeliveringCampaignBidData(
       bidData,
-      underdeliveringCampaigns
+      underdeliveringCampaigns,
+      adGroupMaxBid
     )
 
     val results_campaignBidData = campaignBidData.collectAsList().get(0)
@@ -84,7 +89,11 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val campaignId = campaignUnderdeliveryForHadesMock.CampaignId
     val throttleMetricDataset = Seq(campaignUnderdeliveryForHadesMock).toDS()
 
-    val pcResultsMergedData = Seq(pcResultsMergedMock(campaignId = Some(campaignId), dealId = "0000", adjustedBidCPMInUSD = 25.01, discrepancy = 1.1, floorPrice = 25, mu = -4.1280107498168945f, sigma = 1.0384914875030518f)).toDS().as[PcResultsMergedSchema]
+    val adgroupId = "abc123"
+    val maxBid = BigDecimal("1.23")
+    val adGroupMaxBid = Seq(AdGroupMetaData(adgroupId, maxBid)).toDS()
+
+    val pcResultsMergedData = Seq(pcResultsMergedMock(campaignId = Some(campaignId), adgroupId = Some(adgroupId), dealId = "0000", adjustedBidCPMInUSD = 25.01, discrepancy = 1.1, floorPrice = 25, mu = -4.1280107498168945f, sigma = 1.0384914875030518f)).toDS().as[PcResultsMergedSchema]
 
     val plutusLogsData = Seq(pcResultsLogMock("abcd")).toDS().as[PlutusLogsData]
     val adgroupData = Seq(adGroupMock).toDS()
@@ -92,7 +101,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val bidData = getAllBidData(plutusLogsData, adgroupData, pcResultsMergedData)
 
     val underDeliveringCampaigns = Seq(CampaignMetaData(campaignId, CampaignType_NewCampaign)).toDS()
-    val campaignBidData = getUnderdeliveringCampaignBidData(bidData, underDeliveringCampaigns)
+    val campaignBidData = getUnderdeliveringCampaignBidData(bidData, underDeliveringCampaigns, adGroupMaxBid)
 
     val campaignBBFOptOutRate = aggregateCampaignBBFOptOutRate(campaignBidData, throttleMetricDataset )
     val yesterdaysData = spark.emptyDataset[HadesAdjustmentSchemaV2]

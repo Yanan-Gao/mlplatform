@@ -6,10 +6,10 @@ import com.thetradedesk.plutus.data.utils.S3NoFilesFoundException
 import com.thetradedesk.plutus.data.{AuctionType, envForRead, envForReadInternal}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.datasets.sources.{AdGroupDataSet, AdGroupRecord, CampaignDataSet}
+import com.thetradedesk.spark.datasets.sources.{AdGroupDataSet, AdGroupRecord, AdvertiserDataSet, AdvertiserRecord, CampaignDataSet, CurrencyExchangeRateDataSet, CurrencyExchangeRateRecord}
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import org.apache.hadoop.shaded.org.apache.commons.math3.special.Erf
-import org.apache.spark.sql.expressions.UserDefinedFunction
+import org.apache.spark.sql.expressions.{UserDefinedFunction, Window}
 import org.apache.spark.sql.functions.{when, _}
 import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.storage.StorageLevel
@@ -74,7 +74,8 @@ object HadesCampaignAdjustmentsTransform {
 //                                        manualCampaignFloorBuffer: Dataset[CampaignMetaDataV1],
 //                                        filteredCampaigns: Dataset[CampaignMetaDataV2]): DataFrame = {
   def getUnderdeliveringCampaignBidData(bidData: DataFrame,
-                                        filteredCampaigns: Dataset[CampaignMetaData]): DataFrame = {
+                                        filteredCampaigns: Dataset[CampaignMetaData],
+                                        adGroupMaxBid: Dataset[AdGroupMetaData]): DataFrame = {
 
     val gss = udf((m: Double, s: Double, b: Double, e: Double) => gssFunc(m, s, b, e))
 
@@ -84,6 +85,8 @@ object HadesCampaignAdjustmentsTransform {
       .filter(col("FloorPrice") < col("InitialBid"))
       // FIXME: Add new line: .join(broadcast(manualCampaignFloorBuffer), Seq("CampaignId"), "left")
       .join(broadcast(filteredCampaigns), Seq("CampaignId"), "inner")
+      .join(broadcast(adGroupMaxBid), Seq("AdGroupId"), "left")
+      .withColumn("MaxBidCPMInUSD", coalesce(col("MaxBidCPMInUSD"), col("InitialBid"))) // Null check
       // FIXME: Add following withColumn to update CampaignType:
 //      .withColumn("CampaignType",
 //        when(col("CampaignType").isNull, lit(CampaignType_NewCampaign))
@@ -100,8 +103,20 @@ object HadesCampaignAdjustmentsTransform {
             .when(col("AuctionType").isin(AuctionType.FixedPrice), "Fixed") // This includes PG as well
             .otherwise("Other")
         ).otherwise("OpenMarket"))
+      // Update Initial Bid value used to calculate gss for the Propeller bids
+      .withColumn("gen_initialBid",
+        when(col("UseUncappedBidForPushdown"),
+          when(col("MaxBidMultiplierCap") =!= 0 && col("MaxBidMultiplierCap").isNotNull,
+            least(col("UncappedBidPrice"), col("MaxBidCPMInUSD") * col("MaxBidMultiplierCap"))).otherwise(col("UncappedBidPrice")))
+          .otherwise(col("InitialBid")))
       .withColumn("gen_discrepancy", when(col("AuctionType") === AuctionType.FixedPrice, lit(1)).otherwise(when(col("Discrepancy") === 0, lit(1)).otherwise(col("Discrepancy"))))
-      .withColumn("gen_gss_pushdown", when(col("AuctionType") =!= AuctionType.FixedPrice, $"GSS").otherwise(gss(col("Mu"), col("Sigma"), col("InitialBid"), lit(0.1)) / col("InitialBid")))
+      // old gen_gss_pushdown logic: .withColumn("gen_gss_pushdown", when(col("AuctionType") =!= AuctionType.FixedPrice, $"GSS").otherwise(gss(col("Mu"), col("Sigma"), col("InitialBid"), lit(0.1)) / col("InitialBid")))
+      // updated for propeller gen_gss_pushdown logic: Use gen_initialBid when calculating gen_gss_pushdown for Propeller. Can't use GSS in pcgeronimo directly because apply effectiveMaxBid cap
+      .withColumn("gen_tensorflowPcModelBid", when(col("AuctionType") === 3, gss(col("Mu"), col("Sigma"), col("gen_initialBid"), lit(0.1))).otherwise(col("Gss") * col("InitialBid")))
+      .withColumn("gen_gss_pushdown",
+        // for Uncapped Bids, InitialBid is effectively MaxBid
+        when(col("UseUncappedBidForPushdown"), least(col("gen_tensorflowPcModelBid"), col("InitialBid")) / col("InitialBid"))
+          .otherwise(col("gen_tensorflowPcModelBid") / col("InitialBid")))
       .withColumn("gen_effectiveDiscrepancy", least(lit(1), lit(1) / col("gen_discrepancy")))
       .withColumn("gen_excess", col("gen_effectiveDiscrepancy") - col("gen_gss_pushdown"))
 
@@ -180,6 +195,7 @@ object HadesCampaignAdjustmentsTransform {
   // FIXME: Replace following line with:  case class CampaignMetaDataV2(CampaignId: String, CampaignType: String, BBF_FloorBuffer: Double)
   case class CampaignMetaData(CampaignId: String, CampaignType: String)
   case class Campaign(CampaignId: String)
+  case class AdGroupMetaData(AdGroupId: String, MaxBidCPMInUSD: BigDecimal)
   case class HadesMetrics(CampaignType: String, PacingType: String, OptoutType: String, AdjustmentQuantile: Int, Count: Long)
 
   val CampaignType_NewCampaign = "CampaignWithNewAdjustment";
@@ -416,6 +432,7 @@ object HadesCampaignAdjustmentsTransform {
       .withColumn("HadesBackoff_PCAdjustment_Current",
         // We want to apply adjustment when PMP OptOut Fraction is high. We dont want to apply an adjustment when
         // just OM BBF Fraction is high. This check makes sure that OM BBF Fraction is low.
+        // todo: Does this logic need to change now that OM bids are opted out? Or do we still want to handle OM BBF differently since generally lower floors?
         when((col("BBF_OM_BidCount") === lit(0)) || col("BBF_OM_BidCount") / col("Total_BidCount") <= ((lit(100) - $"AdjustmentQuantile") / lit(100)),
           getCurrentAdjustmentUDF(
             col("CampaignId"),
@@ -467,7 +484,7 @@ object HadesCampaignAdjustmentsTransform {
     val plutusLogsData = pcOptoutData
       .filter($"BidBelowFloorExceptedSource" === 2)
       .join(adGroupDistinctData, Seq("AdGroupId"), "inner")
-      .drop("AdGroupId", "LegacyPcPushdown", "LogEntryTime")
+      .drop("LegacyPcPushdown", "LogEntryTime")
       .toDF()
 
     val columns = plutusLogsData.columns
@@ -582,12 +599,33 @@ object HadesCampaignAdjustmentsTransform {
       .join(filteredCampaigns, Seq("CampaignId"), "inner")
       .selectAs[AdGroupRecord]
 
+    // day 1's advertiser & currencyExchangeRate data is exported at the end of day 0
+    val advertiserData = AdvertiserDataSet().readLatestPartitionUpTo(date.plusDays(1), isInclusive = true)
+      .selectAs[AdvertiserRecord]
+    val currencyExchangeRateData = CurrencyExchangeRateDataSet().readLatestPartitionUpTo(date.plusDays(1), isInclusive = true)
+      .selectAs[CurrencyExchangeRateRecord]
+
     // Combine bid data from both pcOptout dataset and pcResultsMerged Dataset
     val bidData = getAllBidData(pcOptoutData, adGroupData, pcResultsMergedData)
 
+    // Get MaxBidInUSD to use for maxBidMultiplierCap. Join advertiserCurrencyExchangeRate to get ToUSD to convert MaxBidCPMInAdvertiserCurrency
+    val windowSpec = Window.partitionBy("CurrencyCodeId").orderBy(col("AsOfDateUTC").desc)
+    val latestCurrencyExchangeRates = currencyExchangeRateData
+      .withColumn("row_num", row_number().over(windowSpec))
+      .filter(col("row_num") === 1)
+      .drop("row_num")
+    val advertiserCurrencyExchangeRate = advertiserData
+      .join(broadcast(latestCurrencyExchangeRates), Seq("CurrencyCodeId"))
+      .select("AdvertiserId", "FromUSD").distinct()
+    val adGroupMaxBid = adGroupData
+      .join(advertiserCurrencyExchangeRate, Seq("AdvertiserId"))
+      .withColumn("ToUSD", lit(1) / col("FromUSD"))
+      .withColumn("MaxBidCPMInUSD", col("MaxBidCPMInAdvertiserCurrency") * coalesce(col("ToUSD"), lit(1)))
+      .select("AdGroupId", "MaxBidCPMInUSD").as[AdGroupMetaData]
+
     // Get bid data filtered to underdelivering campaigns
     // FIXME: Replace line with: val campaignBidData = getUnderdeliveringCampaignBidData(bidData, manualCampaignFloorBuffer, filteredCampaigns)
-    val campaignBidData = getUnderdeliveringCampaignBidData(bidData, filteredCampaigns)
+    val campaignBidData = getUnderdeliveringCampaignBidData(bidData, filteredCampaigns, adGroupMaxBid)
     // Get Optout Rates & potential pushdowns for underdelivering campaigns
     val campaignBBFOptOutRate = aggregateCampaignBBFOptOutRate(campaignBidData, campaignUnderdeliveryData).cache()
 

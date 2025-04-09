@@ -304,7 +304,7 @@ object MockData {
     IsMargin = false
   )
 
-  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0, auctionType: Int = 1, uncappedBidPrice: Double = 0, snapbackMaxBid: Double = 0, maxBidMultiplierCap: Double = 0) = PcResultsMergedSchema(
+  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), adgroupId: Option[String] = Some("mno012"), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0, auctionType: Int = 1, uncappedBidPrice: Double = 0, snapbackMaxBid: Double = 0, maxBidMultiplierCap: Double = 0) = PcResultsMergedSchema(
     BidRequestId = "1",
     DealId = dealId,
 
@@ -317,7 +317,7 @@ object MockData {
     PartnerId = Some("abc123"),
     AdvertiserId = Some("def456"),
     CampaignId = campaignId,
-    AdGroupId = Some("mno012"),
+    AdGroupId = adgroupId,
 
     SupplyVendor = supplyVendor,
     SupplyVendorPublisherId = Some("983"),
