@@ -653,7 +653,8 @@ object MockData {
       BBF_OM_BidAmount = 7000,
       HadesBackoff_PCAdjustment_Current = hadesPCAdjustmentCurrent,
       HadesBackoff_PCAdjustment_Previous = hadesPCAdjustmentPrevious,
-      AdjustmentQuantile = 50
+      AdjustmentQuantile = 50,
+      BBF_FloorBuffer = 0.60
     )
   }
 
@@ -663,6 +664,7 @@ object MockData {
     HadesCampaignStats(
       CampaignId = campaignId,
       CampaignType = campaignType,
+      BBF_FloorBuffer = 0.60,
       HadesBackoff_PCAdjustment_Options = hadesBackoff_PCAdjustment_Options,
       UnderdeliveryFraction = Some(0.2),
       Total_BidCount = 200,
@@ -676,6 +678,8 @@ object MockData {
       BBF_OM_BidAmount = 400
     )
   }
+
+  def manualCampaignFloorBufferMock = ManualCampaignFloorBufferSchema
 
   val campaignUnderdeliveryForHadesMock = CampaignThrottleMetricSchema(
     Date = Timestamp.valueOf(LocalDateTime.of(2024, 12, 1, 14, 30)),
@@ -693,11 +697,11 @@ object MockData {
 
   val campaignBBFOptOutRateMock = Seq(
     // Campaign is underdeliverying but doesn't have a high optout %
-    HadesCampaignStats("campaignA", CampaignType_NewCampaign, Array(1.1, 0.95, 0.8), Some(0.6), 10, 10, 100, 2, 20, 0, 0, 0, 0),
+    HadesCampaignStats("campaignA", CampaignType_NewCampaign, 0.6, Array(1.1, 0.95, 0.8), Some(0.6), 10, 10, 100, 2, 20, 0, 0, 0, 0),
     // Campaign has high optout but no underdelivery data
-    HadesCampaignStats("campaignB", CampaignType_NewCampaign, Array(0.7884867455687953, 0.85, 0.92), None, 10, 10, 100, 8, 80, 0, 0, 0, 0),
+    HadesCampaignStats("campaignB", CampaignType_NewCampaign, 0.10, Array(0.7884867455687953, 0.85, 0.92), None, 10, 10, 100, 8, 80, 0, 0, 0, 0),
     // Campaign has high optout and high underdelivery
-    HadesCampaignStats("campaignC", CampaignType_AdjustedCampaign,
+    HadesCampaignStats("campaignC", CampaignType_AdjustedCampaign, 0.1,
       Array(0.6, 0.5, 0.4), Some(0.5), 10, 10, 100, 8, 80, 0, 0, 0, 0)
   ).toDS()
 
