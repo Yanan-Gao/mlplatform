@@ -52,7 +52,7 @@ object TdidSeedScoreQualityCheck {
     val previousDfs = previousDfsArr.reduce(_.union(_))
     val previousStats = previousDfs.select("SeedId", "PopulationSeedScoreRaw")
       .groupBy('SeedId)
-      .agg(avg('PopulationSeedScoreRaw.alias("PopulationSeedScoreRawPre")))
+      .agg(avg('PopulationSeedScoreRaw).alias("PopulationSeedScoreRawPre"))
 
     val todayStats = spark.read.format("parquet").load(population_score_path)
       .select("SeedId", "PopulationSeedScoreRaw")
