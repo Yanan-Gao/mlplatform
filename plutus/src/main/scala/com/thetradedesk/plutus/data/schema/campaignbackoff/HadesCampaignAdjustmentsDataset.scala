@@ -117,7 +117,7 @@ case class HadesAdjustmentSchemaV2(
   BBF_OM_BidAmount: Double,
   BBF_OM_BidAmount_Previous: Array[Double] = Array(),
 
-  // TODO: Add BBF_FloorBuffer: Double,
+  BBF_FloorBuffer: Double,
 )
 
 @Deprecated
@@ -146,7 +146,7 @@ case class HadesCampaignStats(
                                CampaignId: String,
                                CampaignType: String,
 
-                               // TODO: Add BBF_FloorBuffer: Double,
+                               BBF_FloorBuffer: Double,
 
                                HadesBackoff_PCAdjustment_Options: Array[Double] = Array(),
 
