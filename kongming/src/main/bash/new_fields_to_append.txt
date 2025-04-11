@@ -1,0 +1,8 @@
+### case classes before preprocessing: BidsImpressionsSchema
+### case classes after preprocessing: OldDailyOfflineScoringRecord ArrayDailyOfflineScoringRecord UserDataValidationDataForModelTrainingRecord UserDataForModelTrainingRecord UnionOutOfSampleAttributionRecord ArrayUserDataForModelTrainingRecord OutOfSampleAttributionRecord ArrayOutOfSampleAttributionRecord
+### The first non-comment line contains the case class names.
+ArrayDailyOfflineScoringRecord UserDataValidationDataForModelTrainingRecord OutOfSampleAttributionRecord
+### The following lines are the new fields to add:
+IdType: Int
+IdCount: Int
+UserAgeInDays: Option[Float]

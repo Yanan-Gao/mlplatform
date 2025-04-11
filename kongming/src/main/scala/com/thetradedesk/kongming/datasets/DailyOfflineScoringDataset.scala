@@ -255,6 +255,9 @@ final case class DailyOfflineScoringRecord(
                                            UserData_Column140: Int,
                                            HasUserData: Int,
                                            UserDataLength: Float,
+                                           IdType: Int,
+                                           IdCount: Int,
+                                           UserAgeInDays: Option[Float]
                                           )
 
 case class DailyOfflineScoringDataset(experimentOverride: Option[String] = None) extends KongMingDataset[DailyOfflineScoringRecord](
@@ -313,7 +316,10 @@ final case class OldDailyOfflineScoringRecord(
 
                                            HasUserData: Int,
                                            UserDataLength: Float,
-                                           UserData: Array[Int]
+                                           UserData: Array[Int],
+                                           IdType: Int,
+                                           IdCount: Int,
+                                           UserAgeInDays: Option[Float]
                                           )
 
 case class OldDailyOfflineScoringDataset(experimentOverride: Option[String] = None) extends KongMingDataset[OldDailyOfflineScoringRecord](
@@ -369,7 +375,10 @@ final case class ArrayDailyOfflineScoringRecord(
 
                                            HasUserData: Int,
                                            UserDataLength: Float,
-                                           UserData: Array[Int]
+                                           UserData: Array[Int],
+                                           IdType: Int,
+                                           IdCount: Int,
+                                           UserAgeInDays: Option[Float]
                                           )
 
 case class ArrayDailyOfflineScoringDataset(experimentOverride: Option[String] = None)
@@ -429,5 +438,8 @@ final case class UnionDailyOfflineScoringRecord(
 
                                            HasUserData: Int,
                                            UserDataLength: Float,
-                                           UserData: Array[Int]
+                                           UserData: Array[Int],
+                                           IdType: Int,
+                                           IdCount: Int,
+                                           UserAgeInDays: Option[Float]
                                           )

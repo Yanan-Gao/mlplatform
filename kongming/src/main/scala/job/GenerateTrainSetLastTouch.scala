@@ -75,6 +75,7 @@ object GenerateTrainSetLastTouch extends KongmingBaseJob {
         .withColumn("longitude", $"longitude".cast("float"))
         .withColumn("UserDataLength", $"UserDataLength".cast("float"))
         .withColumn("ContextualCategoryLengthTier1", $"ContextualCategoryLengthTier1".cast("float"))
+        .withColumn("UserAgeInDays", $"UserAgeInDays".cast("float"))
 
       val attr = AttrDates.map(dt => {
         DailyAttributionEventsDataset().readPartition(dt, ImpDate.format(DefaultTimeFormatStrings.dateTimeFormatter))

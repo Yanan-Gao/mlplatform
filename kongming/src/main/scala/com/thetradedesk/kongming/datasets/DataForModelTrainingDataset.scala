@@ -269,7 +269,10 @@ final case class UserDataForModelTrainingRecord(
 
                                                  HasUserData: Int,
                                                  UserDataLength: Float,
-                                                 UserDataOptIn: Int
+                                                 UserDataOptIn: Int,
+                                                 IdType: Int,
+                                                 IdCount: Int,
+                                                 UserAgeInDays: Option[Float]
                                                // 256 columns in total
                                                )
 
@@ -327,6 +330,10 @@ final case class ArrayUserDataForModelTrainingRecord(
                                                  HasUserData: Int,
                                                  UserDataLength: Float,
                                                  UserDataOptIn: Int,
+                                                 IdType: Int,
+                                                 IdCount: Int,
+                                                 UserAgeInDays: Option[Float]
+
                                                )
 
 final case class DataForModelTrainingRecord(

@@ -33,10 +33,12 @@ libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest-funsuite" % "3.2.10" % Test,
  // "MrPowers" % "spark-fast-tests" % "2.2.0_0.5.0" % "test"
 
-  "com.thetradedesk" %% "geronimo" % "0.2.28-SNAPSHOT",
+  "com.thetradedesk" %% "geronimo" % "0.2.38-SNAPSHOT",
   "com.thetradedesk" %% "eldorado-core" % "1.0.285-spark-3.2.1",
   "com.thetradedesk" %% "feature_store" % "20250218045228-SNAPSHOT",
 )
+
+libraryDependencySchemes += "com.thetradedesk" %% "geronimo" % VersionScheme.Always
 
 assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
 assemblyJarName in assembly := "kongming.jar"

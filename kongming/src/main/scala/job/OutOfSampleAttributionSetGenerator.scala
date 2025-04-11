@@ -174,6 +174,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
       .withColumn("longitude", $"longitude".cast("float"))
       .withColumn("UserDataLength", $"UserDataLength".cast("float"))
       .withColumn("ContextualCategoryLengthTier1", $"ContextualCategoryLengthTier1".cast("float"))
+      .withColumn("UserAgeInDays", $"UserAgeInDays".cast("float"))
       .withColumn("Target", $"Target".cast("float"))
       .withColumn("Weight", $"Weight".cast("float"))
       .withColumn("Revenue", $"Revenue".cast("float"))
