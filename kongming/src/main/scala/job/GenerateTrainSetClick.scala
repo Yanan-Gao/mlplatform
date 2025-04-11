@@ -52,6 +52,8 @@ object GenerateTrainSetClick extends KongmingBaseJob {
         .withColumn("longitude", $"longitude".cast("float"))
         .withColumn("UserDataLength", $"UserDataLength".cast("float"))
         .withColumn("ContextualCategoryLengthTier1", $"ContextualCategoryLengthTier1".cast("float"))
+        .withColumn("UserAgeInDays", $"UserAgeInDays".cast("float"))
+
       val dailyClick = DailyClickDataset().readDate(ImpDate)
       val impWithAttr = dailyImp.join(
         dailyClick.withColumnRenamed("BidRequestId", "BidRequestIdStr")

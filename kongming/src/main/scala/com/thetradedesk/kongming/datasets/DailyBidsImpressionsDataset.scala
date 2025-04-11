@@ -61,11 +61,14 @@ case class BidsImpressionsSchema(
                                   // cold storage total segments
                                   UserSegmentCount: Option[Int],
                                   // hotcache x selected segments log
-                                  MatchedSegments: Option[Seq[Long]]
+                                  MatchedSegments: Option[Seq[Long]],
 
                                   // uncomment for online test backtesting set generation
                                   // ExpectedValue: Option[BigDecimal],
                                   // RPacingValue: Option[BigDecimal],
+                                  IdType: Option[String],
+                                  IdCount: Int,
+                                  UserAgeInDays: Option[Double]
                                 )
 
 // For easier feature adding while avoiding rubbish data, we should always write the full dataset, but read only the required fields

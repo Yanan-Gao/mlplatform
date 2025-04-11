@@ -69,6 +69,7 @@ object OfflineScoringSetTransform {
       .withColumn("longitude", $"longitude".cast("float"))
       .withColumn("UserDataLength", $"UserDataLength".cast("float"))
       .withColumn("ContextualCategoryLengthTier1", $"ContextualCategoryLengthTier1".cast("float"))
+      .withColumn("UserAgeInDays", $"UserAgeInDays".cast("float"))
       .select(selectionTabular: _*)
       .selectAs[UnionDailyOfflineScoringRecord]
   }

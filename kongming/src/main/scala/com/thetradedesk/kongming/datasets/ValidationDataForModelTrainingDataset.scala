@@ -59,5 +59,9 @@ final case class UserDataValidationDataForModelTrainingRecord(BidRequestIdStr: S
                                                       UserData: Array[Int],
                                                       HasUserData: Int,
                                                       UserDataLength: Float,
-                                                      UserDataOptIn: Int
+                                                      UserDataOptIn: Int,
+
+                                                      IdType: Int,
+                                                      IdCount: Int,
+                                                      UserAgeInDays: Option[Float]
                                                      )

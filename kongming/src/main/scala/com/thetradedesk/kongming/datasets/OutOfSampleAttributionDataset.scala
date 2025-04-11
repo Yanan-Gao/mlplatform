@@ -263,7 +263,11 @@ final case class OutOfSampleAttributionRecord(
                                                UserData_Column137: Int,
                                                UserData_Column138: Int,
                                                UserData_Column139: Int,
-                                               UserData_Column140: Int
+                                               UserData_Column140: Int,
+                                               IdType: Int,
+                                               IdCount: Int,
+                                               UserAgeInDays: Option[Float]
+
                                              )
 
 case class OutOfSampleAttributionDataset(delayNDays: Int, experimentOverride: Option[String] = None)
@@ -451,7 +455,11 @@ final case class ArrayOutOfSampleAttributionRecord(
                                                UserDataLength: Float,
                                                UserDataOptIn: Int,
 
-                                               UserData: Array[Int]
+                                               UserData: Array[Int],
+                                               IdType: Int,
+                                               IdCount: Int,
+                                               UserAgeInDays: Option[Float]
+
                                              )
 case class ArrayOutOfSampleAttributionDataset(delayNDays: Int, experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3CBufferDataset[ArrayOutOfSampleAttributionRecord](
@@ -516,5 +524,8 @@ final case class UnionOutOfSampleAttributionRecord(
                                                UserDataLength: Float,
                                                UserDataOptIn: Int,
 
-                                               UserData: Array[Int]
+                                               UserData: Array[Int],
+                                               IdType: Int,
+                                               IdCount: Int,
+                                               UserAgeInDays: Option[Float]
                                              )
