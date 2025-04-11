@@ -30,8 +30,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
   test("Validating plutus adjustment calculations") {
     val campaignId = "pmbcej3"
-    val floorBuffer = 0.60
-    val underdeliveringCampaigns = Seq(CampaignMetaData_WithCampaignType(campaignId, CampaignType_NewCampaign, floorBuffer)).toDS()
+    val underdeliveringCampaigns = Seq(CampaignMetaData(campaignId, CampaignType_NewCampaign)).toDS()
 
     val adgroupId = "abc123"
     val maxBid = BigDecimal("1.0")
@@ -41,13 +40,10 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
       pcResultsMergedMock(campaignId = Some(campaignId), adgroupId = Some(adgroupId), dealId = "0000", adjustedBidCPMInUSD = 6.8800, discrepancy = 1.1, floorPrice = 1, mu = -0.3071f, sigma =  0.6923f, auctionType = 3)
     ).toDS().as[PcResultsMergedSchema]
 
-    val manualCampaignFloorBuffer = Seq(CampaignMetaData(campaignId, floorBuffer)).toDS()
-
     val bidData = getAllBidData(spark.emptyDataset[PlutusLogsData], spark.emptyDataset[AdGroupRecord], pcResultsMergedData)
 
     val campaignBidData = getUnderdeliveringCampaignBidData(
       bidData,
-      manualCampaignFloorBuffer,
       underdeliveringCampaigns,
       adGroupMaxBid
     )
@@ -91,10 +87,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
   test("Hades Backoff transform test for schema/column correctness") {
     val campaignId = campaignUnderdeliveryForHadesMock.CampaignId
-    val floorBuffer = 0.60
-
     val throttleMetricDataset = Seq(campaignUnderdeliveryForHadesMock).toDS()
-    val manualCampaignFloorBufferDataset = Seq(CampaignMetaData(campaignId, floorBuffer)).toDS()
 
     val adgroupId = "abc123"
     val maxBid = BigDecimal("1.23")
@@ -107,8 +100,8 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
     val bidData = getAllBidData(plutusLogsData, adgroupData, pcResultsMergedData)
 
-    val underDeliveringCampaigns = Seq(CampaignMetaData_WithCampaignType(campaignId, CampaignType_NewCampaign, floorBuffer)).toDS()
-    val campaignBidData = getUnderdeliveringCampaignBidData(bidData, manualCampaignFloorBufferDataset, underDeliveringCampaigns, adGroupMaxBid)
+    val underDeliveringCampaigns = Seq(CampaignMetaData(campaignId, CampaignType_NewCampaign)).toDS()
+    val campaignBidData = getUnderdeliveringCampaignBidData(bidData, underDeliveringCampaigns, adGroupMaxBid)
 
     val campaignBBFOptOutRate = aggregateCampaignBBFOptOutRate(campaignBidData, throttleMetricDataset )
     val yesterdaysData = spark.emptyDataset[HadesAdjustmentSchemaV2]
@@ -207,77 +200,6 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     assert(test4.HadesBackoff_PCAdjustment_Previous.contains(0.5))
   }
 
-  test("getManualCampaignFloorBuffer when both yesterday and today's data is present") {
-    val yesterdayCampaignFloorBuffers = Seq(
-      ManualCampaignFloorBufferSchema(CampaignId = "campaign1", BBF_FloorBuffer = 0.6),
-      ManualCampaignFloorBufferSchema(CampaignId = "campaign2", BBF_FloorBuffer = 0.01),
-      ManualCampaignFloorBufferSchema(CampaignId = "campaign3", BBF_FloorBuffer = 0.1)
-    ).toDS()
-
-    val todaysCampaignFloorBuffers= Seq(
-      ManualCampaignFloorBufferSchema(CampaignId = "campaign3", BBF_FloorBuffer = 0.6)
-    ).toDS()
-
-    val res = getManualCampaignFloorBuffer(todaysCampaignFloorBuffers, yesterdayCampaignFloorBuffers)
-
-    assert(res.collect().length == 3)
-
-    // check the new and rollback campaigns have expected buffer values
-    val test1 = res.filter($"CampaignId" === "campaign1").collect().head
-    assert(test1.BBF_FloorBuffer == 0.6)
-    val test2 = res.filter($"CampaignId" === "campaign2").collect().head
-    assert(test2.BBF_FloorBuffer == 0.01)
-    val test3 = res.filter($"CampaignId" === "campaign3").collect().head
-    assert(test3.BBF_FloorBuffer == 0.6)
-  }
-
-  test("getManualCampaignFloorBuffer when only yesterday data is present") {
-    val yesterdayCampaignFloorBuffers = Seq(
-      ManualCampaignFloorBufferSchema(CampaignId = "campaign1", BBF_FloorBuffer = 0.6),
-      ManualCampaignFloorBufferSchema(CampaignId = "campaign2", BBF_FloorBuffer = 0.01),
-      ManualCampaignFloorBufferSchema(CampaignId = "campaign3", BBF_FloorBuffer = 0.1)
-    ).toDS()
-
-    val todaysCampaignFloorBuffers= Seq.empty[ManualCampaignFloorBufferSchema].toDS()
-
-    val res = getManualCampaignFloorBuffer(todaysCampaignFloorBuffers, yesterdayCampaignFloorBuffers)
-
-    assert(res.collect().length == 3)
-
-    // check the new and rollback campaigns have expected buffer values
-    val test1 = res.filter($"CampaignId" === "campaign1").collect().head
-    assert(test1.BBF_FloorBuffer == 0.6)
-    val test2 = res.filter($"CampaignId" === "campaign2").collect().head
-    assert(test2.BBF_FloorBuffer == 0.01)
-    val test3 = res.filter($"CampaignId" === "campaign3").collect().head
-    assert(test3.BBF_FloorBuffer == 0.1)
-  }
-
-  test("getManualCampaignFloorBuffer when only today data is present") {
-    val yesterdayCampaignFloorBuffers = Seq.empty[ManualCampaignFloorBufferSchema].toDS()
-
-    val todaysCampaignFloorBuffers= Seq(
-      ManualCampaignFloorBufferSchema(CampaignId = "campaign3", BBF_FloorBuffer = 0.6)
-    ).toDS()
-
-    val res = getManualCampaignFloorBuffer(todaysCampaignFloorBuffers, yesterdayCampaignFloorBuffers)
-
-    assert(res.collect().length == 1)
-    // check the rollback campaigns have expected buffer values
-    val test1 = res.filter($"CampaignId" === "campaign3").collect().head
-    assert(test1.BBF_FloorBuffer == 0.6)
-  }
-
-  test("getManualCampaignFloorBuffer when no yesterday or today data is present") {
-    val yesterdayCampaignFloorBuffers = Seq.empty[ManualCampaignFloorBufferSchema].toDS()
-
-    val todaysCampaignFloorBuffers= Seq.empty[ManualCampaignFloorBufferSchema].toDS()
-
-    val res = getManualCampaignFloorBuffer(todaysCampaignFloorBuffers, yesterdayCampaignFloorBuffers)
-
-    assert(res.collect().length == 0)
-  }
-
   test("Testing GetFilteredCampaigns") {
     val campaignUnderdeliveryData = Seq(campaignUnderdeliveryForHadesMock).toDS()
 
@@ -286,7 +208,10 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
       .withColumnRenamed("value", "CampaignId")
       .as[Campaign]
 
-    val yesterdaysCampaigns = Seq(CampaignMetaData("jkl789", 0.6)).toDS()
+    val yesterdaysCampaigns = Seq("jkl789")
+      .toDF()
+      .withColumnRenamed("value", "CampaignId")
+      .as[Campaign]
 
     val filteredCampaigns = getFilteredCampaigns(
       campaignThrottleData = campaignUnderdeliveryData,

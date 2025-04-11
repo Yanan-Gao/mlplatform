@@ -8,7 +8,6 @@ import scala.reflect.ClassTag
 
 object HadesCampaignAdjustmentsDataset extends S3DailyParquetDataset[HadesAdjustmentSchemaV2] {
   val DATA_VERSION = 2
-  val platformWideBuffer = 0.6
 
   override protected def genBasePath(env: String): String = {
     f"s3://thetradedesk-mlplatform-us-east-1/env=${env}/data/plutusbackoff/hadesadjustments/v=${DATA_VERSION}"
@@ -47,7 +46,6 @@ object HadesCampaignAdjustmentsDataset extends S3DailyParquetDataset[HadesAdjust
           Total_OM_BidAmount = 0,
           BBF_OM_BidCount = 0,
           BBF_OM_BidAmount = 0,
-          BBF_FloorBuffer = getFloorBufferValue(Some(row.BBF_FloorBuffer))
         )
       )
   }
@@ -57,10 +55,6 @@ object HadesCampaignAdjustmentsDataset extends S3DailyParquetDataset[HadesAdjust
       case Some(values) => values.takeRight(math.max(0, historyLength - 1)) :+ previousValue
       case None         => Array(previousValue)
     }
-  }
-
-  def getFloorBufferValue(bbfFloorBuffer: Option[Double]): Double = {
-    bbfFloorBuffer.getOrElse(platformWideBuffer)
   }
 }
 
@@ -123,7 +117,7 @@ case class HadesAdjustmentSchemaV2(
   BBF_OM_BidAmount: Double,
   BBF_OM_BidAmount_Previous: Array[Double] = Array(),
 
-  BBF_FloorBuffer: Double,
+  // TODO: Add BBF_FloorBuffer: Double,
 )
 
 @Deprecated
@@ -152,7 +146,7 @@ case class HadesCampaignStats(
                                CampaignId: String,
                                CampaignType: String,
 
-                               BBF_FloorBuffer: Double,
+                               // TODO: Add BBF_FloorBuffer: Double,
 
                                HadesBackoff_PCAdjustment_Options: Array[Double] = Array(),
 

@@ -64,9 +64,4 @@ class DatasetPathGenTest extends AnyFunSuite with Matchers {
     path = PlutusOptoutBidsDataset.generatePathForHour(LocalDateTime.of(2025, 1, 26, 1, 0), "prod")
     path shouldEqual "s3://ttd-identity/datapipeline/prod/pc_optout_bids/v=1/date=20250126/hour=1"
   }
-
-  test("ManualCampaignFloorBufferDataset should generate the right path") {
-    val path = ManualCampaignFloorBufferDataset.genPathForDate(LocalDate.of(2025, 4, 3), "prod")
-    path shouldEqual "s3://thetradedesk-mlplatform-us-east-1/env=prod/data/plutusbackoff/campaignfloorbuffer/v=1/date=20250403"
-  }
 }
