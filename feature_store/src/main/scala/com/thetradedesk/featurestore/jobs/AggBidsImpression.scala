@@ -15,7 +15,7 @@ import java.time.LocalDate
 
 object AggBidsImpression extends FeatureStoreAggJob {
   override def jobName: String = "bidsimpression"
-  override def jobConfig = new FeatureStoreAggJobConfig( s"${getClass.getSimpleName.stripSuffix("$")}.yml" )
+  override def jobConfig = new FeatureStoreAggJobConfig( s"${getClass.getSimpleName.stripSuffix("$")}.json" )
 
   override def loadInputData(date: LocalDate, lookBack: Int): Dataset[_] = {
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"

@@ -1,15 +1,13 @@
 package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore.features.Features.{AggFunc, CategoryFeatAggSpecs, ContinuousFeatAggSpecs, RatioFeatAggSpecs}
+import scala.io.Source
 import io.circe._
 import io.circe.generic.auto._
-import io.circe.yaml.parser
-
-import scala.io.Source
 
 abstract class FeatureStoreJobConfig(val configFile: String) {
-  // Method to read the YAML file
-  private def readYamlFile(configFile: String): String = {
+  // Method to read the JSON file
+  private def readJsonFile(configFile: String): String = {
     val basePath = "jobconfigs"
     val resourcePath = s"$basePath/$configFile"
     try {
@@ -24,9 +22,9 @@ abstract class FeatureStoreJobConfig(val configFile: String) {
     }
   }
 
-  val yamlString: String = readYamlFile(configFile)
+  val jsonString: String = readJsonFile(configFile)
 
-  val parsed: Either[ParsingFailure, Json] = parser.parse(yamlString)
+  val parsed: Either[ParsingFailure, Json] = parser.parse(jsonString)
 }
 
 class FeatureStoreAggJobConfig(override val configFile: String) extends FeatureStoreJobConfig(configFile) {
@@ -41,7 +39,7 @@ class FeatureStoreAggJobConfig(override val configFile: String) extends FeatureS
         }
       }
     case Left(error) =>
-      println(s"Failed to parse FeatureStoreAggJobConfig YAML file: $error")
+      println(s"Failed to parse FeatureStoreAggJobConfig JSON file: $error")
       Array.empty
   }
 
@@ -53,7 +51,7 @@ class FeatureStoreAggJobConfig(override val configFile: String) extends FeatureS
         }
       }
     case Left(error) =>
-      println(s"Failed to parse FeatureStoreAggJobConfig YAML file: $error")
+      println(s"Failed to parse FeatureStoreAggJobConfig JSON file: $error")
       Array.empty
   }
 
@@ -65,7 +63,7 @@ class FeatureStoreAggJobConfig(override val configFile: String) extends FeatureS
         }
       }
     case Left(error) =>
-      println(s"Failed to parse FeatureStoreAggJobConfig YAML file: $error")
+      println(s"Failed to parse FeatureStoreAggJobConfig JSON file: $error")
       Array.empty
   }
 }

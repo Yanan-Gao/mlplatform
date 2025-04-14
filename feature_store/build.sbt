@@ -38,8 +38,6 @@ libraryDependencies ++= Seq(
   "com.thetradedesk" %% "geronimo" % "0.2.28-SNAPSHOT",
   "com.thetradedesk" %% "eldorado-core" % "1.0.285-spark-3.2.1",
   "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
-  "io.circe" %% "circe-yaml" % "0.14.1",
-  "org.yaml" % "snakeyaml" % "1.28",
 
   "io.prometheus" % "simpleclient" % prometheusVersion,
   "io.prometheus" % "simpleclient_common" % prometheusVersion,
