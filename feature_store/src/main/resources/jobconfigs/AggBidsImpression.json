@@ -1,0 +1,13 @@
+{
+  "continuous": [
+    {
+      "aggField": "WinRate",
+      "aggWindows": [
+        1,
+        3,
+        7
+      ],
+      "aggFunc": "mean"
+    }
+  ]
+}

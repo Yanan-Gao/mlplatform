@@ -13,7 +13,7 @@ import java.time.LocalDate
 
 object AggAttributions extends FeatureStoreAggJob {
   override def jobName: String = "attribution"
-  override def jobConfig = new FeatureStoreAggJobConfig( s"${getClass.getSimpleName.stripSuffix("$")}.yml" )
+  override def jobConfig = new FeatureStoreAggJobConfig( s"${getClass.getSimpleName.stripSuffix("$")}.json" )
 
   // todo: replace this part by config files
   override def catFeatSpecs: Array[CategoryFeatAggSpecs] = Array(

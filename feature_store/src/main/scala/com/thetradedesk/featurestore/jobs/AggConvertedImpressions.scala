@@ -14,7 +14,7 @@ import java.time.LocalDate
 
 object AggConvertedImpressions extends FeatureStoreAggJob {
   override def jobName: String = "convertedimp"
-  override def jobConfig = new FeatureStoreAggJobConfig( s"${getClass.getSimpleName.stripSuffix("$")}.yml" )
+  override def jobConfig = new FeatureStoreAggJobConfig( s"${getClass.getSimpleName.stripSuffix("$")}.json" )
 
   // input args
   val convLookback = config.getInt("convLookback", 15)
