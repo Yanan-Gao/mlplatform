@@ -455,7 +455,7 @@ final case class ArrayOutOfSampleAttributionRecord(
                                              )
 case class ArrayOutOfSampleAttributionDataset(delayNDays: Int, experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3CBufferDataset[ArrayOutOfSampleAttributionRecord](
-    MLPlatformS3Root, s"${BaseFolderPath}/outofsampleattributionset/v=2/delay=${delayNDays}D/", experimentOverride = experimentOverride)
+    MLPlatformS3Root, s"${BaseFolderPath}/outofsampleattributionset/v=2/delay=${delayNDays}D/", Some("split"), experimentOverride = experimentOverride)
 
 final case class UnionOutOfSampleAttributionRecord(
                                                AdGroupId: Int,
