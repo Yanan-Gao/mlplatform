@@ -28,9 +28,10 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
   val isExactAttributionLookBack = config.getBoolean("isExactAttributionLookBack", true)
   val isSampledNegativeWeight = config.getBoolean("isSampledNegativeWeight", false)
 
-  val saveTrainingDataAsTFRecord = config.getBoolean("saveTrainingDataAsTFRecord", true)
   val saveTrainingDataAsCSV = config.getBoolean("saveTrainingDataAsCSV", true)
   val saveTrainingDataAsCBuffer = config.getBoolean("saveTrainingDataAsCBuffer", true)
+
+  val OOSPartitionCountFactor = config.getInt("OOSPartitionCountFactor", 1)
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
 
@@ -43,20 +44,17 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
     var datasetRows = Array.fill(2)("", 0L)
 
-    if (saveTrainingDataAsTFRecord) {
+    if (saveTrainingDataAsCSV) {
       val TrackedAttributionSet = attributionSet.filter($"IsTracked" === lit(1)).select(parquetSelectionTabular: _*).selectAs[OldOutOfSampleAttributionRecord]
       val UntrackedAttributionSet = attributionSet.filter($"IsTracked" =!= lit(1)).select(parquetSelectionTabular: _*).selectAs[OldOutOfSampleAttributionRecord]
-      val numTrackedRows = OldOutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSet, scoreDate, "tracked", Some(200))
-      val numUntrackedRows = OldOutOfSampleAttributionDataset(delayNDays).writePartition(UntrackedAttributionSet, scoreDate, "untracked", Some(200))
-      datasetRows = Array(numTrackedRows, numUntrackedRows)
-    }
+      OldOutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSet, scoreDate, "tracked", Some(200))
+      OldOutOfSampleAttributionDataset(delayNDays).writePartition(UntrackedAttributionSet, scoreDate, "untracked", Some(200))
 
-    if (saveTrainingDataAsCSV) {
       val TrackedAttributionSetWithUserData = attributionSet.filter($"IsTracked" === lit(1)).select(parquetSelectionTabular: _*).selectAs[OutOfSampleAttributionRecord]
       val UntrackedAttributionSetWithUserData = attributionSet.filter($"IsTracked" =!= lit(1)).select(parquetSelectionTabular: _*).selectAs[OutOfSampleAttributionRecord]
 
-      val numTrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSetWithUserData, scoreDate, "tracked", Some(partCount.OOSTracked))
-      val numUntrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(UntrackedAttributionSetWithUserData, scoreDate, "untracked", Some(partCount.OOSUntracked))
+      val numTrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSetWithUserData, scoreDate, "tracked", Some(partCount.OOSTrackedPerDayDelay * delayNDays))
+      val numUntrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(UntrackedAttributionSetWithUserData, scoreDate, "untracked", Some(partCount.OOSUntrackedPerDayDelay * delayNDays))
       datasetRows = Array(numTrackedRows, numUntrackedRows)
     }
 
@@ -64,8 +62,8 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
       val TrackedAttributionSetWithUserData = attributionSet.filter($"IsTracked" === lit(1))
       val UntrackedAttributionSetWithUserData = attributionSet.filter($"IsTracked" =!= lit(1))
 
-      val numTrackedRows = ArrayOutOfSampleAttributionDataset(delayNDays).writePartition(encodeDatasetForCBuffer[ArrayOutOfSampleAttributionRecord](TrackedAttributionSetWithUserData), scoreDate, Some("tracked"), partCount.OOSTracked, evalBatchSize)
-      val numUntrackedRows = ArrayOutOfSampleAttributionDataset(delayNDays).writePartition(encodeDatasetForCBuffer[ArrayOutOfSampleAttributionRecord](UntrackedAttributionSetWithUserData), scoreDate, Some("untracked"), partCount.OOSUntracked, evalBatchSize)
+      val numTrackedRows = ArrayOutOfSampleAttributionDataset(delayNDays).writePartition(encodeDatasetForCBuffer[ArrayOutOfSampleAttributionRecord](TrackedAttributionSetWithUserData), scoreDate, Some("tracked"), partCount.OOSTrackedPerDayDelay * delayNDays * OOSPartitionCountFactor, evalBatchSize)
+      val numUntrackedRows = ArrayOutOfSampleAttributionDataset(delayNDays).writePartition(encodeDatasetForCBuffer[ArrayOutOfSampleAttributionRecord](UntrackedAttributionSetWithUserData), scoreDate, Some("untracked"), partCount.OOSUntrackedPerDayDelay * delayNDays * OOSPartitionCountFactor, evalBatchSize)
       datasetRows = Array(numTrackedRows, numUntrackedRows)
     }
 
@@ -160,9 +158,9 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
 
     val rawOOSFiltered =  
       rawOOS.join(broadcast(campaignsWithPosSamples), Seq("CampaignId"), "left_semi")
-      .withColumn("AdGroupIdEncoded", encodeStringIdUdf('AdGroupId))
-      .withColumn("CampaignIdEncoded", encodeStringIdUdf('CampaignId))
-      .withColumn("AdvertiserIdEncoded", encodeStringIdUdf('AdvertiserId))
+      .withColumn("AdGroupIdEncoded", encodeStringIdUdf('AdGroupIdStr))
+      .withColumn("CampaignIdEncoded", encodeStringIdUdf('CampaignIdStr))
+      .withColumn("AdvertiserIdEncoded", encodeStringIdUdf('AdvertiserIdStr))
       .withColumn("UserDataOptIn",lit(2)) // hashmod 1 ->2
       .withColumn("sin_hour_week", $"sin_hour_week".cast("float"))
       .withColumn("cos_hour_week", $"cos_hour_week".cast("float"))

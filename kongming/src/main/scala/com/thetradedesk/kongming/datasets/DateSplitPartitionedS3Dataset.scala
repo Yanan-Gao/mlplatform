@@ -154,7 +154,7 @@ abstract class DateSplitPartitionedS3CBufferDataset[T <: Product : Manifest](
 
     println("Writing CBuffer " + partitionedPath)
     dataSet
-      .coalesce(coalesceToNumFiles)
+      .repartition(coalesceToNumFiles)
       .write.mode(saveMode)
       .format("com.thetradedesk.featurestore.data.cbuffer.CBufferDataSource")
       .option("maxChunkRecordCount", maxChunkRecordCount)

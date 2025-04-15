@@ -125,8 +125,8 @@ package object kongming {
     var TrainSetFeatureMapping = 100
     var DailyPositiveBidRequest = 100
     var DailyPositiveCountSummary = 1
-    var OOSTracked = 1000
-    var OOSUntracked = 200
+    var OOSTrackedPerDayDelay = 100
+    var OOSUntrackedPerDayDelay = 20
     var TrainsetBalanced = 50
     var DailyTrainsetWithFeature = 50
     var ImpressionForIsoReg = 1000
