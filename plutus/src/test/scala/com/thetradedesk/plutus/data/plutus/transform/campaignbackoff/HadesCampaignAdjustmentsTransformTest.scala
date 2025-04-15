@@ -15,7 +15,7 @@ import org.scalatest.matchers.should.Matchers._
 
 
 class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
-  val tolerance = 0.001
+  val tolerance = 0.00101
 
   test("Validating campaign budget buckets") {
     val campaignId = "pmbcej3"

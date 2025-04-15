@@ -80,7 +80,6 @@ object HadesCampaignAdjustmentsTransform {
     val gss = udf((m: Double, s: Double, b: Double, e: Double) => gssFunc(m, s, b, e))
 
     bidData
-      // TODO: FOR LATER: Once UncappedBid/MaxBidMultiplierCap changes get finalized, update what Initial Bid value is used for gss calculation
       // Exclude rare cases with initial bids below the floor to avoid skewing the median (this includes BBF Gauntlet bids)
       .filter(col("FloorPrice") < col("InitialBid"))
       // FIXME: Add new line: .join(broadcast(manualCampaignFloorBuffer), Seq("CampaignId"), "left")
@@ -112,7 +111,7 @@ object HadesCampaignAdjustmentsTransform {
       .withColumn("gen_discrepancy", when(col("AuctionType") === AuctionType.FixedPrice, lit(1)).otherwise(when(col("Discrepancy") === 0, lit(1)).otherwise(col("Discrepancy"))))
       // old gen_gss_pushdown logic: .withColumn("gen_gss_pushdown", when(col("AuctionType") =!= AuctionType.FixedPrice, $"GSS").otherwise(gss(col("Mu"), col("Sigma"), col("InitialBid"), lit(0.1)) / col("InitialBid")))
       // updated for propeller gen_gss_pushdown logic: Use gen_initialBid when calculating gen_gss_pushdown for Propeller. Can't use GSS in pcgeronimo directly because apply effectiveMaxBid cap
-      .withColumn("gen_tensorflowPcModelBid", when(col("AuctionType") === 3, gss(col("Mu"), col("Sigma"), col("gen_initialBid"), lit(0.1))).otherwise(col("Gss") * col("InitialBid")))
+      .withColumn("gen_tensorflowPcModelBid", when(col("AuctionType") === AuctionType.FixedPrice, gss(col("Mu"), col("Sigma"), col("gen_initialBid"), lit(0.01))).otherwise(col("Gss") * col("InitialBid")))
       .withColumn("gen_gss_pushdown",
         // for Uncapped Bids, InitialBid is effectively MaxBid
         when(col("UseUncappedBidForPushdown"), least(col("gen_tensorflowPcModelBid"), col("InitialBid")) / col("InitialBid"))
@@ -618,7 +617,7 @@ object HadesCampaignAdjustmentsTransform {
       .join(broadcast(latestCurrencyExchangeRates), Seq("CurrencyCodeId"))
       .select("AdvertiserId", "FromUSD").distinct()
     val adGroupMaxBid = adGroupData
-      .join(advertiserCurrencyExchangeRate, Seq("AdvertiserId"))
+      .join(advertiserCurrencyExchangeRate, Seq("AdvertiserId"), "left")
       .withColumn("ToUSD", lit(1) / col("FromUSD"))
       .withColumn("MaxBidCPMInUSD", col("MaxBidCPMInAdvertiserCurrency") * coalesce(col("ToUSD"), lit(1)))
       .select("AdGroupId", "MaxBidCPMInUSD").as[AdGroupMetaData]
