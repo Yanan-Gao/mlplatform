@@ -37,11 +37,16 @@ object GenerateTrainSetClick extends KongmingBaseJob {
     val startDate = date.minusDays(lookback)
     val win = Window.partitionBy($"CampaignIdEncoded", $"AdGroupIdEncoded")
 
+    // exclude partners that don't share click data
+    val advertiserToExclude = ClickPartnerExcludeList.readAdvertiserList()
+      .withColumnRenamed("AdvertiserId", "AdvertiserIdStr")
+
     // Imp [T-ConvLB, T]
     val sampledImpressions = (0 to lookback).map(i => {
       val ImpDate = startDate.plusDays(i)
       // Attr [T-ConvLB, T]
       val dailyImp = OldDailyOfflineScoringDataset().readDate(ImpDate)
+        .join(advertiserToExclude, Seq("AdvertiserIdStr"), "left_anti")
         .withColumn("sin_hour_week", $"sin_hour_week".cast("float"))
         .withColumn("cos_hour_week", $"cos_hour_week".cast("float"))
         .withColumn("sin_hour_day", $"sin_hour_day".cast("float"))
