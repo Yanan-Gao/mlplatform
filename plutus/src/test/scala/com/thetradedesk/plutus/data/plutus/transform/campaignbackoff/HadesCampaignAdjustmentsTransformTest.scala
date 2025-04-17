@@ -30,7 +30,8 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
   test("Validating plutus adjustment calculations") {
     val campaignId = "pmbcej3"
-    val underdeliveringCampaigns = Seq(CampaignMetaData(campaignId, CampaignType_NewCampaign)).toDS()
+    val floorBuffer = 0.60
+    val underdeliveringCampaigns = Seq(CampaignMetaData(campaignId, CampaignType_NewCampaign, floorBuffer)).toDS()
 
     val adgroupId = "abc123"
     val maxBid = BigDecimal("1.0")
@@ -51,6 +52,10 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val results_campaignBidData = campaignBidData.collectAsList().get(0)
     val gen_plutusPushdown = results_campaignBidData.getAs[Double]("gen_gss_pushdown")
     assert(math.abs(gen_plutusPushdown - 0.2426) <= tolerance)
+    val gen_bufferFloor = results_campaignBidData.getAs[Double]("gen_bufferFloor")
+    val floor_price = results_campaignBidData.getAs[Double]("FloorPrice")
+    val expectedFloorBuffer = (floor_price * (1 - floorBuffer))
+    assert(gen_bufferFloor == expectedFloorBuffer)
   }
 
   test("Testing Problem Campaign filtering") {
@@ -87,6 +92,8 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
   test("Hades Backoff transform test for schema/column correctness") {
     val campaignId = campaignUnderdeliveryForHadesMock.CampaignId
+    val floorBuffer = 0.60
+
     val throttleMetricDataset = Seq(campaignUnderdeliveryForHadesMock).toDS()
 
     val adgroupId = "abc123"
@@ -100,7 +107,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
     val bidData = getAllBidData(plutusLogsData, adgroupData, pcResultsMergedData)
 
-    val underDeliveringCampaigns = Seq(CampaignMetaData(campaignId, CampaignType_NewCampaign)).toDS()
+    val underDeliveringCampaigns = Seq(CampaignMetaData(campaignId, CampaignType_NewCampaign, floorBuffer)).toDS()
     val campaignBidData = getUnderdeliveringCampaignBidData(bidData, underDeliveringCampaigns, adGroupMaxBid)
 
     val campaignBBFOptOutRate = aggregateCampaignBBFOptOutRate(campaignBidData, throttleMetricDataset )
@@ -212,9 +219,11 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
       .toDF()
       .withColumnRenamed("value", "CampaignId")
       .as[Campaign]
+    val campaignFloorBuffer = Seq(CampaignFloorBufferSchema("jkl789", 0.6)).toDS()
 
     val filteredCampaigns = getFilteredCampaigns(
       campaignThrottleData = campaignUnderdeliveryData,
+      campaignFloorBuffer = campaignFloorBuffer,
       potentiallyNewCampaigns = liveCampaigns,
       adjustedCampaigns = yesterdaysCampaigns,
       0.1,
@@ -222,6 +231,12 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     )
 
     assert(filteredCampaigns.count() == 2)
+
+    // check the campaigns have expected buffer values
+    val test1 = filteredCampaigns.filter($"CampaignId" === "pmbcej3").collect().head
+    assert(test1.BBF_FloorBuffer == platformWideBuffer)
+    val test2 = filteredCampaigns.filter($"CampaignId" === "jkl789").collect().head
+    assert(test2.BBF_FloorBuffer == 0.6)
   }
 
   // <editor-fold desc="getAdjustmentQuantile Tests">
