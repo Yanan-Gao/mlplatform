@@ -2,7 +2,6 @@ package com.thetradedesk.plutus.data.transform.campaignbackoff
 
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
 import com.thetradedesk.plutus.data.schema.{PcResultsMergedDataset, PcResultsMergedSchema, PlutusLogsData, PlutusOptoutBidsDataset}
-import com.thetradedesk.plutus.data.utils.S3NoFilesFoundException
 import com.thetradedesk.plutus.data.{AuctionType, envForRead, envForReadInternal}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -21,7 +20,7 @@ object HadesCampaignAdjustmentsTransform {
 
   // Constants
   val bucketCount = 1000
-  val platformwideBuffer = 0.55
+  val platformWideBuffer = 0.55
 
   val getTestBucketUDF = udf(computeBudgetBucketHash(_: String, _: Int))
 
@@ -69,10 +68,6 @@ object HadesCampaignAdjustmentsTransform {
     return (bMin + bMax) / 2
   }
 
-  // FIXME: Replace def with:
-//  def getUnderdeliveringCampaignBidData(bidData: DataFrame,
-//                                        manualCampaignFloorBuffer: Dataset[CampaignMetaDataV1],
-//                                        filteredCampaigns: Dataset[CampaignMetaDataV2]): DataFrame = {
   def getUnderdeliveringCampaignBidData(bidData: DataFrame,
                                         filteredCampaigns: Dataset[CampaignMetaData],
                                         adGroupMaxBid: Dataset[AdGroupMetaData]): DataFrame = {
@@ -82,20 +77,9 @@ object HadesCampaignAdjustmentsTransform {
     bidData
       // Exclude rare cases with initial bids below the floor to avoid skewing the median (this includes BBF Gauntlet bids)
       .filter(col("FloorPrice") < col("InitialBid"))
-      // FIXME: Add new line: .join(broadcast(manualCampaignFloorBuffer), Seq("CampaignId"), "left")
       .join(broadcast(filteredCampaigns), Seq("CampaignId"), "inner")
       .join(broadcast(adGroupMaxBid), Seq("AdGroupId"), "left")
       .withColumn("MaxBidCPMInUSD", coalesce(col("MaxBidCPMInUSD"), col("InitialBid"))) // Null check
-      // FIXME: Add following withColumn to update CampaignType:
-//      .withColumn("CampaignType",
-//        when(col("CampaignType").isNull, lit(CampaignType_NewCampaign))
-//          .otherwise($"CampaignType")
-//      )
-      // FIXME: Add following withColumn:
-//      .withColumn("BBF_FloorBuffer",
-//        when(col("manualCampaignFloorBuffer.BBF_FloorBuffer").isNotNull, $"manualCampaignFloorBuffer.BBF_FloorBuffer")
-//          .otherwise(when(col("bidData.BBF_FloorBuffer").isNotNull, $"bidData.BBF_FloorBuffer").otherwise(lit(platformwideBuffer)))
-//      )
       .withColumn("Market", // Define Market only using AuctionType and if has DealId
         when(col("DealId").isNotNull,
           when(col("AuctionType").isin(AuctionType.FirstPrice, AuctionType.SecondPrice), "Variable")
@@ -105,8 +89,8 @@ object HadesCampaignAdjustmentsTransform {
       // Update Initial Bid value used to calculate gss for the Propeller bids
       .withColumn("gen_initialBid",
         when(col("UseUncappedBidForPushdown"),
-          when(col("MaxBidMultiplierCap") =!= 0 && col("MaxBidMultiplierCap").isNotNull,
-            least(col("UncappedBidPrice"), col("MaxBidCPMInUSD") * col("MaxBidMultiplierCap"))).otherwise(col("UncappedBidPrice")))
+          when(col("MaxBidMultiplierCap").isNotNull,
+            least(col("UncappedBidPrice"), col("MaxBidCPMInUSD") * greatest(col("MaxBidMultiplierCap"), lit(1.0)))).otherwise(col("UncappedBidPrice")))
           .otherwise(col("InitialBid")))
       .withColumn("gen_discrepancy", when(col("AuctionType") === AuctionType.FixedPrice, lit(1)).otherwise(when(col("Discrepancy") === 0, lit(1)).otherwise(col("Discrepancy"))))
       // old gen_gss_pushdown logic: .withColumn("gen_gss_pushdown", when(col("AuctionType") =!= AuctionType.FixedPrice, $"GSS").otherwise(gss(col("Mu"), col("Sigma"), col("InitialBid"), lit(0.1)) / col("InitialBid")))
@@ -121,8 +105,7 @@ object HadesCampaignAdjustmentsTransform {
 
       // Exclude cases where we just apply the minimum pushdown (discrepancy)
       .filter(col("gen_excess") > 0)
-      // FIXME: Replace following line with: .withColumn("gen_bufferFloor", (col("FloorPrice") * lit(1 - $"BBF_FloorBuffer")))
-      .withColumn("gen_bufferFloor", (col("FloorPrice") * lit(1 - platformwideBuffer)))
+      .withColumn("gen_bufferFloor", col("FloorPrice") * (lit(1) - col("BBF_FloorBuffer")))
       .withColumn("gen_plutusPushdownAtBufferFloor", col("gen_bufferFloor") / col("InitialBid"))
       .withColumn("gen_PCAdjustment", (col("gen_effectiveDiscrepancy") - col("gen_plutusPushdownAtBufferFloor")) / (col("gen_effectiveDiscrepancy") - col("gen_gss_pushdown")))
 
@@ -140,7 +123,6 @@ object HadesCampaignAdjustmentsTransform {
 
   def aggregateCampaignBBFOptOutRate(campaignBidData: DataFrame,
                                      campaignThrottleData: Dataset[CampaignThrottleMetricSchema]): Dataset[HadesCampaignStats] = {
-
     val campaignUnderdeliveryData = campaignThrottleData
       .groupBy("CampaignId")
       .agg(
@@ -148,8 +130,7 @@ object HadesCampaignAdjustmentsTransform {
       )
 
     campaignBidData
-      // FIXME: Replace following line with: .groupBy("CampaignId", "CampaignType", "BFF_FloorBuffer")
-      .groupBy("CampaignId", "CampaignType")
+      .groupBy("CampaignId", "CampaignType", "BBF_FloorBuffer")
       .agg(
         count("*").as("Total_BidCount"),
         sum(
@@ -190,9 +171,7 @@ object HadesCampaignAdjustmentsTransform {
       .as[HadesCampaignStats]
   }
 
-  // FIXME: Add new line:  case class CampaignMetaDataV1(CampaignId: String, BBF_FloorBuffer: Double)
-  // FIXME: Replace following line with:  case class CampaignMetaDataV2(CampaignId: String, CampaignType: String, BBF_FloorBuffer: Double)
-  case class CampaignMetaData(CampaignId: String, CampaignType: String)
+  case class CampaignMetaData(CampaignId: String, CampaignType: String, BBF_FloorBuffer: Double)
   case class Campaign(CampaignId: String)
   case class AdGroupMetaData(AdGroupId: String, MaxBidCPMInUSD: BigDecimal)
   case class HadesMetrics(CampaignType: String, PacingType: String, OptoutType: String, AdjustmentQuantile: Int, Count: Long)
@@ -210,11 +189,10 @@ object HadesCampaignAdjustmentsTransform {
   val OptoutStatus_NoBids = "NoBids"
 
   def getFilteredCampaigns(campaignThrottleData: Dataset[CampaignThrottleMetricSchema],
+                           campaignFloorBuffer: Dataset[CampaignFloorBufferSchema],
                            potentiallyNewCampaigns: Dataset[Campaign],
-                           // FIXME: Replace following line with: adjustedCampaigns: Dataset[CampaignMetaDataV1],
                            adjustedCampaigns: Dataset[Campaign],
                            underdeliveryThreshold: Double,
-                           //  FIXME: Replace following line with: testSplit: Option[Double]): Dataset[CampaignMetaDataV2] = {
                            testSplit: Option[Double]): Dataset[CampaignMetaData] = {
 
     val campaignUnderdeliveryData = campaignThrottleData
@@ -244,14 +222,18 @@ object HadesCampaignAdjustmentsTransform {
 
     val yesterdaysCampaigns = adjustedCampaigns
       .withColumn("CampaignType", lit(CampaignType_AdjustedCampaign))
-      // FIXME: Replace following line with: .select("CampaignId", "CampaignType", "BBF_FloorBuffer")
       .select("CampaignId", "CampaignType")
+
     val res = newOrNonSpendingCampaigns
       .union(newUnderDeliveringCampaigns)
       .union(yesterdaysCampaigns)
-      // FIXME: Replace following line with: .selectAs[CampaignMetaDataV2]
-      .selectAs[CampaignMetaData]
-      .cache()
+      .join(campaignFloorBuffer, Seq("CampaignId"), "left")
+    .withColumn("BBF_FloorBuffer",
+      when(col("BBF_FloorBuffer").isNotNull, $"BBF_FloorBuffer")
+        .otherwise(lit(platformWideBuffer))
+    )
+    .selectAs[CampaignMetaData]
+    .cache()
 
     res
   }
@@ -493,47 +475,15 @@ object HadesCampaignAdjustmentsTransform {
       .select(columns.head, columns.drop(1): _*)
       .union(plutusLogsData)
   }
-
+  
   def transform(date: LocalDate,
                 testSplit: Option[Double],
                 underdeliveryThreshold: Double,
                 fileCount: Int
                ): Dataset[HadesAdjustmentSchemaV2] = {
 
-    // If yesterday's HadesAdjustmentSchemaV2 is available, use that else the merged dataset
-    // This is some transitional code. We should remove this once the transition is complete
-    val yesterdaysData = (try {
-      HadesCampaignAdjustmentsDataset.readLatestDataUpToIncluding(
-        date.minusDays(1), env = envForReadInternal, nullIfColAbsent = true, historyLength = HistoryLength)
-    } catch {
-      case _: S3NoFilesFoundException =>
-        HadesCampaignAdjustmentsDatasetV1.readLatestDataUpToIncluding(
-          date.minusDays(1),
-          env = envForRead,
-          nullIfColAbsent = true).map(row =>
-          // This gets us the useful data from the older schema
-          HadesAdjustmentSchemaV2(
-            CampaignId = row.CampaignId,
-            CampaignType = row.CampaignType,
-            HadesBackoff_PCAdjustment = row.HadesBackoff_PCAdjustment,
-            HadesBackoff_PCAdjustment_Previous = Array(row.HadesBackoff_PCAdjustment, row.HadesBackoff_PCAdjustment, row.HadesBackoff_PCAdjustment, row.HadesBackoff_PCAdjustment),
-            HadesBackoff_PCAdjustment_Current = row.HadesBackoff_PCAdjustment_Current.getOrElse(1.0),
-            Hades_isProblemCampaign = row.Hades_isProblemCampaign,
-            AdjustmentQuantile = DefaultAdjustmentQuantile,
-            UnderdeliveryFraction = None,
-            Total_BidCount = 0,
-            Total_PMP_BidCount = 0,
-            Total_PMP_BidAmount = 0,
-            BBF_PMP_BidCount = 0,
-            BBF_PMP_BidAmount = 0,
-            Total_OM_BidCount = 0,
-            Total_OM_BidAmount = 0,
-            BBF_OM_BidCount = 0,
-            BBF_OM_BidAmount = 0 // FIXME: ,
-            // FIXME: BBF_FloorBuffer = platformWideBuffer
-          ))
-          .filter($"HadesBackoff_PCAdjustment".isNotNull && $"HadesBackoff_PCAdjustment" < 1.0)
-    })
+    val yesterdaysData = HadesCampaignAdjustmentsDataset.readLatestDataUpToIncluding(
+      date.minusDays(1), env = envForReadInternal, nullIfColAbsent = true, historyLength = HistoryLength)
       // We get rid of unadjusted campaigns because if they are still underdelivering, they'll
       // get picked up anyways. If not, we dont need to carry on that data.
       .as[HadesAdjustmentSchemaV2]
@@ -556,42 +506,19 @@ object HadesCampaignAdjustmentsTransform {
       .join(nonArchivedCampaigns, Seq("CampaignId"), "inner")
       .selectAs[Campaign].distinct()
 
+    val todays_campaignFloorBuffer = CampaignFloorBufferDataset.readLatestDataUpToIncluding(date.plusDays(1), envForReadInternal)
+      .distinct()
+
     val filteredCampaigns = getFilteredCampaigns(
       campaignThrottleData = campaignUnderdeliveryData,
+      campaignFloorBuffer = todays_campaignFloorBuffer,
       potentiallyNewCampaigns = liveCampaigns,
       adjustedCampaigns = yesterdaysData
         .filter($"HadesBackoff_PCAdjustment".isNotNull && $"HadesBackoff_PCAdjustment" < 1.0)
-        // FIXME: Replace follwing line with: .select("CampaignId", "BBF_FloorBuffer").as[CampaignMetaDataV1],
         .select("CampaignId").as[Campaign],
       underdeliveryThreshold,
       testSplit
     )
-
-    // FIXME: Add (similar) code to read in manualCampaignFloorBuffer and ManualCampaignFloorBufferRollback.
-//    val today_manualCampaignFloorBuffer = ManualCampaignFloorBufferDataset.readDate(env = envForRead, date = date)
-//    val yesterday_manualCampaignFloorBuffer = ManualCampaignFloorBufferDataset.readDate(env = envForRead, date = date.minusDays(1))
-//      .filter(col("BBF_FloorBuffer") =!= 0.60) // Rollback should always be handled on the same day.
-//
-//    val manualCampaignFloorBuffer = if (yesterday_manualCampaignFloorBuffer.head(1).isEmpty) {
-//      // No campaigns exist in yesterday's dataset, so no backoff logic is needed today.
-//      Seq.empty[CampaignMetaDataV1].toDS() // ManualCampaignFloorBufferDataset.empty
-//    } else {
-//      if (today_manualCampaignFloorBuffer.head(1).isEmpty) {
-//        // These campaigns have completed a full day of delivery,
-//        // so they can now be processed using backoff criteria with their updated buffers.
-//        yesterday_manualCampaignFloorBuffer.selectAs[CampaignMetaDataV1]
-//      } else {
-//        // Identify campaigns from today's dataset that meet the rollback criteria.
-//        val check_rollback = today_manualCampaignFloorBuffer.filter(col("BBF_FloorBuffer") === 0.60)
-//
-//        // Merge yesterday's campaigns with today's rollback-eligible campaigns.
-//        // If no campaigns qualify for rollback, only yesterday's campaigns will be returned.
-//        // New campaigns from today are excluded because they must complete a full day of delivery before backoff applies.
-//        yesterday_manualCampaignFloorBuffer
-//          .join(check_rollback, Seq("CampaignId"), "left")
-//          .selectAs[CampaignMetaDataV1]
-//      }
-//    }
 
     // day 1's adgroup data is exported at the end of day 0
     val adGroupData = AdGroupDataSet().readLatestPartitionUpTo(date.plusDays(1), isInclusive = true)
@@ -623,7 +550,6 @@ object HadesCampaignAdjustmentsTransform {
       .select("AdGroupId", "MaxBidCPMInUSD").as[AdGroupMetaData]
 
     // Get bid data filtered to underdelivering campaigns
-    // FIXME: Replace line with: val campaignBidData = getUnderdeliveringCampaignBidData(bidData, manualCampaignFloorBuffer, filteredCampaigns)
     val campaignBidData = getUnderdeliveringCampaignBidData(bidData, filteredCampaigns, adGroupMaxBid)
     // Get Optout Rates & potential pushdowns for underdelivering campaigns
     val campaignBBFOptOutRate = aggregateCampaignBBFOptOutRate(campaignBidData, campaignUnderdeliveryData).cache()
