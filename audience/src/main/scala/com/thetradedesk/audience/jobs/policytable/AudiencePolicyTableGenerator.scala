@@ -303,7 +303,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     require(policyTable.count() == policyTable.select('SyntheticId).distinct().count(), "conflict synthetic ids")
     require(policyTable.count() == policyTable.select('Source, 'CrossDeviceVendorId, 'MappingId).distinct().count(), "conflict mapping ids")
     require(policyTable.agg(max('SyntheticId)).collect()(0)(0).asInstanceOf[Int] <= 500000, "maximal synthetic id is 500000")
-    require(policyTable.agg(max('MappingId)).collect()(0)(0).asInstanceOf[Int] < 65536, "maximal mapping id is 65535")
+    require(policyTable.agg(max('MappingId)).collect()(0)(0).asInstanceOf[Int] < 65536 * 2, "maximal mapping id is 131071")
     require(policyTable.agg(min('MappingId)).collect()(0)(0).asInstanceOf[Int] >= 0, "minimal mapping id is 0")
   }
 

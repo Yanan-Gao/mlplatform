@@ -24,7 +24,7 @@ package object featurestore {
 
   var defaultNumPartitions: Int = config.getInt("numPartitions", default = 10)
   var date: LocalDate = config.getDate("date", LocalDate.now())
-  var hourInt: Int = config.getInt("hour", default = 0)
+  var hourArray: Array[Int] = config.getString("hour", default = "0").split(",").map(e => e.toInt)
   var splitIndex: Array[Int] = config.getString("splitIndex", "0").split(",").map(_.toInt)
   var dateTime: LocalDateTime = config.getDateTime("dateTime", date.atStartOfDay())
   var ttdEnv: String = config.getString("ttd.env", "dev")
@@ -32,10 +32,14 @@ package object featurestore {
   val aggLevel: String = config.getString("aggLevel", "UIID")
   var writeThroughHdfs: Boolean = config.getBoolean("writeThroughHdfs", true)
   var densityFeatureWindowSizeDays = config.getInt("DensityFeatureWindowSizeDays", default = 1)
+  val overrideOutput = config.getBoolean("overrideOutput", default = false)
   val s3Client = AmazonS3ClientBuilder.standard.withRegion(Regions.US_EAST_1).build
 
   val userDownSampleBasePopulation = config.getInt("userDownSampleBasePopulation", default = 1000000)
   val userDownSampleHitPopulation = config.getInt("userDownSampleHitPopulation", default = 10000)
+
+  val campaignFlightStartingBufferInDays = config.getInt("campaignFlightStartingBufferInDays", 14)
+  val newSeedBufferInDays = config.getInt("newSeedBufferInDays", 7)
 
   val userIsInSampleUDF = udf[Boolean, String, Long, Long](userIsInSample)
 
