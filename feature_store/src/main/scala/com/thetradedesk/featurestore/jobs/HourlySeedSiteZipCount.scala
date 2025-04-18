@@ -37,7 +37,7 @@ object HourlySeedSiteZipCount extends FeatureStoreBaseJob {
       .withColumn("SiteZipHashed", xxhash64(concat(concat(col("Site"), col("Zip")), lit(salt))))
   }
 
-  def readLatestAggregatedSeed() : DataFrame = {
+  def readLatestAggregatedSeed(): DataFrame = {
     for (i <- 0 to 6) {
       val sourcePath = s"s3://thetradedesk-mlplatform-us-east-1/data/prod/audience/aggregatedSeed/v=1/date=${getDateStr(date.minusDays(i))}"
       val sourceSuccessFilePath = s"${sourcePath}/_SUCCESS"
@@ -50,6 +50,21 @@ object HourlySeedSiteZipCount extends FeatureStoreBaseJob {
   }
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
+    for (i <- hourArray) {
+      runTransform0(args, hourInt = i)
+    }
+    Array(("", 0))
+  }
+
+  def runTransform0(args: Array[String], hourInt: Int): Unit = {
+    val writePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/config=${jobConfigName}/v=1/date=${getDateStr(date)}/hour=$hourInt/"
+    val successFile = s"$writePath/_SUCCESS"
+
+    // skip processing this split if data from a previous run already exists
+    if (!overrideOutput && FSUtils.fileExists(successFile)(spark)) {
+      println(s"split ${splitIndex} data is existing")
+      return
+    }
     val bidreq = loadInputData(date, hourInt)
     val aggregatedSeed = readLatestAggregatedSeed()
 
@@ -60,12 +75,8 @@ object HourlySeedSiteZipCount extends FeatureStoreBaseJob {
       .count()
       .withColumnRenamed("Count", "SeedCount")
 
-    val writePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/config=${jobConfigName}/v=1/date=${getDateStr(date)}/hour=$hourInt/"
-
     hourlySeedDensity.repartition(defaultNumPartitions).write.mode(SaveMode.Overwrite).parquet(writePath)
 
     println(writePath)
-
-    Array(("", 0))
   }
 }

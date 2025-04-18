@@ -26,11 +26,11 @@ object DailyDensityScoreReIndexingJob extends DensityFeatureBaseJob {
     val dateStr = getDateStr(date)
 
     val seedDensity = readSeedDensity(date)
-    val policyTable = readPolicyTable(date, DataSource.Seed.id, DataSource.TTDOwnData.id)
+    val policyTable = readPolicyTable(date.minusDays(1), DataSource.Seed.id, DataSource.TTDOwnData.id)
 
     val featurePairDensityScoreJoinedDf = seedDensity
       .join(
-        policyTable.select("SeedId", "SyntheticId"), Seq("SeedId")
+        broadcast(policyTable.select("SeedId", "SyntheticId")), Seq("SeedId")
       )
       .select(
         'SyntheticId,

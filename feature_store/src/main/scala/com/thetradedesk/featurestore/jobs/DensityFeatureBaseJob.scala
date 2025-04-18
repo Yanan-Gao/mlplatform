@@ -16,14 +16,17 @@ import scala.collection.mutable
 abstract class DensityFeatureBaseJob {
   val jobName = "DensityFeatureBaseJob"
 
+  val nonSensitiveFeaturePair = "SiteZip"
+  val sensitiveFeaturePair = "AliasedSupplyPublisherIdCity"
   val featurePairs: List[(String, String)] = List(("AliasedSupplyPublisherId", "City"), ("Site", "Zip"))
+
   val featurePairStrings = featurePairs.map { case (f1, f2) => s"$f1$f2"}
 
   val salt = "TRM"
 
   val filterSensitiveAdv: mutable.HashMap[String, Boolean] = mutable.HashMap[String, Boolean](
-    "AliasedSupplyPublisherIdCity" -> true,
-    "SiteZip" -> false
+    sensitiveFeaturePair -> true,
+    nonSensitiveFeaturePair -> false
   )
 
   def getDateStr(date: LocalDate): String = {
@@ -77,19 +80,11 @@ abstract class DensityFeatureBaseJob {
     spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/configdata/$readEnv/audience/policyTable/RSM/v=1/${getDateStr(date)}000000/")
       // filter non graph data only
       .filter(col("CrossDeviceVendorId") === lit(CrossDeviceVendor.None.id) && col("Source").isin(sources: _*))
-      .select(col("SourceId").as("SeedId"), col("MappingId"), col("SyntheticId"), col("IsSensitive"))
+      .select(col("SourceId").as("SeedId"), col("MappingId"), col("SyntheticId"), col("IsSensitive"), 'Source)
   }
 
-  def readAggregatedSeed(date: LocalDate, numDays: Int = 7): DataFrame = {
-    for (i <- 0 until numDays) {
-      val sourcePath = s"s3://thetradedesk-mlplatform-us-east-1/data/$readEnv/audience/aggregatedSeed/v=1/date=${getDateStr(date.minusDays(i))}"
-      val sourceSuccessFilePath = s"${sourcePath}/_SUCCESS"
-
-      if (FSUtils.fileExists(sourceSuccessFilePath)(spark)) {
-        return spark.read.parquet(sourcePath)
-      }
-    }
-    throw new RuntimeException("aggregated seed dataset not existing")
+  def readAggregatedSeed(date: LocalDate): DataFrame = {
+    spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/data/$readEnv/audience/aggregatedSeed/v=1/date=${getDateStr(date)}")
   }
 
   def runTransform(args: Array[String]): Unit

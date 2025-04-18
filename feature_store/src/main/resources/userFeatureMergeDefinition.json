@@ -36,6 +36,14 @@
           "name": "MappingIdLevel2",
           "dtype": 3,
           "arrayLength": 1
+        },{
+          "name": "MappingIdLevel1S1",
+          "dtype": 3,
+          "arrayLength": 1
+        },{
+          "name": "MappingIdLevel2S1",
+          "dtype": 3,
+          "arrayLength": 1
         }
       ]
     }
