@@ -57,6 +57,7 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
     val inputDataS3Bucket = S3Utils.refinePath(config.getString("inputDataS3Bucket", "thetradedesk-mlplatform-us-east-1"))
     val inputDataS3Path = S3Utils.refinePath(config.getString("inputDataS3Path", s"data/${ttdReadEnv}/audience/RSMV2/Seed_None/v=1"))
     val populationOutputData3Path = S3Utils.refinePath(config.getString("populationOutputData3Path", s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None/v=1"))
+    val customInputDataPath = config.getString("customInputDataPath", default = null)
     val subFolderKey = config.getString("subFolderKey", default = "split")
     val subFolderValue = config.getString("subFolderValue", default = "Population")
     val syntheticIdLength = config.getInt("syntheticIdLength", default = 500)
@@ -74,7 +75,12 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
 
     val sampler = SamplerFactory.fromString("RSMV2Measurement")
 
-    val impData = spark.read.format("tfrecord").load(s"$basePath/${date.format(formatter)}000000/split=OOS").drop("Targets", "SyntheticIds", "ZipSiteLevel_Seed")
+    val impData = if (Config.customInputDataPath != null) {
+                          spark.read.format("tfrecord").load(Config.customInputDataPath).drop("Targets", "SyntheticIds", "ZipSiteLevel_Seed")
+                        }
+                  else {
+                    spark.read.format("tfrecord").load(s"$basePath/${date.format(formatter)}000000/split=OOS").drop("Targets", "SyntheticIds", "ZipSiteLevel_Seed")
+                  }
     val policyTable = AudienceModelPolicyReadableDataset(AudienceModelInputGeneratorConfig.model)
       .readSinglePartition(dateTime)(spark)
       .filter((col("CrossDeviceVendorId") === 0) && (col("IsActive") === true))
