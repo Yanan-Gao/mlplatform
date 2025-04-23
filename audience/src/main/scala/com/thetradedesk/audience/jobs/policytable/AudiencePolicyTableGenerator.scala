@@ -90,13 +90,17 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     val seedAdvertiserMetaDataset = spark.read.parquet(seedDataFullPath)
         .select('SeedId.alias("SourceId"), 'AdvertiserId)
         .cache()
-    val advertiserDataset = AdvertiserDataset().readPartition(date)(spark)
 
-    val seedAdvertiserDataset = seedAdvertiserMetaDataset.join(advertiserDataset, Seq("AdvertiserId"), "inner")
+    val advertiser = AdvertiserDataSet().readPartition(date)(spark)
+    val restrictedAdvertiser = RestrictedAdvertiserDataSet().readPartition(date)(spark)
+
+    val seedAdvertiserDataset = seedAdvertiserMetaDataset
+        .join(advertiser, Seq("AdvertiserId"), "left")
+        .join(restrictedAdvertiser, Seq("AdvertiserId"), "left")
         .withColumn(
           "IsSensitive",
-          when(col("IndustryCategoryId").isin(SensitiveIndustryIds.sensitive_industy_id: _*), lit(true)).otherwise(false)
-        )
+          when(col("IsRestricted")===1, lit(true)).otherwise(false)
+        ).drop("IsRestricted")
 
     val policyTable = retrieveSourceData(dateTime.toLocalDate)
 
