@@ -1,18 +1,19 @@
 package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{loadModelFeatures, loadParquetData, parseModelFeaturesSplitFromJson}
+import com.thetradedesk.geronimo.shared._
+import com.thetradedesk.geronimo.shared.schemas.{ModelFeature}
 import com.thetradedesk.philo.schema.{AdGroupRecord, AdvertiserExclusionList, AdvertiserExclusionRecord, CampaignROIGoalDataSet, CampaignROIGoalRecord, ClickTrackerDataSet, ClickTrackerRecord, CreativeLandingPageDataSet, CreativeLandingPageRecord, PartnerExclusionList, PartnerExclusionRecord, UnifiedAdGroupDataSet}
 import com.thetradedesk.philo.transform.ModelInputTransform
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.TTDSparkContext.spark
-import com.thetradedesk.philo.{writeData, countLinePerFile}
+import com.thetradedesk.philo.{writeData, countLinePerFile, optionalFeature, addOriginalNames, aliasedModelFeatureNames}
 import com.thetradedesk.spark.TTDSparkContext
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.io.FSUtils.fileExists
 import org.apache.spark.sql.{DataFrame, Dataset}
-import org.apache.spark.sql.functions.{coalesce, lit}
+import org.apache.spark.sql.functions.{coalesce, lit, col}
 
 import scala.io.Source
 
@@ -47,11 +48,14 @@ object ModelInput {
   // Attributes used for adding user data and for click-bot filtering
   val filterClickBots = config.getBoolean("filterClickBots", false)
   val addUserData = config.getBoolean("addUserData", false)
-  val numUserCols = config.getInt("numUserCols", 170)
+
+  var addCols = Seq("label", "excluded")
 
   if (debug) {
     println(s"config $config")
+    addCols = addCols :+ "BidRequestId"
   }
+
   def getAdGroupFilter(date: LocalDate, adgroup: Dataset[AdGroupRecord],
                        roi_types: Seq[Int]): Dataset[AdGroupRecord] = {
     val campaignGoal = CampaignROIGoalDataSet().readLatestPartitionUpTo(date, isInclusive = true)
@@ -86,24 +90,6 @@ object ModelInput {
     }
   }
 
-  def readModelFeatures(srcPath: String)(): String = {
-    var rawJson: String = null
-    if (FSUtils.isLocalPath(srcPath)(spark)) {
-      rawJson = Option(getClass.getResourceAsStream(srcPath))
-        .map { inputStream =>
-          try {
-            Source.fromInputStream(inputStream).getLines.mkString("\n")
-          } finally {
-            inputStream.close()
-          }
-        }.getOrElse(throw new IllegalArgumentException(s"Resource not found in JAR: $srcPath"))
-    } else {
-      rawJson = FSUtils.readStringFromFile(srcPath)(spark)
-    }
-    rawJson
-  }
-
-
   def main(args: Array[String]): Unit = {
     val readEnv = if (ttdEnv == "prodTest") "prod" else ttdEnv
     val writeEnv = if (ttdEnv == "prodTest") "dev" else ttdEnv
@@ -123,6 +109,26 @@ object ModelInput {
 
     val parsedJson = readModelFeatures(featuresJson)
     val modelFeaturesSplit = parseModelFeaturesSplitFromJson(parsedJson)
+
+    // flagFields are special fields that are used for flagging certain options in the model
+    val flagFields: Array[ModelFeature] = modelFeaturesSplit.adGroup.toArray.filter(feature =>
+      optionalFeature.values.toArray.contains(feature.subtower.getOrElse("None")) )
+
+    lazy val bidRequestFeatures: Array[ModelFeature] = modelFeaturesSplit.bidRequest.toArray ++ flagFields
+    lazy val adGroupFeatures: Array[ModelFeature] = modelFeaturesSplit.adGroup.toArray.filter(feature =>
+      !optionalFeature.values.toArray.contains(feature.subtower.getOrElse("None")))
+
+    lazy val seqHashFields: Array[ModelFeature] = (modelFeaturesSplit.bidRequest ++ modelFeaturesSplit.adGroup)
+      .foldLeft(Array.empty[ModelFeature]) { (acc, feature) =>
+        feature match {
+          case ModelFeature(_, ARRAY_LONG_FEATURE_TYPE, _, _, _, _) => acc :+ feature
+          case _ => acc
+        }
+      }
+    val finalCols = bidRequestFeatures++adGroupFeatures
+    val finalColNames = aliasedModelFeatureNames(finalCols) ++ addCols ++ addOriginalNames(keptCols)
+
+
     val creativeLandingPage = if (landingPage) {
       Some(CreativeLandingPageDataSet().readLatestPartitionUpTo(date, isInclusive = true))
     } else None
@@ -140,21 +146,21 @@ object ModelInput {
                                     else Some(exclusionDF.as[PartnerExclusionRecord])}
 
 
-    val modelFeatures = modelFeaturesSplit.bidRequest ++ modelFeaturesSplit.adGroup
+   // val modelFeatures = userFeatures ++ modelFeatures ++
     val (trainingData, labelCounts) = ModelInputTransform.transform(
       clicks, adgroup, bidsImpressions, roiFilter,
-      creativeLandingPage, countryFilter, keptCols, modelFeatures, addUserData, filterClickBots, numUserCols,
-      partnerExclusionList, debug
+      creativeLandingPage, countryFilter, keptCols, bidRequestFeatures, adGroupFeatures, seqHashFields, addUserData, filterClickBots,
+      partnerExclusionList, addCols, debug
     )
     //TODO if non exclusion list, set all exclusion flag to 0
     if (writeFullData) {
       //write to csv to dev for production job
       writeData(
-        trainingData.filter($"excluded"===0).drop("excluded"),
+        trainingData.filter($"excluded"===0).select(finalColNames.map(col): _*).drop("excluded"),
         outputPath, writeEnv, outputPrefix, date, partitions, false
       )
       if (partnerExclusionList.isDefined) {
-        val excluded_data = trainingData.filter($"excluded"===1).drop("excluded").cache()
+        val excluded_data = trainingData.filter($"excluded"===1).select(finalColNames.map(col): _*).drop("excluded").cache()
         writeData(excluded_data, outputPath, writeEnv, outputPrefix+"excluded", date, 20, false)
         writeData(excluded_data.select("AdvertiserId").distinct(), outputPath, writeEnv, outputPrefix+"excludedadvertisers",
           date, 1, false)

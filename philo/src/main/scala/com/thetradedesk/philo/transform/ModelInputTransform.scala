@@ -1,10 +1,10 @@
 package com.thetradedesk.philo.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
-import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, FLOAT_FEATURE_TYPE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, loadModelFeatures}
+import com.thetradedesk.geronimo.shared._
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import com.thetradedesk.logging.Logger
-import com.thetradedesk.philo.{addOriginalCols, debugInfo, flattenData, schema, shiftModUdf}
+import com.thetradedesk.philo.{addOriginalCols, debugInfo, flattenData, schema, shiftModUdf, shiftModArrayUdf}
 import com.thetradedesk.philo.schema.{AdGroupDataSet, AdGroupRecord, AdvertiserExclusionRecord, CampaignROIGoalDataSet, CampaignROIGoalRecord, ClickTrackerRecord, CreativeLandingPageRecord, ModelInputRecord, ModelInputUserRecord, PartnerExclusionRecord}
 import com.thetradedesk.spark.sql.SQLFunctions._
 import org.apache.spark.sql.{Column, DataFrame, Dataset, SparkSession}
@@ -19,7 +19,6 @@ import com.thetradedesk.spark.util.TTDConfig.config
 object ModelInputTransform extends Logger {
 
   val flatten_set = Set("AdsTxtSellerType","PublisherType", "DeviceType", "OperatingSystemFamily", "Browser", "RenderingContext", "DoNotTrack")
-  val addCols = Seq("label", "BidRequestId", "UIID", "LogEntryTime", "excluded")
   // Precomputed thresholds for different number of impression percentiles used for click-bot filtering
   // can also use percentileToThreshold() to get exact values but this takes too much time
   val impression_97 = 18
@@ -42,11 +41,13 @@ object ModelInputTransform extends Logger {
                 creativeLandingPage: Option[Dataset[CreativeLandingPageRecord]],
                 countryFilter: Option[Dataset[CountryFilterRecord]],
                 keptCols: Seq[String],
-                modelFeatures: Seq[ModelFeature],
+                bidRequestFeatures: Seq[ModelFeature],
+                adGroupFeatures: Seq[ModelFeature],
+                seqHashFields: Seq[ModelFeature],
                 addUserData: Boolean,
                 filterClickBots: Boolean,
-                numUserCols: Int,
                 partnerExclusionList: Option[Dataset[PartnerExclusionRecord]],
+                addCols: Seq[String],
                 debug: Boolean): (DataFrame, DataFrame) = {
     val (clickLabels, bidsImpsPreJoin) = addBidAndClickLabels(clicks, bidsImpsDat)
     val preFilteredData = preFilterJoin(clickLabels, bidsImpsPreJoin)
@@ -56,7 +57,7 @@ object ModelInputTransform extends Logger {
       .transform(ds => filterDataset(ds, adgroup, filterAdGroup, countryFilter))
       .transform(ds => creativeLandingPage.map(clp => ModelInputTransform.matchLandingPage(ds, clp)).getOrElse(ds))
 
-
+    val modelFeatures = bidRequestFeatures ++ adGroupFeatures
 
     val (addKeptCols, originalColNames) = addOriginalCols(keptCols, filteredData.toDF)
     if (debug) {
@@ -66,31 +67,19 @@ object ModelInputTransform extends Logger {
     }
     if (addUserData) {
 
-      val data = addUserDataFeatures(addKeptCols, numUserCols, filterClickBots)
-      val flatten = flattenData(data, flatten_set).selectAs[ModelInputUserRecord]
+      val data = addUserDataFeatures(addKeptCols, filterClickBots)
+      val flatten = flattenData(data, flatten_set)
       val labelCounts = flatten.groupBy("label", "excluded").count()
-      val hashedData = getHashedUserData(flatten, modelFeatures, originalColNames)
+      val hashedData = getHashedData(flatten, modelFeatures, seqHashFields, originalColNames, addCols)
 
-      val columnNames = (0 until numUserCols).map(i => s"UserData_Column$i")
-      val updatedHashedData = hashedData.select(
-        hashedData.columns.map {
-          case colName if columnNames.contains(colName) =>
-            when(col(colName) === 1, 0).otherwise(col(colName)).as(colName)
-          case colName =>
-            col(colName)
-        }: _*
-      )
-      if (debug) {
-        debugInfo("updatedHashedData", updatedHashedData)
-      }
-      (updatedHashedData, labelCounts)
+      (hashedData, labelCounts)
 
   } else {
 
-      val flatten = flattenData(addKeptCols, flatten_set).selectAs[ModelInputRecord]
+      val flatten = flattenData(addKeptCols, flatten_set)
 
       val labelCounts = flatten.groupBy("label", "excluded").count()
-      val hashedData = getHashedData(flatten, modelFeatures, originalColNames)
+      val hashedData = getHashedData(flatten, modelFeatures, seqHashFields, originalColNames, addCols)
       if (debug) {
         debugInfo("hashedData", hashedData)
       }
@@ -100,9 +89,12 @@ object ModelInputTransform extends Logger {
 
   def intModelFeaturesCols(inputColAndDims: Seq[ModelFeature]): Array[Column] = {
     inputColAndDims.map {
-      case ModelFeature(name, STRING_FEATURE_TYPE, Some(cardinality), _) => when(col(name).isNotNullOrEmpty, shiftModUdf(xxhash64(col(name)), lit(cardinality))).otherwise(0).alias(name)
-      case ModelFeature(name, INT_FEATURE_TYPE, Some(cardinality), _) => when(col(name).isNotNull, shiftModUdf(col(name), lit(cardinality))).otherwise(0).alias(name)
-      case ModelFeature(name, FLOAT_FEATURE_TYPE, _, _) => col(name).alias(name)
+      case ModelFeature(name, STRING_FEATURE_TYPE, Some(cardinality),_, _, _) => when(col(name).isNotNullOrEmpty, shiftModUdf(xxhash64(col(name)), lit(cardinality))).otherwise(0).alias(name)
+      case ModelFeature(name, INT_FEATURE_TYPE, Some(cardinality), _, _, _) => when(col(name).isNotNull, shiftModUdf(col(name), lit(cardinality))).otherwise(0).alias(name)
+      case ModelFeature(name, FLOAT_FEATURE_TYPE, _, _, _, _) => col(name).alias(name)
+      case ModelFeature(name, ARRAY_INT_FEATURE_TYPE, Some(cardinality), _, _, _) => when(col(name).isNotNull, shiftModArrayUdf(col(name), lit(cardinality))).otherwise(col(name)).alias(name)
+      case ModelFeature(name, ARRAY_LONG_FEATURE_TYPE, Some(cardinality), _, _, _) => when(col(name).isNotNull, shiftModArrayUdf(col(name), lit(cardinality))).otherwise(lit(null)).alias(name)
+      case ModelFeature(name, ARRAY_FLOAT_FEATURE_TYPE, _, _, _, _) => col(name).alias(name)
     }.toArray
   }
 
@@ -135,7 +127,7 @@ object ModelInputTransform extends Logger {
   }
 
 
-  def addUserDataFeatures(data: DataFrame, numUserCols: Int, filterClickBots: Boolean = false): DataFrame = {
+  def addUserDataFeatures(data: DataFrame, filterClickBots: Boolean = false): DataFrame = {
 
     /*
     This function adds MatchedSegments, HasUserData, & UserDataLength
@@ -150,31 +142,14 @@ object ModelInputTransform extends Logger {
       data
     }
 
-    // Explode MatchedSegments into 170 individual columns
-    val columnNames = (0 until numUserCols).map(i => s"UserData_Column$i")
-    val updatedData = filteredData.select(
-      col("*") +: (0 until numUserCols).map { i =>
-        when(
-          col("MatchedSegments").isNotNull && col("MatchedSegments").getItem(i).isNotNull,
-          col("MatchedSegments").getItem(i).cast(IntegerType)
-        ).otherwise(0).as(s"UserData_Column${i}")
-      }: _*
-    )
+    val updatedData = filteredData.withColumn("HasUserData", when($"MatchedSegments".isNull||size($"MatchedSegments")===lit(0), lit(0)).otherwise(lit(1)))
+      .withColumn("UserDataLength", when($"UserSegmentCount".isNull, lit(0.0)).otherwise($"UserSegmentCount"*lit(1.0)))
+      .withColumn("UserData", when($"HasUserData"===lit(0), lit(null)).otherwise($"MatchedSegments"))
+      .withColumn("UserDataOptIn", lit(1))
 
-    // Add HasUserData column
-    val dataWithHasUserData = updatedData.withColumn(
-      "HasUserData",
-      when(col("MatchedSegments").isNotNull && col("MatchedSegments").getItem(0).isNotNull, 1).otherwise(0)
-    )
-
-    // Add UserDataLength column
-    val finalUserDataset = dataWithHasUserData.withColumn(
-      "UserDataLength",
-      when(col("UserSegmentCount").isNull, lit(0.0)).otherwise(col("UserSegmentCount") * lit(1.0))
-    )
 
     // Return updated dataset with user data features
-    finalUserDataset
+    updatedData
   }
 
   def filterBots(preFilterDataset: DataFrame): DataFrame = {
@@ -313,24 +288,22 @@ object ModelInputTransform extends Logger {
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
   }
 
-  def getHashedData(flatten: Dataset[ModelInputRecord], modelFeatures: Seq[ModelFeature],
-                    originalColNames: Seq[String]): DataFrame ={
+  def getHashedData(flatten: DataFrame, hashFeatures: Seq[ModelFeature], seqHashFields: Seq[ModelFeature],
+                    originalColNames: Seq[String], addCols: Seq[String]): DataFrame ={
     val origCols = addCols ++ originalColNames
     // todo: we need a better way to track these fields
-    val selectionQuery = intModelFeaturesCols(modelFeatures) ++ origCols.map(col)
+    val selectionQuery = intModelFeaturesCols(hashFeatures) ++ seqModModelFeaturesCols(seqHashFields) ++ origCols.map(col)
 
     flatten.select(selectionQuery: _*)
 
   }
 
-  def getHashedUserData(flatten: Dataset[ModelInputUserRecord], modelFeatures: Seq[ModelFeature],
-                    originalColNames: Seq[String]): DataFrame ={
-    val origCols = addCols ++ originalColNames
-    // todo: we need a better way to track these fields
-    val selectionQuery = intModelFeaturesCols(modelFeatures) ++ origCols.map(col)
 
-    flatten.select(selectionQuery: _*)
-
+  def seqModModelFeaturesCols(features: Seq[ModelFeature]): Array[Column] = {
+    features.map{
+      case ModelFeature(name, ARRAY_LONG_FEATURE_TYPE, Some(cardinality), _, Some(shape),_) =>
+        (0 until shape.dimensions(0)).map(c => when(col(name).isNotNull && size(col(name)) > c, shiftModUdf(col(name)(c), lit(cardinality))).otherwise(0).alias(name + s"_Column$c"))
+    }.toArray.flatMap(_.toList)
   }
 
   def addExclusionFlag(df: DataFrame, partnerExclusionList: Option[Dataset[PartnerExclusionRecord]]
