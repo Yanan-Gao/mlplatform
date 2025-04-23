@@ -1,14 +1,20 @@
 package com.thetradedesk
 
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, explicitDatePart, paddedDatePart}
+import com.thetradedesk.geronimo.shared._
+import com.thetradedesk.geronimo.shared.schemas.{ModelFeature}
 import com.thetradedesk.spark.util.io.FSUtils
+import com.thetradedesk.philo.schema.ModelInputUserRecord
 import org.apache.spark.sql._
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
 
-package object philo { 
+package object philo {
+
+  val optionalFeature = Map(
+    0 -> "UserData"
+  )
 
   /** shift hashed value to positive and reserve 0 for null values
    * copied from plutus
@@ -30,6 +36,30 @@ package object philo {
   def shiftModUdf: UserDefinedFunction = udf((hashValue: Long, cardinality: Int) => {
     shiftMod(hashValue, cardinality)
   })
+
+  def shiftModArray(hashList: Seq[Long], cardinality: Int): Array[Int] = {
+    hashList.map(hashValue => shiftMod(hashValue, cardinality)).toArray
+  }
+
+  def shiftModArrayUdf = udf(shiftModArray _)
+
+
+  def aliasedModelFeatureNames(modelFeatures: Seq[ModelFeature]): Array[String] = {
+    modelFeatures.map {
+      case ModelFeature(name, ARRAY_INT_FEATURE_TYPE, Some(cardinality), _, Some(shape),_) =>
+        (0 until shape.dimensions(0)).map(c => name + s"_Column$c")
+      case ModelFeature(name, ARRAY_LONG_FEATURE_TYPE, Some(cardinality), _, Some(shape),_) =>
+        (0 until shape.dimensions(0)).map(c => name + s"_Column$c")
+      case ModelFeature(name, _, _, _, _, _) => Seq(name)
+    }.toArray.flatMap(_.toList)
+  }
+  def addOriginalNames(keptCols: Seq[String]): Array[String]  = {
+
+    keptCols.map{
+      c => s"original$c"
+    }.toArray
+
+  }
 
   // NOTE: this is TF record and you will need to add tf record package to the packages args when running spark submit for this to work
   def writeData(df: DataFrame, outputPath: String, ttdEnv: String, outputPrefix: String, date: LocalDate, partitions: Int, isTFRecord: Boolean = true): Unit = {
