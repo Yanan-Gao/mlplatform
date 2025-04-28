@@ -42,7 +42,10 @@ object RSMV2TrainingDataStatusGeneratorJob {
     val seedSmallTrainMeta = new DataQualityGenerator("SeedSmall", "Train").generate(date)
     val seedNewTrainMeta = new DataQualityGenerator("SeedNew", "Train").generate(date)
 
-    val metaData = ttdOwnDataSmallTrainMeta.union(ttdOwnDataNewTrainMeta).union(seedSmallTrainMeta).union(seedNewTrainMeta).drop("weightedPosRatio")
+    val metaData = Seq(ttdOwnDataSmallTrainMeta, ttdOwnDataNewTrainMeta, seedSmallTrainMeta ,seedNewTrainMeta)
+      .filter(_ != null)
+      .reduce(_ union _)
+      .drop("weightedPosRatio")
 
     dateTime = date.atStartOfDay()
 
@@ -65,8 +68,13 @@ class DataQualityGenerator(val dataType: String, val dataSplitType: String) {
 
     val start = System.currentTimeMillis()
 
-    val trainData = spark.read.format("tfrecord").load(s"${ML_PLATFORM_ROOT}/${config.getString("TrainingDataReadEnv", ttdEnv)}/audience/RSMV2/Seed_None/v=1/${dateString}/${dataType}=${dataSplitType}/"
-    ).select('SyntheticIds, 'Targets, 'ZipSiteLevel_Seed)
+    val path = s"${ML_PLATFORM_ROOT}/${config.getString("TrainingDataReadEnv", ttdEnv)}/audience/RSMV2/Seed_None/v=1/${dateString}/${dataType}=${dataSplitType}/"
+
+    if (!FSUtils.fileExists(s"${path}_SUCCESS")) {
+      return null
+    }
+
+    val trainData = spark.read.format("tfrecord").load(path).select('SyntheticIds, 'Targets, 'ZipSiteLevel_Seed)
 
     val explodCols = Seq("SyntheticIds", "Targets", "ZipSiteLevel_Seed")
     val data = explodeColumns(trainData, explodCols)
