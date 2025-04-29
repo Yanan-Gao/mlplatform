@@ -5,7 +5,7 @@ import com.thetradedesk.plutus.data.{envForWrite, paddedDatePart, utils}
 import com.thetradedesk.protologreader.protoformat.PredictiveClearingResults
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.sql.SQLFunctions.DataFrameExtensions
+import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import com.thetradedesk.spark.util.protologreader.S3ObjectFinder.getS3ObjectPathFromDirectory
 import com.thetradedesk.spark.util.protologreader.{ProtoLogReader, S3Client, S3PathGenerator}
 import org.apache.spark.rdd.RDD
@@ -55,18 +55,6 @@ case class PlutusLogsData(
                          )
 
 case object PlutusLogsData {
-  def transformPcResultsRawLog(dataset: Dataset[PcResultsRawLogs], hour: LocalDateTime): Dataset[PlutusLogsData] = {
-    dataset.where(
-        $"LogEntryTime" >= localDatetimeToTicks(hour) and
-          $"LogEntryTime" < localDatetimeToTicks(hour.plusHours(1)))
-    .select(
-      "PlutusLog.*",
-      "PredictiveClearingStrategy.*",
-      "*"
-    )
-    .selectAs[PlutusLogsData]
-  }
-
   def loadPlutusLogData(dateTime: LocalDateTime): Dataset[PlutusLogsData] = {
     val pathGenerator = new S3Client("thetradedesk-useast-logs-2" , "predictiveclearingresults/collected")
     val logReader = new ProtoLogReader[PredictiveClearingResults.PcResultLog](
@@ -81,83 +69,60 @@ case object PlutusLogsData {
     val files = (pathGenerator.getSpecificHourAvailsStreamFiles(jodaDateTime.minusHours(1)) ++
       pathGenerator.getSpecificHourAvailsStreamFiles(jodaDateTime)).flatMap(getS3ObjectPathFromDirectory)
 
-    val pcResultData = logReader.readSpecificFiles(files)
-      .map(i => PcResultsRawLogs(
-        utils.uuidFromLongs( i.getBidRequestId.getLo, i.getBidRequestId.getHi),
-        i.getInitialBid,
-        i.getFinalBidPrice,
-        i.getDiscrepancy,
-        i.getBaseBidAutoOpt,
-        i.getLegacyPcPushdown,
-        PlutusLog(i.getPlutusLog.getMu, i.getPlutusLog.getSigma, i.getPlutusLog.getGSS, i.getPlutusLog.getAlternativeStrategyPush),
-        PredictiveClearingStrategy(i.getPredictiveClearingStrategy.getModel, i.getPredictiveClearingStrategy.getStrategy),
-        i.getOptOutDueToFloor,
-        i.getFloorPrice,
-        i.getPartnerSample,
-        i.getBidBelowFloorExceptedSource,
-        i.getFullPush,
-        i.getFloorBufferAdjustment,
-        i.getUseUncappedBidForPushdown,
-        i.getUncappedFirstPriceAdjustment,
-        i.getLogEntryTime,
-        i.getSupplyVendor,
-        i.getAdgroupId,
-        i.getIsValuePacing,
-        i.getAuctionType,
-        i.getDealId,
-        i.getUncappedBidPrice,
-        i.getSnapbackMaxBid,
-        i.getMaxBidMultiplierCap
-      )).toDS()
+    logReader.readSpecificFiles(files)
+      .map(i =>
+        PlutusLogsData(
+          BidRequestId=utils.uuidFromLongs( i.getBidRequestId.getLo, i.getBidRequestId.getHi),
 
-    transformPcResultsRawLog(pcResultData, dateTime)
+          LogEntryTime=i.getLogEntryTime,
+          IsValuePacing=i.getIsValuePacing,
+          AuctionType=i.getAuctionType,
+          DealId=nullIfEmpty(i.getDealId),
+
+          SupplyVendor=i.getSupplyVendor,
+          AdgroupId=i.getAdgroupId,
+
+          InitialBid=i.getInitialBid,
+          FinalBidPrice=i.getFinalBidPrice,
+          Discrepancy=i.getDiscrepancy,
+          BaseBidAutoOpt=i.getBaseBidAutoOpt,
+          LegacyPcPushdown=i.getLegacyPcPushdown,
+
+          OptOutDueToFloor=i.getOptOutDueToFloor,
+          FloorPrice=i.getFloorPrice,
+          PartnerSample=i.getPartnerSample,
+          BidBelowFloorExceptedSource=i.getBidBelowFloorExceptedSource,
+          FullPush=i.getFullPush,
+
+          UseUncappedBidForPushdown=i.getUseUncappedBidForPushdown,
+          UncappedFirstPriceAdjustment=i.getUncappedFirstPriceAdjustment,
+          UncappedBidPrice=i.getUncappedBidPrice,
+          SnapbackMaxBid=i.getSnapbackMaxBid,
+          MaxBidMultiplierCap=i.getMaxBidMultiplierCap,
+
+          Mu=i.getPlutusLog.getMu,
+          Sigma=i.getPlutusLog.getSigma,
+          GSS=i.getPlutusLog.getGSS,
+          AlternativeStrategyPush=i.getPlutusLog.getAlternativeStrategyPush,
+
+          Model=i.getPredictiveClearingStrategy.getModel,
+          Strategy=i.getPredictiveClearingStrategy.getStrategy,
+        )
+      ).toDS()
+      .where(
+        $"LogEntryTime" >= localDatetimeToTicks(dateTime) and
+          $"LogEntryTime" < localDatetimeToTicks(dateTime.plusHours(1))
+      ).selectAs[PlutusLogsData]
+  }
+
+  def nullIfEmpty(string: String): String =
+  {
+    if(string != null && string.nonEmpty)
+      string
+    else
+      null
   }
 }
-
-
-/**
- * This class is used to read the raw pcresults dataset from s3. On reading, its immediately transformed
- * into @PlutusLogsData
- */
-case class PcResultsRawLogs(
-                             BidRequestId: String,
-                             InitialBid: Double,
-                             FinalBidPrice: Double,
-                             Discrepancy: Double,
-                             BaseBidAutoOpt: Double,
-                             LegacyPcPushdown: Double,
-                             PlutusLog: PlutusLog,
-                             PredictiveClearingStrategy: PredictiveClearingStrategy,
-                             OptOutDueToFloor: Boolean,
-                             FloorPrice: Double,
-                             PartnerSample: Boolean,
-                             BidBelowFloorExceptedSource: Int,
-                             FullPush: Boolean,
-                             FloorBufferAdjustment: Double,
-                             UseUncappedBidForPushdown: Boolean,
-                             UncappedFirstPriceAdjustment: Double,
-                             LogEntryTime: Long,
-                             SupplyVendor: String,
-                             AdgroupId: String,
-                             IsValuePacing: Boolean,
-                             AuctionType: Int,
-                             DealId: String,
-                             UncappedBidPrice: Double,
-                             SnapbackMaxBid: Double,
-                             MaxBidMultiplierCap: Double
-                           )
-
-case class PlutusLog(
-                      Mu: Float,
-                      Sigma: Float,
-                      GSS: Double,
-                      AlternativeStrategyPush: Double
-                    )
-
-case class PredictiveClearingStrategy(
-                                       Model: String,
-                                       Strategy: Int
-                                     )
 
 object PlutusOptoutBidsDataset extends S3HourlyParquetDataset[PlutusLogsData]{
   override protected def genHourSuffix(datetime: LocalDateTime): String =

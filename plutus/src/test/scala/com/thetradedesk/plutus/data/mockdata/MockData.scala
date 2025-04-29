@@ -253,34 +253,6 @@ object MockData {
     MaxBidMultiplierCap = 1.2
   )
 
-  val pcResultsRawLogMock = PcResultsRawLogs(
-    BidRequestId = "1",
-    InitialBid = 10,
-    FinalBidPrice = 9,
-    Discrepancy = 0.1,
-    BaseBidAutoOpt = 0.3,
-    LegacyPcPushdown = 0,
-    PlutusLog = PlutusLog(0.2f, 0.1f, 3, 1),
-    PredictiveClearingStrategy = PredictiveClearingStrategy("plutus", 0),
-    OptOutDueToFloor = false,
-    FloorPrice = 1,
-    PartnerSample = false,
-    BidBelowFloorExceptedSource = 0,
-    FullPush = false,
-    FloorBufferAdjustment = 0,
-    UseUncappedBidForPushdown = false,
-    UncappedFirstPriceAdjustment = 2.789,
-    LogEntryTime = 638560527380000000L,
-    IsValuePacing = true,
-    AuctionType = 1,
-    DealId = null,
-    SupplyVendor = "ads",
-    AdgroupId = "asdasd",
-    UncappedBidPrice = 2.0,
-    SnapbackMaxBid = 3.0,
-    MaxBidMultiplierCap = 1.2
-  )
-
   val mbtwDataMock = MinimumBidToWinData(
     BidRequestId = "1",
     SupplyVendorLossReason = 2,
