@@ -3,7 +3,7 @@ package com.thetradedesk.plutus.data.plutus.transform
 import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
 import com.thetradedesk.plutus.data.mockdata.MockData._
-import com.thetradedesk.plutus.data.schema.{MinimumBidToWinData, PcResultsRawLogs, PlutusLogsData, ProductionAdgroupBudgetData}
+import com.thetradedesk.plutus.data.schema.{MinimumBidToWinData, PlutusLogsData, ProductionAdgroupBudgetData}
 import com.thetradedesk.plutus.data.transform.PcResultsGeronimoTransform.joinGeronimoPcResultsLog
 import com.thetradedesk.plutus.data.{ChannelType, MarketType}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -97,18 +97,10 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
     assert(res6.PlutusVersionUsed.get == modelVersionsUsedWithPlutus("plutus"))
   }
 
-  test("PcResultsRawLogSchema -> PlutusLogsData test") {
-    val rawDataset = Seq(pcResultsRawLogMock.copy()).toDS().as[PcResultsRawLogs]
-    val localDateTime = LocalDateTime.of(2024, 7, 8, 16, 0, 0)
-    val outputDataset = PlutusLogsData.transformPcResultsRawLog(rawDataset, localDateTime)
-
-    assert(outputDataset.count() == 1, "Output rows")
-
-    val resultList = outputDataset.collectAsList()
-    val res = resultList.get(0)
-
-    // Test for BidCap change columns
-    assert(res.UseUncappedBidForPushdown == false, "Validating we use the value from the raw log")
-    assert(res.UncappedFirstPriceAdjustment == 2.789, "Validating that Uncapped FPA results in a the raw log value")
+  test("nullIfEmpty test") {
+    assert(PlutusLogsData.nullIfEmpty("") == null)
+    assert(PlutusLogsData.nullIfEmpty(" ") != null)
+    assert(PlutusLogsData.nullIfEmpty("abc") != null)
+    assert(PlutusLogsData.nullIfEmpty(null) == null)
   }
 }
