@@ -31,6 +31,8 @@ object HadesCampaignAdjustmentsTransform {
   val HistoryLength = 10
   val DefaultAdjustmentQuantile = 50
 
+  val EPSILON = 0.01
+
   def computeBudgetBucketHash(entityId: String, bucketCount: Int): Short = {
     // Budget Bucket Hash Function
     // Tested here: https://dbc-7ae91121-86fd.cloud.databricks.com/editor/notebooks/1420435698064795?o=2560362456103657#command/1420435698066605
@@ -90,14 +92,16 @@ object HadesCampaignAdjustmentsTransform {
       .withColumn("gen_initialBid",
         when(col("UseUncappedBidForPushdown"),
           when(col("MaxBidMultiplierCap").isNotNull,
-            least(col("UncappedBidPrice"), col("MaxBidCPMInUSD") * greatest(col("MaxBidMultiplierCap"), lit(1.0)))).otherwise(col("UncappedBidPrice")))
-          .otherwise(col("InitialBid")))
+            least(col("UncappedBidPrice"), col("MaxBidCPMInUSD") * greatest(col("MaxBidMultiplierCap"), lit(1.0)))
+          ).otherwise(col("UncappedBidPrice"))
+        ).otherwise(col("InitialBid")))
       .withColumn("gen_discrepancy", when(col("AuctionType") === AuctionType.FixedPrice, lit(1)).otherwise(when(col("Discrepancy") === 0, lit(1)).otherwise(col("Discrepancy"))))
       // old gen_gss_pushdown logic: .withColumn("gen_gss_pushdown", when(col("AuctionType") =!= AuctionType.FixedPrice, $"GSS").otherwise(gss(col("Mu"), col("Sigma"), col("InitialBid"), lit(0.1)) / col("InitialBid")))
       // updated for propeller gen_gss_pushdown logic: Use gen_initialBid when calculating gen_gss_pushdown for Propeller. Can't use GSS in pcgeronimo directly because apply effectiveMaxBid cap
-      .withColumn("gen_tensorflowPcModelBid", when(col("AuctionType") === AuctionType.FixedPrice, gss(col("Mu"), col("Sigma"), col("gen_initialBid"), lit(0.01))).otherwise(col("Gss") * col("InitialBid")))
+      // Using InitialBid here instead of gen_initialBid because in Bidder, GSS is calculated as (tensorflowPcModelBid / InitialBid)
+      .withColumn("gen_tensorflowPcModelBid", when(col("AuctionType") === AuctionType.FixedPrice, gss(col("Mu"), col("Sigma"), col("gen_initialBid"), lit(EPSILON))).otherwise(col("Gss") * col("InitialBid")))
       .withColumn("gen_gss_pushdown",
-        // for Uncapped Bids, InitialBid is effectively MaxBid
+        // for Uncapped Bids, InitialBid is effectively MaxBid (not gen_initialBid)
         when(col("UseUncappedBidForPushdown"), least(col("gen_tensorflowPcModelBid"), col("InitialBid")) / col("InitialBid"))
           .otherwise(col("gen_tensorflowPcModelBid") / col("InitialBid")))
       .withColumn("gen_effectiveDiscrepancy", least(lit(1), lit(1) / col("gen_discrepancy")))
@@ -107,7 +111,8 @@ object HadesCampaignAdjustmentsTransform {
       .filter(col("gen_excess") > 0)
       .withColumn("gen_bufferFloor", col("FloorPrice") * (lit(1) - col("BBF_FloorBuffer")))
       .withColumn("gen_plutusPushdownAtBufferFloor", col("gen_bufferFloor") / col("InitialBid"))
-      .withColumn("gen_PCAdjustment", (col("gen_effectiveDiscrepancy") - col("gen_plutusPushdownAtBufferFloor")) / (col("gen_effectiveDiscrepancy") - col("gen_gss_pushdown")))
+      .withColumn("gen_excess_wanted", greatest(lit(0), col("gen_effectiveDiscrepancy") - col("gen_plutusPushdownAtBufferFloor")))
+      .withColumn("gen_PCAdjustment", col("gen_excess_wanted") / col("gen_excess"))
 
       // We ignore the strategy here because then we calculate an adjustment which is independent
       // of previous adjustments, allowing the backoff to adapt to current bidding environment.

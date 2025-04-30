@@ -58,6 +58,67 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     assert(gen_bufferFloor == expectedFloorBuffer)
   }
 
+  def prettyPrintRow(row: Row): String = {
+    import org.apache.spark.sql.types.StructType
+    val schema: StructType = row.schema
+    val values = schema.fields.zipWithIndex.map { case (field, i) =>
+      s"${field.name}: ${row.get(i)}"
+    }
+    values.mkString("{\n  ", ",\n  ", "\n}")
+  }
+
+  test("Validating plutus adjustment calculations 2 - Verifying non-negative adjustment at buffer = 0.01") {
+    val campaignId = "k9vx0p7"
+    val floorBuffer = 0.01
+    val underdeliveringCampaigns = Seq(CampaignMetaData(campaignId, CampaignType_NewCampaign, floorBuffer)).toDS()
+
+    val adgroupId = "wiktpyo"
+    val maxBid = BigDecimal("45")
+    val adGroupMaxBid = Seq(AdGroupMetaData(adgroupId, maxBid)).toDS()
+
+    val pcResultsMergedData = Seq(
+      pcResultsMergedMock(
+        campaignId = Some(campaignId),
+        adgroupId = Some(adgroupId),
+        dealId = "IXTVPD73808257373558",
+        adjustedBidCPMInUSD = 16.7124815578058,
+        discrepancy = 1.21,
+        floorPrice = 16.5,
+        maxBidMultiplierCap = 1.2,
+        mu = 1.7356233596801758f,
+        sigma =  0.6707255840301514f,
+        auctionType = 1)
+    ).toDS().as[PcResultsMergedSchema]
+
+    val bidData = getAllBidData(spark.emptyDataset[PlutusLogsData], spark.emptyDataset[AdGroupRecord], pcResultsMergedData)
+    println("Raw Bid Data: ")
+    println(prettyPrintRow(bidData.collectAsList().get(0)))
+    println()
+
+
+    val campaignBidData = getUnderdeliveringCampaignBidData(
+      bidData,
+      underdeliveringCampaigns,
+      adGroupMaxBid
+    )
+
+    val res = campaignBidData.collectAsList().get(0)
+    println("Campaign Bid Data: ")
+    println(prettyPrintRow(res))
+
+    // This is the older adjustment
+    val unCappedAdjustment = ((res.getAs[Double]("gen_effectiveDiscrepancy") - res.getAs[Double]("gen_plutusPushdownAtBufferFloor"))
+      / (res.getAs[Double]("gen_effectiveDiscrepancy") - res.getAs[Double]("gen_gss_pushdown")))
+    unCappedAdjustment shouldEqual -0.40169672531415085 +- tolerance
+
+    res.getAs[Double]("gen_gss_pushdown") shouldEqual 0.450623166820479 +- tolerance
+
+    res.getAs[Double]("gen_bufferFloor") shouldEqual 16.335 +- tolerance
+
+    // This is the new adjustment
+    res.getAs[Double]("gen_PCAdjustment") shouldEqual 0.0 +- tolerance
+  }
+
   test("Testing Problem Campaign filtering") {
     // aggregateCampaignBBFOptOutRate
     val campaignBBFOptOutRate = campaignBBFOptOutRateMock

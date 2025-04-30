@@ -22,7 +22,7 @@ object MergeCampaignBackoffAdjustments {
   : DataFrame = {
     addPrefix(campaignAdjustmentsPacingDataset.toDF(), "pc_")
       .join(broadcast(addPrefix(hadesCampaignAdjustmentsDataset.toDF(), "hd_")), Seq("CampaignId"), "fullouter")
-      .withColumn("MergedPCAdjustment", least(col("pc_CampaignPCAdjustment"), col("hd_HadesBackoff_PCAdjustment")))
+      .withColumn("MergedPCAdjustment", least(lit(1.0), col("pc_CampaignPCAdjustment"), col("hd_HadesBackoff_PCAdjustment")))
   }
 
   def transform(plutusCampaignAdjustmentsDataset: Dataset[CampaignAdjustmentsPacingSchema], hadesCampaignAdjustmentsDataset: Dataset[HadesAdjustmentSchemaV2]): Unit = {
