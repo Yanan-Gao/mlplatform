@@ -231,7 +231,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
       campaignAdjustmentsHadesMock(campaignId = "campaign1", hadesPCAdjustmentPrevious = Array(0.4), campaignType_Previous = Array(CampaignType_NewCampaign)),
       campaignAdjustmentsHadesMock(campaignId = "campaign2", hadesPCAdjustmentPrevious = Array(0.4)),
       // No Campaign 3
-      campaignAdjustmentsHadesMock(campaignId = "campaign4", hadesPCAdjustmentPrevious = Array(0.5), hadesProblemCampaign = false)
+      campaignAdjustmentsHadesMock(campaignId = "campaign4", hadesPCAdjustmentCurrent = 0.5 /* This will be carried on */, hadesPCAdjustmentPrevious = Array(0.5), hadesProblemCampaign = false)
     ).toDS()
 
     val res = mergeTodayWithYesterdaysData(todaysData, yesterdaysData, underdeliveryThreshold)

@@ -453,7 +453,6 @@ object HadesCampaignAdjustmentsTransform {
         countTrailingZerosUDF(col("Total_OM_BidCount_Previous")) < 5) // Drop adjustment if more than x if days of 0 bids in historical data
 
       .withColumn("Hades_isProblemCampaign", lit(false))
-      .withColumn("HadesBackoff_PCAdjustment", element_at($"HadesBackoff_PCAdjustment_Previous", -1))
       .withColumn("HadesBackoff_PCAdjustment_Current", col("HadesBackoff_PCAdjustment"))
       .withColumn("CampaignType", when($"HadesBackoff_PCAdjustment" < 1.0, lit(CampaignType_AdjustedCampaign))
         .otherwise(lit(CampaignType_NoAdjustment)))
