@@ -4,7 +4,7 @@ import com.thetradedesk.geronimo.bidsimpression.schema._
 import com.thetradedesk.plutus.data.MediaTypeId
 import com.thetradedesk.plutus.data.schema._
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
-import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform.{CampaignType_AdjustedCampaign, CampaignType_NewCampaign}
+import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform.{CampaignType_AdjustedCampaign, CampaignType_NewCampaign, EPSILON, gssFunc}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources._
 import com.thetradedesk.streaming.records.rtb._
@@ -394,7 +394,7 @@ object MockData {
     // Fields From PlutusLog
     Mu = mu, //0.5f,
     Sigma = sigma,
-    GSS = 0.5,
+    GSS = gssFunc(mu, sigma, adjustedBidCPMInUSD, EPSILON) / adjustedBidCPMInUSD,
     AlternativeStrategyPush = 1.0,
 
     // Fields from PredictiveClearingStrategy
