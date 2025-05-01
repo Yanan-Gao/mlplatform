@@ -30,6 +30,8 @@ message PcResultLog {
   optional double UncappedBidPrice=24;
   optional double SnapbackMaxBid=25;
   optional double MaxBidMultiplierCap=26;
+  optional double FloorBuffer=27;
+  optional double MaxBidCPMInBucks=28;
 }
 
 message PlutusLog {

@@ -43,6 +43,10 @@ case class PlutusLogsData(
                            SnapbackMaxBid: Double,
                            MaxBidMultiplierCap: Double,
 
+                           FloorBuffer: Double,
+                           FloorBufferAdjustment: Double,
+                           MaxBidCpmInBucks: Double,
+
                            // Fields From PlutusLog
                            Mu: Float,
                            Sigma: Float,
@@ -107,6 +111,10 @@ case object PlutusLogsData {
 
           Model=i.getPredictiveClearingStrategy.getModel,
           Strategy=i.getPredictiveClearingStrategy.getStrategy,
+
+          FloorBufferAdjustment = i.getFloorBufferAdjustment,
+          FloorBuffer = i.getFloorBuffer,
+          MaxBidCpmInBucks = i.getMaxBidCPMInBucks,
         )
       ).toDS()
       .where(
