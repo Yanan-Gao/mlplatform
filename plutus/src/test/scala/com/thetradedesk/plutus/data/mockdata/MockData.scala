@@ -250,7 +250,10 @@ object MockData {
     AdgroupId = "asdasd",
     UncappedBidPrice = 2.0,
     SnapbackMaxBid = 3.0,
-    MaxBidMultiplierCap = 1.2
+    MaxBidMultiplierCap = 1.2,
+    FloorBufferAdjustment = 1.0,
+    FloorBuffer = 0.2,
+    MaxBidCpmInBucks = 9
   )
 
   val mbtwDataMock = MinimumBidToWinData(
@@ -425,7 +428,11 @@ object MockData {
     UncappedFirstPriceAdjustment = uncappedFpa,
     UncappedBidPrice = uncappedBidPrice,
     SnapbackMaxBid = snapbackMaxBid,
-    MaxBidMultiplierCap = maxBidMultiplierCap
+    MaxBidMultiplierCap = maxBidMultiplierCap,
+
+    FloorBufferAdjustment = 1.0,
+    FloorBuffer = 0.2,
+    MaxBidCpmInBucks = 9
   )
 
   def supplyVendorMock(supplyVendorName: String = "google", openPathEnabled: Boolean = false) = SupplyVendorRecord(

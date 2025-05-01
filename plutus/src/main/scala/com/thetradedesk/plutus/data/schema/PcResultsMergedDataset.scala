@@ -158,6 +158,10 @@ case class PcResultsMergedSchema(
                                    UncappedBidPrice: Double,
                                    SnapbackMaxBid: Double,
                                    MaxBidMultiplierCap: Double,
+
+                                   FloorBuffer: Double,
+                                   FloorBufferAdjustment: Double,
+                                   MaxBidCpmInBucks: Double,
                                  
                                    // Note: I've removed a bunch of fields from the Geronimo schema since
                                    // these fields dont seem relevant to plutus.

@@ -60,6 +60,8 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
     // test for DetailedMarketType
     assert(res.DetailedMarketType == MarketType.PrivateAuctionVariablePrice, "Validating DetailedMarketType Join")
 
+    assert(res.MaxBidCpmInBucks == 9, "Validating MaxBid is propogated")
+
     // Test for AspSvpId
     assert(resultList.get(0).AspSvpId == "svp_1", "Validating that svpid is used if aspid is not present")
     assert(resultList.get(1).AspSvpId == "asp_2", "Validating that aspid is used if it is present")
