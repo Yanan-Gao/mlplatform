@@ -16,7 +16,16 @@ object CampaignFloorBufferDataset extends S3DailyParquetDataset[CampaignFloorBuf
   }
 }
 
+object CampaignFloorBufferRollbackDataset extends S3DailyParquetDataset[CampaignFloorBufferSchema]{
+  val DATA_VERSION = 1
+  /** Base S3 path, derived from the environment */
+  override protected def genBasePath(env: String): String = {
+    f"s3://thetradedesk-mlplatform-us-east-1/env=${env}/data/plutusbackoff/campaignfloorbufferrollback/v=${DATA_VERSION}"
+  }
+}
+
 case class CampaignFloorBufferSchema(
                                             CampaignId: String,
-                                            BBF_FloorBuffer: Double
+                                            BBF_FloorBuffer: Double,
+                                            AddedDate: LocalDate
                                           )

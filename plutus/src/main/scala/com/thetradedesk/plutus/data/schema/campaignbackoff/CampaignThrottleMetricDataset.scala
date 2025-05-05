@@ -29,6 +29,8 @@ case class CampaignThrottleMetricSchema(
                                           IsValuePacing: Boolean,
                                           MinCalculatedCampaignCapInUSD: Double,
                                           MaxCalculatedCampaignCapInUSD: Double,
+                                          CampaignThrottleMetric: Double,
+                                          CampaignEffectiveKeepRate: Double,
                                           OverdeliveryInUSD: Double,
                                           UnderdeliveryInUSD: Double,
                                           TotalAdvertiserCostFromPerformanceReportInUSD: Double,

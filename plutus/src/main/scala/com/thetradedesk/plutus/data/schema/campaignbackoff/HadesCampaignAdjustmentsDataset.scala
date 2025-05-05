@@ -1,5 +1,6 @@
 package com.thetradedesk.plutus.data.schema.campaignbackoff
 
+import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform.platformWideBuffer
 import com.thetradedesk.plutus.data.utils.S3DailyParquetDataset
 import org.apache.spark.sql.{Dataset, Encoder, SparkSession}
 
@@ -46,6 +47,7 @@ object HadesCampaignAdjustmentsDataset extends S3DailyParquetDataset[HadesAdjust
           Total_OM_BidAmount = 0,
           BBF_OM_BidCount = 0,
           BBF_OM_BidAmount = 0,
+          BBF_FloorBuffer = row.BBF_FloorBuffer.orElse(Some(platformWideBuffer))
         )
       )
   }
@@ -116,6 +118,8 @@ case class HadesAdjustmentSchemaV2(
 
   BBF_OM_BidAmount: Double,
   BBF_OM_BidAmount_Previous: Array[Double] = Array(),
+
+  BBF_FloorBuffer: Option[Double],
 )
 
 @Deprecated

@@ -11,7 +11,7 @@ import com.thetradedesk.streaming.records.rtb._
 import org.apache.spark.sql.Dataset
 
 import java.sql.Timestamp
-import java.time.{LocalDate, LocalDateTime}
+import java.time.{Instant, LocalDate, LocalDateTime}
 
 object MockData {
 
@@ -539,7 +539,7 @@ object MockData {
     )).toDS()
   }
 
-  def campaignUnderdeliveryMock(date: Timestamp = Timestamp.valueOf(LocalDateTime.of(2024, 6, 25, 0, 0)), campaignId: String = "newcampaign1", campaignFlightId: Long = 1122330, underdelivery: Double = 4100, spend: Double = 900, cappedpotential: Double = 4500, fraction: Double = 0.8
+  def campaignUnderdeliveryMock(date: Timestamp = Timestamp.valueOf(LocalDateTime.of(2024, 6, 25, 0, 0)), campaignId: String = "newcampaign1", campaignFlightId: Long = 1122330, underdelivery: Double = 4100, spend: Double = 900, cappedpotential: Double = 4500, fraction: Double = 0.8, throttle: Double = 0.8
                                ): Dataset[CampaignThrottleMetricSchema] = {
     Seq(CampaignThrottleMetricSchema(
       Date = date,
@@ -556,25 +556,31 @@ object MockData {
       //DailyAdvertiserCostInUSD = spend,
       //TargetSpendUSD = target,
       EstimatedBudgetInUSD = cappedpotential,
-      UnderdeliveryFraction = fraction
+      UnderdeliveryFraction = fraction,
+      CampaignThrottleMetric = throttle,
+      CampaignEffectiveKeepRate = 0.9
     )).toDS()
   }
 
-  def platformReportMock(country: Option[String] = Some("Canada"), campaignId: Option[String] = Some("newcampaign1"), imps: Option[Long] = Some(120000), pcsavings: Option[BigDecimal] = Some(5.0)): Dataset[RtbPlatformReportCondensedData] = {
+  def platformReportMock(country: Option[String] = Some("Canada"), campaignId: Option[String] = Some("newcampaign1"), imps: Option[Long] = Some(120000), pcsavings: Option[BigDecimal] = Some(5.0), privateContractId: Option[String] = Some("PrivateContractId")): Dataset[RtbPlatformReportCondensedData] = {
     Seq(RtbPlatformReportCondensedData(
+      ReportHourUtc = Timestamp.from(Instant.parse("2025-04-24T10:00:00Z")),
       Country = country,
       RenderingContext = Some("1"),
       DeviceType = Some("4"),
       AdFormat = Some("250x250"),
       CampaignId = campaignId,
+      SupplyVendor = Some("supplyvendor"),
       BidCount = Some(1500000),
       ImpressionCount = imps,
       BidAmountInUSD = Some(10.0),
       MediaCostInUSD = Some(1000),
       AdvertiserCostInUSD = Some(1000),
+      PrivateContractId = privateContractId,
       PartnerCostInUSD = Some(1000),
       PredictiveClearingSavingsInUSD = pcsavings,
-      TTDMarginInUSD = Some(1000)
+      TTDMarginInUSD = Some(1000),
+      MarketplaceId = Some("MarketplaceId"),
     )).toDS()
   }
 
@@ -632,7 +638,8 @@ object MockData {
       BBF_OM_BidAmount = 7000,
       HadesBackoff_PCAdjustment_Current = hadesPCAdjustmentCurrent,
       HadesBackoff_PCAdjustment_Previous = hadesPCAdjustmentPrevious,
-      AdjustmentQuantile = 50
+      AdjustmentQuantile = 50,
+      BBF_FloorBuffer = Some(0.5)
     )
   }
 
@@ -657,8 +664,6 @@ object MockData {
     )
   }
 
-  def manualCampaignFloorBufferMock = CampaignFloorBufferSchema
-
   val campaignUnderdeliveryForHadesMock = CampaignThrottleMetricSchema(
     Date = Timestamp.valueOf(LocalDateTime.of(2024, 12, 1, 14, 30)),
     CampaignId = "jkl789",
@@ -670,7 +675,9 @@ object MockData {
     UnderdeliveryInUSD = 25,
     TotalAdvertiserCostFromPerformanceReportInUSD = 75,
     EstimatedBudgetInUSD = 100,
-    UnderdeliveryFraction = 0.25
+    UnderdeliveryFraction = 0.25,
+    CampaignThrottleMetric = 0.8,
+    CampaignEffectiveKeepRate = 0.9
   )
 
   val campaignBBFOptOutRateMock = Seq(

@@ -4,7 +4,8 @@ import com.thetradedesk.plutus.data.utils.S3DailyParquetDataset
 
 case class CampaignAdjustmentsSchema(
                                       CampaignId: String,
-                                      CampaignPCAdjustment: Double
+                                      CampaignPCAdjustment: Double,
+                                      CampaignBbfFloorBuffer: Double
                                     )
 
 object CampaignAdjustmentsDataset extends S3DailyParquetDataset[CampaignAdjustmentsSchema]{
