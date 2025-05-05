@@ -13,6 +13,8 @@ import org.apache.spark.sql.Row
 import org.apache.spark.sql.functions._
 import org.scalatest.matchers.should.Matchers._
 
+import java.time.LocalDateTime
+
 
 class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
   val tolerance = 0.00101
@@ -184,7 +186,6 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     assert(res.size() == 1)
   }
 
-
   test("Merge Hades Backoff and Campaign Backoff test for schema/column correctness") {
 
     val campaignAdjustmentsHadesData = DataGenerator.generateCampaignAdjustmentsHadesData
@@ -280,7 +281,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
       .toDF()
       .withColumnRenamed("value", "CampaignId")
       .as[Campaign]
-    val campaignFloorBuffer = Seq(CampaignFloorBufferSchema("jkl789", 0.6)).toDS()
+    val campaignFloorBuffer = Seq(CampaignFloorBufferSchema("jkl789", 0.6, LocalDateTime.of(2025, 4, 22, 12, 33).toLocalDate)).toDS()
 
     val filteredCampaigns = getFilteredCampaigns(
       campaignThrottleData = campaignUnderdeliveryData,
