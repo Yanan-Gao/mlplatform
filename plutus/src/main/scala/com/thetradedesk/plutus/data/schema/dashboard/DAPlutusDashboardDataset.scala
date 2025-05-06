@@ -30,7 +30,8 @@ case class DAPlutusDashboardSchema(
                                               BidCount: Long,
                                               //TotalBidCount: Long,
                                               bidsAtFloorPlutus: Option[Long],
-                                              AvailableSurplus: Option[Double]
+                                              AvailableSurplus: Option[Double],
+                                              finalBidsAtMaxBid: Option[Long]
   )
 
 object DAPlutusDashboardDataset {
