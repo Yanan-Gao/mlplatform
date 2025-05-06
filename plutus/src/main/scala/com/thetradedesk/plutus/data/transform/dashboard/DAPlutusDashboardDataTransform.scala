@@ -80,9 +80,11 @@ object DAPlutusDashboardDataTransform extends Logger {
           col("IsImp") &&
             !col("BidBelowFloorExceptedSource").isin(1, 2),
           greatest(lit(0), round(col("FinalBidPrice") - col("FloorPrice"), scale = 3))).otherwise(0)
-        ).alias("AvailableSurplus")
+        ).alias("AvailableSurplus"),
+        sum(when(
+          abs(col("FinalBidPrice") - col("MaxBidCpmInBucks")) < 0.001, 1).otherwise(0)
+        ).alias("finalBidsAtMaxBid")
       )
-
     final_df.selectAs[DAPlutusDashboardSchema]
   }
 
