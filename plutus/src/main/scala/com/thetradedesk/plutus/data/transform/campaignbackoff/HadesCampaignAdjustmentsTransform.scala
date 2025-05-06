@@ -5,10 +5,10 @@ import com.thetradedesk.plutus.data.schema.{PcResultsMergedDataset, PcResultsMer
 import com.thetradedesk.plutus.data.{AuctionType, envForRead, envForReadInternal}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.datasets.sources.{AdGroupDataSet, AdGroupRecord, AdvertiserDataSet, AdvertiserRecord, CampaignDataSet, CurrencyExchangeRateDataSet, CurrencyExchangeRateRecord}
+import com.thetradedesk.spark.datasets.sources.{AdGroupDataSet, AdGroupRecord, CampaignDataSet}
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import org.apache.hadoop.shaded.org.apache.commons.math3.special.Erf
-import org.apache.spark.sql.expressions.{UserDefinedFunction, Window}
+import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.{when, _}
 import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.storage.StorageLevel
@@ -71,8 +71,7 @@ object HadesCampaignAdjustmentsTransform {
   }
 
   def getUnderdeliveringCampaignBidData(bidData: DataFrame,
-                                        filteredCampaigns: Dataset[CampaignMetaData],
-                                        adGroupMaxBid: Dataset[AdGroupMetaData]): DataFrame = {
+                                        filteredCampaigns: Dataset[CampaignMetaData]): DataFrame = {
 
     val gss = udf((m: Double, s: Double, b: Double, e: Double) => gssFunc(m, s, b, e))
 
@@ -80,8 +79,7 @@ object HadesCampaignAdjustmentsTransform {
       // Exclude rare cases with initial bids below the floor to avoid skewing the median (this includes BBF Gauntlet bids)
       .filter(col("FloorPrice") < col("InitialBid"))
       .join(broadcast(filteredCampaigns), Seq("CampaignId"), "inner")
-      .join(broadcast(adGroupMaxBid), Seq("AdGroupId"), "left")
-      .withColumn("MaxBidCPMInUSD", coalesce(col("MaxBidCPMInUSD"), col("InitialBid"))) // Null check
+      .withColumn("MaxBidCpmInBucks", coalesce(col("MaxBidCpmInBucks"), col("InitialBid"))) // Null check
       .withColumn("Market", // Define Market only using AuctionType and if has DealId
         when(col("DealId").isNotNull,
           when(col("AuctionType").isin(AuctionType.FirstPrice, AuctionType.SecondPrice), "Variable")
@@ -92,7 +90,7 @@ object HadesCampaignAdjustmentsTransform {
       .withColumn("gen_initialBid",
         when(col("UseUncappedBidForPushdown"),
           when(col("MaxBidMultiplierCap").isNotNull,
-            least(col("UncappedBidPrice"), col("MaxBidCPMInUSD") * greatest(col("MaxBidMultiplierCap"), lit(1.0)))
+            least(col("UncappedBidPrice"), col("MaxBidCpmInBucks") * greatest(col("MaxBidMultiplierCap"), lit(1.0)))
           ).otherwise(col("UncappedBidPrice"))
         ).otherwise(col("InitialBid")))
       .withColumn("gen_discrepancy", when(col("AuctionType") === AuctionType.FixedPrice, lit(1)).otherwise(when(col("Discrepancy") === 0, lit(1)).otherwise(col("Discrepancy"))))
@@ -178,7 +176,6 @@ object HadesCampaignAdjustmentsTransform {
 
   case class CampaignMetaData(CampaignId: String, CampaignType: String, BBF_FloorBuffer: Double)
   case class Campaign(CampaignId: String)
-  case class AdGroupMetaData(AdGroupId: String, MaxBidCPMInUSD: BigDecimal)
   case class HadesMetrics(CampaignType: String, PacingType: String, OptoutType: String, AdjustmentQuantile: Int, Count: Long)
 
   val CampaignType_NewCampaign = "CampaignWithNewAdjustment";
@@ -529,32 +526,11 @@ object HadesCampaignAdjustmentsTransform {
       .join(filteredCampaigns, Seq("CampaignId"), "inner")
       .selectAs[AdGroupRecord]
 
-    // day 1's advertiser & currencyExchangeRate data is exported at the end of day 0
-    val advertiserData = AdvertiserDataSet().readLatestPartitionUpTo(date.plusDays(1), isInclusive = true)
-      .selectAs[AdvertiserRecord]
-    val currencyExchangeRateData = CurrencyExchangeRateDataSet().readLatestPartitionUpTo(date.plusDays(1), isInclusive = true)
-      .selectAs[CurrencyExchangeRateRecord]
-
     // Combine bid data from both pcOptout dataset and pcResultsMerged Dataset
     val bidData = getAllBidData(pcOptoutData, adGroupData, pcResultsMergedData)
 
-    // Get MaxBidInUSD to use for maxBidMultiplierCap. Join advertiserCurrencyExchangeRate to get ToUSD to convert MaxBidCPMInAdvertiserCurrency
-    val windowSpec = Window.partitionBy("CurrencyCodeId").orderBy(col("AsOfDateUTC").desc)
-    val latestCurrencyExchangeRates = currencyExchangeRateData
-      .withColumn("row_num", row_number().over(windowSpec))
-      .filter(col("row_num") === 1)
-      .drop("row_num")
-    val advertiserCurrencyExchangeRate = advertiserData
-      .join(broadcast(latestCurrencyExchangeRates), Seq("CurrencyCodeId"))
-      .select("AdvertiserId", "FromUSD").distinct()
-    val adGroupMaxBid = adGroupData
-      .join(advertiserCurrencyExchangeRate, Seq("AdvertiserId"), "left")
-      .withColumn("ToUSD", lit(1) / col("FromUSD"))
-      .withColumn("MaxBidCPMInUSD", col("MaxBidCPMInAdvertiserCurrency") * coalesce(col("ToUSD"), lit(1)))
-      .select("AdGroupId", "MaxBidCPMInUSD").as[AdGroupMetaData]
-
     // Get bid data filtered to underdelivering campaigns
-    val campaignBidData = getUnderdeliveringCampaignBidData(bidData, filteredCampaigns, adGroupMaxBid)
+    val campaignBidData = getUnderdeliveringCampaignBidData(bidData, filteredCampaigns)
     // Get Optout Rates & potential pushdowns for underdelivering campaigns
     val campaignBBFOptOutRate = aggregateCampaignBBFOptOutRate(campaignBidData, campaignUnderdeliveryData).cache()
 

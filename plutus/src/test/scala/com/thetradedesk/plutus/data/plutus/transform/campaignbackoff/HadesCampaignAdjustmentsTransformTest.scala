@@ -35,20 +35,15 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val floorBuffer = 0.60
     val underdeliveringCampaigns = Seq(CampaignMetaData(campaignId, CampaignType_NewCampaign, floorBuffer)).toDS()
 
-    val adgroupId = "abc123"
-    val maxBid = BigDecimal("1.0")
-    val adGroupMaxBid = Seq(AdGroupMetaData(adgroupId, maxBid)).toDS()
-
     val pcResultsMergedData = Seq(
-      pcResultsMergedMock(campaignId = Some(campaignId), adgroupId = Some(adgroupId), dealId = "0000", adjustedBidCPMInUSD = 6.8800, discrepancy = 1.1, floorPrice = 1, mu = -0.3071f, sigma =  0.6923f, auctionType = 3)
+      pcResultsMergedMock(campaignId = Some(campaignId), dealId = "0000", adjustedBidCPMInUSD = 6.8800, discrepancy = 1.1, floorPrice = 1, mu = -0.3071f, sigma =  0.6923f, auctionType = 3, maxBidCpmInBucks = 1.0)
     ).toDS().as[PcResultsMergedSchema]
 
     val bidData = getAllBidData(spark.emptyDataset[PlutusLogsData], spark.emptyDataset[AdGroupRecord], pcResultsMergedData)
 
     val campaignBidData = getUnderdeliveringCampaignBidData(
       bidData,
-      underdeliveringCampaigns,
-      adGroupMaxBid
+      underdeliveringCampaigns
     )
 
     val results_campaignBidData = campaignBidData.collectAsList().get(0)
@@ -74,14 +69,9 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val floorBuffer = 0.01
     val underdeliveringCampaigns = Seq(CampaignMetaData(campaignId, CampaignType_NewCampaign, floorBuffer)).toDS()
 
-    val adgroupId = "wiktpyo"
-    val maxBid = BigDecimal("45")
-    val adGroupMaxBid = Seq(AdGroupMetaData(adgroupId, maxBid)).toDS()
-
     val pcResultsMergedData = Seq(
       pcResultsMergedMock(
         campaignId = Some(campaignId),
-        adgroupId = Some(adgroupId),
         dealId = "IXTVPD73808257373558",
         adjustedBidCPMInUSD = 16.7124815578058,
         discrepancy = 1.21,
@@ -89,7 +79,9 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
         maxBidMultiplierCap = 1.2,
         mu = 1.7356233596801758f,
         sigma =  0.6707255840301514f,
-        auctionType = 1)
+        auctionType = 1,
+        maxBidCpmInBucks = 45.0
+      )
     ).toDS().as[PcResultsMergedSchema]
 
     val bidData = getAllBidData(spark.emptyDataset[PlutusLogsData], spark.emptyDataset[AdGroupRecord], pcResultsMergedData)
@@ -100,8 +92,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
     val campaignBidData = getUnderdeliveringCampaignBidData(
       bidData,
-      underdeliveringCampaigns,
-      adGroupMaxBid
+      underdeliveringCampaigns
     )
 
     val res = campaignBidData.collectAsList().get(0)
@@ -159,11 +150,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
     val throttleMetricDataset = Seq(campaignUnderdeliveryForHadesMock).toDS()
 
-    val adgroupId = "abc123"
-    val maxBid = BigDecimal("1.23")
-    val adGroupMaxBid = Seq(AdGroupMetaData(adgroupId, maxBid)).toDS()
-
-    val pcResultsMergedData = Seq(pcResultsMergedMock(campaignId = Some(campaignId), adgroupId = Some(adgroupId), dealId = "0000", adjustedBidCPMInUSD = 25.01, discrepancy = 1.1, floorPrice = 25, mu = -4.1280107498168945f, sigma = 1.0384914875030518f)).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedData = Seq(pcResultsMergedMock(campaignId = Some(campaignId), dealId = "0000", adjustedBidCPMInUSD = 25.01, discrepancy = 1.1, floorPrice = 25, mu = -4.1280107498168945f, sigma = 1.0384914875030518f, maxBidCpmInBucks = 1.23)).toDS().as[PcResultsMergedSchema]
 
     val plutusLogsData = Seq(pcResultsLogMock("abcd")).toDS().as[PlutusLogsData]
     val adgroupData = Seq(adGroupMock).toDS()
@@ -171,7 +158,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val bidData = getAllBidData(plutusLogsData, adgroupData, pcResultsMergedData)
 
     val underDeliveringCampaigns = Seq(CampaignMetaData(campaignId, CampaignType_NewCampaign, floorBuffer)).toDS()
-    val campaignBidData = getUnderdeliveringCampaignBidData(bidData, underDeliveringCampaigns, adGroupMaxBid)
+    val campaignBidData = getUnderdeliveringCampaignBidData(bidData, underDeliveringCampaigns)
 
     val campaignBBFOptOutRate = aggregateCampaignBBFOptOutRate(campaignBidData, throttleMetricDataset )
     val yesterdaysData = spark.emptyDataset[HadesAdjustmentSchemaV2]
