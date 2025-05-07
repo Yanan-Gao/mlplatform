@@ -15,11 +15,11 @@ object CampaignBbfFloorBufferCandidateSelectionJob {
   val openMarketShare = config.getDouble("openMarketShare", 0.01)
   val openPathShare = config.getDouble("openPathShare", 0.01)
 
-  val prometheus = new PrometheusClient("CampaignBackoff", "CampaignBbfFloorBufferSelection")
+  val prometheus = new PrometheusClient("CampaignBackoff", "CampaignBbfFloorBufferCandidateSelectionJob")
   val jobDurationGauge = prometheus.createGauge("campaign_bbf_floor_buffer_selection_job_run_time_seconds", "Job execution time in seconds")
-  val numFloorBufferRowsWritten = prometheus.createGauge("camapign_bbf_floor_buffer_num_rows", "Number of total rows in floor buffer file (or campaigns)")
-  val numFloorBufferRollbackRowsWritten = prometheus.createGauge("camapign_bbf_floor_buffer_rollback_num_rows", "Number of total rows rolled back (or campaigns)")
-  val floorBufferMetrics = prometheus.createGauge("camapign_bbf_floor_buffer_count_by_val", "Number of total rows for each floor buffer", "FloorBuffer")
+  val numFloorBufferRowsWritten = prometheus.createGauge("campaign_bbf_floor_buffer_num_rows", "Number of total rows in floor buffer file (or campaigns)")
+  val numFloorBufferRollbackRowsWritten = prometheus.createGauge("campaign_bbf_floor_buffer_rollback_num_rows", "Number of total rows rolled back (or campaigns)")
+  val floorBufferMetrics = prometheus.createGauge("campaign_bbf_floor_buffer_count_by_val", "Number of total rows for each floor buffer", "FloorBuffer")
 
   def main(args: Array[String]): Unit = {
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()

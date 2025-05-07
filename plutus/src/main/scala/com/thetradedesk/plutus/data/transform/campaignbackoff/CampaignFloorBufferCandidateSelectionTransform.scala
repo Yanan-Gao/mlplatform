@@ -127,6 +127,7 @@ object CampaignFloorBufferCandidateSelectionTransform {
   }
 
   def getRollbackCampaigns(
+                            date: LocalDate,
                             yesterdaysCampaignFloorBufferSnapshot: Dataset[CampaignFloorBufferSchema],
                             todaysCampaignThrottleMetricData: Dataset[CampaignThrottleMetricSchema],
                             onePercentFloorBufferRollbackCriteria: OnePercentFloorBufferRollbackCriteria
@@ -142,6 +143,7 @@ object CampaignFloorBufferCandidateSelectionTransform {
       .join(todaysCampaignThrottleMetricData
         .filter(col("UnderdeliveryFraction") >= onePercentFloorBufferRollbackCriteria.rollbackUnderdeliveryFraction &&
           col("CampaignThrottleMetric") > onePercentFloorBufferRollbackCriteria.rollbackCampaignThrottleMetric), Seq("CampaignId"), "inner")
+      .withColumn("AddedDate", lit(date))
 
     rollbackEligibleCandidatesOnePercent.selectAs[CampaignFloorBufferSchema]
   }
@@ -239,6 +241,7 @@ object CampaignFloorBufferCandidateSelectionTransform {
 
     // Remove the campaigns that fall under rollback logic
     val rollbackEligibleCampaigns = getRollbackCampaigns(
+      date,
       yesterdaysCampaignFloorBufferSnapshot,
       todaysCampaignThrottleMetricData,
       onePercentFloorBufferRollbackCriteria
