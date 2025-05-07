@@ -51,12 +51,12 @@ object HourlySeedSiteZipCount extends FeatureStoreBaseJob {
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
     for (i <- hourArray) {
-      runTransform0(args, hourInt = i)
+      runTransformHour(args, hourInt = i)
     }
     Array(("", 0))
   }
 
-  def runTransform0(args: Array[String], hourInt: Int): Unit = {
+  def runTransformHour(args: Array[String], hourInt: Int): Unit = {
     val writePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/config=${jobConfigName}/v=1/date=${getDateStr(date)}/hour=$hourInt/"
     val successFile = s"$writePath/_SUCCESS"
 
