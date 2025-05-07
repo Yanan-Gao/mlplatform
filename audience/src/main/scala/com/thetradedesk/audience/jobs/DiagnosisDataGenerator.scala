@@ -51,7 +51,7 @@ object DiagnosisDataGenerator {
         count(when(col("MatchedPrivateContract") === true, 1).otherwise(null)).as("PrivateContractCount"),
         count(when(col("RelevanceResultSource") === 0, 1).otherwise(null)).as("RelevanceSourceNoneCount"),
         count(when(col("RelevanceResultSource") === 1, 1).otherwise(null)).as("RelevanceSourceModelCount"),
-        count(when(col("RelevanceResultSource") === 2, 1).otherwise(null)).as("RelevanceSourceDefaultCount"),
+        count(when(col("RelevanceResultSource").isin(2, 6, 7, 8, 9), 1).otherwise(null)).as("RelevanceSourceDefaultCount"),
         count(when(col("RelevanceResultSource") === 3, 1).otherwise(null)).as("RelevanceSourceNoSeedCount"),
         count(when(col("RelevanceResultSource") === 4, 1).otherwise(null)).as("RelevanceSourceNoSyntheticIdCount"),
         count(when(col("RelevanceResultSource") === 5, 1).otherwise(null)).as("RelevanceSourceNoEmbeddingCount"),

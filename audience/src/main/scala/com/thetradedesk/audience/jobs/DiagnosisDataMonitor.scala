@@ -42,9 +42,9 @@ object DiagnosisDataMonitor {
         count("*").as("total"),
         count(
           when(col("metrics.RSMErrorCount") > col("TotalCount") * 0.1 &&
-            !(col("metrics.RelevanceSourceNoSeedCount") + col("metrics.RelevanceSourceNoneCount") === col("TotalCount")) &&
-            !(col("metrics.RelevanceSourceNoSyntheticIdCount") + col("metrics.RelevanceSourceNoneCount") === col("TotalCount")) &&
-            !(col("metrics.RelevanceSourceNoEmbeddingCount") + col("metrics.RelevanceSourceNoneCount") === col("TotalCount"))
+            !(col("metrics.RelevanceSourceNoSeedCount") + col("metrics.RelevanceSourceNoneCount") === col("metrics.RSMErrorCount")) &&
+            !(col("metrics.RelevanceSourceNoSyntheticIdCount") + col("metrics.RelevanceSourceNoneCount") === col("metrics.RSMErrorCount")) &&
+            !(col("metrics.RelevanceSourceNoEmbeddingCount") + col("metrics.RelevanceSourceNoneCount") === col("metrics.RSMErrorCount"))
             , 1).otherwise(null)
         ).as("rsmerror"),
         count(when(col("metrics.RMaxBidCount") > col("TotalCount") * 0.2, 1).otherwise(null)).as("rmaxbid"),
