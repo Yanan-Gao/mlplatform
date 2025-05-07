@@ -17,7 +17,7 @@ import org.apache.spark.sql.functions._
 import java.sql.Timestamp
 import java.time.LocalDate
 
-object CampaignBbfFloorBufferCandidateSelectionTransform {
+object CampaignFloorBufferCandidateSelectionTransform {
   val testSplit = config.getDoubleOption("testSplit")
 
   case class OnePercentFloorBufferCriteria(
@@ -50,7 +50,7 @@ object CampaignBbfFloorBufferCandidateSelectionTransform {
                                         AvgEffectiveKeepRate: Double
                                       )
 
-  def getTodays1PercentFloorBufferCandidateCampaigns(
+  def getFloorBufferCandidateCampaigns(
                                    date: LocalDate,
                                    onePercentFloorBufferCriteria: OnePercentFloorBufferCriteria,
                                    platformReportData: Dataset[RtbPlatformReportCondensedData],
@@ -60,7 +60,7 @@ object CampaignBbfFloorBufferCandidateSelectionTransform {
                                    campaignUnderDeliveryData: Dataset[CampaignUnderDeliveryData],
                                    latestRollbackBufferSnapshot: Dataset[CampaignFloorBufferSchema],
                                    testSplit: Option[Double],
-                                 ) = {
+                                 ): Dataset[CampaignFloorBufferSchema] = {
     /*
      Run query for today's candidate selection (currently query only for 1% buffer)
       - Hades Test Buckets Only
@@ -126,22 +126,19 @@ object CampaignBbfFloorBufferCandidateSelectionTransform {
     eligibleCandidates
   }
 
-  def getTodays1PercentRollbackCampaigns(
-                                          date: LocalDate,
-                                          latestCampaignFloorBufferSnapshot: Dataset[CampaignFloorBufferSchema],
-                                          todaysCampaignThrottleMetricData: Dataset[CampaignThrottleMetricSchema],
-                                          onePercentFloorBufferRollbackCriteria: OnePercentFloorBufferRollbackCriteria
-                                ) = {
+  def getRollbackCampaigns(
+                            yesterdaysCampaignFloorBufferSnapshot: Dataset[CampaignFloorBufferSchema],
+                            todaysCampaignThrottleMetricData: Dataset[CampaignThrottleMetricSchema],
+                            onePercentFloorBufferRollbackCriteria: OnePercentFloorBufferRollbackCriteria
+                                ): Dataset[CampaignFloorBufferSchema] = {
     /*
       Rollback criteria:
         Underdelivery fraction <0.05
         Throttle <= 0.8
       If it doesn't hit this criteria, then rollback to platform-wide buffer.
      */
-    val previousDay = date.minusDays(1)
-    val previousDayOnePercentBufferFloorCandidates = latestCampaignFloorBufferSnapshot.filter($"AddedDate" === previousDay)
 
-    val rollbackEligibleCandidatesOnePercent = previousDayOnePercentBufferFloorCandidates
+    val rollbackEligibleCandidatesOnePercent = yesterdaysCampaignFloorBufferSnapshot
       .join(todaysCampaignThrottleMetricData
         .filter(col("UnderdeliveryFraction") >= onePercentFloorBufferRollbackCriteria.rollbackUnderdeliveryFraction &&
           col("CampaignThrottleMetric") > onePercentFloorBufferRollbackCriteria.rollbackCampaignThrottleMetric), Seq("CampaignId"), "inner")
@@ -150,11 +147,11 @@ object CampaignBbfFloorBufferCandidateSelectionTransform {
   }
 
   def generateTodaysSnapshot(
-                              latestCampaignFloorBufferSnapshot: Dataset[CampaignFloorBufferSchema],
+                              yesterdaysCampaignFloorBufferSnapshot: Dataset[CampaignFloorBufferSchema],
                               todaysCandidatesWithFloorBuffer: Dataset[CampaignFloorBufferSchema],
                               todaysRollbackEligibleCampaigns: Dataset[CampaignFloorBufferSchema]
-                            ) = {
-    val latestCampaignFloorBufferSnapshotRenamed = latestCampaignFloorBufferSnapshot
+                            ): Dataset[CampaignFloorBufferSchema] = {
+    val yesterdaysCampaignFloorBufferSnapshotRenamed = yesterdaysCampaignFloorBufferSnapshot
       .withColumnRenamed("BBF_FloorBuffer", "LatestBBF_FloorBuffer")
       .withColumnRenamed("AddedDate", "LatestBBF_AddedDate")
     val todaysCandidatesWithFloorBufferRenamed = todaysCandidatesWithFloorBuffer
@@ -162,7 +159,7 @@ object CampaignBbfFloorBufferCandidateSelectionTransform {
       .withColumnRenamed("AddedDate", "TodaysBBF_AddedDate")
     val campaignsToRollback = todaysRollbackEligibleCampaigns.selectAs[Campaign]
 
-    val todaysCampaignFloorBufferSnapshot = latestCampaignFloorBufferSnapshotRenamed
+    val todaysCampaignFloorBufferSnapshot = yesterdaysCampaignFloorBufferSnapshotRenamed
       .join(broadcast(todaysCandidatesWithFloorBufferRenamed), Seq("CampaignId"), "outer")
       .select(
         col("CampaignId"),
@@ -182,7 +179,7 @@ object CampaignBbfFloorBufferCandidateSelectionTransform {
                                                          ) = {
 
     // Read the latest floor buffer snapshot
-    val latestCampaignFloorBufferSnapshot = CampaignFloorBufferDataset.readLatestDataUpToIncluding(date, envForReadInternal)
+    val yesterdaysCampaignFloorBufferSnapshot = CampaignFloorBufferDataset.readLatestDataUpToIncluding(date, envForReadInternal)
       .distinct()
 
     // Read the latest floor buffer rollback snapshot
@@ -228,7 +225,7 @@ object CampaignBbfFloorBufferCandidateSelectionTransform {
       ).selectAs[CampaignUnderDeliveryData]
 
     // Run query for today's candidate selection (currently querying only for 1% buffer)
-    val candidateCampaigns = getTodays1PercentFloorBufferCandidateCampaigns(
+    val candidateCampaigns = getFloorBufferCandidateCampaigns(
       date,
       onePercentFloorBufferTestCriteria,
       platformReportData,
@@ -241,16 +238,15 @@ object CampaignBbfFloorBufferCandidateSelectionTransform {
     )
 
     // Remove the campaigns that fall under rollback logic
-    val rollbackEligibleCampaigns = getTodays1PercentRollbackCampaigns(
-      date,
-      latestCampaignFloorBufferSnapshot,
+    val rollbackEligibleCampaigns = getRollbackCampaigns(
+      yesterdaysCampaignFloorBufferSnapshot,
       todaysCampaignThrottleMetricData,
       onePercentFloorBufferRollbackCriteria
     )
 
     // TODO: Change this to handle different floor buffer criterias
     val campaignBufferFloorSnapshot = generateTodaysSnapshot(
-      latestCampaignFloorBufferSnapshot,
+      yesterdaysCampaignFloorBufferSnapshot,
       candidateCampaigns,
       rollbackEligibleCampaigns)
 

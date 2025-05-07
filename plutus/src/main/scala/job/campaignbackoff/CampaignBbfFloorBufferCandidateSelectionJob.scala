@@ -1,6 +1,6 @@
 package job.campaignbackoff
 
-import com.thetradedesk.plutus.data.transform.campaignbackoff.CampaignBbfFloorBufferCandidateSelectionTransform
+import com.thetradedesk.plutus.data.transform.campaignbackoff.CampaignFloorBufferCandidateSelectionTransform
 import com.thetradedesk.spark.TTDSparkContext
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -24,7 +24,7 @@ object CampaignBbfFloorBufferCandidateSelectionJob {
   def main(args: Array[String]): Unit = {
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
 
-    CampaignBbfFloorBufferCandidateSelectionTransform.transform(date = date,
+    CampaignFloorBufferCandidateSelectionTransform.transform(date = date,
       fileCount = fileCount,
       underdeliveryFraction = underdeliveryFraction,
       throttleThreshold = throttleThreshold,
