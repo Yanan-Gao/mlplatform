@@ -122,6 +122,7 @@ class CampaignFloorBufferCandidateSelectionTransformTest extends TTDSparkTest {
 
     // Test 1 -> Rollback candidates found
     val todaysOnePercentCampaignToRollBack = getRollbackCampaigns(
+      testDate,
       yesterdaysCampaignFloorBufferSnapshot,
       campaignUnderdeliveryMock(
         campaignId = "abc2",
@@ -133,9 +134,12 @@ class CampaignFloorBufferCandidateSelectionTransformTest extends TTDSparkTest {
     )
 
     assert(todaysOnePercentCampaignToRollBack.collectAsList().size() == 1)
+    val rolledBackCampaign = todaysOnePercentCampaignToRollBack.filter($"CampaignId" === "abc2").collect().head
+    assert(rolledBackCampaign.AddedDate == testDate)
 
     // Test 2 -> Rollback candidates not found
     val todaysCampaignToRollBackNotFound = getRollbackCampaigns(
+      testDate,
       yesterdaysCampaignFloorBufferSnapshot,
       campaignUnderdeliveryMock(
         campaignId = "abc2",
