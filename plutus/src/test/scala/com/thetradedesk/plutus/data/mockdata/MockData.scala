@@ -680,6 +680,16 @@ object MockData {
     CampaignEffectiveKeepRate = 0.9
   )
 
+  def campaignFloorBufferMock(campaignId: String,
+                              bufferFloor: Double = 0.60,
+                              addedDate: LocalDate = LocalDate.of(2025, 5, 7)): CampaignFloorBufferSchema = {
+    CampaignFloorBufferSchema(
+      CampaignId = campaignId,
+      BBF_FloorBuffer = bufferFloor,
+      AddedDate = addedDate
+    )
+  }
+
   val campaignBBFOptOutRateMock = Seq(
     // Campaign is underdeliverying but doesn't have a high optout %
     HadesCampaignStats("campaignA", CampaignType_NewCampaign, 0.6, Array(1.1, 0.95, 0.8), Some(0.6), 10, 10, 100, 2, 20, 0, 0, 0, 0),
