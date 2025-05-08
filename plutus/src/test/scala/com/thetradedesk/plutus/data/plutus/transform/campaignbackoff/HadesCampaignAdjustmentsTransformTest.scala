@@ -177,32 +177,43 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
     val campaignAdjustmentsHadesData = DataGenerator.generateCampaignAdjustmentsHadesData
     val campaignAdjustmentsData = DataGenerator.generateCampaignAdjustmentsPacingData.limit(3)
-    val finalMergedCampaignAdjustments = mergeBackoffDatasets(campaignAdjustmentsData, campaignAdjustmentsHadesData)
+    val todaysCampaignFloorBufferSnapshot = DataGenerator.generateCampaignFloorBufferSnapshotData
+    val finalMergedCampaignAdjustments = mergeBackoffDatasets(
+      campaignAdjustmentsData,
+      campaignAdjustmentsHadesData,
+      todaysCampaignFloorBufferSnapshot
+    )
     val res = finalMergedCampaignAdjustments.select(
       "CampaignId",
       "hd_Hades_isProblemCampaign",
       "hd_HadesBackoff_PCAdjustment",
       "pc_CampaignPCAdjustment",
-      "MergedPCAdjustment"
+      "MergedPCAdjustment",
+      "CampaignBbfFloorBuffer"
     ).collect()
 
     // Test for campaign that is not Hades Backoff test campaign but in Campaign Backoff.
     // Campaign backoff adjustment should be final adjustment.
-    assert(res.contains(Row("campaign1", null, null, 0.75, 0.75)))
+    assert(res.contains(Row("campaign1", null, null, 0.75, 0.75, 0.01)))
 
     // Test for campaign that is Hades Backoff test campaign and in Campaign Backoff. This is a Hades problem campaign.
     // The minimum backoff adjustment should be final adjustment.
-    assert(res.contains(Row("campaign2", true, 0.6, 0.75, 0.6)))
+    assert(res.contains(Row("campaign2", true, 0.6, 0.75, 0.6, platformWideBuffer)))
 
 
     // Test for campaign that is Hades Backoff test campaign and in Campaign Backoff. This is not a Hades problem campaign.
     // The Campaign Backoff adjustment should be final adjustment.
-    assert(res.contains(Row("campaign3", false, 1.0, 0.75, 0.75)))
+    assert(res.contains(Row("campaign3", false, 1.0, 0.75, 0.75, platformWideBuffer)))
 
 
     // Test for campaign that is Hades Backoff test campaign and not in Campaign Backoff. This is a Hades problem campaign.
     // The Hades Backoff adjustment should be final adjustment.
-    assert(res.contains(Row("jkl789", true, 0.9, null, 0.9)))
+    assert(res.contains(Row("jkl789", true, 0.9, null, 0.9, platformWideBuffer)))
+
+    // Test for campaign that is not in the merge of Hades backoff and Campaign backoff but is present in the floor buffer snapshot.
+    // This campaign should have the final adjustment of 1 and it's floor buffer should be same as in the floor buffer snapshot.
+    assert(res.contains(Row("abc123", null, null, null, 1, 0.01)))
+    assert(res.contains(Row("abc234", null, null, null, 1, 0.20)))
   }
 
   test("test for mergeTodayWithYesterdaysData") {
