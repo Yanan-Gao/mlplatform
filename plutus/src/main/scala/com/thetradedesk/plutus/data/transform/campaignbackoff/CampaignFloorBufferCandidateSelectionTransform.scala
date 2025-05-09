@@ -18,7 +18,6 @@ import java.sql.Timestamp
 import java.time.LocalDate
 
 object CampaignFloorBufferCandidateSelectionTransform {
-  val testSplit = config.getDoubleOption("testSplit")
 
   case class OnePercentFloorBufferCriteria(
                                             avgUnderdeliveryFraction: Double,
@@ -176,9 +175,10 @@ object CampaignFloorBufferCandidateSelectionTransform {
   }
 
   private def getCampaignFloorBufferSnapshot(date: LocalDate,
-                                                          onePercentFloorBufferTestCriteria: OnePercentFloorBufferCriteria,
-                                                          onePercentFloorBufferRollbackCriteria: OnePercentFloorBufferRollbackCriteria
-                                                         ) = {
+                                             testSplit: Option[Double],
+                                             onePercentFloorBufferTestCriteria: OnePercentFloorBufferCriteria,
+                                             onePercentFloorBufferRollbackCriteria: OnePercentFloorBufferRollbackCriteria
+                                            ) = {
 
     // Read the latest floor buffer snapshot
     val yesterdaysCampaignFloorBufferSnapshot = CampaignFloorBufferDataset.readLatestDataUpToIncluding(date, envForReadInternal)
@@ -270,6 +270,7 @@ object CampaignFloorBufferCandidateSelectionTransform {
 
   def transform(date: LocalDate,
                 fileCount: Int,
+                testSplit: Option[Double],
                 underdeliveryFraction: Double,
                 throttleThreshold: Double,
                 openMarketShare: Double,
@@ -295,6 +296,7 @@ object CampaignFloorBufferCandidateSelectionTransform {
     // Generate today's buffer floor snapshot
     val (todaysRollbackEligibleCampaigns, todaysCampaignFloorBufferDatasetSnapshot) = getCampaignFloorBufferSnapshot(
       date=date,
+      testSplit=testSplit,
       onePercentFloorBufferTestCriteria=onePercentFloorBufferCriteria,
       onePercentFloorBufferRollbackCriteria=onePercentFloorBufferRollbackCriteria
     )

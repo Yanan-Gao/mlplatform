@@ -8,6 +8,7 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 object CampaignBbfFloorBufferCandidateSelectionJob {
   val date = config.getDateRequired("date")
   val fileCount = config.getInt("fileCount", 10)
+  val testSplit = config.getDoubleOption("testSplit")
   val underdeliveryFraction = config.getDouble("underdeliveryFraction", 0.02)
   val throttleThreshold = config.getDouble("throttle", 0.8)
   val rollbackUnderdeliveryFraction = config.getDouble("rollbackUnderdeliveryFraction", 0.05)
@@ -26,6 +27,7 @@ object CampaignBbfFloorBufferCandidateSelectionJob {
 
     CampaignFloorBufferCandidateSelectionTransform.transform(date = date,
       fileCount = fileCount,
+      testSplit = testSplit,
       underdeliveryFraction = underdeliveryFraction,
       throttleThreshold = throttleThreshold,
       openMarketShare = openMarketShare,
