@@ -37,9 +37,13 @@ object GenerateTrainSetClick extends KongmingBaseJob {
     val startDate = date.minusDays(lookback)
     val win = Window.partitionBy($"CampaignIdEncoded", $"AdGroupIdEncoded")
 
-    // exclude partners that don't share click data
+    // exclude partners that don't share click data, and MedHealth data
     val advertiserToExclude = ClickPartnerExcludeList.readAdvertiserList()
-      .withColumnRenamed("AdvertiserId", "AdvertiserIdStr")
+      .union(
+        DaRestrictedAdvertiserDataset().readLatestPartitionUpTo(date, true)
+          .filter(($"CategoryPolicy" === lit("Health")) && ($"IsRestricted" === lit(1)))
+          .selectAs[AdvertiserExcludeRecord]
+      ).withColumnRenamed("AdvertiserId", "AdvertiserIdStr")
 
     // Imp [T-ConvLB, T]
     val sampledImpressions = (0 to lookback).map(i => {
