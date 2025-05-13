@@ -30,7 +30,7 @@ case class CBufferPartitionReaderFactory(
                                           options: CBufferOptions,
                                           filters: Array[Filter]) extends FilePartitionReaderFactory with Logging {
   private val readColumns = readDataSchema.fields.map(_.name).toSet
-  private val features = SchemaHelper.inferFeature(dataSchema)
+  private val features = SchemaHelper.inferFeature(dataSchema, options.columnBased)
     .filter(e => readColumns.contains(e.name))
 
   override def buildReader(file: PartitionedFile): PartitionReader[InternalRow] = {

@@ -7,7 +7,7 @@ import org.apache.spark.sql.execution.datasources.{OutputWriter, OutputWriterFac
 import org.apache.spark.sql.types.StructType
 
 case class CBufferOutputWriterFactory(sparkSession: SparkSession, options: CBufferOptions, dataSchema: StructType) extends OutputWriterFactory {
-  private val features = SchemaHelper.inferFeature(dataSchema)
+  private val features = SchemaHelper.inferFeature(dataSchema, options.columnBased)
   CBufferDataSource.writeSchema(this.features, options)(sparkSession)
 
   // todo support compression codec

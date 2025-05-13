@@ -1,7 +1,6 @@
 package com.thetradedesk.featurestore.data.cbuffer
 
-import com.thetradedesk.featurestore.data.cbuffer.CBufferConstants.BitsInInteger
-import com.thetradedesk.featurestore.data.cbuffer.CBufferFileReader.{EFMAGIC, MAGIC}
+import com.thetradedesk.featurestore.data.cbuffer.CBufferConstants._
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.mapreduce.TaskAttemptContext
 import org.apache.spark.sql.catalyst.InternalRow
@@ -26,7 +25,7 @@ case class CBufferFileWriter(path: Path, context: TaskAttemptContext, schema: St
   private var recordCount: Int = 0
   private var dataSize: Long = 0
   private val intBuffer: ByteBuffer = MemoryHelper.allocateBuffer(BitsInInteger, options.useOffHeap, options.bigEndian)
-  private var chunk: CBufferChunk = CBufferChunk(schema, features, options)
+  private var chunk: CBufferChunk = if (options.columnBased) CBufferColumnBasedChunk(schema, features, options) else CBufferRowBasedChunk(schema, features, options)
   private val fs = path.getFileSystem(context.getConfiguration)
   private val outputStream: OutputStream = fs.create(path, false)
   private var closed: Boolean = false
@@ -63,7 +62,7 @@ case class CBufferFileWriter(path: Path, context: TaskAttemptContext, schema: St
   }
 
   private def writeMagic(): Unit = {
-    val magic = if (options.encryptedMode) EFMAGIC else MAGIC
+    val magic = if (options.encryptedMode) EFMAGIC else if (options.columnBased) COLUMN_MAGIC else MAGIC
     this.outputStream.write(magic)
     this.dataSize += magic.length
   }

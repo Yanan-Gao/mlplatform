@@ -71,7 +71,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
 
     assertSmallDatasetEquality(refineDataFrame(other, UserIDKey), refineDataFrame(df, UserIDKey))
 
-    // validate cbuffer format
+    // validate cbuffer raw-based format
     val cbufferPath = subTempFolder()
     println("cbuffer file path: " + cbufferPath)
     df
@@ -85,6 +85,22 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
       .cb(cbufferPath)
 
     assertSmallDatasetEquality(refineDataFrame(df2, UserIDKey), refineDataFrame(df, UserIDKey))
+
+    // validate cbuffer column-based format
+    val cbufferPath2 = subTempFolder()
+    println("cbuffer file path: " + cbufferPath)
+    df
+      .write
+      .option("maxChunkRecordCount", "2")
+      .option("defaultChunkRecordSize", "2")
+      .option("columnBasedChunk", "true")
+      .cb(cbufferPath2)
+
+    val df3 = spark
+      .read
+      .cb(cbufferPath2)
+
+    assertSmallDatasetEquality(refineDataFrame(df3, UserIDKey), refineDataFrame(df, UserIDKey))
   }
 
   private def createUserFeatureSourceDataFrame(dateTime: LocalDateTime, df: DataFrame, userFeatureMergeDefinition: UserFeatureMergeDefinition): Unit = {

@@ -8,26 +8,30 @@ case class CBufferOptions(schemaPath: Option[String],
                           maxChunkRecordCount: Int,
                           defaultChunkRecordSize: Int,
                           defaultReachBatch: Int,
+                          defaultVarColumnScaleRatio: Int,
                           maxFileSize: Long,
                           bigEndian: Boolean,
                           useOffHeap: Boolean,
                           outputPath: Option[String],
                           fixedChunkBuffer: Boolean,
                           encryptedMode: Boolean,
-                          codecFactory: CompressionCodecFactory)
+                          codecFactory: CompressionCodecFactory,
+                          columnBased: Boolean)
 
 object CBufferOptions {
   def apply(parameters: CaseInsensitiveMap[String]): CBufferOptions = CBufferOptions(parameters.get(SchemaPathName),
     parameters.get(MaxChunkRecordCountKey).map(_.toInt).getOrElse(DefaultMaxChunkRecordCount),
     parameters.get(DefaultChunkRecordSizeKey).map(_.toInt).getOrElse(DefaultRecordSize),
     parameters.get(DefaultReadBatchKey).map(_.toInt).getOrElse(DefaultReadBatch),
+    parameters.get(DefaultVarColumnScaleRatioKey).map(_.toInt).getOrElse(DefaultVarColumnScaleRatio),
     parameters.get(DefaultMaxFileSizeKey).map(_.toLong).getOrElse(DefaultMaxFileSize),
     "true".equals(parameters.getOrElse(BigEndianKey, "false")),
     "true".equals(parameters.getOrElse(UseOffHeapKey, "false")),
     parameters.get("path"),
     "true".equals(parameters.getOrElse(FixedChunkBufferKey, "false")),
     encryptedMode = false,
-    null)
+    null,
+    "true".equals(parameters.getOrElse(ColumnBasedKey, "false")))
 
   def apply(parameters: Map[String, String]): CBufferOptions = this (CaseInsensitiveMap[String](parameters))
 }
