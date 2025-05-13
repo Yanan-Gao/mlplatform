@@ -1,15 +1,10 @@
 package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore.datasets._
-import com.thetradedesk.featurestore.date
-import com.thetradedesk.featurestore.features.Features._
-import com.thetradedesk.featurestore.jobs.FeatureStoreAggJob
-import com.thetradedesk.featurestore.jobs.GenDailyConvertedImpressions.convLookback
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataSetExtensions}
-import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions._
 

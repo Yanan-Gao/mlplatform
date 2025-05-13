@@ -9,13 +9,13 @@ import org.apache.spark.sql.types.{ArrayType, BinaryType, BooleanType, ByteType,
 import org.apache.spark.sql.{Column, DataFrame, DataFrameReader, DataFrameWriter}
 
 object SchemaHelper {
-  def inferFeature(structType: StructType): Array[CBufferFeature] = {
+  def inferFeature(structType: StructType, columnBased: Boolean): Array[CBufferFeature] = {
     organizeFeatures(
       structType.fields
         .map(e => {
           val (dataType, isArray) = toInternalDataType(e.dataType)
           (e.name, dataType, isArray, if (isArray && e.metadata.contains(ArrayLengthKey)) e.metadata.getLong(ArrayLengthKey).toInt else 0)
-        }))
+        }), columnBased)
   }
 
   def inferSchema(features: Array[CBufferFeature]): StructType = {
@@ -75,7 +75,7 @@ object SchemaHelper {
   }
 
   // name, dataType, isArray, arrayLength
-  def organizeFeatures(featureDefs: Array[(String, DataType, Boolean, Int)]): Array[CBufferFeature] = {
+  def organizeFeatures(featureDefs: Array[(String, DataType, Boolean, Int)], columnBased: Boolean): Array[CBufferFeature] = {
     var index = -1
     var offset = 7
     var prevSize = 0
@@ -110,16 +110,16 @@ object SchemaHelper {
           e1._1._1.compareTo(e2._1._1) < 0
         }
       }).map(_._1)
-      .map(
-        e => {
+      .zipWithIndex
+      .map{
+        case (e, idx) => {
           nextStep(e._2, e._3, e._4)
           e._2 match {
-            case DataType.Bool => CBufferFeature(e._1, index, offset, DataType.Bool, e._3)
-            case _ => CBufferFeature(e._1, index, if (e._4 > 1) e._4 else 0, e._2, e._3)
+            case DataType.Bool => CBufferFeature(e._1, if (columnBased) idx else index, offset, DataType.Bool, e._3)
+            case _ => CBufferFeature(e._1, if (columnBased) idx else index, if (e._4 > 1) e._4 else 0, e._2, e._3)
           }
         }
-      )
-      .toArray
+      }
   }
 
   private def checkBounds(index: Int, maxDataSizePerRecord: Int) = {
@@ -147,8 +147,8 @@ object SchemaHelper {
         .format("com.thetradedesk.featurestore.data.cbuffer.CBufferDataSource")
         .save(path)
       // update schema file
-      val features = SchemaHelper.inferFeature(df.schema)
       val cBufferOptions = CBufferOptions(options + ("path" -> path))
+      val features = SchemaHelper.inferFeature(df.schema, cBufferOptions.columnBased)
       CBufferDataSource.writeSchema(features, cBufferOptions)(df.sparkSession)
     }
 

@@ -11,7 +11,7 @@ import org.apache.spark.sql.vectorized.{ColumnVector, ColumnarBatch}
 
 class CBufferRecordReader(options: CBufferOptions, schema: StructType, features: Array[CBufferFeature], capacity: Int) extends RecordReader[Void, InternalRow] {
   private var file: Path = _
-  private var reader: CBufferFileReader = _
+  private var reader: CBufferFileReaderFacade = _
   private var rowsReturned: Int = 0
   private var totalRowCount: Int = 0
 
@@ -33,7 +33,7 @@ class CBufferRecordReader(options: CBufferOptions, schema: StructType, features:
     val split = inputSplit.asInstanceOf[FileSplit]
     this.file = split.getPath
 
-    this.reader = new CBufferFileReader(this.file, this.features, this.options)
+    this.reader = new CBufferFileReaderFacade(this.file, this.features, this.options)
 
     this.totalRowCount = this.reader.openFile(configuration)
   }
