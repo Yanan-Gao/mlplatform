@@ -7,7 +7,8 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.core.ProvisioningS3DataSet
 import org.apache.spark.sql.Dataset
 
-final case class DaRestrictedAdvertiserRecord(Advertiser: String,
+final case class DaRestrictedAdvertiserRecord(AdvertiserId: String,
+                                              CategoryPolicy: String,
                                               IsRestricted: Int
                                              )
 
@@ -16,7 +17,7 @@ case class DaRestrictedAdvertiserDataset() extends ProvisioningS3DataSet[DaRestr
 
 final case class ClickPartnerExcludeRecord(PartnerId: String)
 
-final case class ClickAdvertiserExcludeRecord(AdvertiserId: String)
+final case class AdvertiserExcludeRecord(AdvertiserId: String)
 
 object ClickPartnerExcludeList {
   val S3Path: String = "s3://thetradedesk-mlplatform-us-east-1/env=prod/metadata/philo/partnerFilter/partner_exclusion_list.csv"
@@ -27,9 +28,9 @@ object ClickPartnerExcludeList {
     .toDF("PartnerId")
     .selectAs[ClickPartnerExcludeRecord]
 
-  def readAdvertiserList(): Dataset[ClickAdvertiserExcludeRecord] = {
+  def readAdvertiserList(): Dataset[AdvertiserExcludeRecord] = {
     val advertiserDf = AdvertiserDataSet().readLatestPartitionUpTo(date).select("AdvertiserId", "PartnerId")
 
-    partnerListDf.join(advertiserDf, Seq("PartnerId"), "inner").selectAs[ClickAdvertiserExcludeRecord]
+    partnerListDf.join(advertiserDf, Seq("PartnerId"), "inner").selectAs[AdvertiserExcludeRecord]
   }
 }
