@@ -1,6 +1,8 @@
 package com.thetradedesk.plutus.data.transform.campaignbackoff
 
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
+import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferDataset, MergedCampaignFloorBufferSchema}
+import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.{Campaign, bucketCount, getTestBucketUDF, platformWideBuffer}
 import com.thetradedesk.plutus.data.schema.{PcResultsMergedDataset, PcResultsMergedSchema, PlutusLogsData, PlutusOptoutBidsDataset}
 import com.thetradedesk.plutus.data.{AuctionType, envForRead, envForReadInternal}
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -9,21 +11,15 @@ import com.thetradedesk.spark.datasets.sources.{AdGroupDataSet, AdGroupRecord, C
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import org.apache.hadoop.shaded.org.apache.commons.math3.special.Erf
 import org.apache.spark.sql.expressions.UserDefinedFunction
-import org.apache.spark.sql.functions.{when, _}
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.storage.StorageLevel
 
 import java.time.LocalDate
-import scala.util.hashing.MurmurHash3
 
 object HadesCampaignAdjustmentsTransform {
 
   // Constants
-  val bucketCount = 1000
-  val platformWideBuffer = 0.50
-
-  val getTestBucketUDF = udf(computeBudgetBucketHash(_: String, _: Int))
-
   val floor = 0.0
   val goldenRatio = (math.sqrt(5.0) + 1.0) / 2.0
   val valCloseTo0 = 1e-10
@@ -32,12 +28,6 @@ object HadesCampaignAdjustmentsTransform {
   val DefaultAdjustmentQuantile = 50
 
   val EPSILON = 0.01
-
-  def computeBudgetBucketHash(entityId: String, bucketCount: Int): Short = {
-    // Budget Bucket Hash Function
-    // Tested here: https://dbc-7ae91121-86fd.cloud.databricks.com/editor/notebooks/1420435698064795?o=2560362456103657#command/1420435698066605
-    Math.abs(MurmurHash3.stringHash(entityId) % bucketCount).toShort
-  }
 
   def cdf(mu: Double, sigma: Double, x: Double): Double = {
     //val a = (math.log(x) - mu) / math.sqrt(2 * math.pow(sigma, 2))
@@ -175,7 +165,6 @@ object HadesCampaignAdjustmentsTransform {
   }
 
   case class CampaignMetaData(CampaignId: String, CampaignType: String, BBF_FloorBuffer: Double)
-  case class Campaign(CampaignId: String)
   case class HadesMetrics(CampaignType: String, PacingType: String, OptoutType: String, AdjustmentQuantile: Int, Count: Long)
 
   val CampaignType_NewCampaign = "CampaignWithNewAdjustment";
@@ -191,7 +180,7 @@ object HadesCampaignAdjustmentsTransform {
   val OptoutStatus_NoBids = "NoBids"
 
   def getFilteredCampaigns(campaignThrottleData: Dataset[CampaignThrottleMetricSchema],
-                           campaignFloorBuffer: Dataset[CampaignFloorBufferSchema],
+                           campaignFloorBuffer: Dataset[MergedCampaignFloorBufferSchema],
                            potentiallyNewCampaigns: Dataset[Campaign],
                            adjustedCampaigns: Dataset[Campaign],
                            underdeliveryThreshold: Double,
@@ -230,12 +219,11 @@ object HadesCampaignAdjustmentsTransform {
       .union(newUnderDeliveringCampaigns)
       .union(yesterdaysCampaigns)
       .join(campaignFloorBuffer, Seq("CampaignId"), "left")
-    .withColumn("BBF_FloorBuffer",
-      when(col("BBF_FloorBuffer").isNotNull, $"BBF_FloorBuffer")
-        .otherwise(lit(platformWideBuffer))
-    )
-    .selectAs[CampaignMetaData]
-    .cache()
+      .withColumn("BBF_FloorBuffer",
+        when(col("BBF_FloorBuffer").isNotNull, $"BBF_FloorBuffer")
+          .otherwise(lit(platformWideBuffer)))
+      .selectAs[CampaignMetaData]
+      .cache()
 
     res
   }
@@ -480,7 +468,8 @@ object HadesCampaignAdjustmentsTransform {
   def transform(date: LocalDate,
                 testSplit: Option[Double],
                 underdeliveryThreshold: Double,
-                fileCount: Int
+                fileCount: Int,
+                campaignFloorBufferData: Dataset[MergedCampaignFloorBufferSchema]
                ): Dataset[HadesAdjustmentSchemaV2] = {
 
     val yesterdaysData = HadesCampaignAdjustmentsDataset.readLatestDataUpToIncluding(
@@ -507,12 +496,9 @@ object HadesCampaignAdjustmentsTransform {
       .join(nonArchivedCampaigns, Seq("CampaignId"), "inner")
       .selectAs[Campaign].distinct()
 
-    val todays_campaignFloorBuffer = CampaignFloorBufferDataset.readLatestDataUpToIncluding(date.plusDays(1), envForReadInternal)
-      .distinct()
-
     val filteredCampaigns = getFilteredCampaigns(
       campaignThrottleData = campaignUnderdeliveryData,
-      campaignFloorBuffer = todays_campaignFloorBuffer,
+      campaignFloorBuffer = campaignFloorBufferData,
       potentiallyNewCampaigns = liveCampaigns,
       adjustedCampaigns = yesterdaysData
         .filter($"HadesBackoff_PCAdjustment".isNotNull && $"HadesBackoff_PCAdjustment" < 1.0)

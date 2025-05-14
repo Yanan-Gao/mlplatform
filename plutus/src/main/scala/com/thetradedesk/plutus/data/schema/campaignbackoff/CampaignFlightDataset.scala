@@ -47,6 +47,7 @@ object CampaignFlightDataset extends S3DailyParquetDataset[CampaignFlightRecord]
 case class CampaignFlightRecord(
                                  CampaignFlightId: Long,
                                  CampaignId: String,
+                                 StartDateInclusiveUTC: Timestamp,
                                  EndDateExclusiveUTC: Timestamp,
                                  BudgetInAdvertiserCurrency: BigDecimal,
                                  IsCurrent: Int

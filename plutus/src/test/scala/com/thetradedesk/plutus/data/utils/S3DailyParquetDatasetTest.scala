@@ -1,6 +1,6 @@
 package com.thetradedesk.plutus.data.utils
 
-import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform.Campaign
+import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.Campaign
 import org.apache.spark.sql.SparkSession
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers

@@ -1,10 +1,11 @@
-package com.thetradedesk.plutus.data.plutus.transform.campaignbackoff
+package com.thetradedesk.plutus.data.plutus.transform.campaignfloorbuffer
 
 import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.plutus.data.mockdata.MockData.{campaignUnderdeliveryMock, platformReportMock}
+import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.CampaignFloorBufferSchema
+import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.CampaignFlightData
+import com.thetradedesk.plutus.data.transform.campaignfloorbuffer.CampaignFloorBufferCandidateSelectionTransform._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.plutus.data.schema.campaignbackoff.CampaignFloorBufferSchema
-import com.thetradedesk.plutus.data.transform.campaignbackoff.CampaignFloorBufferCandidateSelectionTransform.{CampaignUnderDeliveryData, FlightData, OnePercentFloorBufferCriteria, OnePercentFloorBufferRollbackCriteria, PacingData, SupplyVendorData, generateBbfFloorBufferMetrics, generateTodaysSnapshot, getFloorBufferCandidateCampaigns, getRollbackCampaigns}
 
 import java.sql.Timestamp
 import java.time.LocalDateTime
@@ -13,9 +14,9 @@ class CampaignFloorBufferCandidateSelectionTransformTest extends TTDSparkTest {
 
   val testDate = LocalDateTime.of(2025, 4, 22, 12, 33).toLocalDate
 
-  test("Testing CampaignFloorBufferCandidateSelection generateTodaysSnapshot") {
+  test("Testing CampaignFloorBufferCandidateSelection generateTodaysFloorBufferDataset") {
     // Test1 -> Latest buffer floor snapshot exists and new candidates generated today
-    val yesterdaysBufferFloorSnapshot = Seq(
+    val yesterdaysFloorBufferDataset = Seq(
       CampaignFloorBufferSchema("abc1", 0.2, testDate.minusDays(3)),
       CampaignFloorBufferSchema("abc2", 0.1, testDate.minusDays(2)),
       CampaignFloorBufferSchema("abc3", 0.1, testDate),
@@ -25,26 +26,26 @@ class CampaignFloorBufferCandidateSelectionTransformTest extends TTDSparkTest {
       CampaignFloorBufferSchema("abc2", 0.2, testDate),
     ).toDS()
 
-    val testTodaysSnapshot1 = generateTodaysSnapshot(yesterdaysBufferFloorSnapshot, todaysCandidateCampaignsWithBuffer, Seq.empty[CampaignFloorBufferSchema].toDS())
+    val testTodaysFloorBufferDataset1 = generateTodaysFloorBufferDataset(yesterdaysFloorBufferDataset, todaysCandidateCampaignsWithBuffer, Seq.empty[CampaignFloorBufferSchema].toDS())
 
-    assert(testTodaysSnapshot1.collectAsList().size() == 4, "Validating snapshot size")
+    assert(testTodaysFloorBufferDataset1.collectAsList().size() == 4, "Validating dataset size")
 
-    // If the campaign exists in today's candidates and latest snapshot, today's buffer value will be used.
-    val overridenCampaign = testTodaysSnapshot1.filter($"CampaignId" === "abc2").collect().head
+    // If the campaign exists in today's candidates and latest dataset, today's buffer value will be used.
+    val overridenCampaign = testTodaysFloorBufferDataset1.filter($"CampaignId" === "abc2").collect().head
     assert(overridenCampaign.BBF_FloorBuffer == 0.2, "Campaign used today's floor buffer")
     assert(overridenCampaign.AddedDate == testDate, "Campaign date is updated")
 
-    // Check the snapshot has correct dates
-    val oldCampaign = testTodaysSnapshot1.filter($"CampaignId" === "abc1").collect().head
+    // Check the dataset has correct dates
+    val oldCampaign = testTodaysFloorBufferDataset1.filter($"CampaignId" === "abc1").collect().head
     assert(oldCampaign.AddedDate == testDate.minusDays(3), "Campaign has correct Added date")
 
-    // Test 2 -> Campaigns found in rollback dataset should be removed from today's snapshot
+    // Test 2 -> Campaigns found in rollback dataset should be removed from today's dataset
     val todaysRollbackEligibleCampaigns = Seq(
       CampaignFloorBufferSchema("abc1", 0.2, testDate),
     ).toDS()
-    val testTodaysSnapshot2 = generateTodaysSnapshot(yesterdaysBufferFloorSnapshot, todaysCandidateCampaignsWithBuffer, todaysRollbackEligibleCampaigns)
-    assert(testTodaysSnapshot2.collectAsList().size() == 3, "Validating snapshot size after rollback")
-    assert(testTodaysSnapshot2.filter($"CampaignId" === "abc1").isEmpty)
+    val testTodaysFloorBufferDataset2 = generateTodaysFloorBufferDataset(yesterdaysFloorBufferDataset, todaysCandidateCampaignsWithBuffer, todaysRollbackEligibleCampaigns)
+    assert(testTodaysFloorBufferDataset2.collectAsList().size() == 3, "Validating dataset size after rollback")
+    assert(testTodaysFloorBufferDataset2.filter($"CampaignId" === "abc1").isEmpty)
   }
 
   test("Testing CampaignFloorBufferCandidateSelection getFloorBufferCandidateCampaigns") {
@@ -57,10 +58,11 @@ class CampaignFloorBufferCandidateSelectionTransformTest extends TTDSparkTest {
     )
     val mockPlatformReportData = platformReportMock(privateContractId = null)
     val mockSupplyVendorData = Seq(SupplyVendorData("supplyvendor", OpenPathEnabled = true)).toDS()
-    val mockFlightData = Seq(FlightData("newcampaign1", Timestamp.valueOf(LocalDateTime.of(2025, 4, 26, 13, 20)))).toDS()
-    val mockPacingData = Seq(PacingData("newcampaign1", true)).toDS()
+    val mockFlightData = Seq(CampaignFlightData("newcampaign1",
+      Timestamp.valueOf(LocalDateTime.of(2025, 4, 26, 13, 20)),
+      Timestamp.valueOf(LocalDateTime.of(2025, 5, 25, 13, 20)))).toDS()
     val campaignUnderDeliveryData = Seq(CampaignUnderDeliveryData("newcampaign1", 0.02, 0.02, 0.8, 0.01)).toDS()
-    val latestRollbackBufferSnapshot = Seq(CampaignFloorBufferSchema("oldcampaign", 0.6, testDate)).toDS()
+    val latestRollbackBufferDataset = Seq(CampaignFloorBufferSchema("oldcampaign", 0.6, testDate)).toDS()
 
     // Test1 -> Campaign is added to todays candidates if meets the criteria
     val todaysTestCampaigns1 = getFloorBufferCandidateCampaigns(
@@ -69,10 +71,8 @@ class CampaignFloorBufferCandidateSelectionTransformTest extends TTDSparkTest {
       platformReportData = mockPlatformReportData,
       supplyVendorData = mockSupplyVendorData,
       flightData = mockFlightData,
-      pacingData = mockPacingData,
       campaignUnderDeliveryData = campaignUnderDeliveryData,
-      latestRollbackBufferSnapshot = latestRollbackBufferSnapshot,
-      testSplit = Some(0.9)
+      latestRollbackBufferData = latestRollbackBufferDataset
     )
 
     assert(todaysTestCampaigns1.collectAsList().size() == 1)
@@ -84,10 +84,8 @@ class CampaignFloorBufferCandidateSelectionTransformTest extends TTDSparkTest {
       platformReportData = mockPlatformReportData,
       supplyVendorData = mockSupplyVendorData,
       flightData = mockFlightData,
-      pacingData = mockPacingData,
       campaignUnderDeliveryData = Seq(CampaignUnderDeliveryData("newcampaign1", 0.02, 0.02, 0.9, 0.01)).toDS(),
-      latestRollbackBufferSnapshot = latestRollbackBufferSnapshot,
-      testSplit = Some(0.9)
+      latestRollbackBufferData = latestRollbackBufferDataset
     )
 
     assert(todaysTestCampaignsUnderDeliveryFractionAndThrottleCriteria.collectAsList().size() == 0)
@@ -99,10 +97,8 @@ class CampaignFloorBufferCandidateSelectionTransformTest extends TTDSparkTest {
       platformReportData = mockPlatformReportData,
       supplyVendorData = mockSupplyVendorData,
       flightData = mockFlightData,
-      pacingData = mockPacingData,
       campaignUnderDeliveryData = campaignUnderDeliveryData,
-      latestRollbackBufferSnapshot = Seq(CampaignFloorBufferSchema("newcampaign1", 0.6, testDate.minusDays(7))).toDS(),
-      testSplit = Some(0.9)
+      latestRollbackBufferData = Seq(CampaignFloorBufferSchema("newcampaign1", 0.6, testDate.minusDays(7))).toDS()
     )
 
     assert(todaysTestCampaignsRollbackDatePriorTo7Days.collectAsList().size() == 1)
@@ -110,7 +106,7 @@ class CampaignFloorBufferCandidateSelectionTransformTest extends TTDSparkTest {
   }
 
   test("Testing CampaignFloorBufferCandidateSelection getRollbackCampaigns") {
-    val yesterdaysCampaignFloorBufferSnapshot = Seq(
+    val yesterdaysCampaignFloorBufferDataset = Seq(
       CampaignFloorBufferSchema("abc1", 0.01, testDate),
       CampaignFloorBufferSchema("abc2", 0.01, testDate.minusDays(1))
     ).toDS()
@@ -123,7 +119,7 @@ class CampaignFloorBufferCandidateSelectionTransformTest extends TTDSparkTest {
     // Test 1 -> Rollback candidates found
     val todaysOnePercentCampaignToRollBack = getRollbackCampaigns(
       testDate,
-      yesterdaysCampaignFloorBufferSnapshot,
+      yesterdaysCampaignFloorBufferDataset,
       campaignUnderdeliveryMock(
         campaignId = "abc2",
         date = Timestamp.valueOf(LocalDateTime.of(2025, 4, 22, 0, 0)),
@@ -140,7 +136,7 @@ class CampaignFloorBufferCandidateSelectionTransformTest extends TTDSparkTest {
     // Test 2 -> Rollback candidates not found
     val todaysCampaignToRollBackNotFound = getRollbackCampaigns(
       testDate,
-      yesterdaysCampaignFloorBufferSnapshot,
+      yesterdaysCampaignFloorBufferDataset,
       campaignUnderdeliveryMock(
         campaignId = "abc2",
         date = Timestamp.valueOf(LocalDateTime.of(2025, 4, 22, 0, 0)),
@@ -153,17 +149,17 @@ class CampaignFloorBufferCandidateSelectionTransformTest extends TTDSparkTest {
   }
 
   test("Testing CampaignFloorBufferCandidateSelection generateBbfFloorBufferMetrics") {
-    val todaysCampaignFloorBufferSnapshot = Seq(
+    val todaysCampaignFloorBufferDataset = Seq(
       CampaignFloorBufferSchema("abc1", 0.2, testDate),
       CampaignFloorBufferSchema("abc2", 0.1, testDate),
       CampaignFloorBufferSchema("abc3", 0.1, testDate.minusDays(1))
     ).toDS()
 
-    val todaysCampaignFloorBufferRollbackSnapshot = Seq(
+    val todaysCampaignFloorBufferRollbackDataset = Seq(
       CampaignFloorBufferSchema("xyz1", 0.2, testDate),
     ).toDS()
 
-    val testMetrics = generateBbfFloorBufferMetrics(todaysCampaignFloorBufferSnapshot, todaysCampaignFloorBufferRollbackSnapshot)
+    val testMetrics = generateBbfFloorBufferMetrics(todaysCampaignFloorBufferDataset, todaysCampaignFloorBufferRollbackDataset)
 
     assert(testMetrics.floorBufferTotalCount == 3)
     assert(testMetrics.floorBufferRollbackTotalCount == 1)

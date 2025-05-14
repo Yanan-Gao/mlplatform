@@ -1,9 +1,8 @@
 package com.thetradedesk.plutus.data.transform.campaignbackoff
 
-import com.thetradedesk.plutus.data.envForReadInternal
-import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsDataset, CampaignAdjustmentsPacingSchema, CampaignAdjustmentsSchema, CampaignFloorBufferDataset, CampaignFloorBufferSchema, HadesAdjustmentSchemaV2, MergedCampaignAdjustmentsDataset}
-import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform.platformWideBuffer
-import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsDataset, CampaignAdjustmentsPacingSchema, CampaignAdjustmentsSchema, HadesAdjustmentSchemaV2, MergedCampaignAdjustmentsDataset}
+import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.MergedCampaignFloorBufferSchema
+import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.platformWideBuffer
 import job.campaignbackoff.CampaignAdjustmentsJob.{date, fileCount, numRowsWritten}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, Dataset}
@@ -21,24 +20,28 @@ object MergeCampaignBackoffAdjustments {
 
   def mergeBackoffDatasets(campaignAdjustmentsPacingDataset: Dataset[CampaignAdjustmentsPacingSchema],
                            hadesCampaignAdjustmentsDataset: Dataset[HadesAdjustmentSchemaV2],
-                           todaysCampaignFloorBufferSnapshot: Dataset[CampaignFloorBufferSchema]
+                           campaignFloorBufferDataset: Dataset[MergedCampaignFloorBufferSchema],
                           )
   : DataFrame = {
     addPrefix(campaignAdjustmentsPacingDataset.toDF(), "pc_")
       .join(broadcast(addPrefix(hadesCampaignAdjustmentsDataset.toDF(), "hd_")), Seq("CampaignId"), "fullouter")
-      .join(broadcast(addPrefix(todaysCampaignFloorBufferSnapshot.toDF(), "bf_")), Seq("CampaignId"), "fullouter")
+      .join(broadcast(addPrefix(campaignFloorBufferDataset.toDF(), "bf_")), Seq("CampaignId"), "fullouter")
       .withColumn("MergedPCAdjustment", least(lit(1.0), col("pc_CampaignPCAdjustment"), col("hd_HadesBackoff_PCAdjustment")))
-      .withColumn("CampaignBbfFloorBuffer", coalesce(col("hd_BBF_FloorBuffer"), col("bf_BBF_FloorBuffer"), lit(HadesCampaignAdjustmentsTransform.platformWideBuffer)))
+      // Floor buffer assigned in the CampaignBbfFloorBufferCandidateSelectionJob will take precedence.
+      // It should ideally be same as hd_BBF_FloorBuffer since HadesCampaignAdjustmentsTransform reads the same data to set floor buffer.
+      // If none of them is found, CampaignBbfFloorBuffer should be set to platformWideBuffer
+      .withColumn("CampaignBbfFloorBuffer", coalesce(col("bf_BBF_FloorBuffer"), col("hd_BBF_FloorBuffer"), lit(platformWideBuffer)))
   }
 
-  def transform(plutusCampaignAdjustmentsDataset: Dataset[CampaignAdjustmentsPacingSchema], hadesCampaignAdjustmentsDataset: Dataset[HadesAdjustmentSchemaV2]): Unit = {
-    // Merging Campaign Backoff, Hades Backoff and any remaining campaigns with non platform wide floor buffer
-    val todaysCampaignFloorBufferSnapshot = CampaignFloorBufferDataset.readLatestDataUpToIncluding(date.plusDays(1), envForReadInternal)
-      .distinct()
+  def transform(plutusCampaignAdjustmentsDataset: Dataset[CampaignAdjustmentsPacingSchema],
+                hadesCampaignAdjustmentsDataset: Dataset[HadesAdjustmentSchemaV2],
+                campaignFloorBufferData: Dataset[MergedCampaignFloorBufferSchema]): Unit = {
+    // Merging Campaign Backoff, Hades Backoff, Adhoc test campaigns and any remaining campaigns with non platform wide floor buffer
+
     val finalMergedAdjustments = mergeBackoffDatasets(
       plutusCampaignAdjustmentsDataset,
       hadesCampaignAdjustmentsDataset,
-      todaysCampaignFloorBufferSnapshot
+      campaignFloorBufferData
     )
       .persist(StorageLevel.MEMORY_ONLY_2)
 

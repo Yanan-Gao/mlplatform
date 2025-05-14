@@ -4,6 +4,8 @@ import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.plutus.data.mockdata.DataGenerator
 import com.thetradedesk.plutus.data.mockdata.MockData._
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
+import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferSchema}
+import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.{Campaign, bucketCount, getTestBucketUDF, platformWideBuffer}
 import com.thetradedesk.plutus.data.schema.{PcResultsMergedSchema, PlutusLogsData}
 import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform._
 import com.thetradedesk.plutus.data.transform.campaignbackoff.MergeCampaignBackoffAdjustments.mergeBackoffDatasets
@@ -177,11 +179,12 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
     val campaignAdjustmentsHadesData = DataGenerator.generateCampaignAdjustmentsHadesData
     val campaignAdjustmentsData = DataGenerator.generateCampaignAdjustmentsPacingData.limit(3)
-    val todaysCampaignFloorBufferSnapshot = DataGenerator.generateCampaignFloorBufferSnapshotData
+    val todaysCampaignFloorBufferData = DataGenerator.generateMergedCampaignFloorBufferData
+
     val finalMergedCampaignAdjustments = mergeBackoffDatasets(
       campaignAdjustmentsData,
       campaignAdjustmentsHadesData,
-      todaysCampaignFloorBufferSnapshot
+      todaysCampaignFloorBufferData,
     )
     val res = finalMergedCampaignAdjustments.select(
       "CampaignId",
@@ -194,7 +197,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
     // Test for campaign that is not Hades Backoff test campaign but in Campaign Backoff.
     // Campaign backoff adjustment should be final adjustment.
-    assert(res.contains(Row("campaign1", null, null, 0.75, 0.75, 0.01)))
+    assert(res.contains(Row("campaign1", null, null, 0.75, 0.75, 0.35)))
 
     // Test for campaign that is Hades Backoff test campaign and in Campaign Backoff. This is a Hades problem campaign.
     // The minimum backoff adjustment should be final adjustment.
@@ -279,7 +282,8 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
       .toDF()
       .withColumnRenamed("value", "CampaignId")
       .as[Campaign]
-    val campaignFloorBuffer = Seq(CampaignFloorBufferSchema("jkl789", 0.6, LocalDateTime.of(2025, 4, 22, 12, 33).toLocalDate)).toDS()
+
+    val campaignFloorBuffer = Seq(MergedCampaignFloorBufferSchema("jkl789", 0.6, LocalDateTime.of(2025, 4, 22, 12, 33).toLocalDate,"Automatic")).toDS()
 
     val filteredCampaigns = getFilteredCampaigns(
       campaignThrottleData = campaignUnderdeliveryData,

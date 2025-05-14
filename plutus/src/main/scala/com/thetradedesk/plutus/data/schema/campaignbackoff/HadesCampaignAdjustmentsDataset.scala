@@ -1,6 +1,6 @@
 package com.thetradedesk.plutus.data.schema.campaignbackoff
 
-import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform.platformWideBuffer
+import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.platformWideBuffer
 import com.thetradedesk.plutus.data.utils.S3DailyParquetDataset
 import org.apache.spark.sql.{Dataset, Encoder, SparkSession}
 

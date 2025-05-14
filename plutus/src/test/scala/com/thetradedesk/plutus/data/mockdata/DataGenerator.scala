@@ -1,7 +1,8 @@
 package com.thetradedesk.plutus.data.mockdata
 
 import MockData._
-import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsPacingSchema, CampaignFlightRecord, CampaignFloorBufferSchema, CampaignThrottleMetricSchema, HadesAdjustmentSchemaV2, RtbPlatformReportCondensedData}
+import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsPacingSchema, CampaignFlightRecord, CampaignThrottleMetricSchema, HadesAdjustmentSchemaV2, RtbPlatformReportCondensedData}
+import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferSchema}
 import com.thetradedesk.spark.datasets.sources.CountryRecord
 import org.apache.spark.sql.Dataset
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -235,11 +236,27 @@ object DataGenerator {
     ).toDS()
   }
 
-  def generateCampaignFloorBufferSnapshotData: Dataset[CampaignFloorBufferSchema] = {
+  def generateCampaignFloorBufferData: Dataset[CampaignFloorBufferSchema] = {
     Seq(
       campaignFloorBufferMock(campaignId = "campaign1", bufferFloor = 0.01),
       campaignFloorBufferMock(campaignId = "abc123", bufferFloor = 0.01),
       campaignFloorBufferMock(campaignId = "abc234", bufferFloor = 0.20)
+    ).toDS()
+  }
+
+  def generateAdhocCampaignFloorBufferData: Dataset[CampaignFloorBufferSchema] = {
+    Seq(
+      campaignFloorBufferMock(campaignId = "campaign2", bufferFloor = 0.55),
+      campaignFloorBufferMock(campaignId = "abc123", bufferFloor = 0.35, addedDate = LocalDateTime.of(2025, 5, 8, 9, 13).toLocalDate),
+      campaignFloorBufferMock(campaignId = "xyz234", bufferFloor = 0.30)
+    ).toDS()
+  }
+
+  def generateMergedCampaignFloorBufferData: Dataset[MergedCampaignFloorBufferSchema] = {
+    Seq(
+      mergedCampaignFloorBufferMock(campaignId = "campaign1", bufferFloor = 0.35, bufferType = "Adhoc"),
+      mergedCampaignFloorBufferMock(campaignId = "abc123", bufferFloor = 0.01),
+      mergedCampaignFloorBufferMock(campaignId = "abc234", bufferFloor = 0.20)
     ).toDS()
   }
 
