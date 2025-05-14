@@ -1,9 +1,15 @@
 package job.campaignbackoff
 
+import com.thetradedesk.plutus.data.envForReadInternal
+import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferDataset}
 import com.thetradedesk.plutus.data.transform.campaignbackoff.{HadesCampaignAdjustmentsTransform, MergeCampaignBackoffAdjustments, PlutusCampaignAdjustmentsTransform}
+import com.thetradedesk.plutus.data.transform.campaignfloorbuffer.MergeCampaignFloorBufferTransform.readMergedFloorBufferData
+import com.thetradedesk.plutus.data.utils.S3NoFilesFoundException
 import com.thetradedesk.spark.TTDSparkContext
+import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 
 object CampaignAdjustmentsJob {
   val date = config.getDateRequired("date")
@@ -23,9 +29,11 @@ object CampaignAdjustmentsJob {
   def main(args: Array[String]): Unit = {
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
 
+    val campaignFloorBufferData = MergedCampaignFloorBufferDataset.readDate(date, envForReadInternal)
+
     val plutusCampaignAdjustmentsDataset = PlutusCampaignAdjustmentsTransform.transform(date, updateAdjustmentsVersion, fileCount)
-    val hadesCampaignAdjustmentsDataset  = HadesCampaignAdjustmentsTransform.transform(date, testSplit, underdeliveryThreshold, fileCount)
-    MergeCampaignBackoffAdjustments.transform(plutusCampaignAdjustmentsDataset, hadesCampaignAdjustmentsDataset)
+    val hadesCampaignAdjustmentsDataset  = HadesCampaignAdjustmentsTransform.transform(date, testSplit, underdeliveryThreshold, fileCount, campaignFloorBufferData)
+    MergeCampaignBackoffAdjustments.transform(plutusCampaignAdjustmentsDataset, hadesCampaignAdjustmentsDataset, campaignFloorBufferData)
 
     jobDurationGaugeTimer.setDuration()
     prometheus.pushMetrics()

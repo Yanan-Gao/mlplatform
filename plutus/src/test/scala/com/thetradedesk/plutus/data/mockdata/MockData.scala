@@ -4,6 +4,7 @@ import com.thetradedesk.geronimo.bidsimpression.schema._
 import com.thetradedesk.plutus.data.MediaTypeId
 import com.thetradedesk.plutus.data.schema._
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
+import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferSchema}
 import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform.{CampaignType_AdjustedCampaign, CampaignType_NewCampaign, EPSILON, gssFunc}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources._
@@ -528,11 +529,12 @@ object MockData {
     )).toDS()
   }
 
-  def campaignFlightMock(campaignFlightId: Long = 1122330L, campaignId: String = "newcampaign1", enddate: Timestamp = Timestamp.valueOf(LocalDateTime.of(2024, 12, 1, 14, 30)), isCurrent: Int = 1
+  def campaignFlightMock(campaignFlightId: Long = 1122330L, campaignId: String = "newcampaign1", startdate: Timestamp = Timestamp.valueOf(LocalDateTime.of(2024, 11, 1, 12, 10)),  enddate: Timestamp = Timestamp.valueOf(LocalDateTime.of(2024, 12, 1, 14, 30)), isCurrent: Int = 1
                         ): Dataset[CampaignFlightRecord] = {
     Seq(CampaignFlightRecord(
       CampaignFlightId = campaignFlightId,
       CampaignId = campaignId,
+      StartDateInclusiveUTC = startdate,
       EndDateExclusiveUTC = enddate,
       BudgetInAdvertiserCurrency = 2000,
       IsCurrent = isCurrent
@@ -687,6 +689,18 @@ object MockData {
       CampaignId = campaignId,
       BBF_FloorBuffer = bufferFloor,
       AddedDate = addedDate
+    )
+  }
+
+  def mergedCampaignFloorBufferMock(campaignId: String,
+                                    bufferFloor: Double = 0.60,
+                                    addedDate: LocalDate = LocalDate.of(2025, 5, 7),
+                                    bufferType: String = "Automatic"): MergedCampaignFloorBufferSchema = {
+    MergedCampaignFloorBufferSchema(
+      CampaignId = campaignId,
+      BBF_FloorBuffer = bufferFloor,
+      AddedDate = addedDate,
+      BufferType = bufferType
     )
   }
 

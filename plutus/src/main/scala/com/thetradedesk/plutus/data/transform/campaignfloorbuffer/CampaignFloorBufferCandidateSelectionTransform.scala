@@ -1,20 +1,19 @@
-package com.thetradedesk.plutus.data.transform.campaignbackoff
+package com.thetradedesk.plutus.data.transform.campaignfloorbuffer
 
 import com.thetradedesk.plutus.data.envForReadInternal
+import com.thetradedesk.plutus.data.schema.campaignbackoff._
+import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferDataset, CampaignFloorBufferRollbackDataset, CampaignFloorBufferSchema}
+import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.{Campaign, CampaignFlightData}
+import com.thetradedesk.plutus.data.utils.S3NoFilesFoundException
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignFlightDataset, CampaignFloorBufferDataset, CampaignFloorBufferRollbackDataset, CampaignFloorBufferSchema, CampaignThrottleMetricDataset, CampaignThrottleMetricSchema, RtbPlatformReportCondensedData}
-import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform.{Campaign, bucketCount, getTestBucketUDF}
-import com.thetradedesk.plutus.data.utils.S3NoFilesFoundException
 import com.thetradedesk.spark.datasets.sources.SupplyVendorDataSet
 import com.thetradedesk.spark.datasets.sources.vertica.UnifiedRtbPlatformReportDataSet
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
-import com.thetradedesk.spark.util.TTDConfig.config
 import job.campaignbackoff.CampaignBbfFloorBufferCandidateSelectionJob.{floorBufferMetrics, numFloorBufferRollbackRowsWritten, numFloorBufferRowsWritten}
-import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{DataFrame, Dataset}
 
-import java.sql.Timestamp
 import java.time.LocalDate
 
 object CampaignFloorBufferCandidateSelectionTransform {
@@ -39,8 +38,6 @@ object CampaignFloorBufferCandidateSelectionTransform {
                                   )
 
   case class SupplyVendorData(SupplyVendor: String, OpenPathEnabled: Boolean)
-  case class FlightData(CampaignId: String, EndDateExclusiveUTC: Timestamp)
-  case class PacingData(CampaignId: String, IsValuePacing: Boolean)
   case class CampaignUnderDeliveryData(
                                         CampaignId: String,
                                         AvgUnderdeliveryInUSD: Double,
@@ -50,15 +47,13 @@ object CampaignFloorBufferCandidateSelectionTransform {
                                       )
 
   def getFloorBufferCandidateCampaigns(
-                                   date: LocalDate,
-                                   onePercentFloorBufferCriteria: OnePercentFloorBufferCriteria,
-                                   platformReportData: Dataset[RtbPlatformReportCondensedData],
-                                   supplyVendorData: Dataset[SupplyVendorData],
-                                   flightData: Dataset[FlightData],
-                                   pacingData: Dataset[PacingData],
-                                   campaignUnderDeliveryData: Dataset[CampaignUnderDeliveryData],
-                                   latestRollbackBufferSnapshot: Dataset[CampaignFloorBufferSchema],
-                                   testSplit: Option[Double],
+                                        date: LocalDate,
+                                        onePercentFloorBufferCriteria: OnePercentFloorBufferCriteria,
+                                        platformReportData: Dataset[RtbPlatformReportCondensedData],
+                                        supplyVendorData: Dataset[SupplyVendorData],
+                                        flightData: Dataset[CampaignFlightData],
+                                        campaignUnderDeliveryData: Dataset[CampaignUnderDeliveryData],
+                                        latestRollbackBufferData: Dataset[CampaignFloorBufferSchema],
                                  ): Dataset[CampaignFloorBufferSchema] = {
     /*
      Run query for today's candidate selection (currently query only for 1% buffer)
@@ -71,13 +66,10 @@ object CampaignFloorBufferCandidateSelectionTransform {
      */
 
     val rtbSupplyVendorPacingJoined = platformReportData
-      .join(pacingData, Seq("CampaignId"), "inner")
       .join(flightData, Seq("CampaignId"), "inner")
       .join(supplyVendorData, Seq("SupplyVendor"), "left")
 
     val aggregatedRtbPlatform = rtbSupplyVendorPacingJoined
-      .withColumn("TestBucket", getTestBucketUDF(col("CampaignId"), lit(bucketCount)))
-      .filter(col("TestBucket") < (lit(bucketCount) * testSplit.getOrElse(1.0)))
       .withColumn("IsPrivate", when(col("PrivateContractId").isNull, "Open").otherwise("Private"))
       .groupBy("CampaignId", "OpenPathEnabled", "IsPrivate")
       .agg(sum(col("PartnerCostInUSD")).alias("PartnerCostInUSD"))
@@ -109,7 +101,7 @@ object CampaignFloorBufferCandidateSelectionTransform {
           && col("OpenPathShare") >= onePercentFloorBufferCriteria.openPathShare
       )
 
-    val onePercentFloorBufferEligibleCandidates = candidatesWithOnePercentCriteria
+    val onePercentFloorBufferEligibleCampaigns = candidatesWithOnePercentCriteria
       .select("CampaignId")
       .distinct()
       .withColumn("BBF_FloorBuffer", lit(onePercentFloorBufferCriteria.floorBuffer))
@@ -119,15 +111,15 @@ object CampaignFloorBufferCandidateSelectionTransform {
 
     // Remove any campaigns that were rolled back within 7 days
     val rollbackThresholdDate = date.minusDays(7)
-    val recentlyRolledBackCandidates = latestRollbackBufferSnapshot.filter(col("AddedDate") > rollbackThresholdDate).selectAs[Campaign].distinct()
-    val eligibleCandidates = onePercentFloorBufferEligibleCandidates.join(broadcast(recentlyRolledBackCandidates), Seq("CampaignId"), "left_anti").selectAs[CampaignFloorBufferSchema]
+    val recentlyRolledBackCampaigns = latestRollbackBufferData.filter(col("AddedDate") > rollbackThresholdDate).selectAs[Campaign].distinct()
+    val eligibleCampaigns = onePercentFloorBufferEligibleCampaigns.join(broadcast(recentlyRolledBackCampaigns), Seq("CampaignId"), "left_anti").selectAs[CampaignFloorBufferSchema]
 
-    eligibleCandidates
+    eligibleCampaigns
   }
 
   def getRollbackCampaigns(
                             date: LocalDate,
-                            yesterdaysCampaignFloorBufferSnapshot: Dataset[CampaignFloorBufferSchema],
+                            yesterdaysCampaignFloorBufferData: Dataset[CampaignFloorBufferSchema],
                             todaysCampaignThrottleMetricData: Dataset[CampaignThrottleMetricSchema],
                             onePercentFloorBufferRollbackCriteria: OnePercentFloorBufferRollbackCriteria
                                 ): Dataset[CampaignFloorBufferSchema] = {
@@ -138,21 +130,21 @@ object CampaignFloorBufferCandidateSelectionTransform {
       If it doesn't hit this criteria, then rollback to platform-wide buffer.
      */
 
-    val rollbackEligibleCandidatesOnePercent = yesterdaysCampaignFloorBufferSnapshot
+    val rollbackEligibleCampaignsOnePercent = yesterdaysCampaignFloorBufferData
       .join(todaysCampaignThrottleMetricData
         .filter(col("UnderdeliveryFraction") >= onePercentFloorBufferRollbackCriteria.rollbackUnderdeliveryFraction &&
           col("CampaignThrottleMetric") > onePercentFloorBufferRollbackCriteria.rollbackCampaignThrottleMetric), Seq("CampaignId"), "inner")
       .withColumn("AddedDate", lit(date))
 
-    rollbackEligibleCandidatesOnePercent.selectAs[CampaignFloorBufferSchema]
+    rollbackEligibleCampaignsOnePercent.selectAs[CampaignFloorBufferSchema]
   }
 
-  def generateTodaysSnapshot(
-                              yesterdaysCampaignFloorBufferSnapshot: Dataset[CampaignFloorBufferSchema],
-                              todaysCandidatesWithFloorBuffer: Dataset[CampaignFloorBufferSchema],
-                              todaysRollbackEligibleCampaigns: Dataset[CampaignFloorBufferSchema]
+  def generateTodaysFloorBufferDataset(
+                                        yesterdaysCampaignFloorBufferData: Dataset[CampaignFloorBufferSchema],
+                                        todaysCandidatesWithFloorBuffer: Dataset[CampaignFloorBufferSchema],
+                                        todaysRollbackEligibleCampaigns: Dataset[CampaignFloorBufferSchema]
                             ): Dataset[CampaignFloorBufferSchema] = {
-    val yesterdaysCampaignFloorBufferSnapshotRenamed = yesterdaysCampaignFloorBufferSnapshot
+    val yesterdaysCampaignFloorBufferDataRenamed = yesterdaysCampaignFloorBufferData
       .withColumnRenamed("BBF_FloorBuffer", "LatestBBF_FloorBuffer")
       .withColumnRenamed("AddedDate", "LatestBBF_AddedDate")
     val todaysCandidatesWithFloorBufferRenamed = todaysCandidatesWithFloorBuffer
@@ -160,7 +152,7 @@ object CampaignFloorBufferCandidateSelectionTransform {
       .withColumnRenamed("AddedDate", "TodaysBBF_AddedDate")
     val campaignsToRollback = todaysRollbackEligibleCampaigns.selectAs[Campaign]
 
-    val todaysCampaignFloorBufferSnapshot = yesterdaysCampaignFloorBufferSnapshotRenamed
+    val todaysCampaignFloorBufferData = yesterdaysCampaignFloorBufferDataRenamed
       .join(broadcast(todaysCandidatesWithFloorBufferRenamed), Seq("CampaignId"), "outer")
       .select(
         col("CampaignId"),
@@ -171,23 +163,53 @@ object CampaignFloorBufferCandidateSelectionTransform {
       .selectAs[CampaignFloorBufferSchema]
       .cache()
 
-    todaysCampaignFloorBufferSnapshot
+    todaysCampaignFloorBufferData
   }
 
-  private def getCampaignFloorBufferSnapshot(date: LocalDate,
-                                             testSplit: Option[Double],
-                                             onePercentFloorBufferTestCriteria: OnePercentFloorBufferCriteria,
-                                             onePercentFloorBufferRollbackCriteria: OnePercentFloorBufferRollbackCriteria
-                                            ) = {
+  def generateBbfFloorBufferMetrics(
+                                     todaysCampaignFloorBufferDataset: Dataset[CampaignFloorBufferSchema],
+                                     todaysRollbackEligibleCampaigns: Dataset[CampaignFloorBufferSchema]
+                     ) = {
+    val floorBufferCounts = todaysCampaignFloorBufferDataset.groupBy("BBF_FloorBuffer").count()
+    BbfFloorBufferMetrics(
+      floorBufferTotalCount = todaysCampaignFloorBufferDataset.count(),
+      floorBufferRollbackTotalCount = todaysRollbackEligibleCampaigns.count(),
+      countByFloorBuffer = floorBufferCounts
+    )
+  }
 
-    // Read the latest floor buffer snapshot
-    val yesterdaysCampaignFloorBufferSnapshot = CampaignFloorBufferDataset.readLatestDataUpToIncluding(date, envForReadInternal)
+  def transform(date: LocalDate,
+                fileCount: Int,
+                underdeliveryFraction: Double,
+                throttleThreshold: Double,
+                openMarketShare: Double,
+                openPathShare: Double,
+                rollbackUnderdeliveryFraction: Double,
+                rollbackThrottleThreshold: Double,
+                liveHadesTestDACampaigns: Dataset[CampaignFlightData]
+               ): Dataset[CampaignFloorBufferSchema] = {
+
+    // Currently there is only 1% buffer floor criteria. We can create another criteria class to handle multiple criterias
+    val onePercentFloorBufferCriteria = OnePercentFloorBufferCriteria(
+      avgUnderdeliveryFraction=underdeliveryFraction,
+      avgCampaignThrottleMetric=throttleThreshold,
+      openMarketShare=openMarketShare,
+      openPathShare=openPathShare,
+      floorBuffer = 0.01
+    )
+
+    val onePercentFloorBufferRollbackCriteria = OnePercentFloorBufferRollbackCriteria(
+      rollbackUnderdeliveryFraction = rollbackUnderdeliveryFraction,
+      rollbackCampaignThrottleMetric = rollbackThrottleThreshold,
+    )
+
+    // Read the latest floor buffer data
+    val yesterdaysCampaignFloorBufferData = CampaignFloorBufferDataset.readLatestDataUpToIncluding(date, envForReadInternal)
       .distinct()
 
-    // Read the latest floor buffer rollback snapshot
-    val latestRollbackBufferSnapshot = try {
-      CampaignFloorBufferRollbackDataset.readLatestDataUpToIncluding(date, envForReadInternal)
-      .distinct()
+    // Read the latest floor buffer rollback data
+    val latestRollbackBufferData = try {
+      CampaignFloorBufferRollbackDataset.readLatestDataUpToIncluding(date, envForReadInternal).distinct()
     } catch {
       case _: S3NoFilesFoundException => Seq.empty[CampaignFloorBufferSchema].toDS()
     }
@@ -205,14 +227,8 @@ object CampaignFloorBufferCandidateSelectionTransform {
 
     // Read flight data
     val minFlightEnd: LocalDate = date.plusDays(2)
-    val flightData = CampaignFlightDataset.readDate(date, env=envForReadInternal)
-      .selectAs[FlightData]
-      .distinct()
+    val flightData = liveHadesTestDACampaigns
       .filter(col("EndDateExclusiveUTC") >= to_date(lit(minFlightEnd)))
-
-    val pacingData = CampaignThrottleMetricDataset.readDate(date, envForReadInternal)
-      .selectAs[PacingData]
-      .filter(col("IsValuePacing"))
 
     val todaysCampaignThrottleMetricData = CampaignThrottleMetricDataset.readDate(date, envForReadInternal)
       .selectAs[CampaignThrottleMetricSchema]
@@ -229,86 +245,36 @@ object CampaignFloorBufferCandidateSelectionTransform {
     // Run query for today's candidate selection (currently querying only for 1% buffer)
     val candidateCampaigns = getFloorBufferCandidateCampaigns(
       date,
-      onePercentFloorBufferTestCriteria,
+      onePercentFloorBufferCriteria,
       platformReportData,
       supplyVendorData,
       flightData,
-      pacingData,
       campaignUnderDeliveryData,
-      latestRollbackBufferSnapshot,
-      testSplit
+      latestRollbackBufferData
     )
 
     // Remove the campaigns that fall under rollback logic
     val rollbackEligibleCampaigns = getRollbackCampaigns(
       date,
-      yesterdaysCampaignFloorBufferSnapshot,
+      yesterdaysCampaignFloorBufferData,
       todaysCampaignThrottleMetricData,
       onePercentFloorBufferRollbackCriteria
     )
 
-    // TODO: Change this to handle different floor buffer criterias
-    val campaignBufferFloorSnapshot = generateTodaysSnapshot(
-      yesterdaysCampaignFloorBufferSnapshot,
+    // Generate today's data
+    val campaignBufferFloorData = generateTodaysFloorBufferDataset(
+      yesterdaysCampaignFloorBufferData,
       candidateCampaigns,
       rollbackEligibleCampaigns)
 
-    (rollbackEligibleCampaigns, campaignBufferFloorSnapshot)
-  }
-
-  def generateBbfFloorBufferMetrics(
-                       todaysCampaignFloorBufferDatasetSnapshot: Dataset[CampaignFloorBufferSchema],
-                       todaysRollbackEligibleCampaigns: Dataset[CampaignFloorBufferSchema]
-                     ) = {
-    val floorBufferCounts = todaysCampaignFloorBufferDatasetSnapshot.groupBy("BBF_FloorBuffer").count()
-    BbfFloorBufferMetrics(
-      floorBufferTotalCount = todaysCampaignFloorBufferDatasetSnapshot.count(),
-      floorBufferRollbackTotalCount = todaysRollbackEligibleCampaigns.count(),
-      countByFloorBuffer = floorBufferCounts
-    )
-  }
-
-  def transform(date: LocalDate,
-                fileCount: Int,
-                testSplit: Option[Double],
-                underdeliveryFraction: Double,
-                throttleThreshold: Double,
-                openMarketShare: Double,
-                openPathShare: Double,
-                rollbackUnderdeliveryFraction: Double,
-                rollbackThrottleThreshold: Double,
-               ): Unit = {
-
-    // Currently there is only 1% buffer floor criteria. We can create another criteria class to handle multiple criterias
-    val onePercentFloorBufferCriteria = OnePercentFloorBufferCriteria(
-      avgUnderdeliveryFraction=underdeliveryFraction,
-      avgCampaignThrottleMetric=throttleThreshold,
-      openMarketShare=openMarketShare,
-      openPathShare=openPathShare,
-      floorBuffer = 0.01
-    )
-
-    val onePercentFloorBufferRollbackCriteria = OnePercentFloorBufferRollbackCriteria(
-      rollbackUnderdeliveryFraction = rollbackUnderdeliveryFraction,
-      rollbackCampaignThrottleMetric = rollbackThrottleThreshold,
-    )
-
-    // Generate today's buffer floor snapshot
-    val (todaysRollbackEligibleCampaigns, todaysCampaignFloorBufferDatasetSnapshot) = getCampaignFloorBufferSnapshot(
-      date=date,
-      testSplit=testSplit,
-      onePercentFloorBufferTestCriteria=onePercentFloorBufferCriteria,
-      onePercentFloorBufferRollbackCriteria=onePercentFloorBufferRollbackCriteria
-    )
-
-    // Write the buffer floor snapshot and rollback snapshot to S3
-    CampaignFloorBufferDataset.writeData(date = date, dataset = todaysCampaignFloorBufferDatasetSnapshot, filecount = fileCount)
-    CampaignFloorBufferRollbackDataset.writeData(date = date, dataset = todaysRollbackEligibleCampaigns, filecount = fileCount)
+    // Write the buffer floor data and rollback dataset to S3
+    CampaignFloorBufferDataset.writeData(date = date, dataset = campaignBufferFloorData, filecount = fileCount)
+    CampaignFloorBufferRollbackDataset.writeData(date = date, dataset = rollbackEligibleCampaigns, filecount = fileCount)
 
     // Write metrics
     val floorBufferJobMetrics = generateBbfFloorBufferMetrics(
-      todaysCampaignFloorBufferDatasetSnapshot,
-      todaysRollbackEligibleCampaigns
+      campaignBufferFloorData,
+      rollbackEligibleCampaigns
     )
 
     floorBufferJobMetrics.countByFloorBuffer.collect().foreach { row =>
@@ -318,5 +284,6 @@ object CampaignFloorBufferCandidateSelectionTransform {
     }
     numFloorBufferRowsWritten.set(floorBufferJobMetrics.floorBufferTotalCount)
     numFloorBufferRollbackRowsWritten.set(floorBufferJobMetrics.floorBufferRollbackTotalCount)
+    campaignBufferFloorData
   }
 }

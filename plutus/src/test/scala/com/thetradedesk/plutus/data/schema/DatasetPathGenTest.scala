@@ -2,6 +2,7 @@ package com.thetradedesk.plutus.data.schema
 
 
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
+import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.CampaignFloorBufferDataset
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
 
