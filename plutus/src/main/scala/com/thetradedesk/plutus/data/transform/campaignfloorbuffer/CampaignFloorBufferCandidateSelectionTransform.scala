@@ -144,7 +144,9 @@ object CampaignFloorBufferCandidateSelectionTransform {
                                         todaysCandidatesWithFloorBuffer: Dataset[CampaignFloorBufferSchema],
                                         todaysRollbackEligibleCampaigns: Dataset[CampaignFloorBufferSchema]
                             ): Dataset[CampaignFloorBufferSchema] = {
-    val yesterdaysCampaignFloorBufferDataRenamed = yesterdaysCampaignFloorBufferData
+    // TODO: Temp change to filter anything not 1% from the past job run. Remove it once manual data is filtered out.
+    val yesterdaysCampaignFloorBufferDataFiltered = yesterdaysCampaignFloorBufferData.filter($"BBF_FloorBuffer" === 0.01)
+    val yesterdaysCampaignFloorBufferDataRenamed = yesterdaysCampaignFloorBufferDataFiltered
       .withColumnRenamed("BBF_FloorBuffer", "LatestBBF_FloorBuffer")
       .withColumnRenamed("AddedDate", "LatestBBF_AddedDate")
     val todaysCandidatesWithFloorBufferRenamed = todaysCandidatesWithFloorBuffer

@@ -5,6 +5,7 @@ import com.thetradedesk.plutus.data.MediaTypeId
 import com.thetradedesk.plutus.data.schema._
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
 import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferSchema}
+import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.platformWideBuffer
 import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform.{CampaignType_AdjustedCampaign, CampaignType_NewCampaign, EPSILON, gssFunc}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources._
@@ -641,7 +642,7 @@ object MockData {
       HadesBackoff_PCAdjustment_Current = hadesPCAdjustmentCurrent,
       HadesBackoff_PCAdjustment_Previous = hadesPCAdjustmentPrevious,
       AdjustmentQuantile = 50,
-      BBF_FloorBuffer = Some(0.5)
+      BBF_FloorBuffer = Some(platformWideBuffer)
     )
   }
 
