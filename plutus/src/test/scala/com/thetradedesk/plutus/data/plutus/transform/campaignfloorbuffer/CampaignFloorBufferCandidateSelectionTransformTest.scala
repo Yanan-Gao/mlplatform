@@ -17,13 +17,13 @@ class CampaignFloorBufferCandidateSelectionTransformTest extends TTDSparkTest {
   test("Testing CampaignFloorBufferCandidateSelection generateTodaysFloorBufferDataset") {
     // Test1 -> Latest buffer floor snapshot exists and new candidates generated today
     val yesterdaysFloorBufferDataset = Seq(
-      CampaignFloorBufferSchema("abc1", 0.2, testDate.minusDays(3)),
+      CampaignFloorBufferSchema("abc1", 0.01, testDate.minusDays(3)),
       CampaignFloorBufferSchema("abc2", 0.1, testDate.minusDays(2)),
-      CampaignFloorBufferSchema("abc3", 0.1, testDate),
+      CampaignFloorBufferSchema("abc3", 0.01, testDate),
     ).toDS()
     val todaysCandidateCampaignsWithBuffer = Seq(
-      CampaignFloorBufferSchema("abc4", 0.2, testDate),
-      CampaignFloorBufferSchema("abc2", 0.2, testDate),
+      CampaignFloorBufferSchema("abc4", 0.01, testDate),
+      CampaignFloorBufferSchema("abc2", 0.01, testDate),
     ).toDS()
 
     val testTodaysFloorBufferDataset1 = generateTodaysFloorBufferDataset(yesterdaysFloorBufferDataset, todaysCandidateCampaignsWithBuffer, Seq.empty[CampaignFloorBufferSchema].toDS())
@@ -32,7 +32,7 @@ class CampaignFloorBufferCandidateSelectionTransformTest extends TTDSparkTest {
 
     // If the campaign exists in today's candidates and latest dataset, today's buffer value will be used.
     val overridenCampaign = testTodaysFloorBufferDataset1.filter($"CampaignId" === "abc2").collect().head
-    assert(overridenCampaign.BBF_FloorBuffer == 0.2, "Campaign used today's floor buffer")
+    assert(overridenCampaign.BBF_FloorBuffer == 0.01, "Campaign used today's floor buffer")
     assert(overridenCampaign.AddedDate == testDate, "Campaign date is updated")
 
     // Check the dataset has correct dates
@@ -41,7 +41,7 @@ class CampaignFloorBufferCandidateSelectionTransformTest extends TTDSparkTest {
 
     // Test 2 -> Campaigns found in rollback dataset should be removed from today's dataset
     val todaysRollbackEligibleCampaigns = Seq(
-      CampaignFloorBufferSchema("abc1", 0.2, testDate),
+      CampaignFloorBufferSchema("abc1", 0.01, testDate),
     ).toDS()
     val testTodaysFloorBufferDataset2 = generateTodaysFloorBufferDataset(yesterdaysFloorBufferDataset, todaysCandidateCampaignsWithBuffer, todaysRollbackEligibleCampaigns)
     assert(testTodaysFloorBufferDataset2.collectAsList().size() == 3, "Validating dataset size after rollback")
