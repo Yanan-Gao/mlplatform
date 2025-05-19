@@ -13,7 +13,7 @@ object UserZipSiteLevelFeatureExternalReader extends UserZipSiteLevelFeatureGett
     val dateStr = getDateStr()
     val env = config.getString(s"FeatureStoreReadEnv", ttdEnv)
     val path = if (env == "prodTest") "feature/intermediate" else "profiles"
-    spark.read.parquet(s"s3a://thetradedesk-mlplatform-us-east-1/features/feature_store/${env}/${path}/source=bidsimpression/index=TDID/config=TDIDDensityScoreSplit/v=1/date=${dateStr}/split=0")
+    spark.read.parquet(s"s3a://thetradedesk-mlplatform-us-east-1/features/feature_store/${env}/${path}/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/date=${dateStr}/split=0")
       .select("TDID", "SyntheticId_Level1", "SyntheticId_Level2")
       .as[UserSiteZipLevelRecord]
   }
