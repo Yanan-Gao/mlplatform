@@ -100,7 +100,7 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
       .select('TargetingDataId)
       .join(segmentsSummary, Seq("TargetingDataId"), "inner")
       .where('RecordCount >= lit(Config.seedProcessLowerThreshold) &&
-        'RecordCount <= lit(Config.seedProcessUpperThreshold))
+        'RecordCount <= lit(Config.ttdOwnDataUpperThreshold))
       .select('TargetingDataId.cast(StringType).alias("SourceId"), 'RecordCount.alias("Count"), 'TargetingDataId, array(lit("")).alias("topCountryByDensity"))
     metaTable
       .withColumn("Source", lit(DataSource.TTDOwnData.id))
@@ -127,10 +127,19 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
     val metaTable = ThirdPartyDataDataSet()
       .readPartition(date)
       .where('ThirdPartyDataHierarchyString.startsWith("/2537086/242456787/")) // means TTD own segments
-      .select('TargetingDataId)
+      .withColumn(
+        "ttdOwnDataUpperThreshold",
+        when(
+          not(col("ThirdPartyDataHierarchyString").like("/2537086/242456787/%/%/%")),
+          lit(Config.ttdOwnDataUpperThreshold)
+        ).otherwise(
+          lit(Config.seedProcessUpperThreshold)
+        )
+      )
+      .select('TargetingDataId, 'ttdOwnDataUpperThreshold)
       .join(segmentsSummary, Seq("TargetingDataId"), "inner")
       .where('RecordCount >= lit(Config.seedProcessLowerThreshold) &&
-        'RecordCount <= lit(Config.seedProcessUpperThreshold))
+        'RecordCount <= 'ttdOwnDataUpperThreshold)
       .select('TargetingDataId, 'RecordCount.alias("Count"), 'TargetingDataId.alias("SourceId"))
 
     val tdid2TargetingDataIds = spark.read.format("com.thetradedesk.segment.client.spark_3.receivedSegment.ReceivedSegmentTableProvider")

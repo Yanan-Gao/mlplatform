@@ -58,6 +58,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     val seedJobParallel = config.getInt("seedJobParallel", Runtime.getRuntime.availableProcessors())
     val seedProcessLowerThreshold = config.getLong("seedProcessLowerThreshold", 2000)
     val seedProcessUpperThreshold = config.getLong("seedProcessUpperThreshold", 100000000)
+    val ttdOwnDataUpperThreshold = config.getLong("ttdOwnDataUpperThreshold", 200000000)
     val seedExtendGraphUpperThreshold = config.getLong("seedExtendGraphUpperThreshold", 3000000)
     val activeUserRatio = config.getDouble("activeUserRatio", 0.4)
     val aemPixelLimit = config.getInt("aemPixelLimit", 5000)
