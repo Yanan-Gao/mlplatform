@@ -19,14 +19,14 @@ object TdidEmbeddingDotProductGenerator {
   //val tdid_emb_path="s3://thetradedesk-mlplatform-us-east-1/users/youjun.yuan/rsmv2/emb/agg_tdid/"
   val tdid_emb_path="s3://thetradedesk-mlplatform-us-east-1/users/youjun.yuan/rsmv2/emb/agg_tdid/date=20250216/"
   val seed_emb_path="s3://thetradedesk-mlplatform-us-east-1/configdata/test/audience/embedding/RSMV2/RSMv2TestTreatment/v=1/20250216000000/embedding.parquet.gzip"
-  val density_feature_path="s3://thetradedesk-mlplatform-us-east-1/features/feature_store/prod/profiles/source=bidsimpression/index=TDID/config=TDIDDensityScoreSplit/v=1/date=20250216/"
+  val density_feature_path="s3://thetradedesk-mlplatform-us-east-1/features/feature_store/prod/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/date=20250216/"
   //val density_feature_path = "s3://thetradedesk-mlplatform-us-east-1/users/youjun.yuan/rsmv2/emb/density_split_1/"
 //  val seed_list_path="s3://thetradedesk-mlplatform-us-east-1/data/prod/audience/relevanceseedsdataset/v=1/date=20250216/"
   val policy_table_path ="s3://thetradedesk-mlplatform-us-east-1/configdata/prod/audience/policyTable/RSM/v=1/20250216000000/"
   val seed_id_path ="s3://thetradedesk-mlplatform-us-east-1/data/dev/audience/scores/seedids/v=2/date=20250216/"
   val out_path = config.getString("TdidEmbeddingDotProductGenerator.out_path", "s3://thetradedesk-mlplatform-us-east-1/data/dev/audience/scores/tdid2seedidV2/v=1/date=20250216/") // "s3://thetradedesk-mlplatform-us-east-1/users/youjun.yuan/rsmv2/emb/tdid2seedid/"
   val avail_path = config.getString("TdidEmbeddingDotProductGenerator.avail_path", "s3://thetradedesk-mlplatform-us-east-1/data/prodTest/audience/RSMV2/Availycp-dup_plus/v=2/20250216000000/")
-  val seed_density_path = config.getString("TdidEmbeddingDotProductGenerator.seed_density_path", "s3://thetradedesk-mlplatform-us-east-1/features/feature_store/prodTest/profiles/source=bidsimpression/index=SiteZipHashed/config=SyntheticIdDensityScoreCategorized/date=20250216/")
+  val seed_density_path = config.getString("TdidEmbeddingDotProductGenerator.seed_density_path", "s3://thetradedesk-mlplatform-us-east-1/features/feature_store/prodTest/profiles/source=bidsimpression/index=FeatureKeyValue/job=DailyDensityScoreReIndexingJob/config=SyntheticIdDensityScoreCategorized/date=20250216/")
   val density_split = config.getInt("TdidEmbeddingDotProductGenerator.density_split", -1)
   val density_limit = config.getInt("TdidEmbeddingDotProductGenerator.density_limit", -1)
   val tdid_limit = config.getInt("TdidEmbeddingDotProductGenerator.tdid_limit", -1)

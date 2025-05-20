@@ -20,9 +20,8 @@ final case class TDIDDensityScoreRecord(
 
 case class TDIDDensityScoreReadableDataset() 
   extends LightReadableDataset[TDIDDensityScoreRecord](
-    s"${config.getString(s"${getClassName(TDIDDensityScoreReadableDataset)}ReadEnv", ttdEnv)}/profiles/source=bidsimpression/index=TDID/config=TDIDDensityScoreSplit/v=1/",
-    FEATURE_STORE_ROOT,
-    dateFormat = audienceVersionDateFormat.substring(0, 8) // Extract the first 8 characters
+    s"${config.getString(s"${getClassName(TDIDDensityScoreReadableDataset)}ReadEnv", ttdEnv)}/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/",
+    FEATURE_STORE_ROOT // Extract the first 8 characters
   )
 final case class SeedDensityScoreRecord(
         SiteZipHashed: Option[BigInt],
@@ -32,7 +31,7 @@ final case class SeedDensityScoreRecord(
 
 case class SeedDensityScoreReadableDataset() 
   extends LightReadableDataset[SeedDensityScoreRecord](
-    s"${config.getString(s"${getClassName(SeedDensityScoreReadableDataset)}ReadEnv", ttdEnv)}/profiles/source=bidsimpression/index=SiteZipHashed/config=SyntheticIdDensityScoreCategorized/",
+    s"${config.getString(s"${getClassName(SeedDensityScoreReadableDataset)}ReadEnv", ttdEnv)}/profiles/source=bidsimpression/index=FeatureKeyValue/job=DailyDensityScoreReIndexingJob/config=SyntheticIdDensityScoreCategorized/",
     FEATURE_STORE_ROOT,
     dateFormat = audienceVersionDateFormat.substring(0, 8) // Extract the first 8 characters
   )
@@ -50,7 +49,7 @@ final case class DailySeedDensityScoreRecord(
 
 case class DailySeedDensityScoreReadableDataset() 
   extends LightReadableDataset[DailySeedDensityScoreRecord](
-    s"${config.getString(s"${getClassName(DailySeedDensityScoreReadableDataset)}ReadEnv", ttdEnv)}/profiles/source=bidsimpression/index=SeedId/config=DailySeedDensityScore/v=1/",
+    s"${config.getString(s"${getClassName(DailySeedDensityScoreReadableDataset)}ReadEnv", ttdEnv)}/profiles/source=bidsimpression/index=SeedId/job=DailySeedDensityScore/v=1/",
     FEATURE_STORE_ROOT,
     dateFormat = audienceVersionDateFormat.substring(0, 8) // Extract the first 8 characters
   )
