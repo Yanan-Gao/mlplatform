@@ -216,7 +216,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
 
     val feature_store_seed = DailySeedDensityScoreReadableDataset()
       .readPartition(date.minusDays(1))(spark)
-      .select('SeedId, 'FeatureValueHashed, 'SeedId, 'DensityScore)
+      .select('FeatureKey, 'FeatureValueHashed, 'SeedId, 'DensityScore)
 
     val bidsImpressionExtend = generateContextualFeatureTier1(joinedImpressionsWithCampaignSeed)
     .join(feature_store_user, Seq("TDID"), "left")
