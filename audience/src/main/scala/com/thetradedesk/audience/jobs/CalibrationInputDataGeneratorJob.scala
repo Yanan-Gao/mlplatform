@@ -93,8 +93,14 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
 
     val pathWeightPairs: Seq[(String, Double)] = validPaths.zip(weights)
 
-    val dfs: Seq[DataFrame] = pathWeightPairs.map { case (pathStr, weight) =>
-      spark.read.format("tfrecord").load(pathStr).sample(withReplacement = false, fraction = weight)
+    val dfs: Seq[DataFrame] = pathWeightPairs.map { case (pathStr, weight) => {
+      val df = spark.read.format("tfrecord").load(pathStr).sample(withReplacement = false, fraction = weight)
+      if (df.columns.contains("FeatureValueHashed")) {
+        df.withColumnRenamed("FeatureValueHashed", "SiteZipHashed")
+      } else {
+        df
+      }
+    }
     }
   
     val result = dfs.reduce(_.unionByName(_))

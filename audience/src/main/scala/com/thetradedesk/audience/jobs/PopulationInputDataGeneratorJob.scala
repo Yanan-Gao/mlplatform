@@ -81,6 +81,7 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
                   else {
                     spark.read.format("tfrecord").load(s"$basePath/${date.format(formatter)}000000/split=OOS").drop("Targets", "SyntheticIds", "ZipSiteLevel_Seed")
                   }
+                    .withColumnRenamed("FeatureValueHashed", "SiteZipHashed")
     val policyTable = AudienceModelPolicyReadableDataset(AudienceModelInputGeneratorConfig.model)
       .readSinglePartition(dateTime)(spark)
       .filter((col("CrossDeviceVendorId") === 0) && (col("IsActive") === true))
