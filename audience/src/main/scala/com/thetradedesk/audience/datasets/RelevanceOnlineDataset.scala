@@ -57,7 +57,7 @@ final case class RelevanceOnlineRecord(
         DeviceTypeName: String,
         PersonGraphTargets: Double, // array type in training
         HouseholdGraphTargets: Double, // array type in training
-        SiteZipHashed: Long,
+        FeatureValueHashed: Long, // SiteZipHashed for non-sensitive, AliasedSupplyPublisherIdCityHashed for sensitive
         ZipSiteLevel_Seed: Int // array type in training
 )
 

@@ -1,30 +1,23 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
-import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.audience.datasets._
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.RSMV2UserSampleSalt
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
 import com.thetradedesk.audience.transform.ContextualTransform.generateContextualFeatureTier1
-import com.thetradedesk.audience.utils.Logger.Log
-import com.thetradedesk.audience.{date, dateTime, _}
-import com.thetradedesk.geronimo.shared.readModelFeatures
-import com.thetradedesk.audience.jobs.HitRateReportingTableGeneratorJob.prometheus
+import com.thetradedesk.audience._
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
+import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, readModelFeatures}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
-import com.thetradedesk.spark.util.io.FSUtils
+import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.commons.lang3.exception.ExceptionUtils
+import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode, SparkSession}
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
 
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
-import java.time.{LocalDate, LocalDateTime}
-import scala.util.Random
+import java.time.LocalDate
 
 object RelevanceOnlineBiddingDataGeneratorJob {
   val prometheus = new PrometheusClient("ModelQualityJob", "RelevanceOnlineBiddingDataGeneratorJob")
@@ -143,7 +136,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
     val policyTable = AudienceModelPolicyReadableDataset(AudienceModelInputGeneratorConfig.model)
       .readSinglePartition(dateTime)(spark)
       .filter((col("CrossDeviceVendorId") === 0) && (col("IsActive") === true))
-      .select("SourceId", "SyntheticId", "ActiveSize")
+      .select("SourceId", "SyntheticId", "ActiveSize", "IsSensitive")
 
     // select only the online available seed
     val campaignSeed = CampaignSeedDataset().readPartition(date)
@@ -221,10 +214,12 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
                               .select('TDID, 'SyntheticId_Level1, 'SyntheticId_Level2)
                               .filter(sampler.samplingFunction('TDID))
 
-    val feature_store_seed = DailySeedDensityScoreReadableDataset().readPartition(date.minusDays(1))(spark).select('SeedId, 'SiteZipHashed, 'DensityScore)
+    val feature_store_seed = DailySeedDensityScoreReadableDataset()
+      .readPartition(date.minusDays(1))(spark)
+      .select('SeedId, 'FeatureValueHashed, 'SeedId, 'DensityScore)
 
     val bidsImpressionExtend = generateContextualFeatureTier1(joinedImpressionsWithCampaignSeed)
-    .withColumn("SiteZipHashed", xxhash64(concat(concat(col("Site"), col("Zip")), lit("TRM")))).join(feature_store_user, Seq("TDID"), "left")
+    .join(feature_store_user, Seq("TDID"), "left")
     .withColumn(
       "ZipSiteLevel_Seed",
       when(array_contains(col("SyntheticId_Level2"), col("SyntheticIds")), 3)
@@ -232,7 +227,12 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
         .otherwise(1)
     )
     .drop("SyntheticId_Level1", "SyntheticId_Level2")
-    .join(feature_store_seed, Seq("SiteZipHashed","SeedId"), "left")
+    .withColumn("SiteZipHashed", xxhash64(concat(concat(col("Site"), col("Zip")), lit(RSMV2UserSampleSalt))))
+    .withColumn("AliasedSupplyPublisherIdCityHashed", xxhash64(concat(concat(col("AliasedSupplyPublisherId"), col("City")), lit(RSMV2UserSampleSalt))))
+    .withColumn("FeatureKey", when(col("IsSensitive"), lit("AliasedSupplyPublisherIdCity")).otherwise(lit("SiteZip")))
+    .withColumn("FeatureValueHashed", when(col("IsSensitive"), col("AliasedSupplyPublisherIdCityHashed")).otherwise(col("SiteZipHashed")))
+    .join(feature_store_seed, Seq("FeatureKey", "FeatureValueHashed", "SeedId"), "left")
+    .drop("FeatureKey", "IsSensitive") // keep FeatureValueHashed
     .withColumn(
       "score_category",
       when((col("DensityScore") >= 0.8) && (col("DensityScore") < 0.99), 2)
