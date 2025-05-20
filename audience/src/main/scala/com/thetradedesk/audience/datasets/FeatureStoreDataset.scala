@@ -12,7 +12,6 @@ final case class SyntheticIdDensityScore(
 
 final case class TDIDDensityScoreRecord(
         TDID: Option[String],
-        SyntheticIdDensityScores: Option[Seq[SyntheticIdDensityScore]],
         SyntheticId_Level2: Option[Seq[Option[Int]]],
         SyntheticId_Level1: Option[Seq[Option[Int]]],
         split: Option[Int]
@@ -24,7 +23,8 @@ case class TDIDDensityScoreReadableDataset()
     FEATURE_STORE_ROOT // Extract the first 8 characters
   )
 final case class SeedDensityScoreRecord(
-        SiteZipHashed: Option[BigInt],
+        FeatureKey: String,
+        FeatureValueHashed: Long,
         SyntheticIdLevel2: Option[Seq[Option[Int]]],
         SyntheticIdLevel1: Option[Seq[Option[Int]]],
 )
@@ -37,11 +37,9 @@ case class SeedDensityScoreReadableDataset()
   )
 
 final case class DailySeedDensityScoreRecord(
-        SiteZipHashed: Option[Long],
-        PopSiteZipCount: Option[Long],
+        FeatureKey: String,
+        FeatureValueHashed: Long,
         SeedId: Option[String],
-        SeedSiteZipCount: Option[Long],
-        SeedTotalCount: Option[Long],
         InDensity: Option[Double],
         OutDensity: Option[Double],
         DensityScore: Option[Double]
