@@ -27,7 +27,9 @@ case class OnlineLogsDataset(modelName: String,
   override def readPartition(date: LocalDate,
                              format: Option[String] = Some("tsv"),
                              lookBack: Option[Int] = None,
-                             dateSeparator: Option[String] = Some("/"))(implicit spark: SparkSession): Dataset[OnlineLogsRecord] = {
+                             dateSeparator: Option[String] = Some("/"),
+                             subFolderKey: Option[String] = None,
+                             subFolderValue: Option[Any] = None)(implicit spark: SparkSession): Dataset[OnlineLogsRecord] = {
     val paths = (source match {
       case Some(DatasetSource.Logs) => (0 to lookBack.getOrElse(0)) map (x => s"$basePath/${date.minusDays(x).format(logsDateFormatter)}/")
       case _ => throw new NotImplementedError("Unsupported source for online logs")

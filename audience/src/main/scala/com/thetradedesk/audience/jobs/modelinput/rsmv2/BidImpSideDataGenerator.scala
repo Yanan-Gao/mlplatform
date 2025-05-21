@@ -1,7 +1,7 @@
 package com.thetradedesk.audience.jobs.modelinput.rsmv2
 
 import com.thetradedesk.audience.{date, getUiid}
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.{intermediateResultBasePathEndWithoutSlash, overrideMode, samplerName, saveIntermediateResult}
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.{intermediateResultBasePathEndWithoutSlash, overrideMode, samplerName, saveIntermediateResult, sensitiveFeatureColumns}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface.{BidResult, BidSideDataRecord}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
@@ -18,7 +18,7 @@ object BidImpSideDataGenerator {
     val sampler = SamplerFactory.fromString(samplerName)
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
-    val bidsImpressionsLong = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))
+    val bidsImpressionsLongRaw = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))
       .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdType))
       .filter('TDID.isNotNull && 'TDID =!= lit("00000000-0000-0000-0000-000000000000"))
       .filter(sampler.samplingFunction('TDID))
@@ -67,6 +67,15 @@ object BidImpSideDataGenerator {
       .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(DoubleType)))
       .withColumn("HasMatchedSegments", when('MatchedSegments.isNull,0).otherwise(1))
       .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(DoubleType)))
+
+    // mask sensitive
+    val bidsImpressionsLong = sensitiveFeatureColumns.foldLeft(bidsImpressionsLongRaw) { (currentDs, colName) =>
+      if (currentDs.columns.contains(colName))
+        currentDs.withColumn(colName, lit(0))
+      else
+        currentDs
+    }
+
     val dateStr = RSMV2SharedFunction.getDateStr()
     var writePath: String = null
     if (saveIntermediateResult) {

@@ -1,7 +1,7 @@
 package com.thetradedesk.audience.jobs.modelinput.rsmv2
 
 import com.thetradedesk.audience.datasets.Model
-import com.thetradedesk.audience.{audienceVersionDateFormat, dateTime, ttdEnv}
+import com.thetradedesk.audience.{audienceVersionDateFormat, dateTime, ttdEnv, ttdWriteEnv}
 import com.thetradedesk.spark.util.TTDConfig.config
 
 import java.time.format.DateTimeFormatter
@@ -11,9 +11,11 @@ object RelevanceModelInputGeneratorConfig {
   val useTmpFeatureGenerator = config.getBoolean("useTmpFeatureGenerator", default = false)
   val extraSamplingThreshold = config.getDouble("extraSamplingThreshold", 0.05)
   val rsmV2FeatureSourcePath = config.getString("rsmV2FeatureSourcePath", "/featuresV2.json")
-  val rsmV2FeatureDestPath = config.getString("rsmV2FeatureSourcePath", s"s3a://thetradedesk-mlplatform-us-east-1/configdata/${ttdEnv}/audience/schema/RSMV2/v=1/${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}/features.json")
+  val rsmV2FeatureDestPath = config.getString("rsmV2FeatureSourcePath", s"s3a://thetradedesk-mlplatform-us-east-1/configdata/${ttdWriteEnv}/audience/schema/RSMV2/v=1/${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}/features.json")
   val subFolder = config.getString("subFolder", "Full")
-  val optInSeedEmptyTagPath = config.getString("optInSeedEmptyTagPath", s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/RSMV2/Seed_None/v=1/${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}/_${subFolder}_EMPTY")
+  val optInSeedEmptyTagPath = config.getString("optInSeedEmptyTagPath", s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdWriteEnv}/audience/RSMV2/Seed_None/v=1/${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}/_${subFolder}_EMPTY")
+  val densityFeatureReadPathWithoutSlash = config.getString("densityFeatureReadPathWithoutSlash", s"profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1")
+  val sensitiveFeatureColumns = config.getString("sensitiveFeatureColumn", "").split(",").map(_.trim).filter(_.nonEmpty)
   val persistHoldoutSet = config.getBoolean("persistHoldoutSet", true)
   val optInSeedType = config.getString("optInSeedType", "Active")
   val optInSeedFilterExpr = config.getString("optInSeedFilterExpr", "true")
@@ -21,6 +23,7 @@ object RelevanceModelInputGeneratorConfig {
   val lowerLimitPosCntPerSeed = config.getInt("lowerLimitPosCntPerSeed", 200)
   // this value have to be aligned with feature store side
   val RSMV2UserSampleSalt = config.getString(s"RSMV2UserSampleSalt", default = "TRM")
+  val RSMV2PopulationUserSampleIndex = config.getString("RSMV2PopulationUserSampleIndex", "3,5,7").split(",").map(_.toInt) // range 1-10
   val RSMV2UserSampleRatio = config.getInt("RSMV2UserSampleRatio", 1) // range 1-10
   val samplerName = config.getString("samplerName", "RSMV2")
   val overrideMode = config.getBoolean("overrideMode", false)

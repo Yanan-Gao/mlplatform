@@ -1,7 +1,7 @@
 package com.thetradedesk.audience.datasets
 
 import com.thetradedesk.audience.datasets.S3Roots.ML_PLATFORM_ROOT
-import com.thetradedesk.audience.{seedCoalesceAfterFilter, ttdEnv, getClassName, audienceVersionDateFormat, audienceResultCoalesce}
+import com.thetradedesk.audience.{seedCoalesceAfterFilter, ttdWriteEnv, getClassName, audienceVersionDateFormat, audienceResultCoalesce}
 import java.sql.Date
 import com.thetradedesk.spark.util.TTDConfig.config
 
@@ -57,8 +57,9 @@ final case class RelevanceOnlineRecord(
         DeviceTypeName: String,
         PersonGraphTargets: Double, // array type in training
         HouseholdGraphTargets: Double, // array type in training
-        FeatureValueHashed: Long, // SiteZipHashed for non-sensitive, AliasedSupplyPublisherIdCityHashed for sensitive
+        SiteZipHashed: Long,
+        AliasedSupplyPublisherIdCityHashed: Long,
         ZipSiteLevel_Seed: Int // array type in training
 )
 
-case class RelevanceOnlineDataset(model: String, tag: String, version: Int = 1) extends LightWritableDataset[RelevanceOnlineRecord](s"${ttdEnv}/audience/${model}/${tag}/v=${version}", ML_PLATFORM_ROOT, audienceResultCoalesce, dateFormat = audienceVersionDateFormat)
+case class RelevanceOnlineDataset(model: String, tag: String, version: Int = 1) extends LightWritableDataset[RelevanceOnlineRecord](s"${ttdWriteEnv}/audience/${model}/${tag}/v=${version}", ML_PLATFORM_ROOT, audienceResultCoalesce, dateFormat = audienceVersionDateFormat)

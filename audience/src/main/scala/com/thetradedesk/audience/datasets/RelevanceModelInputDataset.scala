@@ -1,7 +1,6 @@
 package com.thetradedesk.audience.datasets
 
-import com.thetradedesk.spark.util.TTDConfig.config
-import com.thetradedesk.audience.{audienceResultCoalesce, audienceVersionDateFormat, ttdEnv, getClassName}
+import com.thetradedesk.audience.{audienceResultCoalesce, audienceVersionDateFormat, ttdWriteEnv}
 
 final case class RelevanceModelInputRecord(
                                            TDID: String,
@@ -42,4 +41,4 @@ final case class RelevanceModelInputRecord(
                                          )
 
 case class RelevanceModelInputDataset(model: String, tag: String, version: Int = 1) extends
-  LightWritableDataset[RelevanceModelInputRecord](s"/${ttdEnv}/audience/${model}/${tag}/v=${version}", S3Roots.ML_PLATFORM_ROOT, audienceResultCoalesce, dateFormat = audienceVersionDateFormat)
+  LightWritableDataset[RelevanceModelInputRecord](s"/${ttdWriteEnv}/audience/${model}/${tag}/v=${version}", S3Roots.ML_PLATFORM_ROOT, audienceResultCoalesce, dateFormat = audienceVersionDateFormat)

@@ -17,11 +17,13 @@ package object audience {
   var date = config.getDate("date", LocalDate.now())
   var dateTime = config.getDateTime("dateTime", date.atStartOfDay())
   var ttdEnv = config.getString("ttd.env", "dev")
-  val (ttdReadEnv, ttdWriteEnv) = if (ttdEnv == "prodTest") {
+  val (defaultTtdReadEnv, defaultTtdWriteEnv) = if (ttdEnv == "prodTest") {
       ("prod", "test")
     } else {
       (ttdEnv, ttdEnv)
     }
+  val ttdReadEnv = config.getString("ttdReadEnv", default = defaultTtdReadEnv)
+  val ttdWriteEnv = config.getString("ttdWriteEnv", default = defaultTtdWriteEnv)
   val trainSetDownSampleFactor = config.getInt("trainSetDownSampleFactor", default = 2)
   val sampleHit = config.getString("sampleHit", "0")
   val s3Client = AmazonS3ClientBuilder.standard.withRegion(Regions.US_EAST_1).build
