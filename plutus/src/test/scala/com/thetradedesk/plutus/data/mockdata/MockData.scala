@@ -766,6 +766,37 @@ object MockData {
 
   )
 
+  def campaignBufferAdjustmentsHadesMock(campaignId: String,
+                                   campaignType: String = CampaignType_NewCampaign,
+                                   hadesBackoffFloorBufferCurrent: Double = 0.01,
+                                   hadesBackoffFloorBufferPrevious: Array[Double] = Array(),
+                                   hadesProblemCampaign: Boolean = true,
+                                   campaignType_Previous: Array[String] = Array(),
+                                   bbfBuffer:  Option[Double] = None
+                                  ): HadesBufferAdjustmentSchema = {
+    HadesBufferAdjustmentSchema(
+      CampaignId = campaignId,
+      CampaignType = campaignType,
+      CampaignType_Previous = campaignType_Previous,
+      HadesBackoff_FloorBuffer = hadesBackoffFloorBufferCurrent,
+      Hades_isProblemCampaign = hadesProblemCampaign,
+      UnderdeliveryFraction = None,
+      Total_BidCount = 300,
+      Total_PMP_BidCount = 100,
+      Total_PMP_BidAmount = 10000,
+      BBF_PMP_BidCount = 75,
+      BBF_PMP_BidAmount = 6600,
+      Total_OM_BidCount = 200,
+      Total_OM_BidAmount = 12000,
+      BBF_OM_BidCount = 120,
+      BBF_OM_BidAmount = 7000,
+      HadesBackoff_FloorBuffer_Current = hadesBackoffFloorBufferCurrent,
+      HadesBackoff_FloorBuffer_Previous = hadesBackoffFloorBufferPrevious,
+      AdjustmentQuantile = 50,
+      BBF_FloorBuffer = bbfBuffer,
+      Actual_BBF_FloorBuffer = bbfBuffer,
+    )
+  }
 
   def svbMock(): Dataset[Svb] =
     Seq(Svb(

@@ -1,8 +1,9 @@
 package job.campaignbackoff
 
 import com.thetradedesk.plutus.data.envForReadInternal
+import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsPacingSchema, PlutusCampaignAdjustmentsDataset}
 import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferDataset}
-import com.thetradedesk.plutus.data.transform.campaignbackoff.{HadesCampaignAdjustmentsTransform, MergeCampaignBackoffAdjustments, PlutusCampaignAdjustmentsTransform}
+import com.thetradedesk.plutus.data.transform.campaignbackoff.{HadesCampaignAdjustmentsTransform, HadesCampaignBufferAdjustmentsTransform, MergeCampaignBackoffAdjustments, PlutusCampaignAdjustmentsTransform}
 import com.thetradedesk.plutus.data.transform.campaignfloorbuffer.MergeCampaignFloorBufferTransform.readMergedFloorBufferData
 import com.thetradedesk.plutus.data.utils.S3NoFilesFoundException
 import com.thetradedesk.spark.TTDSparkContext
@@ -30,10 +31,12 @@ object CampaignAdjustmentsJob {
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
 
     val campaignFloorBufferData = MergedCampaignFloorBufferDataset.readDate(date, envForReadInternal)
+    val campaignAdjustmentsPacingData = PlutusCampaignAdjustmentsDataset.readLatestDataUpToIncluding(date.minusDays(1), envForReadInternal)
 
     val plutusCampaignAdjustmentsDataset = PlutusCampaignAdjustmentsTransform.transform(date, updateAdjustmentsVersion, fileCount)
     val hadesCampaignAdjustmentsDataset  = HadesCampaignAdjustmentsTransform.transform(date, testSplit, underdeliveryThreshold, fileCount, campaignFloorBufferData)
-    MergeCampaignBackoffAdjustments.transform(plutusCampaignAdjustmentsDataset, hadesCampaignAdjustmentsDataset, campaignFloorBufferData)
+    val hadesCampaignBufferAdjustmentsDataset  = HadesCampaignBufferAdjustmentsTransform.transform(date, underdeliveryThreshold, fileCount, campaignFloorBufferData, campaignAdjustmentsPacingData)
+    MergeCampaignBackoffAdjustments.transform(plutusCampaignAdjustmentsDataset, hadesCampaignAdjustmentsDataset, campaignFloorBufferData, hadesCampaignBufferAdjustmentsDataset)
 
     jobDurationGaugeTimer.setDuration()
     prometheus.pushMetrics()

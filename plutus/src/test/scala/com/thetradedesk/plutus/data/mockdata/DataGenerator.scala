@@ -1,7 +1,7 @@
 package com.thetradedesk.plutus.data.mockdata
 
 import MockData._
-import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsPacingSchema, CampaignFlightRecord, CampaignThrottleMetricSchema, HadesAdjustmentSchemaV2, RtbPlatformReportCondensedData}
+import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsPacingSchema, CampaignFlightRecord, CampaignThrottleMetricSchema, HadesAdjustmentSchemaV2, RtbPlatformReportCondensedData, HadesBufferAdjustmentSchema}
 import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferSchema}
 import com.thetradedesk.spark.datasets.sources.CountryRecord
 import org.apache.spark.sql.Dataset
@@ -233,6 +233,12 @@ object DataGenerator {
       campaignAdjustmentsHadesMock(campaignId = "campaign2", hadesPCAdjustmentCurrent = 0.6, hadesProblemCampaign = true),
       campaignAdjustmentsHadesMock(campaignId = "campaign3", hadesPCAdjustmentCurrent = 1.0, hadesProblemCampaign = false),
       campaignAdjustmentsHadesMock(campaignId = "jkl789", hadesPCAdjustmentCurrent = 0.9, hadesProblemCampaign = true)
+    ).toDS()
+  }
+
+  def generateCampaignBufferAdjustmentsHadesData: Dataset[HadesBufferAdjustmentSchema] = {
+    Seq(
+      campaignBufferAdjustmentsHadesMock(campaignId = "campaign2", hadesBackoffFloorBufferCurrent = 0.6, hadesProblemCampaign = true)
     ).toDS()
   }
 
