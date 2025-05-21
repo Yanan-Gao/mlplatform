@@ -96,7 +96,9 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
                               .select('TDID, 'SyntheticId_Level1, 'SyntheticId_Level2)
                               .filter(sampler.samplingFunction('TDID))
 
-    val featureStoreSeed = SeedDensityScoreReadableDataset().readPartition(date.minusDays(1))(spark).cache()
+    val featureStoreSeed = SeedDensityScoreReadableDataset().readPartition(date.minusDays(1))(spark)
+      .withColumnRenamed("FeatureValueHashed", "SiteZipHashed")
+      .cache()
 
     val topSiteZipHashed = broadcast(impData
       .groupBy('SiteZipHashed).agg(count("*").as("cnt")).orderBy('cnt.desc).limit(1000)
