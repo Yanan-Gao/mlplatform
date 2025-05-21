@@ -109,15 +109,36 @@ abstract class LightReadableDataset[T <: Product : Manifest](
                                                               dateFormat: String = "yyyyMMdd",
                                                               source: Option[String] = None
                                                             ) extends LightDataset(dataSetPath, rootPath, dateFormat) {
+  private def subFolderPath(date: LocalDate,
+                            lookBack: Option[Int] = None,
+                            dateSeparator: Option[String] = None,
+                            subFolderKey: Option[String] = None,
+                            subFolderValue: Option[Any] = None)(implicit spark: SparkSession) : Seq[String] = {
+    (source match {
+      case Some(DatasetSource.Logs) => (0 to lookBack.getOrElse(0)) map (x => s"$basePath/${date.minusDays(x).format(logsDateFormatter)}")
+      case Some(DatasetSource.CrossDeviceGraph) => (0 to lookBack.getOrElse(0)) map (x => s"$basePath/${date.minusDays(x).format(crossDeviceDateFormatter)}/success")
+      case _ => {
+        (subFolderValue match {
+          case Some(stringFolderValue: String) =>
+            val subFolder = if (subFolderKey.nonEmpty && subFolderValue.nonEmpty) s"/${subFolderKey.get}=${stringFolderValue}" else ""
+            parquetDataPaths(basePath, date, source, lookBack, separator = dateSeparator).map(e => s"$e$subFolder")
+          case Some(iterable: Iterable[Any]) =>
+            for {x <- parquetDataPaths(basePath, date, source, lookBack, separator = dateSeparator)
+                 y <- iterable.map(e => s"/${subFolderKey.get}=$e")}
+            yield s"$x$y"
+          case _ => parquetDataPaths(basePath, date, source, lookBack, separator = dateSeparator)
+        })
+      }
+    }).filter(FSUtils.directoryExists(_)(spark))
+  }
+
   def readPartition(date: LocalDate,
                     format: Option[String] = Some("parquet"),
                     lookBack: Option[Int] = None,
-                    dateSeparator: Option[String] = None)(implicit spark: SparkSession): Dataset[T] = {
-    val paths = (source match {
-      case Some(DatasetSource.Logs) => (0 to lookBack.getOrElse(0)) map (x => s"$basePath/${date.minusDays(x).format(logsDateFormatter)}")
-      case Some(DatasetSource.CrossDeviceGraph) => (0 to lookBack.getOrElse(0)) map (x => s"$basePath/${date.minusDays(x).format(crossDeviceDateFormatter)}/success")
-      case _ => parquetDataPaths(basePath, date, source, lookBack, separator = dateSeparator)
-    }).filter(FSUtils.directoryExists(_)(spark))
+                    dateSeparator: Option[String] = None,
+                    subFolderKey: Option[String] = None,
+                    subFolderValue: Option[Any] = None)(implicit spark: SparkSession): Dataset[T] = {
+    val paths = subFolderPath(date, lookBack, dateSeparator, subFolderKey, subFolderValue)
 
     format match {
       case Some("tfrecord") => spark

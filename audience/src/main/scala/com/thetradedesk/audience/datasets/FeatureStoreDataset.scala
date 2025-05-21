@@ -9,7 +9,6 @@ final case class SyntheticIdDensityScore(
   syntheticId: Option[Int],
   densityScore: Option[Float]
 )
-
 final case class TDIDDensityScoreRecord(
         TDID: Option[String],
         SyntheticId_Level2: Option[Seq[Option[Int]]],
@@ -17,7 +16,7 @@ final case class TDIDDensityScoreRecord(
         split: Option[Int]
 )
 
-case class TDIDDensityScoreReadableDataset() 
+case class TDIDDensityScoreReadableDataset()
   extends LightReadableDataset[TDIDDensityScoreRecord](
     s"${config.getString(s"${getClassName(TDIDDensityScoreReadableDataset)}ReadEnv", ttdEnv)}/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/",
     FEATURE_STORE_ROOT // Extract the first 8 characters
@@ -35,7 +34,6 @@ case class SeedDensityScoreReadableDataset()
     FEATURE_STORE_ROOT,
     dateFormat = audienceVersionDateFormat.substring(0, 8) // Extract the first 8 characters
   )
-
 final case class DailySeedDensityScoreRecord(
         FeatureKey: String,
         FeatureValueHashed: Long,
