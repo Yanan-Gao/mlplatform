@@ -180,11 +180,13 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val campaignAdjustmentsHadesData = DataGenerator.generateCampaignAdjustmentsHadesData
     val campaignAdjustmentsData = DataGenerator.generateCampaignAdjustmentsPacingData.limit(3)
     val todaysCampaignFloorBufferData = DataGenerator.generateMergedCampaignFloorBufferData
+    val campaignBufferAdjustmentsHadesData = DataGenerator.generateCampaignBufferAdjustmentsHadesData
 
     val finalMergedCampaignAdjustments = mergeBackoffDatasets(
       campaignAdjustmentsData,
       campaignAdjustmentsHadesData,
       todaysCampaignFloorBufferData,
+      campaignBufferAdjustmentsHadesData
     )
     val res = finalMergedCampaignAdjustments.select(
       "CampaignId",

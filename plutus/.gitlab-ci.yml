@@ -39,6 +39,16 @@ plutus:push_bits_merge_request:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
         - "plutus/src/**/*"
+  before_script:
+    - echo 'deb [trusted=yes] http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - echo 'Acquire::Check-Valid-Until "false";' > /etc/apt/apt.conf.d/99no-check-valid-until
+    - apt-get update
+    - apt-get install -y unzip curl
+    - curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    - unzip awscliv2.zip
+    - ./aws/install
+    - rm -rf awscliv2.zip aws
+    - apt-get install python3 -y
   script:
     - pushd ./plutus/
     - sbt "set test in assembly := {}" clean assembly
