@@ -95,8 +95,9 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
 
     val dfs: Seq[DataFrame] = pathWeightPairs.map { case (pathStr, weight) => {
       val df = spark.read.format("tfrecord").load(pathStr).sample(withReplacement = false, fraction = weight)
-      if (df.columns.contains("FeatureValueHashed")) {
-        df.withColumnRenamed("FeatureValueHashed", "SiteZipHashed")
+      if (!df.columns.contains("AliasedSupplyPublisherIdCityHashed")) {
+        // TODO: remove, temporary solution during transition to new density feature
+        df.withColumn("AliasedSupplyPublisherIdCityHashed", lit(null).cast("long"))
       } else {
         df
       }
