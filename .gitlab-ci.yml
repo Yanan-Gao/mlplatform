@@ -18,7 +18,7 @@ stages:
 ## * create pipelines for `master` branch commits. other branches are ignored. 
 ####
 workflow:
-  rules: 
+  rules:
     - if: '$CI_PIPELINE_SOURCE == "schedule"'
       when: never
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
