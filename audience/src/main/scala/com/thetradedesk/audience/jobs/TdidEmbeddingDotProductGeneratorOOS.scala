@@ -93,7 +93,7 @@ object TdidEmbeddingDotProductGeneratorOOS {
       .where('Source === lit(DataSource.Seed.id) && 'CrossDeviceVendorId === lit(CrossDeviceVendor.None.id) && 'Tag === lit(4) && 'ActiveSize >= lit(2000))
       .select('SourceId.as("SeedId"), 'SyntheticId.cast(IntegerType).as("SyntheticId"), 'IsSensitive, 'ActiveSize)
 
-    val seedEmb = df_seed_emb.withColumn("SyntheticId", 'SyntheticId.cast(IntegerType)).join(df_sensitive_synthetic_ids, Seq("SyntheticId"), "inner")
+    val seedEmb = df_seed_emb.drop("IsSensitive").withColumn("SyntheticId", 'SyntheticId.cast(IntegerType)).join(df_sensitive_synthetic_ids, Seq("SyntheticId"), "inner")
       .select('SeedId, 'SyntheticId, 'IsSensitive, 'Embedding, 'ActiveSize, 'PopulationRelevance, 'MinScore, 'MaxScore,
         coalesce('LocationFactor, lit(loc_factor)).alias("LocationFactor"),
         coalesce('BaselineHitRate, lit(r)).alias("BaselineHitRate")
