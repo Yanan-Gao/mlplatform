@@ -51,8 +51,9 @@ case class ModelInputRecord(
 
     UIID: String,
     LogEntryTime: java.sql.Timestamp,
-    excluded: Int
-
+    excluded: Int,
+    IsRestricted: Int,
+    CategoryPolicy: String
 )
 
 
