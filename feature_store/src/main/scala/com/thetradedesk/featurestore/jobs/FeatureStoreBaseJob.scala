@@ -11,6 +11,7 @@ import org.apache.spark.sql.{Column, Dataset}
 import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 /** Base class for Spark jobs in feature-store repo
  *
@@ -60,6 +61,13 @@ abstract class FeatureStoreAggJob extends FeatureStoreBaseJob {
   def ratioFeatSpecs: Array[RatioFeatAggSpecs] = jobConfig.ratioFeatSpecs
 
   def loadInputData(date: LocalDate, lookBack: Int): Dataset[_]
+
+  val salt = "42"
+
+  def getDateStr(date: LocalDate): String = {
+    val dtf = DateTimeFormatter.ofPattern("yyyyMMdd")
+    date.format(dtf)
+  }
 
   def aggBySpecs(inputDf: Dataset[_],
                  aggLevel: String,
