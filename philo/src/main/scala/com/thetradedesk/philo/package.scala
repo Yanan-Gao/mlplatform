@@ -62,22 +62,27 @@ package object philo {
   }
 
   // NOTE: this is TF record and you will need to add tf record package to the packages args when running spark submit for this to work
-  def writeData(df: DataFrame, outputPath: String, ttdEnv: String, outputPrefix: String, date: LocalDate, partitions: Int, isTFRecord: Boolean = true): Unit = {
+  def writeData(df: DataFrame, outputPath: String, ttdEnv: String, outputPrefix: String, date: LocalDate, partitions: Int, isTFRecord: Boolean = true, experimentName: String = null): Unit = {
 
     // note the date part is year=yyyy/month=m/day=d/
     var func = df
       .repartition(partitions)
       .write
       .mode(SaveMode.Overwrite)
+    val writePath = if (experimentName == null) {
+      s"$outputPath/$ttdEnv/$outputPrefix/${explicitDatePart(date)}"
+    } else {
+      s"$outputPath/$ttdEnv/experiment=$experimentName/$outputPrefix/${explicitDatePart(date)}"
+    }
 
     if (isTFRecord) {
       func.format("tfrecord")
         .option("recordType", "Example")
         .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
-        .save(s"$outputPath/$ttdEnv/$outputPrefix/${explicitDatePart(date)}")
+        .save(writePath)
     } else {
       func.option("header", "true")
-        .csv(s"$outputPath/$ttdEnv/$outputPrefix/${explicitDatePart(date)}")
+        .csv(writePath)
     }
   }
 
@@ -116,11 +121,17 @@ package object philo {
     (newData, newColNames)
   }
 
-  def countLinePerFile(outputPath: String, ttdEnv: String, outputPrefix: String, date: LocalDate)(implicit spark: SparkSession): DataFrame = {
+  def countLinePerFile(outputPath: String, ttdEnv: String, outputPrefix: String, date: LocalDate, experimentName: String = null)(implicit spark: SparkSession): DataFrame = {
     // even though it says parquet, there's nothing parquet specific in this method
+    val writePath = if (experimentName == null) {
+      s"$outputPath/$ttdEnv/$outputPrefix/${explicitDatePart(date)}"
+    } else {
+      s"$outputPath/$ttdEnv/experiment=$experimentName/$outputPrefix/${explicitDatePart(date)}"
+    }
+
     val df = spark.read.format("csv")
             .option("header", "true") // Adjust based on whether the files contain headers
-            .csv(s"$outputPath/$ttdEnv/$outputPrefix/${explicitDatePart(date)}")
+            .csv(writePath)
     val dfWithFileName = df.withColumn("full_file_name", input_file_name())
     val extractFileName = udf((fullPath: String) => {
       fullPath.split("/").last // Split by "/" and take the last part (the file name)

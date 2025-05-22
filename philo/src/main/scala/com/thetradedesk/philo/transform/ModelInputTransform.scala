@@ -5,7 +5,7 @@ import com.thetradedesk.geronimo.shared._
 import com.thetradedesk.geronimo.shared.schemas.ModelFeature
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.philo.{addOriginalCols, debugInfo, flattenData, schema, shiftModUdf, shiftModArrayUdf}
-import com.thetradedesk.philo.schema.{AdGroupDataSet, AdGroupRecord, AdvertiserExclusionRecord, CampaignROIGoalDataSet, CampaignROIGoalRecord, ClickTrackerRecord, CreativeLandingPageRecord, ModelInputRecord, ModelInputUserRecord, PartnerExclusionRecord}
+import com.thetradedesk.philo.schema.{AdGroupDataSet, AdGroupRecord, AdvertiserExclusionRecord, CampaignROIGoalDataSet, CampaignROIGoalRecord, ClickTrackerRecord, CreativeLandingPageRecord, ModelInputRecord, ModelInputUserRecord, PartnerExclusionRecord, SensitiveAdvertiserRecord}
 import com.thetradedesk.spark.sql.SQLFunctions._
 import org.apache.spark.sql.{Column, DataFrame, Dataset, SparkSession}
 import org.apache.spark.sql.functions.{col, concat_ws, count, expr, lit, max, mean, size, stddev, sum, udf, when, xxhash64}
@@ -48,11 +48,13 @@ object ModelInputTransform extends Logger {
                 filterClickBots: Boolean,
                 partnerExclusionList: Option[Dataset[PartnerExclusionRecord]],
                 addCols: Seq[String],
+                sensitiveAdvertiserData: Option[Dataset[SensitiveAdvertiserRecord]],
                 debug: Boolean): (DataFrame, DataFrame) = {
     val (clickLabels, bidsImpsPreJoin) = addBidAndClickLabels(clicks, bidsImpsDat)
     val preFilteredData = preFilterJoin(clickLabels, bidsImpsPreJoin)
     val filteredData = preFilteredData
       .transform(ds => addExclusionFlag(ds, partnerExclusionList))
+      .transform(ds => addRestrictedFlag(ds, sensitiveAdvertiserData))
       // if not filterResults, filterAdGroup will be false and countryFilter will be None, it will just left join adgroup
       .transform(ds => filterDataset(ds, adgroup, filterAdGroup, countryFilter))
       .transform(ds => creativeLandingPage.map(clp => ModelInputTransform.matchLandingPage(ds, clp)).getOrElse(ds))
@@ -78,7 +80,9 @@ object ModelInputTransform extends Logger {
 
       val flatten = flattenData(addKeptCols, flatten_set)
 
-      val labelCounts = flatten.groupBy("label", "excluded").count()
+      val labelCounts = if (sensitiveAdvertiserData.isEmpty) {
+        flatten.groupBy("label", "excluded").count()
+      } else flatten.groupBy("label", "excluded", "CategoryPolicy").count()
       val hashedData = getHashedData(flatten, modelFeatures, seqHashFields, originalColNames, addCols)
       if (debug) {
         debugInfo("hashedData", hashedData)
@@ -325,4 +329,25 @@ object ModelInputTransform extends Logger {
     }
   }
 
+  def addRestrictedFlag(df: DataFrame, sensitiveAdvertiserData: Option[Dataset[SensitiveAdvertiserRecord]]
+                       ): DataFrame = {
+    // Check if sensitive advertiser list is defined
+    if (sensitiveAdvertiserData.isDefined) {
+      val sensitiveAdvertiserDf = sensitiveAdvertiserData.get
+        .filter(col("IsRestricted") === 1)
+      // Join with sensitive advertiser list and set the IsRestricted flag
+      df.join(
+        sensitiveAdvertiserDf,
+        Seq("AdvertiserId"),
+        "leftouter"
+      ).withColumn(
+        "IsRestricted", when(col("IsRestricted").isNull, 0).otherwise(1)
+      )
+    } else df
+  }
+
+  // Mask sensitive features, currently not used
+  def maskFeatures(df: DataFrame, featureName: String): DataFrame = {
+    df.withColumn(featureName, when(col("IsRestricted") === 1, 0).otherwise(col(featureName)))
+  }
 }

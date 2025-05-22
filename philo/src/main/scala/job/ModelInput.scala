@@ -2,8 +2,8 @@ package job
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared._
-import com.thetradedesk.geronimo.shared.schemas.{ModelFeature}
-import com.thetradedesk.philo.schema.{AdGroupRecord, AdvertiserExclusionList, AdvertiserExclusionRecord, CampaignROIGoalDataSet, CampaignROIGoalRecord, ClickTrackerDataSet, ClickTrackerRecord, CreativeLandingPageDataSet, CreativeLandingPageRecord, PartnerExclusionList, PartnerExclusionRecord, UnifiedAdGroupDataSet}
+import com.thetradedesk.geronimo.shared.schemas.ModelFeature
+import com.thetradedesk.philo.schema.{AdGroupRecord, AdvertiserExclusionList, AdvertiserExclusionRecord, CampaignROIGoalDataSet, CampaignROIGoalRecord, ClickTrackerDataSet, ClickTrackerRecord, CreativeLandingPageDataSet, CreativeLandingPageRecord, PartnerExclusionList, PartnerExclusionRecord, SensitiveAdvertiserRecord, SensitiveAdvertiserDataset, UnifiedAdGroupDataSet}
 import com.thetradedesk.philo.transform.ModelInputTransform
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -44,12 +44,19 @@ object ModelInput {
   val keptCols = config.getStringSeq("keptColumns", Seq("AdGroupId", "Country")) // columns to keep for debugging purpose
   val featuresJson = config.getStringRequired("featuresJson")
   val debug = config.getBoolean("debug", false)
+  val separateSensitiveAdvertisers = config.getBoolean("separateSensitiveAdvertisers", false)
+  val experimentName = config.getString("experiment", null)
 
   // Attributes used for adding user data and for click-bot filtering
   val filterClickBots = config.getBoolean("filterClickBots", false)
   val addUserData = config.getBoolean("addUserData", false)
 
+  val policyTableCols = Seq("AdvertiserId")
   var addCols = Seq("label", "excluded")
+  val sensitiveAdvertiserCols = List("IsRestricted", "CategoryPolicy")
+  if (separateSensitiveAdvertisers) {
+    addCols = addCols  ++ sensitiveAdvertiserCols
+  }
 
   if (debug) {
     println(s"config $config")
@@ -147,51 +154,121 @@ object ModelInput {
 
 
    // val modelFeatures = userFeatures ++ modelFeatures ++
+    val sensitiveAdvertiserData = if (separateSensitiveAdvertisers) {
+      Some(SensitiveAdvertiserDataset().readLatestPartitionUpTo(date, isInclusive = true))
+    } else None
     val (trainingData, labelCounts) = ModelInputTransform.transform(
       clicks, adgroup, bidsImpressions, roiFilter,
-      creativeLandingPage, countryFilter, keptCols, bidRequestFeatures, adGroupFeatures, seqHashFields, addUserData, filterClickBots,
-      partnerExclusionList, addCols, debug
+      creativeLandingPage, countryFilter, keptCols ++ policyTableCols, bidRequestFeatures, adGroupFeatures, seqHashFields, addUserData, filterClickBots,
+      partnerExclusionList, addCols, sensitiveAdvertiserData, debug
     )
-    //TODO if non exclusion list, set all exclusion flag to 0
-    if (writeFullData) {
-      //write to csv to dev for production job
-      writeData(
-        trainingData.filter($"excluded"===0).select(finalColNames.map(col): _*).drop("excluded"),
-        outputPath, writeEnv, outputPrefix, date, partitions, false
-      )
-      if (partnerExclusionList.isDefined) {
-        val excluded_data = trainingData.filter($"excluded"===1).select(finalColNames.map(col): _*).drop("excluded").cache()
-        writeData(excluded_data, outputPath, writeEnv, outputPrefix+"excluded", date, 20, false)
-        writeData(excluded_data.select("AdvertiserId").distinct(), outputPath, writeEnv, outputPrefix+"excludedadvertisers",
-          date, 1, false)
-        excluded_data.unpersist()
-      }
-    }
+    // write lines per file meta data, not used yet
     if (writePerFile) {
       val linesPerFileName = if (outputPrefix == "processed") {
         "linecounts"
       } else {
         outputPrefix + "linecounts"
       }
-      val lineCountsPerFileNonEx = countLinePerFile(outputPath, writeEnv, outputPrefix, date)(spark)
-      writeData(lineCountsPerFileNonEx, outputPath, writeEnv, linesPerFileName, date, 1, false)
+      val lineCountsPerFileNonEx = countLinePerFile(outputPath, writeEnv, outputPrefix, date, experimentName)(spark)
+      writeData(lineCountsPerFileNonEx, outputPath, writeEnv, linesPerFileName, date, 1, false, experimentName)
+      if (separateSensitiveAdvertisers) {
+        val lineCountsPerFileRestrictedHEC = countLinePerFile(outputPath, writeEnv, "HEC", date, experimentName)(spark)
+        writeData(lineCountsPerFileRestrictedHEC, outputPath, writeEnv, "HEClinecounts", date, 1, false, experimentName)
+        val lineCountsPerFileRestrictedHealth = countLinePerFile(outputPath, writeEnv, "Health", date, experimentName)(spark)
+        writeData(lineCountsPerFileRestrictedHealth, outputPath, writeEnv, "Healthlinecounts", date, 1, false, experimentName)
+      }
       if (partnerExclusionList.isDefined) {
-        val lineCountsPerFileEx = countLinePerFile(outputPath, writeEnv, outputPrefix+"excluded", date)(spark)
-        writeData(lineCountsPerFileEx, outputPath, writeEnv, linesPerFileName+"excluded", date, 1, false)
+        val lineCountsPerFileEx = countLinePerFile(outputPath, writeEnv, outputPrefix + "excluded", date, experimentName)(spark)
+        writeData(lineCountsPerFileEx, outputPath, writeEnv, linesPerFileName + "excluded", date, 1, false, experimentName)
+        if (separateSensitiveAdvertisers) {
+          val lineCountsPerFileRestrictedExHEC = countLinePerFile(outputPath, writeEnv, "HECexcluded", date, experimentName)(spark)
+          writeData(lineCountsPerFileRestrictedExHEC, outputPath, writeEnv, "HECexcludedlinecounts", date, 1, false, experimentName)
+          val lineCountsPerFileRestrictedExHealth = countLinePerFile(outputPath, writeEnv, "Healthexcluded", date, experimentName)(spark)
+          writeData(lineCountsPerFileRestrictedExHealth, outputPath, writeEnv, "Healthexcludedlinecounts", date, 1, false, experimentName)
+        }
       }
     }
+    // write grouped meta data, currently used in prod for estimating lines per file
     if (writeMeta) {
       val metadataName = if (outputPrefix == "processed") {
         "metadata"
       } else {
         outputPrefix + "metadata"
       }
-      writeData(labelCounts.filter($"excluded"===0).drop("excluded"), outputPath, writeEnv, metadataName, date, 1, false)
+
+      if (separateSensitiveAdvertisers) {
+        writeData(labelCounts.filter(($"excluded" === 0) && ($"CategoryPolicy" === "HEC")).drop("excluded", "CategoryPolicy"), outputPath, writeEnv, "HECmetadata", date, 1, false, experimentName)
+        writeData(labelCounts.filter(($"excluded" === 0) && ($"CategoryPolicy" === "Health")).drop("excluded", "CategoryPolicy"), outputPath, writeEnv, "Healthmetadata", date, 1, false, experimentName)
+        writeData(labelCounts.filter(($"excluded" === 0) && ($"CategoryPolicy".isNull)).drop("excluded", "CategoryPolicy"), outputPath, writeEnv, metadataName, date, 1, false, experimentName)
+      } else {
+        writeData(labelCounts.filter(($"excluded" === 0)).drop("excluded"), outputPath, writeEnv, metadataName, date, 1, false, experimentName)
+      }
+
       if (partnerExclusionList.isDefined) {
-        writeData(labelCounts.filter($"excluded" === 1).drop("excluded"), outputPath, writeEnv, metadataName + "excluded", date, 1, false)
+        if (separateSensitiveAdvertisers) {
+          writeData(labelCounts.filter(($"excluded" === 1) && ($"CategoryPolicy" === "HEC")).drop("excluded", "CategoryPolicy"), outputPath, writeEnv, "HECexcludedmetadata", date, 1, false, experimentName)
+          writeData(labelCounts.filter(($"excluded" === 1) && ($"CategoryPolicy" === "Health")).drop("excluded", "CategoryPolicy"), outputPath, writeEnv, "Healthexcludedmetadata", date, 1, false, experimentName)
+          writeData(labelCounts.filter(($"excluded" === 1) && ($"CategoryPolicy".isNull)).drop("excluded", "CategoryPolicy"), outputPath, writeEnv, metadataName + "excluded", date, 1, false, experimentName)
+        } else {
+          writeData(labelCounts.filter(($"excluded" === 1)).drop("excluded"), outputPath, writeEnv, metadataName + "excluded", date, 1, false, experimentName)
+        }
       }
     }
-    writeData(trainingData.select("originalAdGroupId", "AdGroupId").distinct(), outputPath, writeEnv, "adgrouptable", date, 1, false)
+    // create adgroup table for id matching
+    if (separateSensitiveAdvertisers) {
+      writeData(trainingData.select("originalAdGroupId", "AdGroupId", "IsRestricted", "originalAdvertiserId").distinct(), outputPath, writeEnv, "adgrouptable", date, 1, false, experimentName)
+    } else {
+      writeData(trainingData.select("originalAdGroupId", "AdGroupId", "originalAdvertiserId").distinct(), outputPath, writeEnv, "adgrouptable", date, 1, false, experimentName)
+    }
+    //TODO if non exclusion list, set all exclusion flag to 0
+    if (writeFullData) {
+      //write to csv to dev for production job
+      val non_excluded_data = trainingData.filter($"excluded"===0).select(finalColNames.map(col): _*).drop("excluded")
+      if (separateSensitiveAdvertisers) {
+        writeData(
+          non_excluded_data.filter($"IsRestricted"===0).drop(sensitiveAdvertiserCols: _*),
+          outputPath, writeEnv, outputPrefix, date, partitions, false, experimentName
+        )
+        writeData(
+          non_excluded_data.filter($"CategoryPolicy"==="HEC").drop(sensitiveAdvertiserCols: _*),
+          outputPath, writeEnv, "HEC", date, 30, false, experimentName
+        )
+        writeData(
+          non_excluded_data.filter($"CategoryPolicy"==="Health").drop(sensitiveAdvertiserCols: _*),
+          outputPath, writeEnv, "Health", date, 30, false, experimentName
+        )
+      } else {
+        writeData(
+          non_excluded_data, outputPath, writeEnv, outputPrefix, date, partitions, false, experimentName
+        )
+      }
+      if (partnerExclusionList.isDefined) {
+        val excluded_data = trainingData.filter($"excluded"===1).select(finalColNames.map(col): _*).drop("excluded").cache()
+        writeData(excluded_data.select("AdvertiserId").distinct(), outputPath, writeEnv, outputPrefix+"excludedadvertisers",
+          date, 1, false, experimentName)
+        if (separateSensitiveAdvertisers) {
+          writeData(
+            excluded_data.filter($"IsRestricted"===0).drop(sensitiveAdvertiserCols: _*),
+            outputPath, writeEnv, outputPrefix+"excluded", date, 20, false, experimentName
+          )
+          writeData(
+            excluded_data.filter($"CategoryPolicy"==="HEC").drop(sensitiveAdvertiserCols: _*),
+            outputPath, writeEnv, "HECexcluded", date, 10, false, experimentName
+          )
+          writeData(
+            excluded_data.filter($"CategoryPolicy" === "Health").drop(sensitiveAdvertiserCols: _*),
+            outputPath, writeEnv, "Healthexcluded", date, 10, false, experimentName
+          )
+        } else {
+          writeData(
+            excluded_data, outputPath, writeEnv, outputPrefix+"excluded", date, 20, false, experimentName
+          )
+        }
+        excluded_data.unpersist()
+      }
+    }
+
+
 
 
   }
