@@ -163,7 +163,7 @@ object ModelInput {
       partnerExclusionList, addCols, sensitiveAdvertiserData, debug
     )
     // write lines per file meta data, not used yet
-    if (writePerFile) {
+    /*if (writePerFile) {
       val linesPerFileName = if (outputPrefix == "processed") {
         "linecounts"
       } else {
@@ -187,7 +187,7 @@ object ModelInput {
           writeData(lineCountsPerFileRestrictedExHealth, outputPath, writeEnv, "Healthexcludedlinecounts", date, 1, false, experimentName)
         }
       }
-    }
+    }*/
     // write grouped meta data, currently used in prod for estimating lines per file
     if (writeMeta) {
       val metadataName = if (outputPrefix == "processed") {
