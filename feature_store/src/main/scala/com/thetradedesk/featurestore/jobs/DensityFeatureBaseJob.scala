@@ -2,6 +2,7 @@ package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore._
 import com.thetradedesk.featurestore.rsm.CommonEnums.{CrossDeviceVendor, DataSource}
+import com.thetradedesk.featurestore.transform.IDTransform.{allIdType, filterOnIdTypes}
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -34,6 +35,12 @@ abstract class DensityFeatureBaseJob {
     date.format(dtf)
   }
 
+  def readBidsImpressionsWithIDExploded(featurePairs: List[(String, String)], date: LocalDate, hour: Option[Int]) = {
+    readBidsImpressions(featurePairs, date, hour)
+      .withColumn("TDID", allIdType)
+      .select("TDID", (featurePairs.map(e => s"${e._1}${e._2}Hashed") :+ "BidRequestId"): _*)
+  }
+
   def readBidsImpressions(featurePairs: List[(String, String)], date: LocalDate, hour: Option[Int]) = {
     val yyyy = date.getYear.toString
     val mm = f"${date.getMonthValue}%02d"
@@ -49,10 +56,11 @@ abstract class DensityFeatureBaseJob {
         case _ => spark.read.parquet(bidsImpsPath)
       }
 
+      val emptyFilter = featurePairs.map(e => (col(e._1).isNotNull && col(e._2).isNotNull)).reduce(_ || _)
+
       bidsImpressions = bidsImpressions
-        .select("UIID", colsToRead: _*)
-        .withColumnRenamed("UIID", "TDID")
-        .filter(col("TDID") =!= "00000000-0000-0000-0000-000000000000")
+        .where(emptyFilter)
+        .where(filterOnIdTypes(shouldTrackTDID))
 
       featurePairs.foreach { case (feature1, feature2) =>
         bidsImpressions = bidsImpressions.withColumn(
@@ -66,7 +74,10 @@ abstract class DensityFeatureBaseJob {
         )
       }
 
-      bidsImpressions.drop(colsToRead: _*)
+      val colsToKeep = colsToRead ++ featurePairs.map(e => s"${e._1}${e._2}Hashed") :+ "DeviceAdvertisingId" :+ "CookieTDID" :+ "UnifiedId2" :+ "EUID" :+ "IdentityLinkId"
+
+      bidsImpressions
+        .select("BidRequestId", colsToKeep : _*)
     }
     catch {
       case e: Throwable =>

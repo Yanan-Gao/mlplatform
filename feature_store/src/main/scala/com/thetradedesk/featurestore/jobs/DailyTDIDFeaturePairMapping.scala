@@ -8,7 +8,7 @@ object DailyTDIDFeaturePairMapping extends DensityFeatureBaseJob {
   val repartitionNum: Int = 64
 
   override def runTransform(args: Array[String]): Unit = {
-    val bidreq = readBidsImpressions(featurePairs, date, None)
+    val bidreq = readBidsImpressionsWithIDExploded(featurePairs, date, None)
 
     featurePairStrings.foreach { featurePair =>
       val writePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=TDID/job=$jobName/config=${featurePair}/v=1/date=${getDateStr(date)}/"
