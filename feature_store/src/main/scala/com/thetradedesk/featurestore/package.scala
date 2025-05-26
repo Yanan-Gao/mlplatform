@@ -46,8 +46,8 @@ package object featurestore {
   val highDimLevels = Set("UIID", "TDID")
   val isProfileHighDim: Boolean = highDimLevels.contains(aggLevel)
 
-  private val doNotTrackTDID = "00000000-0000-0000-0000-000000000000"
-  private val doNotTrackTDIDColumn = lit(doNotTrackTDID)
+  val doNotTrackTDID = "00000000-0000-0000-0000-000000000000"
+  val doNotTrackTDIDColumn = lit(doNotTrackTDID)
 
   def shouldConsiderTDID(column: Column) = {
     shouldTrackTDID(column) && substring(column, 9, 1) === lit("-") && userIsInSampleUDF(column, lit(userDownSampleBasePopulation), lit(userDownSampleHitPopulation))

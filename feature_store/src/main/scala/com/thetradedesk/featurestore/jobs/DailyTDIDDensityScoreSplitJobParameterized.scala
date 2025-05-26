@@ -4,6 +4,7 @@ import com.thetradedesk.featurestore._
 import com.thetradedesk.featurestore.jobs.SeedPriority
 import com.thetradedesk.featurestore.rsm.CommonEnums.{CrossDeviceVendor, DataSource}
 import com.thetradedesk.featurestore.transform._
+import com.thetradedesk.featurestore.utils.SIBSampler
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.{CampaignSeedDataSet, SeedDetailDataSet}
@@ -30,14 +31,22 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
       .select(s"${featurePair}Hashed", "TDID")
       .cache()
 
+    val condition =
+      if (splitIndex < 0) {
+        SIBSampler.isDeviceIdSampled1Percent(col("TDID"))
+      } else {
+        col("TDID").substr(9, 1) === lit("-") &&
+          (abs(xxhash64(concat(col("TDID"), lit(salt)))) % lit(numPartitions) === lit(splitIndex))
+      }
+
     featurePairToTDIDDF
-      .filter((col("TDID").substr(9, 1) === lit("-")) && (abs(xxhash64(concat(col("TDID"), lit(salt)))) % lit(numPartitions) === lit(splitIndex)))
+      .filter(condition)
       .select(s"${featurePair}Hashed", "TDID")
   }
 
   def readSyntheticIdDensityCategories(date: LocalDate) = {
     spark.read.parquet(s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=FeatureKeyValue/job=DailyDensityScoreReIndexingJob/config=SyntheticIdDensityScoreCategorized/date=${getDateStr(date)}")
-      .repartition(repartitionNum, 'FeatureKey, 'FeatureValueHashed)
+      .repartition(repartitionNum, 'FeatureValueHashed)
       .cache()
   }
 
@@ -159,9 +168,8 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
 
       val tdidFeaturePairDensityScore = tdidFeaturePairMappings.map { case (featurePair, tdidMapping) =>
         val tempDF = tdidMapping.withColumnRenamed(s"${featurePair}Hashed", "FeatureValueHashed")
-          .withColumn("FeatureKey", lit(featurePair))
-          .repartition(repartitionNum, 'FeatureKey, 'FeatureValueHashed)
-          .join(syntheticIdDensityCategories, Seq("FeatureKey", "FeatureValueHashed"))
+          .repartition(repartitionNum, 'FeatureValueHashed)
+          .join(syntheticIdDensityCategories.filter(col("FeatureKey") === lit(featurePair)), Seq("FeatureValueHashed"))
           .select('TDID, 'SyntheticIdLevel1, 'SyntheticIdLevel2)
           .groupBy('TDID)
           .agg(mergeDensityLevels('SyntheticIdLevel1, 'SyntheticIdLevel2).as("x"))
