@@ -7,8 +7,7 @@ import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, GERONIMO_DATA_S
 import com.thetradedesk.kongming.features.Features.{aliasedModelFeatureCols, modelFeatures, rawModelFeatureCols, rawModelFeatureNames, seqDirectFields}
 import com.thetradedesk.kongming.datasets.{BidsImpressionsSchema, OnlineLogsDataset, OnlineLogsDiscrepancyDataset, OnlineLogsDiscrepancyRecord}
 import com.thetradedesk.kongming.{KongmingApplicationName, LogsDiscrepancyCountGaugeName, RunTimeGaugeName, date, getJobNameWithExperimentName}
-import com.thetradedesk.kongming.transform.ContextualTransform
-import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
+import com.thetradedesk.kongming.transform.ContextualTransform.generateContextualFeatureTier1
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.streaming.records.rtb.bidrequest.BidRequestRecord
@@ -62,18 +61,14 @@ object OnlineLogsDiscrepancyCheck {
       .withColumn("RenderingContext", col("RenderingContext.value"))
       .na.fill(0, Seq("Latitude", "Longitude"))
 
-    val contextualFeatures = ContextualTransform.generateContextualFeatureTier1(
-      rawBidImpressions.select("BidRequestId", "ContextualCategories").dropDuplicates("BidRequestId").selectAs[ContextualData]
-    ).drop("ContextualCategoryNumberTier1")
-
-    val bidImpressions = rawBidImpressions.join(contextualFeatures, Seq("BidRequestId"), "left")
-
-    val cols = bidImpressions.columns.map(_.toLowerCase).toSet
+    val cols = rawBidImpressions.columns.map(_.toLowerCase).toSet
     val features = modelFeatures.filter(x => cols.contains(x.name.toLowerCase) && !seqDirectFields.contains(x))
     val joinFeatures = Seq("BidRequestId").map(x => ModelFeature(x, "", None, 1))
 
     val tensorflowSelectionTabular = intModelFeaturesCols(features) ++ rawModelFeatureCols(joinFeatures) ++ aliasedModelFeatureCols(seqDirectFields)
-    bidImpressions.select(tensorflowSelectionTabular:_*)
+
+    generateContextualFeatureTier1(rawBidImpressions)
+      .select(tensorflowSelectionTabular:_*)
   }
 
   def getOnlineLogs(date: LocalDate, joinCols: Seq[String], modelName: String): DataFrame = {
