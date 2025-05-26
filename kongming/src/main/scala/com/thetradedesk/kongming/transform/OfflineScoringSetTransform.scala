@@ -3,12 +3,12 @@ package com.thetradedesk.kongming.transform
 import com.thetradedesk.geronimo.shared.encodeStringIdUdf
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.datasets._
-import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
+import com.thetradedesk.kongming.transform.ContextualTransform.generateContextualFeatureTier1
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.kongming.transform.AudienceIdTransform.AudienceFeature
 import org.apache.spark.sql.{Column, Dataset}
-import org.apache.spark.sql.functions.{col, concat, lit, substring, when, date_format, size}
+import org.apache.spark.sql.functions.{col, concat, date_format, isnull, lit, size, substring, udf, when}
 
 import java.time.LocalDate
 
@@ -28,6 +28,7 @@ object OfflineScoringSetTransform {
                      selectionTabular: Array[Column]
                     )
                     (implicit prometheus: PrometheusClient): Dataset[UnionDailyOfflineScoringRecord] = {
+
     val bidsImp = bidsImpressions.filter('IsImp)
       //Assuming ConfigKey will always be adgroupId.
       .withColumn("LogEntryTime", date_format($"LogEntryTime", "yyyy-MM-dd HH:mm:ss"))
@@ -41,19 +42,12 @@ object OfflineScoringSetTransform {
       .withColumn("HasUserData", when($"MatchedSegments".isNull||size($"MatchedSegments")===lit(0), lit(0)).otherwise(lit(1)))
       .withColumn("UserDataLength", when($"UserSegmentCount".isNull, lit(0.0)).otherwise($"UserSegmentCount"*lit(1.0)))
       .withColumn("UserData", when($"HasUserData"===lit(0), lit(null)).otherwise($"MatchedSegments"))
-      .cache()
-
-    val bidsImpContextual = ContextualTransform.generateContextualFeatureTier1(
-      bidsImp.select("BidRequestId","ContextualCategories")
-        .dropDuplicates("BidRequestId").selectAs[ContextualData]
-    )
 
     val dimAudienceId = AudienceIdTransform.generateAudiencelist(bidsImp.selectAs[AudienceFeature],date).cache()
     val dimIndustryCategoryId = AdvertiserFeatureDataSet().readLatestPartitionUpTo(date, isInclusive = true).select("AdvertiserId","IndustryCategoryId")
       .withColumn("IndustryCategoryId", col("IndustryCategoryId").cast("Int")).cache()
 
-    bidsImp
-      .join(bidsImpContextual, Seq("BidRequestId"), "left")
+    generateContextualFeatureTier1(bidsImp)
       .join(dimAudienceId, Seq("CampaignId", "AdvertiserId"), "left")
       .join(dimIndustryCategoryId, Seq("AdvertiserId"), "left")
       .withColumn("AdGroupIdEncoded", encodeStringIdUdf('AdGroupId))

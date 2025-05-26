@@ -3,7 +3,7 @@ package com.thetradedesk.kongming.transform
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, FLOAT_FEATURE_TYPE, GERONIMO_DATA_SOURCE, INT_FEATURE_TYPE, STRING_FEATURE_TYPE, loadParquetData, shiftModArray, shiftModUdf}
 import com.thetradedesk.kongming.datasets._
-import com.thetradedesk.kongming.transform.ContextualTransform.ContextualData
+import com.thetradedesk.kongming.transform.ContextualTransform.generateContextualFeatureTier1
 import com.thetradedesk.kongming.transform.AudienceIdTransform.AudienceFeature
 import com.thetradedesk.kongming.{CustomGoalTypeId, IncludeInCustomGoal, date, task}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -14,6 +14,7 @@ import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.DoubleType
 import org.apache.spark.sql.Encoder
+
 import java.time.LocalDate
 
 object TrainSetTransformation {
@@ -364,7 +365,6 @@ object TrainSetTransformation {
     val encodedCampaignId = mapping.select('CampaignId, 'CampaignIdEncoded).distinct()
     val encodedAdvertiserId = mapping.select('AdvertiserId, 'AdvertiserIdEncoded).distinct()
 
-
     // attachTrainsetWithFeature function
     val df = trainset.join(bidimpression.drop("AdGroupId", "LogEntryTime"), Seq("BidRequestId"), joinType = "inner")
       .withColumn("LogEntryTime", date_format($"LogEntryTime", "yyyy-MM-dd HH:mm:ss"))
@@ -383,23 +383,16 @@ object TrainSetTransformation {
       .join(broadcast(encodedAdGroupId), Seq("AdGroupId"), "inner")
       .join(broadcast(encodedCampaignId), Seq("CampaignId"), "inner")
       .join(broadcast(encodedAdvertiserId), Seq("AdvertiserId"), "inner")
-      .cache()
 
-    val bidsImpContextual = df.select("BidRequestId", "ContextualCategories")
-      .dropDuplicates("BidRequestId").selectAs[ContextualData]
-
-    val bidsImpContextualTransformed = ContextualTransform
-      .generateContextualFeatureTier1(bidsImpContextual)
     val dimAudienceId = AudienceIdTransform.generateAudiencelist(df.select("AdvertiserId", "CampaignId").distinct.selectAs[AudienceFeature], date)
     val dimIndustryCategoryId = AdvertiserFeatureDataSet().readLatestPartitionUpTo(date, isInclusive = true)
       .select("AdvertiserId", "IndustryCategoryId")
       .withColumn("IndustryCategoryId", col("IndustryCategoryId").cast("Int"))
-    val finalDataframe = df
-      .join(bidsImpContextualTransformed, Seq("BidRequestId"), "left")
+
+    generateContextualFeatureTier1(df)
       .join(broadcast(dimAudienceId), Seq("AdvertiserId", "CampaignId"), "left")
       .join(broadcast(dimIndustryCategoryId), Seq("AdvertiserId"), "left")
       .selectAs[TrainSetFeaturesRecord]
-    finalDataframe
   }
 
   def balancePosNeg(

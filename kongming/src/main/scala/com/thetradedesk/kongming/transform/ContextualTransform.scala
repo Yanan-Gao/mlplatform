@@ -2,11 +2,12 @@ package com.thetradedesk.kongming.transform
 
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.datasets._
-import org.apache.spark.sql.Dataset
+import com.thetradedesk.spark.TTDSparkContext.spark
+import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.functions._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.expressions.{UserDefinedFunction, Window}
 
 object ContextualTransform {
   val CARDINALITY_ALL_CATEGORY: Int = 700
@@ -76,8 +77,8 @@ object ContextualTransform {
   }
 
   def generateContextualFeatureTier1(
-                                      contextualData: Dataset[ContextualData]
-                                    ): Dataset[ContextualFeatureTier1] = {
+                                      contextualData: DataFrame
+                                    ): DataFrame = {
     /* ContextualFeature V2: collect tier1 category list and generate features
        1. ContextualCategoriesTier1
        2. ContextualCategoryNumberTier1
@@ -85,14 +86,16 @@ object ContextualTransform {
        4. HasContextualCategoryTier1
      */
 
-    val  ContextualTier1Map = ContextualTaxonomyDataset.readHardCodedTier1Map()
-    val  IdMap = ContextualTier1Map.select("ContextualCategoryId", "Tier1Id").as[(Long, Int)].collect().toMap
+    val ContextualTier1Map = ContextualTaxonomyDataset.readHardCodedTier1Map()
+    val IdMap = spark.sparkContext.broadcast(
+      ContextualTier1Map.select("ContextualCategoryId", "Tier1Id").as[(Long, Int)].collect().toMap
+    )
 
     def Tier1IdMapping(allIds: Seq[Long]): Seq[Int] = {
-      allIds.map(i => IdMap.get(i).getOrElse(0)).distinct
+      allIds.map(i => IdMap.value.getOrElse(i, 0)).distinct
     }
 
-    def Tier1IdMappingUdf = udf(Tier1IdMapping _)
+    def Tier1IdMappingUdf: UserDefinedFunction = udf(Tier1IdMapping _)
 
     contextualData.withColumn(
       "ContextualCategoriesTier1",
@@ -104,7 +107,6 @@ object ContextualTransform {
         "HasContextualCategoryTier1",
         when(isnull($"ContextualCategoriesTier1"), 0).otherwise(1))
       .withColumn("ContextualCategoryLengthTier1", $"ContextualCategoryNumberTier1" / lit(CARDINALITY_TIER1_CATEGORY.toDouble))
-      .selectAs[ContextualFeatureTier1]
   }
 
   def seq2String(list: Seq[Long]): String = {
