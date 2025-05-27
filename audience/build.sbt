@@ -8,7 +8,8 @@ version := "0.0.0"
 
 scalaVersion := "2.12.15"
 
-val sparkVersion = "3.2.1"
+// For now, we can define a different spark version by passing -DsparkVersion
+val sparkVersion = sys.props.getOrElse("sparkVersion", "3.2.1")
 val prometheusVersion = "0.9.0"
 
 resolvers += "bintray-spark-packages" at "https://dl.bintray.com/spark-packages/maven/"
@@ -25,6 +26,7 @@ val jacksonCore = ExclusionRule("com.fasterxml.jackson.core")
 val guava = ExclusionRule("com.google.guava")
 val awsJavaSdkBundle = ExclusionRule("com.amazonaws", "aws-java-sdk-bundle")
 
+
 libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-sql" % sparkVersion % "provided",
   "org.apache.spark" %% "spark-mllib" % sparkVersion % "provided",
@@ -32,6 +34,7 @@ libraryDependencies ++= Seq(
   "com.typesafe" % "config" % "1.3.0",
   "com.thetradedesk" %% "geronimo" % "0.2.32-SNAPSHOT",
   "com.thetradedesk.segment.client" % "spark_3" % "2.0.9" % "provided",
+  "com.thetradedesk" %% "availspipeline.spark-common_no_uniform" % "3.0.114",
   "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
 
   "io.prometheus" % "simpleclient" % prometheusVersion,
@@ -56,6 +59,7 @@ assemblyMergeStrategy in assembly := {
   case PathList("org", "apache", "scala", _@_*) => MergeStrategy.discard
   case PathList("org", "apache", "spark", "sql", "execution", _@_*) => MergeStrategy.discard
   case PathList("META-INF", "services", file) if file.startsWith("io.openlineage.client.transports.TransportBuilder") => MergeStrategy.first
+  case PathList("META-INF", "services", _*) => MergeStrategy.concat
   case PathList("META-INF", _@_*) => MergeStrategy.discard
 
   case _ => MergeStrategy.first
