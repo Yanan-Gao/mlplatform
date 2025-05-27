@@ -1,5 +1,6 @@
 variables:
   SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+  ALTERNATE_SPARK_VERSION: "3.5.1"
   AUDIENCE_JAR_NAME: "audience.jar"
   AUDIENCE_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/mergerequests"
   AUDIENCE_SNAPSHOTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/snapshots"
@@ -67,6 +68,25 @@ audience:push_bits_merge_request:
     - echo "ran AUDIENCE_push_bits_merge_request"
 
 
+audience:push_bits_merge_request_spark3.5:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: assembly_upload
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "audience/src/main/scala/**/*"
+        - "audience/build.sbt"
+      when: manual
+  script:
+    - pushd ./audience/
+    - sbt -DsparkVersion="${ALTERNATE_SPARK_VERSION}" "set test in assembly := {}" clean assembly
+    - DEST=${AUDIENCE_MERGEREQUESTS_JAR_FOLDER}/spark-${ALTERNATE_SPARK_VERSION}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - DEST_FIXED=${AUDIENCE_MERGEREQUESTS_JAR_FOLDER}/spark-${ALTERNATE_SPARK_VERSION}/${CI_COMMIT_REF_NAME}/latest
+    - aws s3 cp ${AUDIENCE_ASSEMBLY_OUT} ${DEST}/${AUDIENCE_JAR_NAME}
+    - aws s3 cp ${AUDIENCE_ASSEMBLY_OUT} ${DEST_FIXED}/${AUDIENCE_JAR_NAME}
+    - popd
+    - echo "ran AUDIENCE_push_bits_merge_request"
+
 audience:push_bits_master_snapshot:
   image: "$SCALA_BUILD_IMAGE_2_13_0"
   stage: assembly_upload
@@ -79,6 +99,10 @@ audience:push_bits_master_snapshot:
     - pushd ./audience/
     - sbt "set test in assembly := {}" clean assembly
     - DEST=${AUDIENCE_SNAPSHOTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - aws s3 cp ${AUDIENCE_ASSEMBLY_OUT} ${DEST}/${AUDIENCE_JAR_NAME}
+    # do an additional build for a different spark version
+    - sbt -DsparkVersion="${ALTERNATE_SPARK_VERSION}" "set test in assembly := {}" clean assembly
+    - DEST=${AUDIENCE_SNAPSHOTS_JAR_FOLDER}/spark-${ALTERNATE_SPARK_VERSION}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
     - aws s3 cp ${AUDIENCE_ASSEMBLY_OUT} ${DEST}/${AUDIENCE_JAR_NAME}
     - popd
     - echo "ran AUDIENCE_push_bits_master_snapshot"
@@ -96,6 +120,9 @@ audience:deploy_release:
     - pushd ./audience/
     - sbt "set test in assembly := {}" clean assembly
     - aws s3 cp ${AUDIENCE_ASSEMBLY_OUT} ${AUDIENCE_PROD_JAR_FOLDER}/${AUDIENCE_JAR_NAME}
+    # do an additional build for a different spark version
+    - sbt -DsparkVersion="${ALTERNATE_SPARK_VERSION}" "set test in assembly := {}" clean assembly
+    - aws s3 cp ${AUDIENCE_ASSEMBLY_OUT} ${AUDIENCE_PROD_JAR_FOLDER}/spark-${ALTERNATE_SPARK_VERSION}/${AUDIENCE_JAR_NAME}
     - popd
     - echo "ran AUDIENCE_deploy_release"
 
