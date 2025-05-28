@@ -10,6 +10,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.{AdGroupDataSet, AdGroupRecord, CampaignDataSet}
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
+import job.campaignbackoff.CampaignAdjustmentsJob.hadesCampaignCounts
 import org.apache.hadoop.shaded.org.apache.commons.math3.special.Erf
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions.{count, _}
@@ -630,16 +631,16 @@ object HadesCampaignBufferAdjustmentsTransform {
 
     HadesCampaignBufferAdjustmentsDataset.writeData(date, hadesBufferAdjustmentsDataset, fileCount)
 
-//    val hadesIsProblemCampaignsCount = hadesBufferAdjustmentsDataset.filter(col("Hades_isProblemCampaign") === true).count()
-//    val hadesTotalAdjustmentsCount = hadesBufferAdjustmentsDataset.filter(col("HadesBackoff_FloorBuffer") < 1.0).count()
-//
-//    import job.campaignbackoff.CampaignAdjustmentsJob.hadesBackoffV3Metrics
-//
-//    hadesCampaignCounts.labels("HadesProblemCampaigns").set(hadesIsProblemCampaignsCount)
-//    hadesCampaignCounts.labels("HadesAdjustedCampaigns").set(hadesTotalAdjustmentsCount)
-//    metrics.foreach { metric =>
-//      hadesBackoffV3Metrics.labels(metric.CampaignType, metric.PacingType, metric.OptoutType, metric.AdjustmentQuantile.toString, metric.Buffer).set(metric.Count)
-//    }
+    val hadesIsProblemCampaignsCount = hadesBufferAdjustmentsDataset.filter(col("Hades_isProblemCampaign") === true).count()
+    val hadesTotalAdjustmentsCount = hadesBufferAdjustmentsDataset.filter(col("HadesBackoff_FloorBuffer") < 1.0).count()
+
+    import job.campaignbackoff.CampaignAdjustmentsJob.hadesBackoffV3Metrics
+
+    hadesCampaignCounts.labels("HadesProblemCampaigns").set(hadesIsProblemCampaignsCount)
+    hadesCampaignCounts.labels("HadesAdjustedCampaigns").set(hadesTotalAdjustmentsCount)
+    metrics.foreach { metric =>
+      hadesBackoffV3Metrics.labels(metric.CampaignType, metric.PacingType, metric.OptoutType, metric.AdjustmentQuantile.toString, metric.Buffer).set(metric.Count)
+    }
 
     hadesBufferAdjustmentsDataset
   }
