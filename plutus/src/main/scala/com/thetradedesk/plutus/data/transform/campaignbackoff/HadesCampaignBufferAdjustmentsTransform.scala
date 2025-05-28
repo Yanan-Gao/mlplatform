@@ -32,8 +32,8 @@ object HadesCampaignBufferAdjustmentsTransform {
   val MinimumFloorBuffer = 0.01
   val MaximumFloorBuffer = 0.85
 
-  val MinTestBucketIncluded = 0.6
-  val MaxTestBucketExcluded = 0.65
+  val MinTestBucketIncluded = 0.5
+  val MaxTestBucketExcluded = 0.7
 
   def cdf(mu: Double, sigma: Double, x: Double): Double = {
     //val a = (math.log(x) - mu) / math.sqrt(2 * math.pow(sigma, 2))
@@ -67,7 +67,7 @@ object HadesCampaignBufferAdjustmentsTransform {
   }
 
   def getUnderdeliveringCampaignBidData(bidData: DataFrame,
-                                        filteredCampaigns: Dataset[CampaignMetaData]): DataFrame = {
+    filteredCampaigns: Dataset[CampaignMetaData]): DataFrame = {
 
     val gss = udf((m: Double, s: Double, b: Double, e: Double) => gssFunc(m, s, b, e))
 
@@ -82,6 +82,10 @@ object HadesCampaignBufferAdjustmentsTransform {
             .when(col("AuctionType").isin(AuctionType.FixedPrice), "Fixed") // This includes PG as well
             .otherwise("Other")
         ).otherwise("OpenMarket"))
+      // We want to potentially calculate floor buffers for bids where
+      // PC pushdown is applied directly (model='plutus') or where
+      // we calculate pc pushdown but dont apply pushdown (fixed price bids)
+      .filter(col("Model") === "plutus" || col("Market") === "Fixed")
       // Update Initial Bid value used to calculate gss for the Propeller bids
       .withColumn("gen_initialBid",
         when(col("UseUncappedBidForPushdown"),
@@ -104,47 +108,46 @@ object HadesCampaignBufferAdjustmentsTransform {
       // Exclude cases where we just apply the minimum pushdown (discrepancy)
       .filter(col("gen_excess") > 0)
 
+      .withColumn("gen_actual_bufferFloor", col("FloorPrice") * (lit(1) - col("Actual_BBF_FloorBuffer")))
+
       // PC ADJUSTMENT BACKOFF LOGIC
-//      .withColumn("gen_bufferFloor", col("FloorPrice") * (lit(1) - col("BBF_FloorBuffer")))
-//      .withColumn("gen_plutusPushdownAtBufferFloor", col("gen_bufferFloor") / col("InitialBid"))
-//      .withColumn("gen_excess_wanted", greatest(lit(0), col("gen_effectiveDiscrepancy") - col("gen_plutusPushdownAtBufferFloor")))
-//      .withColumn("gen_PCAdjustment", col("gen_excess_wanted") / col("gen_excess"))
-//
-//      // We ignore the strategy here because then we calculate an adjustment which is independent
-//      // of previous adjustments, allowing the backoff to adapt to current bidding environment.
-//      .withColumn("gen_proposedBid", col("InitialBid") * col("gen_gss_pushdown"))
-//      .withColumn("gen_isInBufferZone", col("gen_proposedBid") >= col("gen_bufferFloor"))
-//      .withColumn("BBF_PMP_Bid",
-//        when((col("BidBelowFloorExceptedSource") === 2 && col("Market").isin("Variable", "Fixed") && !col("gen_isInBufferZone")), true)
-//          .otherwise(false))
-//      .withColumn("BBF_OM_Bid",
-//        when((col("BidBelowFloorExceptedSource") === 2 && col("Market").isin("OpenMarket") && !col("gen_isInBufferZone")), true)
-//          .otherwise(false))
+      //      .withColumn("gen_bufferFloor", col("FloorPrice") * (lit(1) - col("BBF_FloorBuffer")))
+      //      .withColumn("gen_plutusPushdownAtBufferFloor", col("gen_bufferFloor") / col("InitialBid"))
+      //      .withColumn("gen_excess_wanted", greatest(lit(0), col("gen_effectiveDiscrepancy") - col("gen_plutusPushdownAtBufferFloor")))
+      //      .withColumn("gen_PCAdjustment", col("gen_excess_wanted") / col("gen_excess"))
+      //
+      //      // We ignore the strategy here because then we calculate an adjustment which is independent
+      //      // of previous adjustments, allowing the backoff to adapt to current bidding environment.
+      //      .withColumn("gen_proposedBid", col("InitialBid") * col("gen_gss_pushdown"))
+      //      .withColumn("gen_isInBufferZone", col("gen_proposedBid") >= col("gen_bufferFloor"))
+      //      .withColumn("BBF_PMP_Bid",
+      //        when((col("BidBelowFloorExceptedSource") === 2 && col("Market").isin("Variable", "Fixed") && !col("gen_isInBufferZone")), true)
+      //          .otherwise(false))
+      //      .withColumn("BBF_OM_Bid",
+      //        when((col("BidBelowFloorExceptedSource") === 2 && col("Market").isin("OpenMarket") && !col("gen_isInBufferZone")), true)
+      //          .otherwise(false))
 
       // FLOOR BUFFER BACKOFF LOGIC
       // We keep PC Backoff as strategy because we want to calculate an adjustment independent of any previous Hades Backoff strategy values,
       // but adapt to the current bidding environment where PC backoff is still being applied.
-      .withColumn("gen_proposedBid_v3", col("InitialBid") * (col("gen_effectiveDiscrepancy") - (col("gen_excess") * col("CampaignPCAdjustment"))))
-      .withColumn("gen_isBidBelowTheFloor", col("gen_proposedBid_v3") < col("FloorPrice"))
+
+      .withColumn("gen_proposedBid_v3", col("InitialBid") * (
+          col("gen_effectiveDiscrepancy") - (col("gen_excess") * coalesce(col("CampaignPCAdjustment"), lit(1.0)))
+        ))
+      .withColumn("gen_isBidBelowTheFloor", col("gen_proposedBid_v3") < col("gen_actual_bufferFloor"))
       .withColumn("gen_HadesBackoff_FloorBuffer",
-        // PC pushdown is used to calculate floor buffer, so excluding non-Plutus bids. We only want to backoff cases where PC is applied anyways.
-        when(col("Model") === "plutus",
-          when(
-            col("gen_isBidBelowTheFloor"),
-            lit(1) - (col("gen_proposedBid_v3") / col("FloorPrice"))
-          ).otherwise(MinimumFloorBuffer)
-        ).otherwise(null)
+        when(
+          col("gen_isBidBelowTheFloor"),
+          lit(1) - (col("gen_proposedBid_v3") / col("FloorPrice"))
+        ).otherwise(col("Actual_BBF_FloorBuffer"))
       )
-      .withColumn("gen_bufferFloor_v3", col("FloorPrice") * (lit(1) - col("gen_HadesBackoff_FloorBuffer")))
       // How many PC bids would've fallen below the actual buffer floor?
       // In other words, how many PC bids would've been opted out in our current bidding environment?
-      .withColumn("gen_actual_bufferFloor", col("FloorPrice") * (lit(1) - col("Actual_BBF_FloorBuffer")))
-      .withColumn("gen_isInBufferZone_v3", col("gen_proposedBid_v3") >= col("gen_actual_bufferFloor")) // Or should these be col("gen_proposedBid_v3") >= 0?
       .withColumn("BBF_PMP_Bid",
-        when((col("BidBelowFloorExceptedSource") === 2 && col("Market").isin("Variable", "Fixed") && !col("gen_isInBufferZone_v3")), true)
+        when(col("Market").isin("Variable", "Fixed") && col("gen_isBidBelowTheFloor"), true)
           .otherwise(false))
       .withColumn("BBF_OM_Bid",
-        when((col("BidBelowFloorExceptedSource") === 2 && col("Market").isin("OpenMarket") && !col("gen_isInBufferZone_v3")), true)
+        when(col("Market").isin("OpenMarket") && col("gen_isBidBelowTheFloor"), true)
           .otherwise(false))
   }
 
@@ -193,7 +196,7 @@ object HadesCampaignBufferAdjustmentsTransform {
         // because spark doesn't support column values in this function
         // Also, AdjustmentQuantile is calculated later.
         //expr("percentile_approx(gen_HadesBackoff_FloorBuffer, array(0.5, 0.4, 0.3), 200)").as("HadesBackoff_FloorBuffer_Options")
-        expr("coalesce(percentile_approx(gen_HadesBackoff_FloorBuffer, array(0.5, 0.4, 0.3), 200), array(0.01, 0.01, 0.01))").as("HadesBackoff_FloorBuffer_Options")
+        expr("percentile_approx(gen_HadesBackoff_FloorBuffer, array(0.5, 0.4, 0.3), 200)").as("HadesBackoff_FloorBuffer_Options")
       )
       .join(broadcast(campaignUnderdeliveryData), Seq("CampaignId"), "left")
       .as[HadesV3CampaignStats]
@@ -201,7 +204,7 @@ object HadesCampaignBufferAdjustmentsTransform {
 
   case class PlutusCampaignAdjustment(CampaignId: String, CampaignPCAdjustment: Double)
   case class CampaignMetaData(CampaignId: String, CampaignType: String, Actual_BBF_FloorBuffer: Double, CampaignPCAdjustment: Double)
-  case class HadesMetrics(CampaignType: String, PacingType: String, OptoutType: String, AdjustmentQuantile: Int, Count: Long)
+  case class HadesMetrics(CampaignType: String, PacingType: String, OptoutType: String, AdjustmentQuantile: Int, Count: Long, Buffer: String)
 
   val CampaignType_NewCampaign = "CampaignWithNewAdjustment";
   val CampaignType_AdjustedCampaign = "CampaignWithOldAdjustment";
@@ -288,7 +291,8 @@ object HadesCampaignBufferAdjustmentsTransform {
         when(col("Total_BidCount") === lit(0), OptoutStatus_NoBids)
           .when(col("BBF_PMP_BidAmount") / (col("Total_PMP_BidAmount") + col("Total_OM_BidAmount")) > lit(0.5), OptoutStatus_HighOptout)
           .otherwise(OptoutStatus_LowOptout))
-      .groupBy("CampaignType", "PacingType", "OptoutType", "AdjustmentQuantile")
+      .withColumn("Buffer", format_number(round(col("BBF_FloorBuffer") / 0.05, 0) * 0.05, 2)) // Quantized
+      .groupBy("CampaignType", "PacingType", "OptoutType", "AdjustmentQuantile", "Buffer")
       .count().as[HadesMetrics]
       .collect()
 
@@ -456,7 +460,7 @@ object HadesCampaignBufferAdjustmentsTransform {
             col("CampaignId"),
             col("AdjustmentQuantile"),
             col("HadesBackoff_FloorBuffer_Options"))
-        ).otherwise(lit(MinimumFloorBuffer))
+        ).otherwise(col("Actual_BBF_FloorBuffer"))
       ).withColumn("HadesBackoff_FloorBuffer",
         when(col("CampaignType") === CampaignType_AdjustedCampaign ||
           col("BBF_PMP_BidCount") / col("Total_BidCount") > ($"AdjustmentQuantile" / lit(100)),
@@ -467,7 +471,7 @@ object HadesCampaignBufferAdjustmentsTransform {
             lit(underdeliveryThreshold),
             lit(4) // Context Size of x: FinalAdjustment = min(average of last*x* adjustments including current, current adjustment)
           )
-        ).otherwise(lit(MinimumFloorBuffer))
+        ).otherwise(col("Actual_BBF_FloorBuffer"))
       )
       .withColumn("Hades_isProblemCampaign",
         coalesce(
@@ -475,8 +479,6 @@ object HadesCampaignBufferAdjustmentsTransform {
           lit(false)
         )
       )
-      .withColumn("CampaignType", when($"HadesBackoff_FloorBuffer" > lit(MinimumFloorBuffer), $"CampaignType")
-        .otherwise(lit(CampaignType_NoAdjustment)))
       .withColumn("BBF_FloorBuffer",
         // Max cap at 0.85
         when(col("HadesBackoff_FloorBuffer") >= MaximumFloorBuffer, lit(MaximumFloorBuffer))
@@ -485,6 +487,8 @@ object HadesCampaignBufferAdjustmentsTransform {
           // Handle in case of nulls
           .otherwise(coalesce($"HadesBackoff_FloorBuffer", $"Actual_BBF_FloorBuffer"))
       )
+      .withColumn("CampaignType", when($"BBF_FloorBuffer" > $"Actual_BBF_FloorBuffer", $"CampaignType")
+        .otherwise(lit(CampaignType_NoAdjustment)))
       .selectAs[HadesBufferAdjustmentSchema]
 
     val oldAdjustments = yesterdaysData
@@ -506,11 +510,12 @@ object HadesCampaignBufferAdjustmentsTransform {
   }
 
   def getAllBidData(pcOptoutData: Dataset[PlutusLogsData], adGroupData: Dataset[AdGroupRecord], pcResultsMergedData: Dataset[PcResultsMergedSchema]): DataFrame = {
-
     val adGroupDistinctData = adGroupData
       // Filter for Buffer Test Campaigns only
       .withColumn("TestBucket", getTestBucketUDF(col("CampaignId"), lit(bucketCount)))
       .filter(col("TestBucket") >= (lit(bucketCount) * MinTestBucketIncluded) && col("TestBucket") < (lit(bucketCount) * MaxTestBucketExcluded))
+      // We exclude campaigns with PC Enabled = false
+      .filter(col("PredictiveClearingEnabled"))
       .select("AdGroupId", "CampaignId").distinct()
 
     val plutusLogsData = pcOptoutData
@@ -521,13 +526,13 @@ object HadesCampaignBufferAdjustmentsTransform {
 
     val columns = plutusLogsData.columns
 
-    pcResultsMergedData.drop("LogEntryTime")
+    val validAdgroups = adGroupDistinctData.select("AdGroupId").distinct()
+
+    pcResultsMergedData
+      .drop("LogEntryTime")
+      .join(validAdgroups, Seq("AdGroupId"), "inner")
       .toDF
       .select(columns.head, columns.drop(1): _*)
-      // Filter for Buffer Test Campaigns only
-      .withColumn("TestBucket", getTestBucketUDF(col("CampaignId"), lit(bucketCount)))
-      .filter(col("TestBucket") >= (lit(bucketCount) * MinTestBucketIncluded) && col("TestBucket") < (lit(bucketCount) * MaxTestBucketExcluded))
-      .drop(col("TestBucket"))
       .union(plutusLogsData)
   }
 
@@ -628,12 +633,12 @@ object HadesCampaignBufferAdjustmentsTransform {
 //    val hadesIsProblemCampaignsCount = hadesBufferAdjustmentsDataset.filter(col("Hades_isProblemCampaign") === true).count()
 //    val hadesTotalAdjustmentsCount = hadesBufferAdjustmentsDataset.filter(col("HadesBackoff_FloorBuffer") < 1.0).count()
 //
-//    import job.campaignbackoff.CampaignAdjustmentsJob.{hadesCampaignCounts, hadesMetrics}
+//    import job.campaignbackoff.CampaignAdjustmentsJob.hadesBackoffV3Metrics
 //
 //    hadesCampaignCounts.labels("HadesProblemCampaigns").set(hadesIsProblemCampaignsCount)
 //    hadesCampaignCounts.labels("HadesAdjustedCampaigns").set(hadesTotalAdjustmentsCount)
 //    metrics.foreach { metric =>
-//      hadesMetrics.labels(metric.CampaignType, metric.PacingType, metric.OptoutType, metric.AdjustmentQuantile.toString).set(metric.Count)
+//      hadesBackoffV3Metrics.labels(metric.CampaignType, metric.PacingType, metric.OptoutType, metric.AdjustmentQuantile.toString, metric.Buffer).set(metric.Count)
 //    }
 
     hadesBufferAdjustmentsDataset

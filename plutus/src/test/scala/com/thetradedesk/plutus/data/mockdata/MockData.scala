@@ -470,10 +470,12 @@ object MockData {
     OpenPathEnabled = openPathEnabled
   )
 
-  val adGroupMock = AdGroupRecord(
-    AdGroupId = "mno012",
+
+  val adGroupMock = adGroupMockData()
+  def adGroupMockData(adGroupId: String = "mno012", campaignId: String = "jkl789"): AdGroupRecord = AdGroupRecord(
+    AdGroupId = adGroupId,
     AdGroupName = "test_ag",
-    CampaignId = "jkl789",
+    CampaignId = campaignId,
     AudienceId = Some("12345"),
     PacingGrainId = 1,
     ExcludeLowValueUsers = Some(false),
@@ -667,9 +669,9 @@ object MockData {
     )
   }
 
-  val campaignUnderdeliveryForHadesMock = CampaignThrottleMetricSchema(
+  def campaignUnderdeliveryForHadesMock(campaignId : String = "jkl789") = CampaignThrottleMetricSchema(
     Date = Timestamp.valueOf(LocalDateTime.of(2024, 12, 1, 14, 30)),
-    CampaignId = "jkl789",
+    CampaignId = campaignId,
     CampaignFlightId = 12345,
     IsValuePacing = true,
     MinCalculatedCampaignCapInUSD = 5,
