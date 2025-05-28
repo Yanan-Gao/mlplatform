@@ -2,7 +2,8 @@ package com.thetradedesk.plutus.data.transform.campaignbackoff
 
 import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsDataset, CampaignAdjustmentsPacingSchema, CampaignAdjustmentsSchema, HadesAdjustmentSchemaV2, HadesBufferAdjustmentSchema, MergedCampaignAdjustmentsDataset}
 import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.MergedCampaignFloorBufferSchema
-import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.platformWideBuffer
+import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.{bucketCount, getTestBucketUDF, platformWideBuffer}
+import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignBufferAdjustmentsTransform.{MaxTestBucketExcluded, MinTestBucketIncluded}
 import job.campaignbackoff.CampaignAdjustmentsJob.{date, fileCount, numRowsWritten}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, Dataset}
@@ -28,18 +29,18 @@ object MergeCampaignBackoffAdjustments {
       .join(broadcast(addPrefix(hadesCampaignAdjustmentsDataset.toDF(), "hd_")), Seq("CampaignId"), "fullouter")
       .join(broadcast(addPrefix(campaignFloorBufferDataset.toDF(), "bf_")), Seq("CampaignId"), "fullouter")
       .join(broadcast(addPrefix(hadesCampaignBufferAdjustmentsDataset.toDF(), "hdv3_")), Seq("CampaignId"), "fullouter")
+      .withColumn("TestBucket", getTestBucketUDF(col("CampaignId"), lit(bucketCount)))
+      .withColumn("IsTestCampaign", when(col("TestBucket") >= (lit(bucketCount) * MinTestBucketIncluded) && col("TestBucket") < (lit(bucketCount) * MaxTestBucketExcluded), true).otherwise(false))
       .withColumn("MergedPCAdjustment",
-        // Updated to handle hadesCampaignBufferAdjustmentsDataset (Buffer Backoff) test:
-        // If BBF_FloorBuffer is null, continue as before.
-        when(col("hdv3_BBF_FloorBuffer").isNull, least(lit(1.0), col("pc_CampaignPCAdjustment"), col("hd_HadesBackoff_PCAdjustment")))
-          // Else if BBF_FloorBuffer exists, do not apply HadesBackoff_PCAdjustment, only CampaignPCAdjustment.
-          .otherwise(least(lit(1.0), col("pc_CampaignPCAdjustment")))
+        when(col("IsTestCampaign"), least(lit(1.0), col("pc_CampaignPCAdjustment")))
+          .otherwise(least(lit(1.0), col("pc_CampaignPCAdjustment"), col("hd_HadesBackoff_PCAdjustment")))
       )
       // Floor buffer assigned in the CampaignBbfFloorBufferCandidateSelectionJob will take precedence.
       // It should ideally be same as hd_BBF_FloorBuffer since HadesCampaignAdjustmentsTransform reads the same data to set floor buffer.
       // If none of them is found, CampaignBbfFloorBuffer should be set to platformWideBuffer
       .withColumn("CampaignBbfFloorBuffer",
-        coalesce(col("hdv3_BBF_FloorBuffer"), col("bf_BBF_FloorBuffer"), lit(platformWideBuffer))
+        when(col("IsTestCampaign"), coalesce(col("hdv3_BBF_FloorBuffer"), col("bf_BBF_FloorBuffer"), lit(platformWideBuffer)))
+          .otherwise(coalesce(col("bf_BBF_FloorBuffer"), lit(platformWideBuffer)))
       )
   }
 
