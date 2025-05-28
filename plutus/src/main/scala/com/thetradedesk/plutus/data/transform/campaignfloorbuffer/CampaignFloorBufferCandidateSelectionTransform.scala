@@ -1,6 +1,6 @@
 package com.thetradedesk.plutus.data.transform.campaignfloorbuffer
 
-import com.thetradedesk.plutus.data.envForReadInternal
+import com.thetradedesk.plutus.data.{envForRead, envForReadInternal}
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
 import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferDataset, CampaignFloorBufferRollbackDataset, CampaignFloorBufferSchema}
 import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.{Campaign, CampaignFlightData}
@@ -232,11 +232,11 @@ object CampaignFloorBufferCandidateSelectionTransform {
     val flightData = liveHadesTestDACampaigns
       .filter(col("EndDateExclusiveUTC") >= to_date(lit(minFlightEnd)))
 
-    val todaysCampaignThrottleMetricData = CampaignThrottleMetricDataset.readDate(date, envForReadInternal)
+    val todaysCampaignThrottleMetricData = CampaignThrottleMetricDataset.readDate(date, envForRead)
       .selectAs[CampaignThrottleMetricSchema]
 
     val campaignUnderDeliveryData = CampaignThrottleMetricDataset
-      .readLatestDataUpToIncluding(date, lookBack = 6, env = envForReadInternal)
+      .readLatestDataUpToIncluding(date, lookBack = 6, env = envForRead)
       .groupBy("CampaignId").agg(
         avg(col("UnderdeliveryInUSD")).alias("AvgUnderdeliveryInUSD"),
         avg(col("UnderdeliveryFraction")).alias("AvgUnderdeliveryFraction"),

@@ -1,6 +1,6 @@
 package job.campaignbackoff
 
-import com.thetradedesk.plutus.data.envForReadInternal
+import com.thetradedesk.plutus.data.{envForRead, envForReadInternal}
 import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignFlightDataset, CampaignThrottleMetricDataset}
 import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.{Campaign, CampaignFlightData, PacingData, bucketCount, getTestBucketUDF, platformWideBuffer}
 import com.thetradedesk.plutus.data.transform.campaignfloorbuffer.{CampaignFloorBufferCandidateSelectionTransform, MergeCampaignFloorBufferTransform}
@@ -46,7 +46,7 @@ object CampaignBbfFloorBufferCandidateSelectionJob {
       .selectAs[CampaignFlightData].distinct()
       .cache()
 
-    val daCampaigns = CampaignThrottleMetricDataset.readDate(date, envForReadInternal)
+    val daCampaigns = CampaignThrottleMetricDataset.readDate(date, envForRead)
       .selectAs[PacingData]
       .filter(col("IsValuePacing"))
       .cache()

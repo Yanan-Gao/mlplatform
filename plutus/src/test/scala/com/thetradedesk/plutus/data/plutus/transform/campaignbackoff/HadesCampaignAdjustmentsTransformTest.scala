@@ -147,10 +147,10 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
   }
 
   test("Hades Backoff transform test for schema/column correctness") {
-    val campaignId = campaignUnderdeliveryForHadesMock.CampaignId
+    val campaignId = campaignUnderdeliveryForHadesMock().CampaignId
     val floorBuffer = 0.60
 
-    val throttleMetricDataset = Seq(campaignUnderdeliveryForHadesMock).toDS()
+    val throttleMetricDataset = Seq(campaignUnderdeliveryForHadesMock()).toDS()
 
     val pcResultsMergedData = Seq(pcResultsMergedMock(campaignId = Some(campaignId), dealId = "0000", adjustedBidCPMInUSD = 25.01, discrepancy = 1.1, floorPrice = 25, mu = -4.1280107498168945f, sigma = 1.0384914875030518f, maxBidCpmInBucks = 1.23)).toDS().as[PcResultsMergedSchema]
 
@@ -273,7 +273,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
   }
 
   test("Testing GetFilteredCampaigns") {
-    val campaignUnderdeliveryData = Seq(campaignUnderdeliveryForHadesMock).toDS()
+    val campaignUnderdeliveryData = Seq(campaignUnderdeliveryForHadesMock()).toDS()
 
     val liveCampaigns = Seq("pmbcej3")
       .toDF()
