@@ -62,6 +62,8 @@ case class BidsImpressionsSchema(
                                   UserSegmentCount: Option[Int],
                                   // hotcache x selected segments log
                                   MatchedSegments: Option[Seq[Long]],
+                                  // hotcache x audience segments
+                                  UserTargetingDataIds: Option[Array[Long]],
 
                                   // uncomment for online test backtesting set generation
                                   // ExpectedValue: Option[BigDecimal],

@@ -317,6 +317,8 @@ final case class OldDailyOfflineScoringRecord(
                                            HasUserData: Int,
                                            UserDataLength: Float,
                                            UserData: Array[Int],
+                                           // hotcache x audience segments
+                                           UserTargetingDataIds: Array[Int],
                                            IdType: Int,
                                            IdCount: Int,
                                            UserAgeInDays: Option[Float]
@@ -376,6 +378,8 @@ final case class ArrayDailyOfflineScoringRecord(
                                            HasUserData: Int,
                                            UserDataLength: Float,
                                            UserData: Array[Int],
+                                           // hotcache x audience segments
+                                           UserTargetingDataIds: Array[Int],
                                            IdType: Int,
                                            IdCount: Int,
                                            UserAgeInDays: Option[Float]
@@ -439,6 +443,8 @@ final case class UnionDailyOfflineScoringRecord(
                                            HasUserData: Int,
                                            UserDataLength: Float,
                                            UserData: Array[Int],
+                                            // hotcache x audience segments
+                                           UserTargetingDataIds: Array[Int],
                                            IdType: Int,
                                            IdCount: Int,
                                            UserAgeInDays: Option[Float]

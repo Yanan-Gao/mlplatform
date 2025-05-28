@@ -42,6 +42,7 @@ object OfflineScoringSetTransform {
       .withColumn("HasUserData", when($"MatchedSegments".isNull||size($"MatchedSegments")===lit(0), lit(0)).otherwise(lit(1)))
       .withColumn("UserDataLength", when($"UserSegmentCount".isNull, lit(0.0)).otherwise($"UserSegmentCount"*lit(1.0)))
       .withColumn("UserData", when($"HasUserData"===lit(0), lit(null)).otherwise($"MatchedSegments"))
+      .withColumn("UserTargetingDataIds", when($"UserTargetingDataIds".isNull||size($"UserTargetingDataIds")===lit(0), lit(null)).otherwise($"UserTargetingDataIds"))
 
     val dimAudienceId = AudienceIdTransform.generateAudiencelist(bidsImp.selectAs[AudienceFeature],date).cache()
     val dimIndustryCategoryId = AdvertiserFeatureDataSet().readLatestPartitionUpTo(date, isInclusive = true).select("AdvertiserId","IndustryCategoryId")
