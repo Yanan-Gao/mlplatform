@@ -60,7 +60,8 @@ final case class UserDataValidationDataForModelTrainingRecord(BidRequestIdStr: S
                                                       HasUserData: Int,
                                                       UserDataLength: Float,
                                                       UserDataOptIn: Int,
-
+                                                      // hotcache segments x audience segments
+                                                      UserTargetingDataIds: Array[Int],
                                                       IdType: Int,
                                                       IdCount: Int,
                                                       UserAgeInDays: Option[Float]

@@ -456,6 +456,8 @@ final case class ArrayOutOfSampleAttributionRecord(
                                                UserDataOptIn: Int,
 
                                                UserData: Array[Int],
+                                               // hotcache segments x audience segments
+                                               UserTargetingDataIds: Array[Int],
                                                IdType: Int,
                                                IdCount: Int,
                                                UserAgeInDays: Option[Float]
@@ -525,6 +527,8 @@ final case class UnionOutOfSampleAttributionRecord(
                                                UserDataOptIn: Int,
 
                                                UserData: Array[Int],
+                                               // hotcache segments x audience segments
+                                               UserTargetingDataIds: Array[Int],
                                                IdType: Int,
                                                IdCount: Int,
                                                UserAgeInDays: Option[Float]

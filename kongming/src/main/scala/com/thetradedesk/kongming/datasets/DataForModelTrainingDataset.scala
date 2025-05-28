@@ -327,6 +327,8 @@ final case class ArrayUserDataForModelTrainingRecord(
                                                  AudienceId: Array[Int],
 
                                                  UserData: Array[Int],
+                                                // user hotcache x audience segments
+                                                 UserTargetingDataIds: Array[Int],
                                                  HasUserData: Int,
                                                  UserDataLength: Float,
                                                  UserDataOptIn: Int,
