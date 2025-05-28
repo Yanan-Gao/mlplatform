@@ -37,24 +37,20 @@ object RSMV2TrainingDataStatusGeneratorJob {
   }
 
   def runETLPipeline(): Unit = {
-    val ttdOwnDataSmallTrainMeta = new DataQualityGenerator("TTDOwnDataSmall", "Train").generate(date)
-    val ttdOwnDataNewTrainMeta = new DataQualityGenerator("TTDOwnDataNew", "Train").generate(date)
-    val seedSmallTrainMeta = new DataQualityGenerator("SeedSmall", "Train").generate(date)
-    val seedNewTrainMeta = new DataQualityGenerator("SeedNew", "Train").generate(date)
+    
+    val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
+    val schedule = config.getString("schedule", "Small")
+    val subfolder = config.getString("subfolder", "TTDOwnDataSensitive")
+    val outpath = config.getString("meta_data_path", s"${ML_PLATFORM_ROOT}/${ttdWriteEnv}/audience/RSMV2/measurement/trainingMetaData/v=1/${date.format(formatter)}/${subfolder}${schedule}/")
 
-    val metaData = Seq(ttdOwnDataSmallTrainMeta, ttdOwnDataNewTrainMeta, seedSmallTrainMeta ,seedNewTrainMeta)
-      .filter(_ != null)
-      .reduce(_ union _)
-      .drop("weightedPosRatio")
+    val trainDataMeta = new DataQualityGenerator(s"${subfolder}${schedule}", "Train").generate(date)
 
-    dateTime = date.atStartOfDay()
-
-    TrainingMetaDataSet()
-          .writePartition(
-            metaData.as[TrainingMetaDataRecord],
-            dateTime,
-            saveMode = SaveMode.Overwrite
-          )
+    if(trainDataMeta != null) {
+      trainDataMeta.drop("weightedPosRatio").as[TrainingMetaDataRecord].write.mode(SaveMode.Overwrite).parquet(outpath)
+    } else {
+      print(f"training data ${subfolder}${schedule} doesn't exist")
+    }
+    
   }
 }
 
@@ -68,7 +64,7 @@ class DataQualityGenerator(val dataType: String, val dataSplitType: String) {
 
     val start = System.currentTimeMillis()
 
-    val path = s"${ML_PLATFORM_ROOT}/${config.getString("TrainingDataReadEnv", ttdEnv)}/audience/RSMV2/Seed_None/v=1/${dateString}/${dataType}=${dataSplitType}/"
+    val path = s"${ML_PLATFORM_ROOT}/${config.getString("TrainingDataReadEnv", ttdReadEnv)}/audience/RSMV2/Seed_None/v=1/${dateString}/${dataType}=${dataSplitType}/"
 
     if (!FSUtils.fileExists(s"${path}_SUCCESS")) {
       return null
