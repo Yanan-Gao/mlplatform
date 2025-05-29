@@ -7,6 +7,7 @@ import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.io.FSUtils
+import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, SaveMode}
 
@@ -47,13 +48,21 @@ abstract class DensityFeatureBaseJob {
     val dd = f"${date.getDayOfMonth}%02d"
 
     val colsToRead = featurePairs.flatMap { case (f1, f2) => Array(f1, f2) }.toArray.distinct
+    val userWindowSpec = Window.partitionBy("UIID")
+    val hourUserWindowSpec = Window.partitionBy("UIID", "hourPart")
 
     try {
       val bidsImpsPath = s"${BidsImpressions.BIDSIMPRESSIONSS3}/prod/bidsimpressions/year=$yyyy/month=$mm/day=$dd/"
 
       var bidsImpressions = hour match {
         case Some(h) => spark.read.parquet(bidsImpsPath + s"hourPart=$h/")
+          .withColumn("UserFrequency", count("*").over(userWindowSpec))
+          .where('UserFrequency < lit(normalUserBidCountPerHour))
+          .drop('UserFrequency)
         case _ => spark.read.parquet(bidsImpsPath)
+          .withColumn("UserFrequency", count("*").over(hourUserWindowSpec))
+          .where('UserFrequency < lit(normalUserBidCountPerHour))
+          .drop('UserFrequency)
       }
 
       val emptyFilter = featurePairs.map(e => (col(e._1).isNotNull && col(e._2).isNotNull)).reduce(_ || _)
