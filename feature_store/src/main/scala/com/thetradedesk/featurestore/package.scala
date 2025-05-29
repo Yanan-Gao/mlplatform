@@ -30,8 +30,10 @@ package object featurestore {
   var ttdEnv: String = config.getString("ttd.env", "dev")
   var readEnv: String = config.getString("readEnv", "prod")
   val aggLevel: String = config.getString("aggLevel", "UIID")
-  var writeThroughHdfs: Boolean = config.getBoolean("writeThroughHdfs", true)
-  var densityFeatureWindowSizeDays = config.getInt("DensityFeatureWindowSizeDays", default = 1)
+  val writeThroughHdfs: Boolean = config.getBoolean("writeThroughHdfs", true)
+  val densityFeatureWindowSizeDays = config.getInt("DensityFeatureWindowSizeDays", default = 1)
+
+  val normalUserBidCountPerHour = config.getInt("normalUserBidCountPerHour", default = 3000)
   val overrideOutput = config.getBoolean("overrideOutput", default = false)
   val s3Client = AmazonS3ClientBuilder.standard.withRegion(Regions.US_EAST_1).build
 

@@ -62,10 +62,10 @@ object DailyDensityScoreReIndexingJob extends DensityFeatureBaseJob {
     // joined dataset for downstream processing in rest of the TDID splits
     val writePathBase = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=FeatureKeyValue/job=$jobName"
     val writePathJoinedDf = s"${writePathBase}/config=SyntheticIdDensityScorePolicyTableJoined/date=$dateStr"
-    featurePairDensityScoreJoinedDf.coalesce(4096).write.mode(SaveMode.Overwrite).parquet(writePathJoinedDf)
+    featurePairDensityScoreJoinedDf.coalesce(8192).write.mode(SaveMode.Overwrite).parquet(writePathJoinedDf)
 
     // categorized dataset for offline model score processing
     val writePathCategorized = s"${writePathBase}/config=SyntheticIdDensityScoreCategorized/date=$dateStr"
-    featurePairDensityScoreCategorized.coalesce(4096).write.mode(SaveMode.Overwrite).parquet(writePathCategorized)
+    featurePairDensityScoreCategorized.coalesce(8192).write.mode(SaveMode.Overwrite).parquet(writePathCategorized)
   }
 }

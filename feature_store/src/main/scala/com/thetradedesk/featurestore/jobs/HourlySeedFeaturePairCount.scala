@@ -33,7 +33,8 @@ object HourlySeedFeaturePairCount extends DensityFeatureBaseJob {
 
     val hourlyAggregatedFeatureCount = aggregateFeatureCount(bidreq, aggregatedSeed, policyTable)
 
-    hourlyAggregatedFeatureCount.repartition(defaultNumPartitions).write.mode(SaveMode.Overwrite).parquet(writePath)
+    // hack to 8192, change back later
+    hourlyAggregatedFeatureCount.repartition(8192).write.mode(SaveMode.Overwrite).parquet(writePath)
   }
 
   def aggregateFeatureCount(bidreq: DataFrame, aggregatedSeed: DataFrame, policyTable: DataFrame): DataFrame = {
@@ -44,7 +45,7 @@ object HourlySeedFeaturePairCount extends DensityFeatureBaseJob {
       .toMap)
 
     val seedFilterUDF = udf(
-      (needSensitive:Boolean, seedIds: Seq[String]) => {
+      (needSensitive: Boolean, seedIds: Seq[String]) => {
         val seedToSensitiveMapValue = seedToSensitiveMap.value
         seedIds.filter(
           e => {
@@ -55,22 +56,21 @@ object HourlySeedFeaturePairCount extends DensityFeatureBaseJob {
       }
     )
 
-     val aggregatedResults = featurePairStrings.map { case (featurePair) =>
-       val batchCountAgg = udaf(BatchSeedCountAgg)
-       val seedMergerAgg = udaf(SeedMergerAgg)
+    val batchCountAgg = udaf(BatchSeedCountAgg)
+    val seedMergerAgg = udaf(SeedMergerAgg(policyTable.select('SeedId).as[String].collect()))
 
-       val filteredAggSeed = aggregatedSeed
-         .select('TDID, seedFilterUDF(lit(filterSensitiveAdv(featurePair)), 'SeedIds).as("SeedIds"))
+    val aggBidReq = bidreq
+      .join(aggregatedSeed, "TDID")
+      // for each BidRequestId, only count at most once
+      .groupBy(featurePairStrings.map(featurePair => col(s"${featurePair}Hashed")) :+ col("BidRequestId"): _*)
+      .agg(
+        seedMergerAgg('SeedIds).as("SeedIds")
+      )
 
-       bidreq
-         .withColumnRenamed(s"${featurePair}Hashed", "FeatureValueHashed")
-         .filter(col("FeatureValueHashed").isNotNull)
-         .join(filteredAggSeed, "TDID")
-         // for each BidRequestId, only count at most once
-        .groupBy('BidRequestId, 'FeatureValueHashed)
-        .agg(
-          seedMergerAgg('SeedIds).as("SeedIds")
-        )
+    val aggregatedResults = featurePairStrings.map { case (featurePair) =>
+      aggBidReq.withColumnRenamed(s"${featurePair}Hashed", "FeatureValueHashed")
+        .filter(col("FeatureValueHashed").isNotNull)
+        .withColumn("SeedIds", seedFilterUDF(lit(filterSensitiveAdv(featurePair)), 'SeedIds))
         .groupBy("FeatureValueHashed")
         .agg(
           batchCountAgg('SeedIds).as("BatchCounts")

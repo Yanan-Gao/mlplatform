@@ -3,39 +3,36 @@ package com.thetradedesk.featurestore.transform
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.{Encoder, Encoders}
 import org.apache.spark.sql.expressions.Aggregator
+import org.roaringbitmap.RoaringBitmap
 
 import scala.collection.mutable
 
-case class SeedMergeBuffer(seedIds: mutable.Map[String, Boolean])
+case class SeedMergerAgg(seedIds: Seq[String]) extends Aggregator[Seq[String], RoaringBitmap, Seq[String]] {
+  override def zero: RoaringBitmap = new RoaringBitmap()
 
-object SeedMergerAgg extends Aggregator[Seq[String], SeedMergeBuffer, Seq[String]] {
-  override def zero: SeedMergeBuffer = {
-    val mapBuilder = mutable.HashMap.newBuilder[String, Boolean]
-    mapBuilder.sizeHint(1024)
-    SeedMergeBuffer(mapBuilder.result())
-  }
+  private lazy val seedIdWithIdx = seedIds.zipWithIndex
+  private lazy val seedIdToIdx = seedIdWithIdx.toMap
+  private lazy val idxToSeedId = seedIdWithIdx.map(e => (e._2, e._1)).toMap
 
-  override def reduce(buffer: SeedMergeBuffer, keys: Seq[String]): SeedMergeBuffer = {
+  override def reduce(buffer: RoaringBitmap, keys: Seq[String]): RoaringBitmap = {
     if (keys != null) {
       keys.foreach(
-        e => buffer.seedIds.update(e, true)
+        e => buffer.add(seedIdToIdx(e))
       )
     }
     buffer
   }
 
-  override def merge(b1: SeedMergeBuffer, b2: SeedMergeBuffer): SeedMergeBuffer = {
-    b2.seedIds.foreach(
-      e => b1.seedIds.update(e._1, true)
-    )
+  override def merge(b1: RoaringBitmap, b2: RoaringBitmap): RoaringBitmap = {
+    b1.or(b2)
     b1
   }
 
-  override def finish(reduction: SeedMergeBuffer): Seq[String] = {
-    reduction.seedIds.keys.toSeq
+  override def finish(reduction: RoaringBitmap): Seq[String] = {
+    reduction.toArray.map(e => idxToSeedId(e))
   }
 
-  override def bufferEncoder: Encoder[SeedMergeBuffer] = Encoders.product[SeedMergeBuffer]
+  override def bufferEncoder: Encoder[RoaringBitmap] = Encoders.kryo[RoaringBitmap]
 
   override def outputEncoder: Encoder[Seq[String]] = ExpressionEncoder.apply[Seq[String]]
 }
