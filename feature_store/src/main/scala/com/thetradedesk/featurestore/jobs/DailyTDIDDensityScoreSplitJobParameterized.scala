@@ -211,10 +211,10 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
         )
         .withColumn("MappingIdLevel2", syntheticIdToMappingIdUdf('SyntheticId_Level2, lit(maxNumMappingIdsInAerospike)))
         .withColumn("MappingIdLevel1", syntheticIdToMappingIdUdf('SyntheticId_Level1, lit(maxNumMappingIdsInAerospike) - size('MappingIdLevel2)))
-        .withColumn("MappingIdLevel2", MappingIdSplitUDF(0)('MappingIdLevel2))
         .withColumn("MappingIdLevel2S1", MappingIdSplitUDF(1)('MappingIdLevel2))
-        .withColumn("MappingIdLevel1", MappingIdSplitUDF(0)('MappingIdLevel1))
+        .withColumn("MappingIdLevel2", MappingIdSplitUDF(0)('MappingIdLevel2))
         .withColumn("MappingIdLevel1S1", MappingIdSplitUDF(1)('MappingIdLevel1))
+        .withColumn("MappingIdLevel1", MappingIdSplitUDF(0)('MappingIdLevel1))
 
       tdidDensityScore.write.mode(SaveMode.Overwrite).parquet(writePath)
       cachedDF.foreach(_.unpersist())
