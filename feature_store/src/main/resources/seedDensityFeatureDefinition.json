@@ -4,7 +4,7 @@
   "featureSourceDefinitions": [
     {
       "name": "seeddensity",
-      "dataSetPath": "features/feature_store/prodTest/profiles/source=bidsimpression/index=FeatureKeyValue/job=DailySeedMappingIdDensityScore/v=1",
+      "dataSetPath": "features/feature_store/prod/profiles/source=bidsimpression/index=FeatureKeyValue/job=DailySeedMappingIdDensityScore/v=1",
       "idKey": "FeatureKeyValueHashed",
       "features": [
         {
