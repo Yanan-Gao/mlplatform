@@ -58,16 +58,9 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
     val syntheticIdDensityCategories = readSyntheticIdDensityCategories(date)
 
     // Get active seed ids
-    val campaignStartDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.plusDays(campaignFlightStartingBufferInDays))
-    val campaignEndDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date)
+    val activeCampaign = readActiveCampaigns(date)
+
     val newSeedStartDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.minusDays(newSeedBufferInDays))
-    val activeCampaign = CampaignFlightDataSet()
-      .readLatestPartition()
-      .where('IsDeleted === false
-        && 'StartDateInclusiveUTC.leq(campaignStartDateTimeStr)
-        && ('EndDateExclusiveUTC.isNull || 'EndDateExclusiveUTC.gt(campaignEndDateTimeStr)))
-      .select('CampaignId)
-      .distinct()
 
     val newSeed = SeedDetailDataSet()
       .readLatestPartition()
@@ -202,19 +195,17 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
         }
       }
 
-      val tdidDensityScore = tdidFeaturePairDensityScore
-        .reduce(_ union _)
-        .groupBy('TDID)
-        .agg(
-          flatten(collect_list(col("SyntheticId_Level1"))).alias("SyntheticId_Level1"),
-          flatten(collect_list(col("SyntheticId_Level2"))).alias("SyntheticId_Level2"),
-        )
-        .withColumn("MappingIdLevel2", syntheticIdToMappingIdUdf('SyntheticId_Level2, lit(maxNumMappingIdsInAerospike)))
-        .withColumn("MappingIdLevel1", syntheticIdToMappingIdUdf('SyntheticId_Level1, lit(maxNumMappingIdsInAerospike) - size('MappingIdLevel2)))
-        .withColumn("MappingIdLevel2S1", MappingIdSplitUDF(1)('MappingIdLevel2))
-        .withColumn("MappingIdLevel2", MappingIdSplitUDF(0)('MappingIdLevel2))
-        .withColumn("MappingIdLevel1S1", MappingIdSplitUDF(1)('MappingIdLevel1))
-        .withColumn("MappingIdLevel1", MappingIdSplitUDF(0)('MappingIdLevel1))
+      val tdidDensityScore = splitDensityScoreSlots(
+        tdidFeaturePairDensityScore
+          .reduce(_ union _)
+          .groupBy('TDID)
+          .agg(
+            flatten(collect_list(col("SyntheticId_Level1"))).alias("SyntheticId_Level1"),
+            flatten(collect_list(col("SyntheticId_Level2"))).alias("SyntheticId_Level2"),
+          )
+          .withColumn("MappingIdLevel2", syntheticIdToMappingIdUdf('SyntheticId_Level2, lit(maxNumMappingIdsInAerospike)))
+          .withColumn("MappingIdLevel1", syntheticIdToMappingIdUdf('SyntheticId_Level1, lit(maxNumMappingIdsInAerospike) - size('MappingIdLevel2)))
+      )
 
       tdidDensityScore.write.mode(SaveMode.Overwrite).parquet(writePath)
       cachedDF.foreach(_.unpersist())

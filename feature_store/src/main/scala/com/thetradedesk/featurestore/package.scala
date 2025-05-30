@@ -18,6 +18,7 @@ package object featurestore {
   val RunTimeGaugeName = "run_time_seconds"
   val OutputRowCountGaugeName = "output_rows_written"
   // S3 path
+  val ProvisioningDatasetS3Root = "s3://thetradedesk-useast-qubole/warehouse.external/thetradedesk.db/provisioning"
   val MLPlatformS3Root: String = "s3a://thetradedesk-mlplatform-us-east-1/features/feature_store"
   val ProfileDataBasePath: String = "profiles"
   val ProcessedDataBasePath: String = "processed"

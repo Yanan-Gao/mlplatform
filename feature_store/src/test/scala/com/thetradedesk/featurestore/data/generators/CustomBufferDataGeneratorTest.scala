@@ -65,7 +65,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
 
     result.show(10, false)
 
-    val other = customBufferDataGenerator.readFromDataFrame(result, features, true)
+    val other = customBufferDataGenerator.readFromDataFrame(result, features, userFeatureMergeDefinition, true)
     other.printSchema()
     other.show(10, false)
 

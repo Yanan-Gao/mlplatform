@@ -1,0 +1,33 @@
+{
+  "name": "seedDensityFeatureDef",
+  "datasetName": "seed_density_feature",
+  "featureSourceDefinitions": [
+    {
+      "name": "seeddensity",
+      "dataSetPath": "features/feature_store/prodTest/profiles/source=bidsimpression/index=FeatureKeyValue/job=DailySeedMappingIdDensityScore/v=1",
+      "idKey": "FeatureKeyValueHashed",
+      "features": [
+        {
+          "name": "MappingIdLevel1",
+          "dtype": 3,
+          "arrayLength": 1
+        },
+        {
+          "name": "MappingIdLevel1S1",
+          "dtype": 3,
+          "arrayLength": 1
+        },
+        {
+          "name": "MappingIdLevel2",
+          "dtype": 3,
+          "arrayLength": 1
+        },
+        {
+          "name": "MappingIdLevel2S1",
+          "dtype": 3,
+          "arrayLength": 1
+        }
+      ]
+    }
+  ]
+}

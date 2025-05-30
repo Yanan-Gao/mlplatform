@@ -2,6 +2,7 @@ package com.thetradedesk.featurestore.constants
 
 object FeatureConstants {
   val UserIDKey: String = "TDID"
+  val FeatureKeyValueHashedKey: String = "FeatureKeyValueHashed"
   val FeatureDataKey: String = "data"
   val AlphaNumericRegex: String = "[A-Za-z0-9]+"
   val MaxArrayLength = 255

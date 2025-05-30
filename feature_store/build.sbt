@@ -47,7 +47,8 @@ libraryDependencies ++= Seq(
 
   "org.scalatest" %% "scalatest" % "3.2.9" % "test",
   "org.scalatest" %% "scalatest-funsuite" % "3.2.10" % Test,
-  "com.github.mrpowers" %% "spark-fast-tests" % "1.2.0" % Test
+  "com.github.mrpowers" %% "spark-fast-tests" % "1.2.0" % Test,
+  "com.aerospike" % "aerospike-client-jdk8" % "8.1.0",
 )
 
 assembly / assemblyOption := (assembly / assemblyOption).value.copy(includeScala = false)

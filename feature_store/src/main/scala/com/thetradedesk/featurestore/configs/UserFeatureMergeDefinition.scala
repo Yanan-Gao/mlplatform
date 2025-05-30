@@ -15,7 +15,10 @@ case class UserFeatureMergeDefinition(
                                        rootPath: String = FeatureConstants.ML_PLATFORM_S3_PATH,
                                        featureSourceDefinitions: Array[FeatureSourceDefinition],
                                        format: String = "parquet",
-                                       config: UserFeatureMergeConfiguration = UserFeatureMergeConfiguration()
+                                       config: UserFeatureMergeConfiguration = UserFeatureMergeConfiguration(),
+                                       datasetPrefix: String = "features/feature_store",
+                                       datasetName: String = "user_features_merged",
+                                       datasetVersion: Int = 1
                                      ) {
   lazy val validate: Result = {
     if (name.isEmpty || !name.matches(AlphaNumericRegex)) {
@@ -32,11 +35,13 @@ case class UserFeatureMergeDefinition(
     }
   }
 
-  lazy val dataSetPath: String = s"features/feature_store/${ttdEnv}/user_features_merged/v=1"
-  private lazy val dataMetaPath: String = s"features/feature_store/${ttdEnv}/user_features_merged_meta/v=1"
+  lazy val dataSetPath: String = s"${datasetPrefix}/${ttdEnv}/${datasetName}/v=${datasetVersion}"
+  private lazy val dataMetaPath: String = s"${datasetPrefix}/${ttdEnv}/${datasetName}_meta/v=${datasetVersion}"
 
   private def metaPath(dateTime: LocalDateTime): String = PathUtils.concatPath(rootPath, PathUtils.concatPath(dataMetaPath, UserFeatureMergeDefinition.dateFormatter.format(dateTime)))
   def schemaPath(dateTime: LocalDateTime): String = PathUtils.concatPath(metaPath(dateTime), SchemaFileName)
+
+  lazy val sourceIdKey = featureSourceDefinitions.map(e => e.idKey).head
 }
 
 case class UserFeatureMergeConfiguration(

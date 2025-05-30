@@ -2,7 +2,7 @@ package com.thetradedesk.featurestore.data.generators
 
 import com.thetradedesk.featurestore.configs.{DataType, UserFeatureMergeConfiguration, UserFeatureMergeDefinition}
 import com.thetradedesk.featurestore.constants.FeatureConstants
-import com.thetradedesk.featurestore.constants.FeatureConstants.{BitsOfByte, BytesToKeepAddressInRecord, FeatureDataKey, UserIDKey}
+import com.thetradedesk.featurestore.constants.FeatureConstants.{BitsOfByte, BytesToKeepAddressInRecord, FeatureDataKey}
 import com.thetradedesk.featurestore.data.metrics.UserFeatureMergeJobTelemetry
 import com.thetradedesk.featurestore.{dateTime, shouldConsiderTDID3}
 import com.thetradedesk.featurestore.entities.Result
@@ -122,7 +122,7 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
       .toSeq
 
     val df = dataSource
-      .select(col(FeatureConstants.UserIDKey), dataToByteArray(features, userFeatureMergeDefinition.config.maxDataSizePerRecord).alias(FeatureDataKey))
+      .select(col(userFeatureMergeDefinition.sourceIdKey), dataToByteArray(features, userFeatureMergeDefinition.config.maxDataSizePerRecord).alias(FeatureDataKey))
 
     (df, features)
   }
@@ -326,7 +326,7 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
    * @param castType cast byte/short/int to long, float to double for better comparison
    * @return
    */
-  def readFromDataFrame(df: DataFrame, features: Seq[Feature], castType: Boolean = false): DataFrame = {
+  def readFromDataFrame(df: DataFrame, features: Seq[Feature], userFeatureMergeDefinition: UserFeatureMergeDefinition, castType: Boolean = false): DataFrame = {
     val featureColumns = features.zipWithIndex.map(
       e => {
         val feature = e._1
@@ -365,7 +365,7 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
         }
       }
     )
-    df.select(featureColumns :+ col(FeatureConstants.UserIDKey): _*)
+    df.select(featureColumns :+ col(userFeatureMergeDefinition.sourceIdKey): _*)
   }
 
   private def readFromDataFrameUdf[T](feature: Feature)(implicit ttag: TypeTag[T]) = {
@@ -389,11 +389,11 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
 
     val shouldConsiderTDIDUDF = shouldConsiderTDID3(config.getInt("postValidationSampleHit", default = 100), "fpVq")(_)
 
-    val origin = dataSource.where(shouldConsiderTDIDUDF(col(FeatureConstants.UserIDKey)))
+    val origin = dataSource.where(shouldConsiderTDIDUDF(col(userFeatureMergeDefinition.sourceIdKey)))
 
-    val other = this.readFromDataFrame(result.where(shouldConsiderTDIDUDF(col(FeatureConstants.UserIDKey))), features, true)
+    val other = this.readFromDataFrame(result.where(shouldConsiderTDIDUDF(col(userFeatureMergeDefinition.sourceIdKey))), features, userFeatureMergeDefinition, true)
 
-    compareSmallDatasets(refineDataFrame(other, UserIDKey), refineDataFrame(origin, UserIDKey))
+    compareSmallDatasets(refineDataFrame(other, userFeatureMergeDefinition.sourceIdKey), refineDataFrame(origin, userFeatureMergeDefinition.sourceIdKey))
   }
 }
 
