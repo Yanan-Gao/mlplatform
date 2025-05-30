@@ -1,14 +1,16 @@
 package com.thetradedesk.featurestore.jobs
 
-import com.thetradedesk.featurestore.datasets._
 import com.thetradedesk.featurestore._
 import com.thetradedesk.featurestore.constants.FeatureConstants._
+import com.thetradedesk.featurestore.datasets._
 import com.thetradedesk.featurestore.transform.Loader._
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
-import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataSetExtensions}
+import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
+import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataSetExtensions}
+import com.thetradedesk.spark.util.TTDConfig.config
+import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions._
 
 
@@ -16,14 +18,15 @@ import org.apache.spark.sql.functions._
  *
  *  Lookback window is defined by `convLookback`. [T-convLookback, T] BidsImpression is used for attribution
  */
-object GenDailyConvertedImpressions extends FeatureStoreBaseJob {
+object GenDailyConvertedImpressions extends FeatureStoreGenJob[FeatureBidsImpression] {
 
-  override def jobName: String = "genDailyConvertedImpression"
+  val convLookback: Int = config.getInt("convLookback", 15)
 
-  val convLookback = config.getInt("convLookback", 15)
+  override def initDataSet(): ConvertedImpressionDataset = {
+    ConvertedImpressionDataset(convLookback)
+  }
 
-  override def runTransform(args: Array[String]): Array[(String, Long)] = {
-
+  override def generateDataSet(): Dataset[FeatureBidsImpression] = {
     // load CCRC table to filter down to attribution TrackingTags
     val ccrcProcessed = loadValidTrackingTag(date)
     // filter down to CPA & Roas campaigns
@@ -31,12 +34,11 @@ object GenDailyConvertedImpressions extends FeatureStoreBaseJob {
       .filter(($"Priority" === 1) && ($"ROIGoalTypeId".isin(List(ROIGoalTypeId_CPA, ROIGoalTypeId_ROAS): _*))).selectAs[CampaignROIGoalRecord]
 
     // load all trackingtag data for current day
-    val dailyAttribution = DailyAttributionDataset().readDate(date)
+    val dailyAttribution = DailyAttributionDataset().readPartition(date)
 
     // load bidfeedback & click
-    val dailyClickBF = DailyClickBidFeedbackDataset().readRange(date.minusDays(convLookback - 1).atStartOfDay(),
-      date.atStartOfDay(), isInclusive = true
-    )
+    val dailyClickBF = DailyClickBidFeedbackDataset().readPartition(date, lookBack =
+      Some(convLookback - 1))
 
     val validAttribution = dailyAttribution.join(
       broadcast(ccrcProcessed.withColumnRenamed("ReportingColumnId", "CampaignReportingColumnId")),
@@ -45,8 +47,8 @@ object GenDailyConvertedImpressions extends FeatureStoreBaseJob {
     ).filter(
       $"AttributedEventLogEntryTime".isNotNull && (
         (unix_timestamp($"ConversionTrackerLogEntryTime") - unix_timestamp($"AttributedEventLogEntryTime")) <= convLookback * 86400
-      )
-    )
+        )
+    ).persist()
 
     val attributedEvents = validAttribution.filter($"AttributedEventTypeId" === lit(AttributedEventTypeId_View))
       .join(
@@ -74,8 +76,8 @@ object GenDailyConvertedImpressions extends FeatureStoreBaseJob {
       source = Some(GERONIMO_DATA_SOURCE)
     )
     val parsedBidsImp = bidsImpressions.join(
-      broadcast(campaignROIGoal), Seq("CampaignId"), "left_semi"
-    ).withColumn("AdFormat", concat(col("AdWidthInPixels"), lit('x'), col("AdHeightInPixels")))
+        broadcast(campaignROIGoal), Seq("CampaignId"), "left_semi"
+      ).withColumn("AdFormat", concat(col("AdWidthInPixels"), lit('x'), col("AdHeightInPixels")))
       .withColumn("IsTracked", when($"UIID".isNotNullOrEmpty && $"UIID" =!= lit("00000000-0000-0000-0000-000000000000"), lit(1)).otherwise(0))
       .withColumn("RenderingContext", $"RenderingContext.value")
       .withColumn("DeviceType", $"DeviceType.value")
@@ -86,15 +88,10 @@ object GenDailyConvertedImpressions extends FeatureStoreBaseJob {
       .filter($"IsImp")
       .selectAs[FeatureBidsImpression]
 
-    val convertedImpressions = parsedBidsImp.join(
+    parsedBidsImp.join(
       attributedEvents,
       Seq("AdGroupId", "CampaignId", "AdvertiserId", "BidRequestId"),
       "left_semi"
     ).selectAs[FeatureBidsImpression]
-
-    val rows = ConvertedImpressionDataset(attLookback = convLookback).writePartition(convertedImpressions, date, Some(partCount.DailyConvertedImpressions))
-
-    Array(rows)
-
   }
 }

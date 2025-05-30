@@ -4,22 +4,16 @@ import com.thetradedesk.featurestore._
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.SaveMode
-import org.apache.spark.sql.functions._
 import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 
 object DailySeedSiteZipDensityScore extends FeatureStoreBaseJob {
 
   override val jobName: String = "DailySeedSiteZipDensityScore"
   val jobConfigName: String = "DailySeedDensityScore"
   val salt = "TRM"
-
-  def getDateStr(date: LocalDate): String = {
-    val dtf = DateTimeFormatter.ofPattern("yyyyMMdd")
-    date.format(dtf)
-  }
 
   def loadInputData(date: LocalDate) = {
     val dateStr = getDateStr(date)

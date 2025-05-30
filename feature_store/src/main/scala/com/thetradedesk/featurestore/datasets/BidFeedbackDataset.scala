@@ -1,5 +1,11 @@
 package com.thetradedesk.featurestore.datasets
 
+import com.thetradedesk.featurestore.partCount
+import org.apache.spark.sql.{Encoder, Encoders}
+
+import scala.reflect.runtime.universe._
+
+
 final case class BidFeedbackRecord(
                                          BidRequestId: String,
                                          BidFeedbackId: String,
@@ -25,8 +31,11 @@ case class ClickBidFeedbackRecord(
                                          ClickRedirectId: String,
                                        )
 
+case class DailyClickBidFeedbackDataset() extends ProcessedDataset[ClickBidFeedbackRecord] {
+  override val defaultNumPartitions: Int = partCount.DailyClickBidFeedback
+  override val datasetName: String = "dailyclickbidfeedback"
+  override val repartitionColumn: Option[String] = Some("BidRequestId")
 
-case class DailyClickBidFeedbackDataset(experimentOverride: Option[String] = None) extends ProcessedDataset[ClickBidFeedbackRecord](
-  s3DatasetPath = "dailyclickbidfeedback/v=1",
-  experimentOverride = experimentOverride
-)
+  val enc: Encoder[ClickBidFeedbackRecord] = Encoders.product[ClickBidFeedbackRecord]
+  val tt: TypeTag[ClickBidFeedbackRecord] = typeTag[ClickBidFeedbackRecord]
+}

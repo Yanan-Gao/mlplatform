@@ -166,3 +166,13 @@ output
 
 #ignore scala-build
 **/.scala-build
+
+# Ignore all Bloop files and directories
+*.bloop
+.bloop/
+
+# metals sbt
+**/project/metals.sbt
+
+# vscode
+**/.vscode

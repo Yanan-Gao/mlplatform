@@ -3,6 +3,7 @@ package com.thetradedesk.featurestore.jobs
 import com.thetradedesk.featurestore.datasets._
 import com.thetradedesk.featurestore.features.Features._
 import com.thetradedesk.featurestore.transform.Loader._
+import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import org.apache.spark.sql._
@@ -12,8 +13,6 @@ import java.time.LocalDate
 
 
 object AggAttributions extends FeatureStoreAggJob {
-  override def jobName: String = "attribution"
-  override def jobConfig = new FeatureStoreAggJobConfig( s"${getClass.getSimpleName.stripSuffix("$")}.json" )
 
   // todo: replace this part by config files
   override def catFeatSpecs: Array[CategoryFeatAggSpecs] = Array(
@@ -34,7 +33,8 @@ object AggAttributions extends FeatureStoreAggJob {
   )
 
   override def loadInputData(date: LocalDate, lookBack: Int): Dataset[_] = {
-    val inputDf = DailyAttributionDataset().readRange(date.minusDays(lookBack), date, isInclusive = true)
+    println(s"loadInputData DailyAttributionDataset: date: ${getDateStr(date)}, lookBack: $lookBack")
+    val inputDf = DailyAttributionDataset().readPartition(date = date, lookBack = Some(lookBack))
     // load CCRC table to filter down to attribution TrackingTags
     val ccrcProcessed = loadValidTrackingTag(date)
 

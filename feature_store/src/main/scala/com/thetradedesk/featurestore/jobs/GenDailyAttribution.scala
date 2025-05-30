@@ -5,6 +5,7 @@ import com.thetradedesk.featurestore.constants.FeatureConstants._
 import com.thetradedesk.featurestore.datasets._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
+import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 
@@ -12,11 +13,13 @@ import org.apache.spark.sql.functions._
 /** Generate daily attribution for CPA and Roas Campaigns with revenue calculated
  *
  */
-object GenDailyAttribution extends FeatureStoreBaseJob {
+object GenDailyAttribution extends FeatureStoreGenJob[DailyAttributionRecord] {
 
-  override def jobName: String = "genDailyAttribution"
+  override def initDataSet(): DailyAttributionDataset = {
+    DailyAttributionDataset()
+  }
 
-  override def runTransform(args: Array[String]): Array[(String, Long)] = {
+  override def generateDataSet(): Dataset[DailyAttributionRecord] = {
 
     val attributedEvent = AttributedEventDataSet().readDate(date)
       .filter($"AttributedEventTypeId".isin(List(AttributedEventTypeId_Click, AttributedEventTypeId_View): _*))
@@ -54,9 +57,6 @@ object GenDailyAttribution extends FeatureStoreBaseJob {
       .withColumn("Revenue", when($"ROIGoalTypeId" === ROIGoalTypeId_ROAS, greatest($"RevenueInUSD", lit(1))).otherwise(lit(0))) // only keep revenue for roas campaigns
       .selectAs[DailyAttributionRecord]
 
-    val attRows = DailyAttributionDataset().writePartition(dailyAttribution, date, Some(partCount.DailyAttribution))
-
-    Array(attRows)
-
+    dailyAttribution
   }
 }

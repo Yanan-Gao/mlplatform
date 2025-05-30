@@ -20,11 +20,6 @@ object DailySyntheticIdDensityScorePolicyTableJoinJob extends FeatureStoreBaseJo
   val repartitionNum = 32768
   val writePartitions = 2048
 
-  def getDateStr(date: LocalDate): String = {
-    val dtf = DateTimeFormatter.ofPattern("yyyyMMdd")
-    date.format(dtf)
-  }
-
   def loadSeedDensity(date: LocalDate) = {
     val dateStr = getDateStr(date)
     spark.read.parquet(s"$MLPlatformS3Root/$readEnv/profiles/source=bidsimpression/index=SeedId/config=DailySeedDensityScore/v=1/date=${dateStr}")

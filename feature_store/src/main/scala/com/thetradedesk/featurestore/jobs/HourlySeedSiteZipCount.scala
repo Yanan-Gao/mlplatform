@@ -18,11 +18,6 @@ object HourlySeedSiteZipCount extends FeatureStoreBaseJob {
   val jobConfigName = "HourlySeedSiteZipCount"
   val salt = "TRM"
 
-  def getDateStr(date: LocalDate): String = {
-    val dtf = DateTimeFormatter.ofPattern("yyyyMMdd")
-    date.format(dtf)
-  }
-
   def loadInputData(date: LocalDate, hourInt: Int = 0) = {
     val dateStr = getDateStr(date)
     val yyyy = dateStr.substring(0, 4)

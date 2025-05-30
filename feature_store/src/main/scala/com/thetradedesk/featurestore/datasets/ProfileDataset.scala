@@ -2,12 +2,10 @@ package com.thetradedesk.featurestore.datasets
 
 import com.thetradedesk.featurestore._
 import com.thetradedesk.featurestore.utils.PathUtils
-import com.thetradedesk.spark.datasets.core.Parquet
 import org.apache.spark.sql.{Dataset, SaveMode}
 
-import java.time.{LocalDate, LocalDateTime}
 import java.time.format.DateTimeFormatter
-import java.io.Serializable
+import java.time.{LocalDate, LocalDateTime}
 
 
 case class ProfileDataset(dataSetPath: String = ProfileDataBasePath,
@@ -32,7 +30,7 @@ case class ProfileDataset(dataSetPath: String = ProfileDataBasePath,
 abstract class ProfileBaseDataset(dataSetPath: String,
                                   rootPath: String,
                                   environment: String) {
-  lazy val basePath: String = PathUtils.concatPath(dataSetPath, rootPath)
+  lazy val basePath: String = PathUtils.concatPath(rootPath, dataSetPath)
   lazy val dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
   val subPartitions: String
 
