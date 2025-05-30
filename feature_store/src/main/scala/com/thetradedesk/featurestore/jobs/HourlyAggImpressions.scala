@@ -1,22 +1,17 @@
 package com.thetradedesk.featurestore.jobs
 
-import com.thetradedesk.featurestore.datasets._
-import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
+import com.thetradedesk.featurestore._
+import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataSetExtensions}
-import org.apache.spark.sql.{DataFrame, Dataset, SaveMode}
-import org.apache.spark.sql.functions._
-import com.thetradedesk.featurestore._
-import com.thetradedesk.featurestore.features.Features.AggFunc
 import com.thetradedesk.spark.util.io.FSUtils
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{DataFrame, Dataset, SaveMode}
 
 import java.time.LocalDate
 
 
 object HourlyAggImpressions extends FeatureStoreAggJob {
-  override def jobName: String = s"${getClass.getSimpleName.stripSuffix("$")}"
   override def jobConfig = new FeatureStoreAggJobConfig( s"${getClass.getSimpleName.stripSuffix("$")}.json" )
 
   def aggregateFeatures(df: DataFrame, features: Seq[String]): DataFrame = {

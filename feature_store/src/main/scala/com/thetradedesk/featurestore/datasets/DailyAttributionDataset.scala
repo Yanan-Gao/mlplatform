@@ -1,5 +1,9 @@
 package com.thetradedesk.featurestore.datasets
 
+import com.thetradedesk.featurestore.partCount
+import org.apache.spark.sql.{Encoder, Encoders}
+
+import scala.reflect.runtime.universe._
 case class DailyAttributionRecord(
                                          AttributedEventId: String,
                                          AttributedEventTypeId: String,
@@ -25,7 +29,10 @@ case class DailyAttributionRecord(
                                        )
 
 
-case class DailyAttributionDataset(experimentOverride: Option[String] = None) extends ProcessedDataset[DailyAttributionRecord] (
-  s3DatasetPath = "dailyattribution/v=1",
-  experimentOverride = experimentOverride
-)
+case class DailyAttributionDataset() extends ProcessedDataset[DailyAttributionRecord] {
+  override val defaultNumPartitions: Int = partCount.DailyAttribution
+  override val datasetName: String = "dailyattribution"
+
+  val enc: Encoder[DailyAttributionRecord] = Encoders.product[DailyAttributionRecord]
+  val tt: TypeTag[DailyAttributionRecord] = typeTag[DailyAttributionRecord]
+}

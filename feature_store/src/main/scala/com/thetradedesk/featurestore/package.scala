@@ -2,13 +2,12 @@ package com.thetradedesk
 
 import com.amazonaws.regions.Regions
 import com.amazonaws.services.s3.AmazonS3ClientBuilder
+import com.thetradedesk.spark.sql.SQLFunctions._
+import com.thetradedesk.spark.util.HashingUtils.userIsInSample
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.catalyst.expressions.XxHash64Function
-import com.thetradedesk.spark.sql.SQLFunctions._
-import com.thetradedesk.spark.util.HashingUtils.userIsInSample
 import org.apache.spark.sql.functions._
-import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 
 import java.time.{LocalDate, LocalDateTime, ZoneOffset}
 
@@ -80,7 +79,7 @@ package object featurestore {
   // partition config
   class PartitionCount {
     var DailyAttribution = 50
-    var DailyClickBidFeedback = 800
+    var DailyClickBidFeedback = 4000
     var DailyConvertedImpressions = 5
     var AggResult = 5
   }

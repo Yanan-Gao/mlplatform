@@ -1,6 +1,9 @@
 package com.thetradedesk.featurestore.datasets
 
-import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema
+import com.thetradedesk.featurestore.partCount
+import org.apache.spark.sql.{Encoder, Encoders}
+
+import scala.reflect.runtime.universe._
 
 
 case class FeatureBidsImpression(
@@ -98,9 +101,14 @@ case class FeatureBidsImpression(
                                   UserAgeInDays: Option[Double]
                                 )
 
+case class ConvertedImpressionDataset(attLookback: Int)  extends
+  ProcessedDataset[FeatureBidsImpression] {
+  override val defaultNumPartitions: Int = partCount.DailyConvertedImpressions
+  override val lookback = attLookback
+  override val datasetName: String = "dailyconvertedimpressions"
+  override val repartitionColumn: Option[String] = Some("BidRequestId")
 
-case class ConvertedImpressionDataset(attLookback: Int, experimentOverride: Option[String] = None) extends ProcessedDataset[FeatureBidsImpression] (
-  s3DatasetPath = s"dailyconvertedimpressions/v=1/lookback=${attLookback}d",
-  experimentOverride = experimentOverride
-)
+  val enc: Encoder[FeatureBidsImpression] = Encoders.product[FeatureBidsImpression]
+  val tt: TypeTag[FeatureBidsImpression] = typeTag[FeatureBidsImpression]
+}
 

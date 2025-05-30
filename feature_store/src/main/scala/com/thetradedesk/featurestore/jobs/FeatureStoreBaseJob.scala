@@ -1,14 +1,14 @@
 package com.thetradedesk.featurestore.jobs
 
-import com.thetradedesk.featurestore.datasets.ProfileDataset
-import com.thetradedesk.spark.TTDSparkContext.spark
-import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import com.thetradedesk.featurestore.{FeautureAppName, OutputRowCountGaugeName, RunTimeGaugeName, aggLevel, date, partCount}
+import com.thetradedesk.featurestore._
+import com.thetradedesk.featurestore.datasets.{ProcessedDataset, ProfileDataset}
 import com.thetradedesk.featurestore.features.Features._
 import com.thetradedesk.featurestore.transform.AggregateTransform._
 import com.thetradedesk.featurestore.transform.Merger.joinDataFrames
-import org.apache.spark.sql.{Column, Dataset}
+import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{Column, Dataset, SaveMode}
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -45,6 +45,11 @@ abstract class FeatureStoreBaseJob {
     spark.catalog.clearCache()
     spark.stop()
   }
+
+  def getDateStr(date: LocalDate): String = {
+    val dtf = DateTimeFormatter.ofPattern("yyyyMMdd")
+    date.format(dtf)
+  }
 }
 
 
@@ -52,7 +57,10 @@ abstract class FeatureStoreBaseJob {
  *
  */
 abstract class FeatureStoreAggJob extends FeatureStoreBaseJob {
-  def jobConfig: FeatureStoreAggJobConfig = new FeatureStoreAggJobConfig("")
+
+  override def jobName: String = s"${getClass.getSimpleName.stripSuffix("$")}"
+
+  def jobConfig = new FeatureStoreAggJobConfig(s"${getClass.getSimpleName.stripSuffix("$")}.json")
 
   def catFeatSpecs: Array[CategoryFeatAggSpecs] = jobConfig.catFeatSpecs
 
@@ -63,11 +71,6 @@ abstract class FeatureStoreAggJob extends FeatureStoreBaseJob {
   def loadInputData(date: LocalDate, lookBack: Int): Dataset[_]
 
   val salt = "42"
-
-  def getDateStr(date: LocalDate): String = {
-    val dtf = DateTimeFormatter.ofPattern("yyyyMMdd")
-    date.format(dtf)
-  }
 
   def aggBySpecs(inputDf: Dataset[_],
                  aggLevel: String,
@@ -114,4 +117,31 @@ abstract class FeatureStoreAggJob extends FeatureStoreBaseJob {
 
   }
 
+}
+
+abstract class FeatureStoreGenJob[T <: Product] extends FeatureStoreBaseJob {
+
+  override def jobName: String = s"${getClass.getSimpleName.stripSuffix("$")}"
+
+  override def runTransform(args: Array[String]): Array[(String, Long)] = {
+    val dataset = initDataSet()
+    val dataSetName = dataset.getClass.getSimpleName
+
+    if (!overrideOutput && dataset.isProcessed(date)) {
+      println(s"DataSet ${dataSetName} existed and override disabled")
+      return Array((dataSetName, 0))
+    }
+
+    val generatedData = generateDataSet()
+    dataset.writePartition(
+      generatedData,
+      date,
+      saveMode = SaveMode.Overwrite
+    )
+    Array((dataSetName, generatedData.count()))
+  }
+
+  def generateDataSet(): Dataset[T]
+
+  def initDataSet(): ProcessedDataset[T]
 }

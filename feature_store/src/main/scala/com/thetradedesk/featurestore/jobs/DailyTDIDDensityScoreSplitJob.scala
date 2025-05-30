@@ -23,11 +23,6 @@ object DailyTDIDDensityScoreSplitJob extends FeatureStoreBaseJob {
   val salt = "TRM"
   val repartitionNum = 32768
 
-  def getDateStr(date: LocalDate): String = {
-    val dtf = DateTimeFormatter.ofPattern("yyyyMMdd")
-    date.format(dtf)
-  }
-
   def loadInputData(date: LocalDate) = {
     val dateStr = getDateStr(date)
     val yyyy = dateStr.substring(0, 4)
