@@ -20,6 +20,7 @@ feature_store:test:
       changes:
         - "feature_store/src/main/scala/**/*"
         - "feature_store/build.sbt"
+        - "feature_store/src/main/resources/**/*"
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
         - "feature_store/src/**/*"
@@ -41,6 +42,7 @@ feature_store:push_bits_merge_request:
       changes:
         - "feature_store/src/main/scala/**/*"
         - "feature_store/build.sbt"
+        - "feature_store/src/main/resources/**/*"
   script:
     - pushd ./feature_store/
     - NEXUS_MAVEN_READ_USER=${NEXUS_MAVEN_SNAPSHOT_USER}
@@ -64,6 +66,7 @@ feature_store:push_bits_master_snapshot:
       changes:
         - "feature_store/src/main/scala/**/*"
         - "feature_store/build.sbt"
+        - "feature_store/src/main/resources/**/*"
   script:
     - pushd ./feature_store/
     - sbt "set test in assembly := {}" clean assembly
@@ -80,6 +83,7 @@ feature_store:deploy_release:
       changes:
         - "feature_store/src/main/scala/**/*"
         - "feature_store/build.sbt"
+        - "feature_store/src/main/resources/**/*"
       allow_failure: false
   script:
     - pushd ./feature_store/
