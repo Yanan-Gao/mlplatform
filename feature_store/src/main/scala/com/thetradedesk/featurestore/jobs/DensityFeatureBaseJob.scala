@@ -3,9 +3,11 @@ package com.thetradedesk.featurestore.jobs
 import com.thetradedesk.featurestore._
 import com.thetradedesk.featurestore.rsm.CommonEnums.{CrossDeviceVendor, DataSource}
 import com.thetradedesk.featurestore.transform.IDTransform.{allIdType, filterOnIdTypes}
+import com.thetradedesk.featurestore.transform.MappingIdSplitUDF
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.datasets.sources.provisioning.CampaignFlightDataSet
 import com.thetradedesk.spark.util.io.FSUtils
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
@@ -105,6 +107,26 @@ abstract class DensityFeatureBaseJob {
 
   def readAggregatedSeed(date: LocalDate): DataFrame = {
     spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/data/$readEnv/audience/aggregatedSeed/v=1/date=${getDateStr(date)}")
+  }
+
+  def readActiveCampaigns(date: LocalDate): DataFrame = {
+    val campaignStartDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.plusDays(campaignFlightStartingBufferInDays))
+    val campaignEndDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date)
+    CampaignFlightDataSet()
+      .readLatestPartition()
+      .where('IsDeleted === false
+        && 'StartDateInclusiveUTC.leq(campaignStartDateTimeStr)
+        && ('EndDateExclusiveUTC.isNull || 'EndDateExclusiveUTC.gt(campaignEndDateTimeStr)))
+      .select('CampaignId)
+      .distinct()
+  }
+
+  def splitDensityScoreSlots(input: DataFrame): DataFrame = {
+    input
+      .withColumn("MappingIdLevel2S1", MappingIdSplitUDF(1)('MappingIdLevel2))
+      .withColumn("MappingIdLevel2", MappingIdSplitUDF(0)('MappingIdLevel2))
+      .withColumn("MappingIdLevel1S1", MappingIdSplitUDF(1)('MappingIdLevel1))
+      .withColumn("MappingIdLevel1", MappingIdSplitUDF(0)('MappingIdLevel1))
   }
 
   def runTransform(args: Array[String]): Unit

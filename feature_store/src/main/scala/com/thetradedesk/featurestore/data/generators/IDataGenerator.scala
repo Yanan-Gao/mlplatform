@@ -27,6 +27,7 @@ abstract class IDataGenerator(implicit sparkSession: SparkSession, telemetry: Us
     if (!preValidationResult.success) {
       throw new RuntimeException(s"[Data Generator] data pre validation failed, reason: [${preValidationResult.message}]")
     }
+
     val dataSource = readFeatureSource(dateTime, userFeatureMergeDefinition).cache()
     val (result, features) = generate(dataSource, userFeatureMergeDefinition)
 
@@ -41,7 +42,7 @@ abstract class IDataGenerator(implicit sparkSession: SparkSession, telemetry: Us
     val cachedResult = result.cache()
 
     val metrics = cachedResult
-      .where(shouldConsiderTDID(col(FeatureConstants.UserIDKey)))
+      .where(shouldConsiderTDID(col(userFeatureMergeDefinition.sourceIdKey)))
       .select(length(col(FeatureDataKey)).alias("size"))
       .select('size, when('size <= userFeatureMergeDefinition.config.maxDataSizePerRecord, 1).otherwise(0).alias("label"))
       .agg(sum('label), count('label), avg('size))
@@ -76,10 +77,10 @@ abstract class IDataGenerator(implicit sparkSession: SparkSession, telemetry: Us
         p._2.select(
           p._1.features.map(
             e => convertFeatureType(col(e.name), p._2.schema(e.name), e).alias(s"${p._1.name}_${e.name}"))
-            :+ col(p._1.idKey).alias(FeatureConstants.UserIDKey): _*)) // rename key to TDID
-      .reduce(_.join(_, Seq(FeatureConstants.UserIDKey), "outer"))
+            :+ col(p._1.idKey).alias(userFeatureMergeDefinition.sourceIdKey): _*)) // rename key to TDID
+      .reduce(_.join(_, Seq(userFeatureMergeDefinition.sourceIdKey), "outer"))
 
-    df.select(df.columns.filter(_ != FeatureConstants.UserIDKey).map(e => coalesce(col(e), lit(featureMap(e).typedDefaultValue)).alias(e)) :+ col(FeatureConstants.UserIDKey): _*)
+    df.select(df.columns.filter(_ != userFeatureMergeDefinition.sourceIdKey).map(e => coalesce(col(e), lit(featureMap(e).typedDefaultValue)).alias(e)) :+ col(userFeatureMergeDefinition.sourceIdKey): _*)
   }
 
   // TODO check data size, array size...
