@@ -31,7 +31,7 @@ object HadesCampaignBufferAdjustmentsTransform {
 
   val EPSILON = 0.01
   val MinimumFloorBuffer = 0.01
-  val MaximumFloorBuffer = 0.85
+  val MaximumFloorBuffer = 1
 
   val MinTestBucketIncluded = 0.5
   val MaxTestBucketExcluded = 0.7
@@ -197,7 +197,7 @@ object HadesCampaignBufferAdjustmentsTransform {
         // because spark doesn't support column values in this function
         // Also, AdjustmentQuantile is calculated later.
         //expr("percentile_approx(gen_HadesBackoff_FloorBuffer, array(0.5, 0.4, 0.3), 200)").as("HadesBackoff_FloorBuffer_Options")
-        expr("percentile_approx(gen_HadesBackoff_FloorBuffer, array(0.5, 0.4, 0.3), 200)").as("HadesBackoff_FloorBuffer_Options")
+        expr("percentile_approx(gen_HadesBackoff_FloorBuffer, array(0.5, 0.3, 0.1), 200)").as("HadesBackoff_FloorBuffer_Options")
       )
       .join(broadcast(campaignUnderdeliveryData), Seq("CampaignId"), "left")
       .as[HadesV3CampaignStats]
