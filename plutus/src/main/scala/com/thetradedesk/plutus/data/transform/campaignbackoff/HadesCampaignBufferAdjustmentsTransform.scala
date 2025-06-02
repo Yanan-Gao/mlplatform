@@ -13,7 +13,7 @@ import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import job.campaignbackoff.CampaignAdjustmentsJob.hadesCampaignCounts
 import org.apache.hadoop.shaded.org.apache.commons.math3.special.Erf
 import org.apache.spark.sql.expressions.UserDefinedFunction
-import org.apache.spark.sql.functions.{count, _}
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.storage.StorageLevel
 
@@ -33,8 +33,8 @@ object HadesCampaignBufferAdjustmentsTransform {
   val MinimumFloorBuffer = 0.01
   val MaximumFloorBuffer = 0.85
 
-  val MinTestBucketIncluded = 0.5
-  val MaxTestBucketExcluded = 0.7
+  val MinTestBucketIncluded = 0.0
+  val MaxTestBucketExcluded = 0.9
 
   def cdf(mu: Double, sigma: Double, x: Double): Double = {
     //val a = (math.log(x) - mu) / math.sqrt(2 * math.pow(sigma, 2))
@@ -546,39 +546,15 @@ object HadesCampaignBufferAdjustmentsTransform {
 
     val yesterdaysData = (try {
       HadesCampaignBufferAdjustmentsDataset.readLatestDataUpToIncluding(
-        date.minusDays(1), env = envForReadInternal, nullIfColAbsent = true, historyLength = HistoryLength)
+        date.minusDays(1),
+        env = envForReadInternal,
+        nullIfColAbsent = true,
+        historyLength = HistoryLength
+      )
     } catch {
       case _: S3NoFilesFoundException =>
-        HadesCampaignAdjustmentsDataset.readLatestDataUpToIncluding(
-            date.minusDays(1),
-            env = envForRead,
-            nullIfColAbsent = true).map(row =>
-            // This gets us the data from the other schema
-          HadesBufferAdjustmentSchema(
-              CampaignId = row.CampaignId,
-              CampaignType = row.CampaignType,
-              HadesBackoff_FloorBuffer = row.BBF_FloorBuffer.getOrElse(platformWideBuffer),
-              HadesBackoff_FloorBuffer_Previous = Array(),
-              HadesBackoff_FloorBuffer_Current = row.BBF_FloorBuffer.getOrElse(platformWideBuffer),
-              Hades_isProblemCampaign = row.Hades_isProblemCampaign,
-              AdjustmentQuantile = DefaultAdjustmentQuantile,
-              UnderdeliveryFraction = row.UnderdeliveryFraction,
-              Total_BidCount = row.Total_BidCount,
-              Total_PMP_BidCount = row.Total_PMP_BidCount,
-              Total_PMP_BidAmount = row.Total_PMP_BidAmount,
-              BBF_PMP_BidCount = row.BBF_PMP_BidCount,
-              BBF_PMP_BidAmount = row.BBF_PMP_BidAmount,
-              Total_OM_BidCount = row.Total_OM_BidCount,
-              Total_OM_BidAmount = row.Total_OM_BidAmount,
-              BBF_OM_BidCount = row.BBF_OM_BidCount,
-              BBF_OM_BidAmount = row.BBF_OM_BidAmount,
-              BBF_FloorBuffer = row.BBF_FloorBuffer,
-              Actual_BBF_FloorBuffer = row.BBF_FloorBuffer
-            ))
-    })// We get rid of unadjusted campaigns because if they are still underdelivering, they'll
-      // get picked up anyways. If not, we dont need to carry on that data.
-      .as[HadesBufferAdjustmentSchema]
-      .cache()
+        Seq.empty[HadesBufferAdjustmentSchema].toDS()
+    }).as[HadesBufferAdjustmentSchema].cache()
 
     val campaignUnderdeliveryData = CampaignThrottleMetricDataset.readDate(env = envForRead, date = date)
       .cache()
@@ -629,10 +605,13 @@ object HadesCampaignBufferAdjustmentsTransform {
     // Get final pushdowns
     val (hadesBufferAdjustmentsDataset, metrics) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData, underdeliveryThreshold)
 
-    HadesCampaignBufferAdjustmentsDataset.writeData(date, hadesBufferAdjustmentsDataset, fileCount)
+    // TODO: Remove it after the reset run. Replace all onePercenthadesBufferAdjustmentsDataset with hadesBufferAdjustmentsDataset
+    val onePercentHadesBufferAdjustmentsDataset = hadesBufferAdjustmentsDataset.withColumn("BBF_FloorBuffer", lit(0.01)).selectAs[HadesBufferAdjustmentSchema]
 
-    val hadesIsProblemCampaignsCount = hadesBufferAdjustmentsDataset.filter(col("Hades_isProblemCampaign") === true).count()
-    val hadesTotalAdjustmentsCount = hadesBufferAdjustmentsDataset.filter(col("HadesBackoff_FloorBuffer") < 1.0).count()
+    HadesCampaignBufferAdjustmentsDataset.writeData(date, onePercentHadesBufferAdjustmentsDataset, fileCount)
+
+    val hadesIsProblemCampaignsCount = onePercentHadesBufferAdjustmentsDataset.filter(col("Hades_isProblemCampaign") === true).count()
+    val hadesTotalAdjustmentsCount = onePercentHadesBufferAdjustmentsDataset.filter(col("HadesBackoff_FloorBuffer") < 1.0).count()
 
     import job.campaignbackoff.CampaignAdjustmentsJob.hadesBackoffV3Metrics
 
@@ -642,7 +621,7 @@ object HadesCampaignBufferAdjustmentsTransform {
       hadesBackoffV3Metrics.labels(metric.CampaignType, metric.PacingType, metric.OptoutType, metric.AdjustmentQuantile.toString, metric.Buffer).set(metric.Count)
     }
 
-    hadesBufferAdjustmentsDataset
+    onePercentHadesBufferAdjustmentsDataset
   }
 }
 
