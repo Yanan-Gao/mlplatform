@@ -31,7 +31,7 @@ object HadesCampaignBufferAdjustmentsTransform {
 
   val EPSILON = 0.01
   val MinimumFloorBuffer = 0.01
-  val MaximumFloorBuffer = 1
+  val MaximumFloorBuffer = 0.85
 
   val MinTestBucketIncluded = 0.0
   val MaxTestBucketExcluded = 0.9
@@ -197,7 +197,7 @@ object HadesCampaignBufferAdjustmentsTransform {
         // because spark doesn't support column values in this function
         // Also, AdjustmentQuantile is calculated later.
         //expr("percentile_approx(gen_HadesBackoff_FloorBuffer, array(0.5, 0.4, 0.3), 200)").as("HadesBackoff_FloorBuffer_Options")
-        expr("percentile_approx(gen_HadesBackoff_FloorBuffer, array(0.5, 0.3, 0.1), 200)").as("HadesBackoff_FloorBuffer_Options")
+        expr("percentile_approx(gen_HadesBackoff_FloorBuffer, array(0.5, 0.4, 0.3), 200)").as("HadesBackoff_FloorBuffer_Options")
       )
       .join(broadcast(campaignUnderdeliveryData), Seq("CampaignId"), "left")
       .as[HadesV3CampaignStats]
@@ -300,7 +300,7 @@ object HadesCampaignBufferAdjustmentsTransform {
     (res, metrics)
   }
 
-  def getFinalAdjustment(currentAdjustment: Double, previousAdjustments: Array[Double], underdeliveryFraction: Option[Double], underdeliveryThreshold: Double = 0.05, contextSize: Int = 3): Double = {
+  def getFinalAdjustment(currentAdjustment: Double, previousAdjustments: Array[Double], underdeliveryFraction: Option[Double], underdeliveryThreshold: Double = 0.05, contextSize: Int = 2): Double = {
     if (previousAdjustments == null || previousAdjustments.length == 0) {
       return Math.max(0.01, currentAdjustment)
     }
@@ -605,13 +605,10 @@ object HadesCampaignBufferAdjustmentsTransform {
     // Get final pushdowns
     val (hadesBufferAdjustmentsDataset, metrics) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData, underdeliveryThreshold)
 
-    // TODO: Remove it after the reset run. Replace all onePercenthadesBufferAdjustmentsDataset with hadesBufferAdjustmentsDataset
-    val onePercentHadesBufferAdjustmentsDataset = hadesBufferAdjustmentsDataset.withColumn("BBF_FloorBuffer", lit(0.01)).selectAs[HadesBufferAdjustmentSchema]
+    HadesCampaignBufferAdjustmentsDataset.writeData(date, hadesBufferAdjustmentsDataset, fileCount)
 
-    HadesCampaignBufferAdjustmentsDataset.writeData(date, onePercentHadesBufferAdjustmentsDataset, fileCount)
-
-    val hadesIsProblemCampaignsCount = onePercentHadesBufferAdjustmentsDataset.filter(col("Hades_isProblemCampaign") === true).count()
-    val hadesTotalAdjustmentsCount = onePercentHadesBufferAdjustmentsDataset.filter(col("HadesBackoff_FloorBuffer") < 1.0).count()
+    val hadesIsProblemCampaignsCount = hadesBufferAdjustmentsDataset.filter(col("Hades_isProblemCampaign") === true).count()
+    val hadesTotalAdjustmentsCount = hadesBufferAdjustmentsDataset.filter(col("HadesBackoff_FloorBuffer") < 1.0).count()
 
     import job.campaignbackoff.CampaignAdjustmentsJob.hadesBackoffV3Metrics
 
@@ -621,7 +618,7 @@ object HadesCampaignBufferAdjustmentsTransform {
       hadesBackoffV3Metrics.labels(metric.CampaignType, metric.PacingType, metric.OptoutType, metric.AdjustmentQuantile.toString, metric.Buffer).set(metric.Count)
     }
 
-    onePercentHadesBufferAdjustmentsDataset
+    hadesBufferAdjustmentsDataset
   }
 }
 

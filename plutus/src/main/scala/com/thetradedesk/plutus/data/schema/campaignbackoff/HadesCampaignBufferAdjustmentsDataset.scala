@@ -8,7 +8,7 @@ import java.time.LocalDate
 import scala.reflect.ClassTag
 
 object HadesCampaignBufferAdjustmentsDataset extends S3DailyParquetDataset[HadesBufferAdjustmentSchema] {
-  val DATA_VERSION = 1
+  val DATA_VERSION = 2
 
   override protected def genBasePath(env: String): String = {
     f"s3://thetradedesk-mlplatform-us-east-1/env=${env}/data/plutusbackoff/hadesbufferadjustments/v=${DATA_VERSION}"
