@@ -1,5 +1,4 @@
 import java.time.{Clock, LocalDateTime}
-
 import sbtrelease.Vcs
 
 name := "audience"
@@ -26,13 +25,12 @@ val jacksonCore = ExclusionRule("com.fasterxml.jackson.core")
 val guava = ExclusionRule("com.google.guava")
 val awsJavaSdkBundle = ExclusionRule("com.amazonaws", "aws-java-sdk-bundle")
 
-/*
+
 val availsVersion = sparkVersion match {
   case v if v.startsWith("3.5") => "3.0.114"
   case v if v.startsWith("3.2") => "3.0.15"
   case _ => "3.0.15"
 }
- */
 
 libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-sql" % sparkVersion % "provided",
@@ -41,7 +39,7 @@ libraryDependencies ++= Seq(
   "com.typesafe" % "config" % "1.3.0",
   "com.thetradedesk" %% "geronimo" % "0.2.32-SNAPSHOT",
   "com.thetradedesk.segment.client" % "spark_3" % "2.0.9" % "provided",
-  //"com.thetradedesk" %% "availspipeline.spark-common_no_uniform" % availsVersion,
+  "com.thetradedesk" %% "availspipeline.spark-common_no_uniform" % availsVersion,
   "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
 
   "io.prometheus" % "simpleclient" % prometheusVersion,
@@ -63,13 +61,13 @@ assemblyJarName in assembly := "audience.jar"
 
 assemblyMergeStrategy in assembly := {
   //  case PathList("org", "apache", "hadoop", _@_*) => MergeStrategy.discard
-  case PathList("org", "apache", "scala", _@_*) => MergeStrategy.discard
-  case PathList("org", "apache", "spark", "sql", "execution", _@_*) => MergeStrategy.discard
-  case PathList("META-INF", "services", file) if file.startsWith("io.openlineage.client.transports.TransportBuilder") => MergeStrategy.first
-  //case PathList("META-INF", "services", _*) => MergeStrategy.concat
-  case PathList("META-INF", _@_*) => MergeStrategy.discard
+      case PathList("org", "apache", "scala", _@_*) => MergeStrategy.discard
+      case PathList("org", "apache", "spark", "sql", "execution", _@_*) => MergeStrategy.discard
+      case PathList("META-INF", "services", file) if file.startsWith("io.openlineage.client.transports.TransportBuilder") => MergeStrategy.first
+      case PathList("META-INF", "services", _*) if sparkVersion.startsWith("3.5") => MergeStrategy.concat
+      case PathList("META-INF", _@_*) => MergeStrategy.discard
 
-  case _ => MergeStrategy.first
+      case _ => MergeStrategy.first
 }
 
 fork in Test := true
