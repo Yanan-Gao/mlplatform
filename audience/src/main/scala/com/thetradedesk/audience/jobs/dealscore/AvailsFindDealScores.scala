@@ -1,7 +1,7 @@
 package com.thetradedesk.audience.jobs.dealscore
 
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.isDeviceIdSampled1Percent
-//import com.thetradedesk.availspipeline.spark.datasets.{DealAvailsAggDailyDataSet, IdentityAndDealAggHourlyDataSet}
+import com.thetradedesk.availspipeline.spark.datasets.{DealAvailsAggDailyDataSet, IdentityAndDealAggHourlyDataSet}
 import com.thetradedesk.audience.{date, dateFormatter, ttdEnv}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -63,7 +63,6 @@ object AvailsFindDealScores {
 
   def runETLPipeline(): Unit = {
 
-    /*
     val dealSv = spark.read.parquet(deal_sv_path)
     val dealSvSeedDS = dealSv.select("DealCode", "SupplyVendorId", "SeedId").distinct().cache();
     val dealSvDS = dealSvSeedDS.select("DealCode", "SupplyVendorId").distinct()
@@ -143,7 +142,6 @@ object AvailsFindDealScores {
       .mode("overwrite")
       .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
       .save(agg_score_out_path)
-     */
 
   }
 
