@@ -8,7 +8,7 @@ object BackoffCommon {
 
   //Constants
   val bucketCount = 1000
-  val platformWideBuffer = 0.35
+  val platformWideBuffer = 0.01
 
   // Classes
   case class Campaign(CampaignId: String)
