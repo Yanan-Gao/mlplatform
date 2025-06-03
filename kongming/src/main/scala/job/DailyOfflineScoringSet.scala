@@ -19,6 +19,7 @@ object DailyOfflineScoringSet extends KongmingBaseJob {
   val saveTrainingDataAsTFRecord = config.getBoolean("saveTrainingDataAsTFRecord", true)
   val saveTrainingDataAsCSV = config.getBoolean("saveTrainingDataAsCSV", true)
   val saveTrainingDataAsCBuffer = config.getBoolean("saveTrainingDataAsCBuffer", true)
+  val partitionCount = config.getInt("partitionCount", partCount.DailyOfflineScoring)
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
     val mapping = AdGroupPolicyMappingDataset().readDate(date)
@@ -41,7 +42,7 @@ object DailyOfflineScoringSet extends KongmingBaseJob {
     var dailyOfflineScoringRows = ("", 0L)
 
     if (saveTrainingDataAsTFRecord) {
-      dailyOfflineScoringRows = OldDailyOfflineScoringDataset().writePartition(oldScoringFeatureDS.selectAs[OldDailyOfflineScoringRecord], date, Some(partCount.DailyOfflineScoring))
+      dailyOfflineScoringRows = OldDailyOfflineScoringDataset().writePartition(oldScoringFeatureDS.selectAs[OldDailyOfflineScoringRecord], date, Some(partitionCount))
     }
 
     if (saveTrainingDataAsCSV) {
@@ -50,13 +51,13 @@ object DailyOfflineScoringSet extends KongmingBaseJob {
         .select(reselectionTabular: _*)
         .selectAs[DailyOfflineScoringRecord]
 
-      dailyOfflineScoringRows = DailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(partCount.DailyOfflineScoring))
+      dailyOfflineScoringRows = DailyOfflineScoringDataset().writePartition(scoringFeatureDS, date, Some(partitionCount))
     }
 
     if (saveTrainingDataAsCBuffer) {
       dailyOfflineScoringRows = ArrayDailyOfflineScoringDataset().writePartition(
         encodeDatasetForCBuffer[ArrayDailyOfflineScoringRecord](oldScoringFeatureDS),
-        date, None, partCount.DailyOfflineScoring, evalBatchSize)
+        date, None, partitionCount, evalBatchSize)
     }
 
     Array(dailyOfflineScoringRows)
