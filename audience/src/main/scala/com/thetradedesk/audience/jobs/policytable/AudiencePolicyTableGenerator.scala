@@ -66,6 +66,8 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
     var useSelectedPixel = config.getBoolean("useSelectedPixel", false)
     var campaignFlightStartingBufferInDays = config.getInt("campaignFlightStartingBufferInDays", 14)
     var allRSMSeed = config.getBoolean("allRSMSeed", false)
+    var activeAdvertiserLookBackDays = config.getInt("activeAdvertiserLookBackDays", 180)
+    var newSeedLookBackDays = config.getInt("newSeedLookBackDays", 7)
   }
 
   private val policyTableDateFormatter = DateTimeFormatter.ofPattern(audienceVersionDateFormat)

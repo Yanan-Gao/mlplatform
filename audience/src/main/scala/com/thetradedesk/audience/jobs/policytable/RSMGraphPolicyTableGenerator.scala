@@ -3,7 +3,7 @@ package com.thetradedesk.audience.jobs.policytable
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJob.prometheus
-import com.thetradedesk.audience.utils.{S3Utils, MapDensity, SeedPolicyUtils}
+import com.thetradedesk.audience.utils.{MapDensity, S3Utils, SeedPolicyUtils}
 import com.thetradedesk.spark.datasets.sources.ThirdPartyDataDataSet
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -12,6 +12,8 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions.{transform => sql_transform, _}
 import org.apache.spark.sql.types.{ArrayType, StringType, StructType}
+
+import java.sql.Timestamp
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -34,13 +36,19 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
       .map(row => (row.getString(0), row.getString(1)))
       .toMap
 
+    val campaignFlights = CampaignFlightDataSet()
+      .readPartition(date)
+
+    val campaigns = CampaignDataSet()
+      .readPartition(date)
+      .select('CampaignId, 'AdvertiserId)
+
     val seedMeta =
       if (!Config.allRSMSeed) {
         val startDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.plusDays(Config.campaignFlightStartingBufferInDays))
         val endDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date)
 
-        val campaignFlight = CampaignFlightDataSet()
-          .readPartition(date)
+        val activeCampaigns = campaignFlights
           .where('IsDeleted === false
             && 'StartDateInclusiveUTC.leq(startDateTimeStr)
             && ('EndDateExclusiveUTC.isNull || 'EndDateExclusiveUTC.gt(endDateTimeStr)))
@@ -51,14 +59,30 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
           .readPartition(date)
 
         val optInSeed = campaignSeed
-          .join(campaignFlight, Seq("CampaignId"), "inner")
+          .join(activeCampaigns, Seq("CampaignId"), "inner")
           .select('SeedId)
           .distinct()
 
         spark.read.parquet(seedDataFullPath)
           .join(optInSeed, Seq("SeedId"), "inner")
       } else {
+        val activeAdvertiserStartingDateStr = DateTimeFormatter
+          .ofPattern("yyyy-MM-dd 00:00:00")
+          .format(date.minusDays(Config.activeAdvertiserLookBackDays))
+
+        val activeAdvertisers = campaignFlights
+          .filter('EndDateExclusiveUTC.isNull || 'EndDateExclusiveUTC.gt(activeAdvertiserStartingDateStr))
+          .select('CampaignId)
+          .distinct()
+          .join(campaigns, Seq("CampaignId"))
+          .select('AdvertiserId)
+          .distinct()
+
+        val newSeedTimestamp = Timestamp.valueOf(date.atStartOfDay().minusDays(Config.newSeedLookBackDays))
+
         spark.read.parquet(seedDataFullPath)
+          .join(activeAdvertisers.as("a"), Seq("AdvertiserId"), "left")
+          .filter($"a.AdvertiserId".isNotNull || to_timestamp('CreatedAt, "yyyy-MM-dd'T'HH:mm:ss.SSSSSS").gt(lit(newSeedTimestamp)))
       }
 
     seedMeta
