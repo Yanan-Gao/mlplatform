@@ -29,7 +29,6 @@ object CampaignAdjustmentsJob {
 
   val hadesBackoffV3Metrics = prometheus.createGauge("campaignadjustments_hades_backoffv3_campaign_types", "Different adjustment types", "CampaignType", "Pacing", "OptOut", "Quantile", "Backoff")
 
-
   def main(args: Array[String]): Unit = {
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
 
