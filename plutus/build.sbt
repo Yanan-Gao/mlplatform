@@ -8,7 +8,7 @@ version := "0.0.0"
 
 scalaVersion := "2.12.13"
 
-val sparkVersion = "3.5.2"
+val sparkVersion = "3.2.1"
 val prometheusVersion = "0.9.0"
 
 resolvers += "bintray-spark-packages" at "https://dl.bintray.com/spark-packages/maven/"
