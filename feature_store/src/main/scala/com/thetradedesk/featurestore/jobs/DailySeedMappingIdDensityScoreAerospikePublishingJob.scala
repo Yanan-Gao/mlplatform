@@ -38,7 +38,7 @@ object DailySeedMappingIdDensityScoreAerospikePublishingJob extends DensityFeatu
     spark.conf.set("spark.sql.orc.impl", "native")
 
     // get configurations
-    val ttl = config.getInt("ttl", 86400 * 7)
+    val ttl = config.getInt("ttl", 86400 * 180)
     val aerospikeSet = config.getString("aerospikeSet", "seed-density-scores")
     val aerospikeAddress = config.getStringRequired("aerospikeAddress")
     val aerospikeNamespace = config.getString("aerospikeNamespace", "ttd-user")
