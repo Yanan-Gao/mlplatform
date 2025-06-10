@@ -3,6 +3,7 @@ package com.thetradedesk.featurestore.jobs
 import com.thetradedesk.featurestore.datasets._
 import com.thetradedesk.featurestore.features.Features._
 import com.thetradedesk.featurestore.transform.Loader._
+import com.thetradedesk.featurestore.{aggLevel, shouldTrackTDID}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
@@ -13,6 +14,8 @@ import java.time.LocalDate
 
 
 object AggAttributions extends FeatureStoreAggJob {
+
+  override val sourcePartition: String = "attribution"
 
   // todo: replace this part by config files
   override def catFeatSpecs: Array[CategoryFeatAggSpecs] = Array(
@@ -33,8 +36,11 @@ object AggAttributions extends FeatureStoreAggJob {
   )
 
   override def loadInputData(date: LocalDate, lookBack: Int): Dataset[_] = {
-    println(s"loadInputData DailyAttributionDataset: date: ${getDateStr(date)}, lookBack: $lookBack")
-    val inputDf = DailyAttributionDataset().readPartition(date = date, lookBack = Some(lookBack))
+    val attributionDataset = DailyAttributionDataset()
+    if(!attributionDataset.isProcessed(date)) {
+      throw new RuntimeException(s"Success file not found for DailyAttributionDataset on date: ${date}, at location: ${attributionDataset.getSuccessFilePath(date)}")
+    }
+    val inputDf = attributionDataset.readPartition(date = date, lookBack = Some(lookBack)).filter(shouldTrackTDID(col(aggLevel)))
     // load CCRC table to filter down to attribution TrackingTags
     val ccrcProcessed = loadValidTrackingTag(date)
 
