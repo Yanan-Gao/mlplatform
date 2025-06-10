@@ -3,9 +3,9 @@ package com.thetradedesk.featurestore.transform
 import com.thetradedesk.featurestore.features.Features._
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
+import org.apache.spark.sql.expressions.Aggregator
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.expressions.{Aggregator, Window}
-import org.apache.spark.sql.types.{DoubleType, IntegerType, LongType}
+import org.apache.spark.sql.types.{DoubleType, LongType}
 
 import scala.collection.mutable
 

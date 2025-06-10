@@ -2,16 +2,12 @@ package com.thetradedesk.featurestore.datasets
 
 import com.thetradedesk.featurestore.utils.PathUtils
 import com.thetradedesk.geronimo.shared.{loadParquetData, loadParquetDataHourly, parquetDataPaths, parquetHourlyDataPaths}
-import com.thetradedesk.spark.TTDSparkContext.spark
-import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
-import com.thetradedesk.spark.util.distcp.{AppendFoldersToExisting, CopyToEmpty, DataOutputUtils, OverwriteExisting}
 import com.thetradedesk.spark.util.io.FSUtils
-import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.{Dataset, Encoder, SaveMode, SparkSession}
 
-import java.time.{LocalDate, LocalDateTime}
 import java.time.format.DateTimeFormatter
+import java.time.{LocalDate, LocalDateTime}
 import scala.reflect.runtime.universe._
 
 object DatasetSource {
@@ -69,53 +65,15 @@ trait LightWritableDataset[T <: Product] extends LightDataset {
                     ): Unit = {
 
     val partitionedPath: String = datePartitionedPath(Option.apply(partition), subFolderKey, subFolderValue)
-    val df = if (repartitionColumn.isEmpty) {
-      dataset.coalesce(numPartitions.getOrElse(defaultNumPartitions))
-    }
-    else if (repartitionColumn.get.isEmpty) {
-      dataset.repartition(numPartitions.getOrElse(defaultNumPartitions))
-    } else {
-      dataset.repartition(numPartitions.getOrElse(defaultNumPartitions), col(repartitionColumn.get))
-    }
-
-    format match {
-
-      case Some("tfrecord") => df
-        .write
-        .mode(saveMode)
-        .format("tfrecord")
-        .option("recordType", "Example")
-        .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
-        .option("maxRecordsPerFile", maxRecordsPerFile)
-        .save(partitionedPath)
-
-      case Some("csv") => df
-        .write
-        .mode(saveMode)
-        .option("header", value = true)
-        .option("maxRecordsPerFile", maxRecordsPerFile)
-        .csv(partitionedPath)
-
-      case Some("parquet") => {
-        // write to hdfs first then copy to s3
-        if (writeThroughHdfs) {
-          val copyType = saveMode match {
-            case SaveMode.Overwrite => OverwriteExisting
-            case SaveMode.ErrorIfExists => CopyToEmpty
-            case _ => AppendFoldersToExisting
-          }
-
-          DataOutputUtils.writeParquetThroughHdfs(df.toDF(), partitionedPath, copyType)(spark)
-        } else {
-          df
-            .write
-            .mode(saveMode)
-            .option("maxRecordsPerFile", maxRecordsPerFile)
-            .parquet(partitionedPath)
-        }
-      }
-      case _ => throw new UnsupportedOperationException(s"format ${format} is not supported")
-    }
+    val numPart = numPartitions.getOrElse(defaultNumPartitions)
+    DatasetWriter.writeDataSet(dataset,
+      partitionedPath,
+      Some(numPart),
+      repartitionColumn,
+      format,
+      saveMode,
+      maxRecordsPerFile,
+      writeThroughHdfs)
   }
 }
 

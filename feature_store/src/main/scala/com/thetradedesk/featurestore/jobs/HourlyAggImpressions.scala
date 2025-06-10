@@ -12,7 +12,8 @@ import java.time.LocalDate
 
 
 object HourlyAggImpressions extends FeatureStoreAggJob {
-  override def jobConfig = new FeatureStoreAggJobConfig( s"${getClass.getSimpleName.stripSuffix("$")}.json" )
+
+  override val sourcePartition: String = "bidsimpression"
 
   def aggregateFeatures(df: DataFrame, features: Seq[String]): DataFrame = {
     // Stack data for all features into one DataFrame

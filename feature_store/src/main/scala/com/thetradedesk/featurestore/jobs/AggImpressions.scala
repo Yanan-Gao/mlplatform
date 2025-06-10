@@ -1,6 +1,7 @@
 package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore.datasets._
+import com.thetradedesk.featurestore.{aggLevel, shouldTrackTDID}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -12,6 +13,8 @@ import java.time.LocalDate
 
 
 object AggImpressions extends FeatureStoreAggJob {
+
+  override val sourcePartition: String = "bidsimpression"
 
   override def loadInputData(date: LocalDate, lookBack: Int): Dataset[_] = {
     // load impressions from geronimo dataset
@@ -30,5 +33,6 @@ object AggImpressions extends FeatureStoreAggJob {
       .withColumn("HourOfDay", hour($"LogEntryTime"))
       .withColumn("DayOfWeek", dayofweek($"LogEntryTime"))
       .withColumnRenamed("UIID", "TDID")
+      .filter(shouldTrackTDID(col(aggLevel)))
   }
 }

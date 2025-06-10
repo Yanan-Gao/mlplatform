@@ -60,6 +60,8 @@ abstract class FeatureStoreAggJob extends FeatureStoreBaseJob {
 
   override def jobName: String = s"${getClass.getSimpleName.stripSuffix("$")}"
 
+  val sourcePartition: String
+
   def jobConfig = new FeatureStoreAggJobConfig(s"${getClass.getSimpleName.stripSuffix("$")}.json")
 
   def catFeatSpecs: Array[CategoryFeatAggSpecs] = jobConfig.catFeatSpecs
@@ -83,7 +85,7 @@ abstract class FeatureStoreAggJob extends FeatureStoreBaseJob {
 
     val aggCols = genAggCols(window, catFeatSpecs) ++ genAggCols(window, conFeatSpecs) ++ genAggCols(window, ratioFeatSpecs)
     catDf = inputDf.groupBy(aggLevel).agg(aggCols.head, aggCols.tail: _*)
-        .withColumnRenamed(aggLevel, "FeatureKey")
+      .withColumnRenamed(aggLevel, "FeatureKey")
 
     // hash aggregated categorical features
     val aggCatCols = catFeatSpecs.filter(_.aggWindowDay == window)
@@ -100,6 +102,13 @@ abstract class FeatureStoreAggJob extends FeatureStoreBaseJob {
   }
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
+    val profileDataset = ProfileDataset(sourcePartition = sourcePartition, jobName = jobName,
+      indexPartition = aggLevel)
+    if (!overrideOutput && profileDataset.isProcessed(date)) {
+      println(s"ProfileDataSet ${profileDataset.getWritePath(date)} existed, skip processing " +
+        s"source ${sourcePartition}, aggLevel ${aggLevel}, aggregation job ${jobName}")
+      return Array(("", 0))
+    }
     // loop through each lookback window
     val outputDfs: Seq[Dataset[_]] = (catFeatSpecs ++ conFeatSpecs ++ ratioFeatSpecs).groupBy(_.aggWindowDay).keys.par.map { window => {
       // load data
@@ -111,7 +120,8 @@ abstract class FeatureStoreAggJob extends FeatureStoreBaseJob {
 
     // merge data from different readRange
     val resDf = outputDfs.reduceLeft((df1: Dataset[_], df2: Dataset[_]) => joinDataFrames(df1, df2))
-    val rows = ProfileDataset(sourcePartition = jobName, indexPartition = aggLevel).writeWithRowCountLog(resDf, date, Some(partCount.AggResult))
+
+    val rows = profileDataset.writeWithRowCountLog(resDf, date)
 
     Array(rows)
 

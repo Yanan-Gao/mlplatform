@@ -22,13 +22,16 @@ trait ProcessedDataset[T <: Product] extends LightReadableDataset[T] with LightW
   override val writeThroughHdfs: Boolean = true
 
   def isProcessed(targetDate: LocalDate): Boolean = {
-    val outputPath = this.datePartitionedPath(partition = Some(targetDate))
-    val successFile = s"$outputPath/_SUCCESS"
-
+    val successFile = getSuccessFilePath(targetDate)
     if (FSUtils.fileExists(successFile)(spark)) {
       return true
     }
     false
+  }
+
+  def getSuccessFilePath(targetDate: LocalDate): String = {
+    val outputPath = this.datePartitionedPath(partition = Some(targetDate))
+    s"$outputPath/_SUCCESS"
   }
 
 }
