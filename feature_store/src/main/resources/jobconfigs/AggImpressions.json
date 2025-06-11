@@ -4,9 +4,7 @@
       "aggField": "Site",
       "dataType": "string",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 15,
       "cardinality": 500002
@@ -15,9 +13,7 @@
       "aggField": "HourOfDay",
       "dataType": "int",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 15,
       "cardinality": 25
@@ -26,7 +22,7 @@
       "aggField": "DayOfWeek",
       "dataType": "int",
       "aggWindows": [
-        7
+        1
       ],
       "topN": 7,
       "cardinality": 8
@@ -35,9 +31,7 @@
       "aggField": "DeviceType",
       "dataType": "int",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 9,
       "cardinality": 10
@@ -46,9 +40,7 @@
       "aggField": "DeviceMake",
       "dataType": "string",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 15,
       "cardinality": 6002
@@ -57,9 +49,7 @@
       "aggField": "DeviceModel",
       "dataType": "int",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 15,
       "cardinality": 40002
@@ -68,9 +58,7 @@
       "aggField": "RequestLanguages",
       "dataType": "string",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 15,
       "cardinality": 5002
@@ -79,9 +67,7 @@
       "aggField": "MatchedLanguageCode",
       "dataType": "string",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 15,
       "cardinality": 352
@@ -90,9 +76,7 @@
       "aggField": "Browser",
       "dataType": "int",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 15,
       "cardinality": 25
@@ -101,9 +85,7 @@
       "aggField": "RenderingContext",
       "dataType": "int",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 6,
       "cardinality": 7
@@ -112,9 +94,7 @@
       "aggField": "InternetConnectionType",
       "dataType": "int",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 10,
       "cardinality": 11
@@ -123,9 +103,7 @@
       "aggField": "OperatingSystemFamily",
       "dataType": "int",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 7,
       "cardinality": 8
@@ -134,9 +112,7 @@
       "aggField": "OperatingSystem",
       "dataType": "int",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 15,
       "cardinality": 72
@@ -145,9 +121,7 @@
       "aggField": "ContextualCategories",
       "dataType": "array_long",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 15,
       "cardinality": 500002
@@ -156,9 +130,7 @@
       "aggField": "Country",
       "dataType": "string",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 15,
       "cardinality": 252
@@ -167,9 +139,7 @@
       "aggField": "Region",
       "dataType": "string",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 15,
       "cardinality": 4002
@@ -178,9 +148,7 @@
       "aggField": "Metro",
       "dataType": "string",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 15,
       "cardinality": 202
@@ -189,9 +157,7 @@
       "aggField": "City",
       "dataType": "string",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 15,
       "cardinality": 150002
@@ -200,9 +166,7 @@
       "aggField": "Zip",
       "dataType": "string",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 15,
       "cardinality": 90002
@@ -211,9 +175,7 @@
       "aggField": "ReferrerUrl",
       "dataType": "string",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "topN": 15,
       "cardinality": 500002
@@ -223,81 +185,63 @@
     {
       "aggField": "BidRequestId",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "aggFunc": "count"
     },
     {
       "aggField": "Latitude",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "aggFunc": "desc"
     },
     {
       "aggField": "Longitude",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "aggFunc": "desc"
     },
     {
       "aggField": "sin_hour_week",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "aggFunc": "desc"
     },
     {
       "aggField": "cos_hour_week",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "aggFunc": "desc"
     },
     {
       "aggField": "sin_minute_hour",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "aggFunc": "desc"
     },
     {
       "aggField": "cos_minute_hour",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "aggFunc": "desc"
     },
     {
       "aggField": "sin_minute_day",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "aggFunc": "desc"
     },
     {
       "aggField": "cos_minute_day",
       "aggWindows": [
-        1,
-        3,
-        7
+        1
       ],
       "aggFunc": "desc"
     }
