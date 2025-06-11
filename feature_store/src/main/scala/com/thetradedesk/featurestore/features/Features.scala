@@ -3,16 +3,16 @@ package com.thetradedesk.featurestore.features
 import com.thetradedesk.featurestore.features.Features.AggFunc.AggFunc
 import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, ARRAY_LONG_FEATURE_TYPE, ARRAY_STRING_FEATURE_TYPE, FLOAT_FEATURE_TYPE, INT_FEATURE_TYPE, LONG_FEATURE_TYPE, STRING_FEATURE_TYPE, shiftModArrayUdf, shiftModUdf}
 import com.thetradedesk.spark.sql.SQLFunctions._
-import org.apache.spark.sql.{Column, Dataset}
-import org.apache.spark.sql.functions._
 import io.circe.Decoder
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{Column, Dataset}
 
 
 object Features {
 
   object AggFunc extends Enumeration {
     type AggFunc = Value
-    val Sum, Count, Mean, Avg, Median, P10, P90, Desc = Value
+    val Sum, Count, Mean, Avg, Median, Percentiles, Desc = Value
 
     def fromString(value: String): Option[AggFunc] = {
       values.find(_.toString.equalsIgnoreCase(value))

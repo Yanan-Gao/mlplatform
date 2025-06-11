@@ -5,7 +5,7 @@ import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.expressions.Aggregator
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.{DoubleType, LongType}
+import org.apache.spark.sql.types.{ArrayType, DoubleType, LongType}
 
 import scala.collection.mutable
 
@@ -111,23 +111,28 @@ object AggregateTransform {
     if (!aggCols.isEmpty) {
       aggCols.flatMap(c => {
         c.aggFunc match {
-          case AggFunc.Mean => Array((sum(col(c.aggField)) / count(col(c.aggField))).cast(DoubleType).alias(c.featureName))
-          case AggFunc.Avg => Array((sum(col(c.aggField)) / sum(when(col(c.aggField) =!= 0, 1).otherwise(0))).cast(DoubleType).alias(c.featureName))
+          case AggFunc.Mean => Array(avg(col(c.aggField)).cast(DoubleType).alias(c.featureName))
+          case AggFunc.Avg => Array(
+            avg(when(col(c.aggField) =!= 0, col(c.aggField)))
+              .cast(DoubleType)
+              .alias(c.featureName)
+          )
           case AggFunc.Sum => Array(sum(col(c.aggField)).cast(DoubleType).alias(c.featureName))
           case AggFunc.Count => Array(count(col(c.aggField)).cast(LongType).alias(c.featureName))
           case AggFunc.Median => Array(percentile_approx(col(c.aggField), lit(0.5), lit(1000)).cast(DoubleType).alias(c.featureName))
-          case AggFunc.P10 => Array(percentile_approx(col(c.aggField), lit(0.1), lit(1000)).cast(DoubleType).alias(c.featureName))
-          case AggFunc.P90 => Array(percentile_approx(col(c.aggField), lit(0.9), lit(1000)).cast(DoubleType).alias(c.featureName))
+          case AggFunc.Percentiles => Array(percentile_approx(col(c.aggField), array(lit(0.1), lit(0.25), lit(0.5), lit(0.75), lit(0.9)), lit(1000))
+            .cast(ArrayType(DoubleType))
+            .alias(c.featureName))
           case AggFunc.Desc => Array(
             count(col(c.aggField)).cast(LongType).alias(s"${c.featureName}_Count"),
             sum(col(c.aggField)).cast(DoubleType).alias(s"${c.featureName}_Sum"),
             max(col(c.aggField)).cast(DoubleType).alias(s"${c.featureName}_Max"),
             min(col(c.aggField)).cast(DoubleType).alias(s"${c.featureName}_Min"),
-            (sum(col(c.aggField)) / count(col(c.aggField))).cast(DoubleType).alias(s"${c.featureName}_Mean"),
-            (sum(col(c.aggField)) / sum(when(col(c.aggField) =!= 0, 1).otherwise(0))).cast(DoubleType).alias(s"${c.featureName}_NonzeroMean"),
-            percentile_approx(col(c.aggField), lit(0.25), lit(1000)).cast(DoubleType).alias(s"${c.featureName}_P25"),
-            percentile_approx(col(c.aggField), lit(0.5), lit(1000)).cast(DoubleType).alias(s"${c.featureName}_P50"),
-            percentile_approx(col(c.aggField), lit(0.75), lit(1000)).cast(DoubleType).alias(s"${c.featureName}_P75"),
+            avg(col(c.aggField)).cast(DoubleType).alias(s"${c.featureName}_Mean"),
+            avg(when(col(c.aggField) =!= 0, col(c.aggField))).cast(DoubleType).alias(s"${c.featureName}_NonzeroMean"),
+            percentile_approx(col(c.aggField), array(lit(0.1), lit(0.25), lit(0.5), lit(0.75), lit(0.9)), lit(1000))
+              .cast(ArrayType(DoubleType))
+              .alias(s"${c.featureName}_Percentiles")
           )
           case _ => throw new UnsupportedOperationException(s"Unsupported aggregation function: ${c.aggFunc} for ${c.featureName}")
         }
