@@ -39,7 +39,7 @@ object DailySeedMappingIdDensityScoreAerospikePublishingJob extends DensityFeatu
 
     // get configurations
     val ttl = config.getInt("ttl", 86400 * 180)
-    val aerospikeSet = config.getString("aerospikeSet", "seed-density-scores")
+    val aerospikeSet = config.getString("aerospikeSet", "sds")
     val aerospikeAddress = config.getStringRequired("aerospikeAddress")
     val aerospikeNamespace = config.getString("aerospikeNamespace", "ttd-user")
     val aerospikeMaxConcurrencyPerTask = config.getInt("aerospikeMaxConcurrencyPerTask", 16)
