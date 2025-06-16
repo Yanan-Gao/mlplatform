@@ -1,7 +1,9 @@
 package com.thetradedesk.audience.jobs
 
+import com.thetradedesk.audience.datasets.PredictiveClearingMetricsDataset.{PC_BACKOFF_NO_ADJUSTMENT, PC_PLATFORM_BBF_BUFFER}
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.dateTime
+import com.thetradedesk.geronimo.shared.loadParquetData
 import com.thetradedesk.spark.datasets.sources.AdvertiserDataSet
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -27,11 +29,15 @@ object DiagnosisDataGenerator {
       .filter(col("row") === 1)
       .select("CurrencyCodeId", "FromUSD")
 
+    // FAB (Floor Agnostic Bidding) metrics
+    // TODO: Once all FAB related metrics are generated in the new monitoring job, write them in a single dataset and use that instead
+    val fabMetrics = loadParquetData[PredictiveClearingMetricsRecord](s3path = PredictiveClearingMetricsDataset.PCMetricsS3, date = date, lookBack = Some(3), getLatestDateOnly = Some(true))
+
     val adgroups = AdGroupDataSet().readLatestPartitionUpTo(date, true)
-      .join(advertisers, Seq("AdvertiserId"), "left")
-      .join(exchangeRate, Seq("CurrencyCodeId"), "left")
-      .withColumn("MaxBidCPM", col("MaxBidCPMInAdvertiserCurrency") / col("FromUSD"))
-      .select("CampaignId", "AdGroupId", "ROIGoalTypeId", "MaxBidCPM")
+    .join(advertisers, Seq("AdvertiserId"), "left")
+    .join(exchangeRate, Seq("CurrencyCodeId"), "left")
+    .withColumn("MaxBidCPM", col("MaxBidCPMInAdvertiserCurrency") / col("FromUSD"))
+    .select("CampaignId", "AdGroupId", "ROIGoalTypeId", "MaxBidCPM")
 
     val auctionlog = spark.read.parquet(s"s3a://ttd-identity/datapipeline/prod/internalauctionresultslog/v=1/date=$dateStr/hour=$hour")
       .select(col("AvailableBidRequestId"), explode(col("AdGroupCandidates")))
@@ -112,6 +118,9 @@ object DiagnosisDataGenerator {
         corr(col("RValueUsed"), col("UserBaseBidFactor")).as("CorrRxUserBase"),
         corr(col("RValueUsed"), col("SystemAutoBidFactor")).as("CorrRxSystemAuto"),
       )
+      .join(fabMetrics, Seq("CampaignId"), "left")
+      .withColumn("CampaignPCBackoffAdjustment", coalesce(col("CampaignPCAdjustment"), lit(PC_BACKOFF_NO_ADJUSTMENT)))
+      .withColumn("CampaignFabFloorBuffer", coalesce(col("CampaignBbfFloorBuffer"), lit(PC_PLATFORM_BBF_BUFFER)))
       .select(
         col("CampaignId"),
         col("AdGroupId"),
@@ -188,6 +197,8 @@ object DiagnosisDataGenerator {
           col("CorrRxTrader"),
           col("CorrRxUserBase"),
           col("CorrRxSystemAuto"),
+          col("CampaignPCBackoffAdjustment"),
+          col("CampaignFabFloorBuffer"),
         )).as("CountMetrics")
       )
       .as[DiagnosisRecord]
