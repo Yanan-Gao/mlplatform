@@ -20,39 +20,24 @@ object MergeCampaignBackoffAdjustments {
   }
 
   def mergeBackoffDatasets(campaignAdjustmentsPacingDataset: Dataset[CampaignAdjustmentsPacingSchema],
-                           hadesCampaignAdjustmentsDataset: Dataset[HadesAdjustmentSchemaV2],
                            campaignFloorBufferDataset: Dataset[MergedCampaignFloorBufferSchema],
                            hadesCampaignBufferAdjustmentsDataset: Dataset[HadesBufferAdjustmentSchema]
                           )
   : DataFrame = {
     addPrefix(campaignAdjustmentsPacingDataset.toDF(), "pc_")
-      .join(broadcast(addPrefix(hadesCampaignAdjustmentsDataset.toDF(), "hd_")), Seq("CampaignId"), "fullouter")
       .join(broadcast(addPrefix(campaignFloorBufferDataset.toDF(), "bf_")), Seq("CampaignId"), "fullouter")
       .join(broadcast(addPrefix(hadesCampaignBufferAdjustmentsDataset.toDF(), "hdv3_")), Seq("CampaignId"), "fullouter")
-      .withColumn("TestBucket", getTestBucketUDF(col("CampaignId"), lit(bucketCount)))
-      .withColumn("IsTestCampaign", when(col("TestBucket") >= (lit(bucketCount) * MinTestBucketIncluded) && col("TestBucket") < (lit(bucketCount) * MaxTestBucketExcluded), true).otherwise(false))
-      .withColumn("MergedPCAdjustment",
-        when(col("IsTestCampaign"), least(lit(1.0), col("pc_CampaignPCAdjustment")))
-          .otherwise(least(lit(1.0), col("pc_CampaignPCAdjustment"), col("hd_HadesBackoff_PCAdjustment")))
-      )
-      // Floor buffer assigned in the CampaignBbfFloorBufferCandidateSelectionJob will take precedence.
-      // It should ideally be same as hd_BBF_FloorBuffer since HadesCampaignAdjustmentsTransform reads the same data to set floor buffer.
-      // If none of them is found, CampaignBbfFloorBuffer should be set to platformWideBuffer
-      .withColumn("CampaignBbfFloorBuffer",
-        when(col("IsTestCampaign"), coalesce(col("hdv3_BBF_FloorBuffer"), col("bf_BBF_FloorBuffer"), lit(platformWideBuffer)))
-          .otherwise(coalesce(col("bf_BBF_FloorBuffer"), lit(platformWideBuffer)))
-      )
+      .withColumn("MergedPCAdjustment", least(lit(1.0), col("pc_CampaignPCAdjustment")))
+      .withColumn("CampaignBbfFloorBuffer", coalesce(col("hdv3_BBF_FloorBuffer"), col("bf_BBF_FloorBuffer"), lit(platformWideBuffer)))
   }
 
   def transform(plutusCampaignAdjustmentsDataset: Dataset[CampaignAdjustmentsPacingSchema],
-                hadesCampaignAdjustmentsDataset: Dataset[HadesAdjustmentSchemaV2],
                 campaignFloorBufferData: Dataset[MergedCampaignFloorBufferSchema],
                 hadesCampaignBufferAdjustmentsDataset: Dataset[HadesBufferAdjustmentSchema]): Unit = {
     // Merging Campaign Backoff, Hades Backoff, Adhoc test campaigns and any remaining campaigns with non platform wide floor buffer
 
     val finalMergedAdjustments = mergeBackoffDatasets(
       plutusCampaignAdjustmentsDataset,
-      hadesCampaignAdjustmentsDataset,
       campaignFloorBufferData,
       hadesCampaignBufferAdjustmentsDataset
     )

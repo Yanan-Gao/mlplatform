@@ -238,7 +238,8 @@ object DataGenerator {
 
   def generateCampaignBufferAdjustmentsHadesData: Dataset[HadesBufferAdjustmentSchema] = {
     Seq(
-      campaignBufferAdjustmentsHadesMock(campaignId = "campaign2", hadesBackoffFloorBufferCurrent = 0.6, hadesProblemCampaign = true)
+      campaignBufferAdjustmentsHadesMock(campaignId = "campaign2", hadesBackoffFloorBufferCurrent = 0.3, hadesProblemCampaign = true, bbfBuffer = Some(0.3)),
+      campaignBufferAdjustmentsHadesMock(campaignId = "campaign4", hadesBackoffFloorBufferCurrent = 0.25, hadesProblemCampaign = true, bbfBuffer = Some(0.25))
     ).toDS()
   }
 

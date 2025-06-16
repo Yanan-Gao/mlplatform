@@ -37,9 +37,8 @@ object CampaignAdjustmentsJob {
     val campaignAdjustmentsPacingData = PlutusCampaignAdjustmentsDataset.readLatestDataUpToIncluding(date.minusDays(1), envForReadInternal)
 
     val plutusCampaignAdjustmentsDataset = PlutusCampaignAdjustmentsTransform.transform(date, updateAdjustmentsVersion, fileCount)
-    val hadesCampaignAdjustmentsDataset  = HadesCampaignAdjustmentsTransform.transform(date, testSplit, underdeliveryThreshold, fileCount, campaignFloorBufferData)
     val hadesCampaignBufferAdjustmentsDataset  = HadesCampaignBufferAdjustmentsTransform.transform(date, underdeliveryThreshold, fileCount, campaignFloorBufferData, campaignAdjustmentsPacingData)
-    MergeCampaignBackoffAdjustments.transform(plutusCampaignAdjustmentsDataset, hadesCampaignAdjustmentsDataset, campaignFloorBufferData, hadesCampaignBufferAdjustmentsDataset)
+    MergeCampaignBackoffAdjustments.transform(plutusCampaignAdjustmentsDataset, campaignFloorBufferData, hadesCampaignBufferAdjustmentsDataset)
 
     jobDurationGaugeTimer.setDuration()
     prometheus.pushMetrics()
