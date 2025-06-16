@@ -4,7 +4,7 @@ import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.plutus.data.mockdata.DataGenerator
 import com.thetradedesk.plutus.data.mockdata.MockData._
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
-import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferSchema}
+import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.MergedCampaignFloorBufferSchema
 import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.{Campaign, bucketCount, getTestBucketUDF, platformWideBuffer}
 import com.thetradedesk.plutus.data.schema.{PcResultsMergedSchema, PlutusLogsData}
 import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform._
@@ -176,52 +176,41 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
   }
 
   test("Merge Hades Backoff and Campaign Backoff test for schema/column correctness") {
-
-    val campaignAdjustmentsHadesData = DataGenerator.generateCampaignAdjustmentsHadesData
     val campaignAdjustmentsData = DataGenerator.generateCampaignAdjustmentsPacingData.limit(3)
     val todaysCampaignFloorBufferData = DataGenerator.generateMergedCampaignFloorBufferData
     val campaignBufferAdjustmentsHadesData = DataGenerator.generateCampaignBufferAdjustmentsHadesData
 
     val finalMergedCampaignAdjustments = mergeBackoffDatasets(
       campaignAdjustmentsData,
-      campaignAdjustmentsHadesData,
       todaysCampaignFloorBufferData,
       campaignBufferAdjustmentsHadesData
     )
+
     val res = finalMergedCampaignAdjustments.select(
       "CampaignId",
-      "hd_Hades_isProblemCampaign",
-      "hd_HadesBackoff_PCAdjustment",
+      "hdv3_Hades_isProblemCampaign",
+      "hdv3_HadesBackoff_FloorBuffer",
       "pc_CampaignPCAdjustment",
       "MergedPCAdjustment",
       "CampaignBbfFloorBuffer",
-      "IsTestCampaign"
     ).collect()
 
-    // Test for campaign that is not Hades Backoff test campaign but in Campaign Backoff.
-    // Campaign backoff adjustment should be final adjustment.
-    assert(res.contains(Row("campaign1", null, null, 0.75, 0.75, 0.35, true)))
+    // Test for campaign only in PC Campaign Backoff.
+    // MergedPCAdjustment should be same as pc_CampaignPCAdjustment
+    assert(res.contains(Row("campaign1", null, null, 0.75, 0.75, 0.35)))
 
-    // Test for campaign that is Hades Backoff test campaign and in Campaign Backoff. This is a Hades problem campaign.
-    // The minimum backoff adjustment should be final adjustment.
-    // TODO: "campaign2" falls in the test bucket so it discards HadesBackoff. This should be added
-    //       as a separate test
-    assert(res.contains(Row("campaign2", true, 0.6, 0.75, 0.75, platformWideBuffer, true)))
+    // Test for campaign that is HadesV3 Backoff test campaign and not in PC Campaign Backoff. This is a Hades problem campaign.
+    // The HadesV3 Backoff adjustment should be final adjustment and MergedPCAdjustment should be 1
+    assert(res.contains(Row("campaign4", true, 0.25, null, 1.0, 0.25)))
 
-
-    // Test for campaign that is Hades Backoff test campaign and in Campaign Backoff. This is not a Hades problem campaign.
-    // The Campaign Backoff adjustment should be final adjustment.
-    assert(res.contains(Row("campaign3", false, 1.0, 0.75, 0.75, platformWideBuffer, true)))
-
-
-    // Test for campaign that is Hades Backoff test campaign and not in Campaign Backoff. This is a Hades problem campaign.
-    // The Hades Backoff adjustment should be final adjustment.
-    assert(res.contains(Row("jkl789", true, 0.9, null, 1.0, platformWideBuffer, true)))
+    // Test for campaign that is Hades Buffer Backoff test campaign and in PC Campaign Backoff. This is a Hades problem campaign.
+    // It should have MergedPCAdjustment from PC backoff and CampaignBbfFloorBuffer from hades buffer backoff
+    assert(res.contains(Row("campaign2", true, 0.30, 0.75, 0.75, 0.30)))
 
     // Test for campaign that is not in the merge of Hades backoff and Campaign backoff but is present in the floor buffer snapshot.
     // This campaign should have the final adjustment of 1 and it's floor buffer should be same as in the floor buffer snapshot.
-    assert(res.contains(Row("abc123", null, null, null, 1, 0.01, true)))
-    assert(res.contains(Row("abc234", null, null, null, 1, 0.20, true)))
+    assert(res.contains(Row("abc123", null, null, null, 1, 0.01)))
+    assert(res.contains(Row("abc234", null, null, null, 1, 0.20)))
   }
 
   test("test for mergeTodayWithYesterdaysData") {

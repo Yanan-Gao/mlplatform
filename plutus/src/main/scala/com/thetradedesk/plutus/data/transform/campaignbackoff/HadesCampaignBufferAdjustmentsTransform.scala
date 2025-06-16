@@ -108,30 +108,7 @@ object HadesCampaignBufferAdjustmentsTransform {
 
       // Exclude cases where we just apply the minimum pushdown (discrepancy)
       .filter(col("gen_excess") > 0)
-
       .withColumn("gen_actual_bufferFloor", col("FloorPrice") * (lit(1) - col("Actual_BBF_FloorBuffer")))
-
-      // PC ADJUSTMENT BACKOFF LOGIC
-      //      .withColumn("gen_bufferFloor", col("FloorPrice") * (lit(1) - col("BBF_FloorBuffer")))
-      //      .withColumn("gen_plutusPushdownAtBufferFloor", col("gen_bufferFloor") / col("InitialBid"))
-      //      .withColumn("gen_excess_wanted", greatest(lit(0), col("gen_effectiveDiscrepancy") - col("gen_plutusPushdownAtBufferFloor")))
-      //      .withColumn("gen_PCAdjustment", col("gen_excess_wanted") / col("gen_excess"))
-      //
-      //      // We ignore the strategy here because then we calculate an adjustment which is independent
-      //      // of previous adjustments, allowing the backoff to adapt to current bidding environment.
-      //      .withColumn("gen_proposedBid", col("InitialBid") * col("gen_gss_pushdown"))
-      //      .withColumn("gen_isInBufferZone", col("gen_proposedBid") >= col("gen_bufferFloor"))
-      //      .withColumn("BBF_PMP_Bid",
-      //        when((col("BidBelowFloorExceptedSource") === 2 && col("Market").isin("Variable", "Fixed") && !col("gen_isInBufferZone")), true)
-      //          .otherwise(false))
-      //      .withColumn("BBF_OM_Bid",
-      //        when((col("BidBelowFloorExceptedSource") === 2 && col("Market").isin("OpenMarket") && !col("gen_isInBufferZone")), true)
-      //          .otherwise(false))
-
-      // FLOOR BUFFER BACKOFF LOGIC
-      // We keep PC Backoff as strategy because we want to calculate an adjustment independent of any previous Hades Backoff strategy values,
-      // but adapt to the current bidding environment where PC backoff is still being applied.
-
       .withColumn("gen_proposedBid_v3", col("InitialBid") * (
           col("gen_effectiveDiscrepancy") - (col("gen_excess") * coalesce(col("CampaignPCAdjustment"), lit(1.0)))
         ))
@@ -554,7 +531,11 @@ object HadesCampaignBufferAdjustmentsTransform {
     } catch {
       case _: S3NoFilesFoundException =>
         Seq.empty[HadesBufferAdjustmentSchema].toDS()
-    }).as[HadesBufferAdjustmentSchema].cache()
+    })
+    // Filter for Buffer Test Campaigns only
+    .withColumn("TestBucket", getTestBucketUDF(col("CampaignId"), lit(bucketCount)))
+    .filter(col("TestBucket") >= (lit(bucketCount) * MinTestBucketIncluded) && col("TestBucket") < (lit(bucketCount) * MaxTestBucketExcluded))
+    .as[HadesBufferAdjustmentSchema].cache()
 
     val campaignUnderdeliveryData = CampaignThrottleMetricDataset.readDate(env = envForRead, date = date)
       .cache()
