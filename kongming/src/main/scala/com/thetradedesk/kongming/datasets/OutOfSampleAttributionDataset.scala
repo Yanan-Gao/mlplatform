@@ -270,12 +270,19 @@ final case class OutOfSampleAttributionRecord(
 
                                              )
 
-case class OutOfSampleAttributionDataset(delayNDays: Int, experimentOverride: Option[String] = None)
+case class OutOfSampleAttributionDatasetDeprecated(delayNDays: Int, experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3Dataset[OutOfSampleAttributionRecord](
     GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/outofsampleattributionset/v=1/delay=${delayNDays}D/userDataOptIn=1",
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
 )
+
+case class OutOfSampleAttributionDataset(delayNDays: Int, experimentOverride: Option[String] = None)
+  extends DateSplitPartitionedS3Dataset[OutOfSampleAttributionRecord](
+    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/outofsampleattributionset_userdataoptin/v=1/delay=${delayNDays}D",
+    fileFormat = Csv.WithHeader,
+    experimentOverride = experimentOverride
+  )
 
 final case class OldOutOfSampleAttributionRecord(
                                                   AdGroupId: Int,
