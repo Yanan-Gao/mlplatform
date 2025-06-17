@@ -44,7 +44,7 @@ object GenerateCalibrationData extends KongmingBaseJob {
 
     // 1. Load attributed data
     val NDelayDays = Config.CalibrationImpLookBack + Config.CalibrationAttLookBack
-    val attributedData = OutOfSampleAttributionDataset(delayNDays=NDelayDays).readPartition(date.minusDays(NDelayDays))
+    val attributedData = OutOfSampleAttributionDatasetDeprecated(delayNDays=NDelayDays).readPartition(date.minusDays(NDelayDays))
 
     val dateString = date.format(DateTimeFormatter.ofPattern("yyyyMMdd"))
 

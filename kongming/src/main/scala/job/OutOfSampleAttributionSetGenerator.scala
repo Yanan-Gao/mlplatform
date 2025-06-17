@@ -53,6 +53,8 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
       val TrackedAttributionSetWithUserData = attributionSet.filter($"IsTracked" === lit(1)).select(parquetSelectionTabular: _*).selectAs[OutOfSampleAttributionRecord]
       val UntrackedAttributionSetWithUserData = attributionSet.filter($"IsTracked" =!= lit(1)).select(parquetSelectionTabular: _*).selectAs[OutOfSampleAttributionRecord]
 
+      OutOfSampleAttributionDatasetDeprecated(delayNDays).writePartition(TrackedAttributionSetWithUserData, scoreDate, "tracked", Some(partCount.OOSTrackedPerDayDelay * delayNDays))
+      OutOfSampleAttributionDatasetDeprecated(delayNDays).writePartition(UntrackedAttributionSetWithUserData, scoreDate, "untracked", Some(partCount.OOSUntrackedPerDayDelay * delayNDays))
       val numTrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(TrackedAttributionSetWithUserData, scoreDate, "tracked", Some(partCount.OOSTrackedPerDayDelay * delayNDays))
       val numUntrackedRows = OutOfSampleAttributionDataset(delayNDays).writePartition(UntrackedAttributionSetWithUserData, scoreDate, "untracked", Some(partCount.OOSUntrackedPerDayDelay * delayNDays))
       datasetRows = Array(numTrackedRows, numUntrackedRows)
