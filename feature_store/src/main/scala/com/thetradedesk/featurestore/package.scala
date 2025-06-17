@@ -33,7 +33,7 @@ package object featurestore {
   val writeThroughHdfs: Boolean = config.getBoolean("writeThroughHdfs", true)
   val densityFeatureWindowSizeDays = config.getInt("DensityFeatureWindowSizeDays", default = 1)
 
-  val normalUserBidCountPerHour = config.getInt("normalUserBidCountPerHour", default = 3000)
+  val normalUserBidCountPerHour = config.getInt("normalUserBidCountPerHour", default = 200)
   val overrideOutput = config.getBoolean("overrideOutput", default = false)
   val s3Client = AmazonS3ClientBuilder.standard.withRegion(Regions.US_EAST_1).build
 

@@ -28,7 +28,7 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
 
   def readTDIDFeaturePairMappingRDD(date: LocalDate, featurePair: String, splitIndex: Int, numPartitions: Int) = {
     val featurePairToTDIDDF = spark.read.parquet(s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=TDID/job=DailyTDIDFeaturePairMapping/config=${featurePair}/v=1/date=${getDateStr(date)}")
-      .select(s"${featurePair}Hashed", "TDID")
+      .select(s"${featurePair}Hashed", "TDID", "FeatureFrequency", "UserFrequency")
       .cache()
 
     val condition =
@@ -41,7 +41,6 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
 
     featurePairToTDIDDF
       .filter(condition)
-      .select(s"${featurePair}Hashed", "TDID")
   }
 
   def readSyntheticIdDensityCategories(date: LocalDate) = {
@@ -54,7 +53,8 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
     val dateStr = getDateStr(date)
     val numPartitions = 10
 
-    val mergeDensityLevels = udaf(MergeDensityLevelAgg)
+    val densityFeatureLevel2Threshold = config.getDouble("densityFeatureLevel2Threshold", default = 0.05).floatValue()
+    val mergeDensityLevels = udaf(MergeDensityLevelAgg(densityFeatureLevel2Threshold))
     val syntheticIdDensityCategories = readSyntheticIdDensityCategories(date)
 
     // Get active seed ids
@@ -163,9 +163,8 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
         val tempDF = tdidMapping.withColumnRenamed(s"${featurePair}Hashed", "FeatureValueHashed")
           .repartition(repartitionNum, 'FeatureValueHashed)
           .join(syntheticIdDensityCategories.filter(col("FeatureKey") === lit(featurePair)), Seq("FeatureValueHashed"))
-          .select('TDID, 'SyntheticIdLevel1, 'SyntheticIdLevel2)
           .groupBy('TDID)
-          .agg(mergeDensityLevels('SyntheticIdLevel1, 'SyntheticIdLevel2).as("x"))
+          .agg(mergeDensityLevels('SyntheticIdLevel1, 'SyntheticIdLevel2, 'FeatureFrequency, 'UserFrequency).as("x"))
           .cache()
 
         cachedDF = cachedDF :+ tempDF
