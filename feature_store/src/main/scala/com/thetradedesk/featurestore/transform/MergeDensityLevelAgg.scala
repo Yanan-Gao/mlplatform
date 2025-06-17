@@ -6,20 +6,21 @@ import org.apache.spark.sql.{Encoder, Encoders}
 
 import scala.collection.mutable
 
-case class DensityLevelBuffer(densityLevels: mutable.Map[Int, Boolean])
+case class DensityLevelBuffer(densityLevels: mutable.Map[Int, Float])
 
-object MergeDensityLevelAgg extends Aggregator[(Seq[Int], Seq[Int]), DensityLevelBuffer, (Seq[Int], Seq[Int])] {
+case class MergeDensityLevelAgg(densityFeatureLevel2Threshold: Float) extends Aggregator[(Seq[Int], Seq[Int], Int, Int), DensityLevelBuffer, (Seq[Int], Seq[Int])] {
 
   override def zero: DensityLevelBuffer = {
-    val mapBuilder = mutable.HashMap.newBuilder[Int, Boolean]
+    val mapBuilder = mutable.HashMap.newBuilder[Int, Float]
     mapBuilder.sizeHint(1024)
     DensityLevelBuffer(mapBuilder.result())
   }
 
-  override def reduce(buffer: DensityLevelBuffer, densityLevels: (Seq[Int], Seq[Int])): DensityLevelBuffer = {
+  override def reduce(buffer: DensityLevelBuffer, densityLevels: (Seq[Int], Seq[Int], Int, Int)): DensityLevelBuffer = {
     if (densityLevels != null) {
-      densityLevels._2.foreach(buffer.densityLevels.update(_, true))
-      densityLevels._1.foreach(buffer.densityLevels.getOrElseUpdate(_, false))
+      val frequency = (densityLevels._3 * 1.0 / densityLevels._4).floatValue()
+      densityLevels._2.foreach(e => buffer.densityLevels.update(e, buffer.densityLevels.getOrElse(e, 0f) + frequency))
+      densityLevels._1.foreach(buffer.densityLevels.getOrElseUpdate(_, 0f))
     }
     buffer
   }
@@ -27,15 +28,14 @@ object MergeDensityLevelAgg extends Aggregator[(Seq[Int], Seq[Int]), DensityLeve
   override def merge(b1: DensityLevelBuffer, b2: DensityLevelBuffer): DensityLevelBuffer = {
     b1.densityLevels.foreach(
       e =>
-        if (e._2) b2.densityLevels.update(e._1, true)
-        else b2.densityLevels.getOrElseUpdate(e._1, false)
+        b2.densityLevels.update(e._1, b2.densityLevels.getOrElse(e._1, 0f) + e._2)
     )
 
     b2
   }
 
   override def finish(reduction: DensityLevelBuffer): (Seq[Int], Seq[Int]) = {
-    (reduction.densityLevels.iterator.filter(!_._2).map(_._1).toSeq, reduction.densityLevels.iterator.filter(_._2).map(_._1).toSeq)
+    (reduction.densityLevels.iterator.filter(e => e._2 < densityFeatureLevel2Threshold).map(_._1).toSeq, reduction.densityLevels.iterator.filter(e => e._2 >= densityFeatureLevel2Threshold).map(_._1).toSeq)
   }
 
   override def bufferEncoder: Encoder[DensityLevelBuffer] = Encoders.product[DensityLevelBuffer]
