@@ -90,8 +90,8 @@ object DailySeedMappingIdDensityScore extends DensityFeatureBaseJob {
 
     splitDensityScoreSlots(
       seedDensity
-        .withColumn("MappingIdLevel1", SyntheticIdToActiveMappingIdUdf($"SyntheticIdLevel1", lit(maxNumMappingIdsInAerospike)))
-        .withColumn("MappingIdLevel2", SyntheticIdToActiveMappingIdUdf($"SyntheticIdLevel2", lit(maxNumMappingIdsInAerospike) - size($"MappingIdLevel1")))
+        .withColumn("MappingIdLevel2", SyntheticIdToActiveMappingIdUdf($"SyntheticIdLevel2", lit(maxNumMappingIdsInAerospike)))
+        .withColumn("MappingIdLevel1", SyntheticIdToActiveMappingIdUdf($"SyntheticIdLevel1", lit(maxNumMappingIdsInAerospike) - size($"MappingIdLevel2")))
         .filter(size($"MappingIdLevel1") + size($"MappingIdLevel2") > 0)
     )
       .withColumn("FeatureKeyEnum", featureKeyToEnum($"FeatureKey"))

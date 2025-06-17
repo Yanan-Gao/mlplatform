@@ -47,7 +47,6 @@ class DailySeedMappingIdDensityScoreTest extends TTDSparkTest with Matchers {
       .withColumn("MappingIdLevel1S1", concat_ws(",", $"MappingIdLevel1S1"))
       .withColumn("MappingIdLevel2", concat_ws(",", $"MappingIdLevel2"))
       .withColumn("MappingIdLevel2S1", concat_ws(",", $"MappingIdLevel2S1"))
-      //.as[(String, Array[Short], Array[Short], Array[Short], Array[Short])]
       .collect().toList should contain theSameElementsAs(
       Seq(
         Row("1_1", "1", "", "3", ""),
@@ -142,11 +141,10 @@ class DailySeedMappingIdDensityScoreTest extends TTDSparkTest with Matchers {
       .withColumn("MappingIdLevel1S1", concat_ws(",", $"MappingIdLevel1S1"))
       .withColumn("MappingIdLevel2", concat_ws(",", $"MappingIdLevel2"))
       .withColumn("MappingIdLevel2S1", concat_ws(",", $"MappingIdLevel2S1"))
-      //.as[(String, Array[Short], Array[Short], Array[Short], Array[Short])]
       .collect().toList should contain theSameElementsAs(
       Seq(
-        Row("1_1", "1,2", "", "", ""),
-        Row("2_2", "1,2", "", "", "")
+        Row("1_1", "", "", "3,4", ""),
+        Row("2_2", "", "", "3,4", "")
       )
       )
   }
