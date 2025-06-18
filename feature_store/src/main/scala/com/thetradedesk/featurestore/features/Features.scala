@@ -12,7 +12,7 @@ object Features {
 
   object AggFunc extends Enumeration {
     type AggFunc = Value
-    val Sum, Count, Mean, Avg, Median, Percentiles, Desc = Value
+    val Sum, Count, Mean, NonZeroMean, Median, Percentiles, Desc, NonZeroCount, Min, Max, TopN, Frequency = Value
 
     def fromString(value: String): Option[AggFunc] = {
       values.find(_.toString.equalsIgnoreCase(value))

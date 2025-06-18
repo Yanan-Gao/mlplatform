@@ -1,11 +1,10 @@
 package com.thetradedesk.featurestore
 
 import com.thetradedesk.featurestore.features.Features._
-import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.featurestore.testutils.TTDSparkTest
-import com.thetradedesk.featurestore.transform.AggregateTransform.genAggCols
-import com.thetradedesk.featurestore.testutils.MockData
 import com.thetradedesk.featurestore.testutils.MockData.TestInputDataSchema
+import com.thetradedesk.featurestore.testutils.{MockData, TTDSparkTest}
+import com.thetradedesk.featurestore.transform.AggregateTransform.genAggCols
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.functions.col
 
 
@@ -60,7 +59,7 @@ class AggregateTransformTest extends TTDSparkTest {
 
   test("Aggregate Numeric Features to Get Average Values (exclude 0 values)") {
     val aggSpec = Array(
-      ContinuousFeatAggSpecs(aggField = "FloatFeat1", aggWindow = aggWindow, aggFunc = AggFunc.Avg)
+      ContinuousFeatAggSpecs(aggField = "FloatFeat1", aggWindow = aggWindow, aggFunc = AggFunc.NonZeroMean)
     )
 
     val aggCols = genAggCols(aggWindow, aggSpec)
@@ -88,7 +87,7 @@ class AggregateTransformTest extends TTDSparkTest {
         CategoryFeatAggSpecs(aggField = "CategoricalFeat1", aggWindow = aggWindow, topN = 2, dataType = "string", cardinality = 9)
     )
     val aggSpec2 = Array(
-      ContinuousFeatAggSpecs(aggField = "FloatFeat1", aggWindow = aggWindow, aggFunc = AggFunc.Avg)
+      ContinuousFeatAggSpecs(aggField = "FloatFeat1", aggWindow = aggWindow, aggFunc = AggFunc.NonZeroMean)
     )
     val aggSpec3 = Array(
         RatioFeatAggSpecs(aggField = "FloatFeat1", aggWindow = aggWindow, denomField = "IntFeat1", ratioMetrics = "Rate")

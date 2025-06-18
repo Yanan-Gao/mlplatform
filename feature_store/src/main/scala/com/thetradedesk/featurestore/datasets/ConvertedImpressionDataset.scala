@@ -1,9 +1,6 @@
 package com.thetradedesk.featurestore.datasets
 
 import com.thetradedesk.featurestore.partCount
-import org.apache.spark.sql.{Encoder, Encoders}
-
-import scala.reflect.runtime.universe._
 
 
 case class FeatureBidsImpression(
@@ -107,8 +104,5 @@ case class ConvertedImpressionDataset(attLookback: Int)  extends
   override val lookback = attLookback
   override val datasetName: String = "dailyconvertedimpressions"
   override val repartitionColumn: Option[String] = Some("BidRequestId")
-
-  val enc: Encoder[FeatureBidsImpression] = Encoders.product[FeatureBidsImpression]
-  val tt: TypeTag[FeatureBidsImpression] = typeTag[FeatureBidsImpression]
 }
 

@@ -4,12 +4,10 @@ import com.thetradedesk.featurestore.constants.FeatureConstants
 import com.thetradedesk.featurestore.datasets.ProcessedDataset
 import com.thetradedesk.featurestore.testutils.TTDSparkTest
 import com.thetradedesk.featurestore.ttdEnv
-import org.apache.spark.sql.{Encoder, Encoders}
 import org.scalatest.matchers.should.Matchers
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import scala.reflect.runtime.universe._
 
 class DataSetTest extends TTDSparkTest with Matchers {
 
@@ -42,7 +40,4 @@ case class TestProcessedDataset(lb: Int = 0) extends ProcessedDataset[SomeRecord
   override val lookback = lb
   override val defaultNumPartitions: Int = 1
   override val datasetName: String = "somerecord"
-
-  val enc: Encoder[SomeRecord] = Encoders.product[SomeRecord]
-  val tt: TypeTag[SomeRecord] = typeTag[SomeRecord]
 }

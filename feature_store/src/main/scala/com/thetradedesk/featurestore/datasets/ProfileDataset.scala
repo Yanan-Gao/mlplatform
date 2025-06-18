@@ -1,74 +1,44 @@
 package com.thetradedesk.featurestore.datasets
 
 import com.thetradedesk.featurestore._
-import com.thetradedesk.featurestore.utils.PathUtils
+import com.thetradedesk.featurestore.utils.{PathUtils, StringUtils}
 import com.thetradedesk.spark.util.io.FSUtils
 import org.apache.spark.sql.{Dataset, SaveMode}
 
-import java.time.format.DateTimeFormatter
-import java.time.{LocalDate, LocalDateTime}
 
-
-case class ProfileDataset(dataSetPath: String = ProfileDataBasePath,
-                          rootPath: String = MLPlatformS3Root,
-                          sourcePartition: String,
-                          indexPartition: String,
-                          jobName: String,
-                          environment: String = ttdEnv) extends ProfileBaseDataset(
-  dataSetPath,
+case class ProfileDataset(rootPath: String = MLPlatformS3Root,
+                          prefix: String,
+                          overrides: Map[String, String]) extends ProfileBaseDataset(
   rootPath,
-  environment
+  prefix,
+  overrides
 ) {
-  override val subPartitions: String =
-    s"source=${sourcePartition}/index=${indexPartition}/job=${jobName}/v=1"
 
-  def writeWithRowCountLog(dataset: Dataset[_], datePartition: Any = null, numPartitions: Option[Int] = None): (String, Long) = {
-    val rows = super.writePartition(dataset, datePartition, numPartitions)
-    val logName = s"source=${sourcePartition}/index=${indexPartition}/job=${jobName}"
+  def writeWithRowCountLog(dataset: Dataset[_], numPartitions: Option[Int] = None): (String, Long) = {
+    val rows = super.writePartition(dataset, numPartitions)
+    val logName = StringUtils.applyNamedFormat("source={sourcePartition}/index={indexPartition}/job={jobName}", overrides)
     (logName, rows)
   }
 
-  def isProcessed(date: LocalDate): Boolean = {
-    val successFile = s"${getWritePath(date)}/_SUCCESS"
+  def isProcessed: Boolean = {
+    val successFile = s"${datasetPath}/_SUCCESS"
     FSUtils.fileExists(successFile)
   }
 }
 
-
-abstract class ProfileBaseDataset(dataSetPath: String,
-                                  rootPath: String,
-                                  environment: String) {
-  lazy val basePath: String = PathUtils.concatPath(rootPath, dataSetPath)
-  lazy val dateFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
-  val subPartitions: String
-
-  def datePartitionedPath(datePartition: Option[Any] = None): String = {
-    datePartition match {
-      case Some(localDate: LocalDate) => s"date=${localDate.format(dateFormatter)}"
-      case Some(localDateTime: LocalDateTime) => localDateTime.format(dateFormatter)
-      case Some(value: String) => value
-      case _ => ""
-    }
-  }
-
-  def getWritePath(datePartition: Any = null): String = {
-    val datePath: String = datePartitionedPath(Option.apply(datePartition))
-    val writeEnv = if (environment == "prodTest") "test" else environment
-    Array(rootPath, writeEnv, dataSetPath, subPartitions, datePath).reduce(PathUtils
-      .concatPath)
-  }
+abstract class ProfileBaseDataset(rootPath: String,
+                                  prefix: String,
+                                  parameters: Map[String, String]) {
+  lazy val datasetPath: String = StringUtils.applyNamedFormat(PathUtils.concatPath(rootPath, prefix), parameters)
 
   def writePartition(dataset: Dataset[_],
-                     datePartition: Any = null,
                      numPartitions: Option[Int] = None,
                      format: Option[String] = Some("parquet"),
                      saveMode: SaveMode = SaveMode.Overwrite
                     ): Long = {
 
-    val writePath = getWritePath(datePartition)
-
     DatasetWriter.writeDataSet(dataset,
-      writePath,
+      datasetPath,
       None, // let spark decide
       format = format,
       saveMode = saveMode,
