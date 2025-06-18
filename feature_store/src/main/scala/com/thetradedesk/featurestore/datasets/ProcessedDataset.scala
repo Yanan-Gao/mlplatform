@@ -4,10 +4,12 @@ import com.thetradedesk.featurestore.constants.FeatureConstants
 import com.thetradedesk.featurestore.ttdEnv
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.io.FSUtils
+import org.apache.spark.sql.{Encoder, Encoders}
 
 import java.time.LocalDate
+import scala.reflect.runtime.universe._
 
-trait ProcessedDataset[T <: Product] extends LightReadableDataset[T] with LightWritableDataset[T] {
+abstract class ProcessedDataset[T <: Product : Manifest] extends LightReadableDataset[T] with LightWritableDataset[T] {
 
   val lookback: Int = 0
   val version: Int = 1
@@ -20,6 +22,9 @@ trait ProcessedDataset[T <: Product] extends LightReadableDataset[T] with LightW
   override val rootPath: String = FeatureConstants.ML_PLATFORM_S3_PATH
   override val repartitionColumn: Option[String] = Some(FeatureConstants.UserIDKey)
   override val writeThroughHdfs: Boolean = true
+
+  val enc: Encoder[T] = Encoders.product[T]
+  val tt: TypeTag[T] = typeTag[T]
 
   def isProcessed(targetDate: LocalDate): Boolean = {
     val successFile = getSuccessFilePath(targetDate)

@@ -148,7 +148,14 @@ trait LightReadableDataset[T <: Product] extends LightDataset {
   def readSinglePartition(date: LocalDateTime,
                           format: Option[String] = Some("parquet"))(implicit spark: SparkSession): Dataset[T] = {
     val path = s"$basePath/${date.format(dateFormatter)}"
+    readPath(path, format)
+  }
 
+  def readDatasetFromPath(format: Option[String] = Some("parquet"))(implicit spark: SparkSession): Dataset[T] = {
+    readPath(basePath, format)
+  }
+
+  private def readPath(path: String, format: Option[String])(implicit spark: SparkSession) = {
     format match {
       case Some("tfrecord") => spark
         .read

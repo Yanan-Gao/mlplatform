@@ -33,6 +33,7 @@ object FeatureConstants {
   val AttributionMethodId_LastClick = "0"
   val AttributionMethodId_ViewThru = "1"
 
+  val SingleUnitWindow = Seq(1)
 
 
 }

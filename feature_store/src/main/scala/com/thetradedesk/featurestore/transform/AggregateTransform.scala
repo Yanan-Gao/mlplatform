@@ -12,10 +12,18 @@ import scala.collection.mutable
 object AggregateTransform {
 
   /**
-  * Remember to Add Unit Tests in `AggregateTransformTest.scala` When Adding New Aggregation Functions
-  */
+   * Remember to Add Unit Tests in `AggregateTransformTest.scala` When Adding New Aggregation Functions
+   */
 
   case class TopElementsBuffer(counts: mutable.Map[String, Int])
+
+
+  // Base trait for aggregators
+  trait BaseAggregator[IN, BUF, OUT] extends Aggregator[IN, BUF, OUT] {
+    def bufferEncoder: Encoder[BUF]
+
+    def outputEncoder: Encoder[OUT]
+  }
 
   class TopElementsAggregator(n: Int) extends Aggregator[String, TopElementsBuffer, Seq[String]] {
     // Initialize the buffer
@@ -112,7 +120,7 @@ object AggregateTransform {
       aggCols.flatMap(c => {
         c.aggFunc match {
           case AggFunc.Mean => Array(avg(col(c.aggField)).cast(DoubleType).alias(c.featureName))
-          case AggFunc.Avg => Array(
+          case AggFunc.NonZeroMean => Array(
             avg(when(col(c.aggField) =!= 0, col(c.aggField)))
               .cast(DoubleType)
               .alias(c.featureName)
@@ -147,8 +155,8 @@ object AggregateTransform {
         // only calculate ratio on the rows where both numerator & denominator are not null
         val colsNotNull = col(c.aggField).isNotNull && col(c.denomField).isNotNull
         (sum(when(colsNotNull, col(c.aggField)).otherwise(0)) /
-            sum(when(colsNotNull, col(c.denomField)).otherwise(0))
-        ).cast(DoubleType).alias(c.featureName)
+          sum(when(colsNotNull, col(c.denomField)).otherwise(0))
+          ).cast(DoubleType).alias(c.featureName)
       })
     } else Array.empty[Column]
   }

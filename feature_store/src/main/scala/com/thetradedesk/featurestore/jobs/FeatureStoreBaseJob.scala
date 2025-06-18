@@ -60,6 +60,8 @@ abstract class FeatureStoreAggJob extends FeatureStoreBaseJob {
 
   override def jobName: String = s"${getClass.getSimpleName.stripSuffix("$")}"
 
+  val profileDataPath = "features/feature_store/{ttdEnv}/profiles/source={sourcePartition}/index={indexPartition}/job=${jobName}/v=1/"
+
   val sourcePartition: String
 
   def jobConfig = new FeatureStoreAggJobConfig(s"${getClass.getSimpleName.stripSuffix("$")}.json")
@@ -102,13 +104,21 @@ abstract class FeatureStoreAggJob extends FeatureStoreBaseJob {
   }
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
-    val profileDataset = ProfileDataset(sourcePartition = sourcePartition, jobName = jobName,
-      indexPartition = aggLevel)
-    if (!overrideOutput && profileDataset.isProcessed(date)) {
-      println(s"ProfileDataSet ${profileDataset.getWritePath(date)} existed, skip processing " +
+    val overridesMap = Map(
+      "sourcePartition" -> sourcePartition,
+      "jobName" -> jobName,
+      "indexPartition" -> aggLevel,
+      "dateStr" -> getDateStr(date),
+      "ttdEnv" -> ttdEnv
+    )
+
+    val profileDataset = ProfileDataset(prefix = profileDataPath, overrides = overridesMap)
+    if (!overrideOutput && profileDataset.isProcessed) {
+      println(s"ProfileDataSet ${profileDataset.datasetPath} existed, skip processing " +
         s"source ${sourcePartition}, aggLevel ${aggLevel}, aggregation job ${jobName}")
       return Array(("", 0))
     }
+
     // loop through each lookback window
     val outputDfs: Seq[Dataset[_]] = (catFeatSpecs ++ conFeatSpecs ++ ratioFeatSpecs).groupBy(_.aggWindowDay).keys.par.map { window => {
       // load data
@@ -121,7 +131,7 @@ abstract class FeatureStoreAggJob extends FeatureStoreBaseJob {
     // merge data from different readRange
     val resDf = outputDfs.reduceLeft((df1: Dataset[_], df2: Dataset[_]) => joinDataFrames(df1, df2))
 
-    val rows = profileDataset.writeWithRowCountLog(resDf, date)
+    val rows = profileDataset.writeWithRowCountLog(resDf)
 
     Array(rows)
 

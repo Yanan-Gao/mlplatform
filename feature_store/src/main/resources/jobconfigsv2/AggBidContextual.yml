@@ -1,0 +1,18 @@
+datasource: BidContextual
+rootPath: s3a://thetradedesk-mlplatform-us-east-1
+prefix: /prod/features/data/contextualwithbid/v=1/date={dateStr}/hour={hourInt}/
+outputRootPath: s3a://thetradedesk-mlplatform-us-east-1
+initOutputPrefix: /features/feature_store/{ttdEnv}/profiles/source=contextualwithbid/index={indexPartition}/job={jobName}/v=1/date={dateStr}/hour={hourInt}/
+outputPrefix: /features/feature_store/{ttdEnv}/profiles/source=contextualwithbid/index={indexPartition}/job={jobName}/v=1/date={dateStr}/
+grain: hour
+aggregations:
+  - field: ContextualEmbeddingCategories
+    dataType: array_int
+    aggWindows: [ 1, 3, 7 ]
+    windowUnit: day
+    aggFunc: [ frequency ]
+  - field: ContextualProbabilityScores
+    dataType: array_float
+    aggWindows: [ 1, 3, 7 ]
+    windowUnit: day
+    aggFunc: [ mean, max ]
