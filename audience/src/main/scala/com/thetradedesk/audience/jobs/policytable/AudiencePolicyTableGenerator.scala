@@ -144,6 +144,9 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
       .select(allIdWithType.alias("x"))
       .select(col("x._1").as("TDID"), col("x._2").as("idType"))
       .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .withColumn("rn", row_number().over(Window.partitionBy("TDID").orderBy("idType")))
+      .filter(col("rn") === 1) // Keep one idType per TDID following enum ordinal
+      .drop("rn")
       .distinct()
 
     val uniqueTDIDsOriginal = baseDF

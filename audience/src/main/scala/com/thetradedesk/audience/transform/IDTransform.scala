@@ -47,7 +47,10 @@ object IDTransform {
                                DATId: String
                              ) => {
     val buffer = new ArrayBuffer[(String, Int)](6)
-    if (CookieTDID != null && CookieTDID != doNotTrackTDID) {
+
+    // when CookieTDID == DeviceAdvertisingId, keep the latter
+    // we don't expect clash among other id types
+    if (CookieTDID != null && CookieTDID != doNotTrackTDID && CookieTDID != DeviceAdvertisingId) {
       buffer.append((CookieTDID, IDType.CookieTDID.id))
     }
     if (DeviceAdvertisingId != null && DeviceAdvertisingId != doNotTrackTDID) {
