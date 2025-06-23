@@ -3,6 +3,7 @@ package com.thetradedesk.plutus.data.schema
 import com.thetradedesk.plutus.data.utils.S3HourlyParquetDataset
 import com.thetradedesk.plutus.data.{paddedDatePart, paddedDateTimePart}
 import com.thetradedesk.spark.datasets.core.S3Roots
+import com.thetradedesk.streaming.records.rtb.{ContextTypeLookupRecord, IdiosyncraticSegmentLookupRecord, InventoryChannelLookupRecord, ProductionQualityLookupRecord, SkippabilityConstraintLookupRecord, VideoPlaybackTypeLookupRecord}
 
 import java.time.{LocalDate, LocalDateTime}
 
@@ -12,6 +13,8 @@ case class PcResultsMergedSchema(
                                    DealId: String,
 
                                    UIID: Option[String],
+                                   IdType: Option[String],
+                                   IdCount: Int,
 
                                    AdjustedBidCPMInUSD: Double,
                                    BidsFirstPriceAdjustment: Option[Double],
@@ -59,7 +62,8 @@ case class PcResultsMergedSchema(
                                    InternetConnectionType: Int,
 
                                    UserHourOfWeek: Option[Int],
-                                   RequestLanguages: String, MatchedLanguageCode: Option[String],
+                                   RequestLanguages: String,
+                                   MatchedLanguageCode: Option[String],
                                    Latitude: Option[Double],
                                    Longitude: Option[Double],
 
@@ -162,7 +166,38 @@ case class PcResultsMergedSchema(
                                    FloorBuffer: Double,
                                    FloorBufferAdjustment: Double,
                                    MaxBidCpmInBucks: Double,
-                                 
+
+                                   VideoPlaybackType: Option[VideoPlaybackTypeLookupRecord],
+
+                                   AdRefresh: Option[Int],
+                                   StreamingMediaNetwork: Option[String],
+                                   StreamingMediaChannel: Option[String],
+                                   ContentLengthInSeconds: Option[Int],
+                                   ContentProductionQuality: Option[ProductionQualityLookupRecord],
+                                   MatchedContentRating: Option[String],
+
+                                   ContentGenre1: Option[String],
+                                   ContentEpisode: Option[Int],
+                                   ContentTitle: Option[String],
+                                   ContentSeries: Option[String],
+                                   ContentSeason: Option[String],
+                                   ContentContextType: Option[ContextTypeLookupRecord],
+
+                                   Carrier: Option[Int],
+                                   DisplayViewabilityScore: Option[Double],
+                                   VideoViewabilityScore: Option[Double],
+                                   VideoPlayerSize: Option[com.thetradedesk.streaming.records.rtb.VideoPlayerSizeLookupRecord],
+
+                                   IdiosyncraticSegment: Option[IdiosyncraticSegmentLookupRecord],
+                                   InventoryChannel: Option[InventoryChannelLookupRecord],
+
+                                   NativePlacementTypeId: Option[Int],
+                                   QualityScore: Option[Double],
+                                   SupplyVendorSkippabilityConstraint: Option[SkippabilityConstraintLookupRecord],
+                                   TTDNativeContextTypeId: Option[Int],
+
+                                   TemperatureInCelsius: Option[Double],
+
                                    // Note: I've removed a bunch of fields from the Geronimo schema since
                                    // these fields dont seem relevant to plutus.
 
