@@ -38,9 +38,9 @@ package object data {
 
   def hashedModMaxIntFeaturesCols(inputColAndDims: Seq[ModelFeature], shift: Int): Array[Column] = {
     inputColAndDims.map {
-      case ModelFeature(name, STRING_FEATURE_TYPE, _, _, _) => when(col(name).isNotNullOrEmpty, shiftModMaxValueUDF(xxhash64(col(name)), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
-      case ModelFeature(name, INT_FEATURE_TYPE, _, _, _) => when(col(name).isNotNull, shiftModMaxValueUDF(col(name), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
-      case ModelFeature(name, FLOAT_FEATURE_TYPE, _, _, _) => col(name).alias(name)
+      case ModelFeature(name, STRING_FEATURE_TYPE, _, _, _, _) => when(col(name).isNotNullOrEmpty, shiftModMaxValueUDF(xxhash64(col(name)), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
+      case ModelFeature(name, INT_FEATURE_TYPE, _, _, _, _) => when(col(name).isNotNull, shiftModMaxValueUDF(col(name), lit(shift))).otherwise(MISSING_DATA_VALUE).alias(name)
+      case ModelFeature(name, FLOAT_FEATURE_TYPE, _, _, _, _) => col(name).alias(name)
     }.toArray
   }
 

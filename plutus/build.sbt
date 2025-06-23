@@ -27,7 +27,7 @@ libraryDependencies ++= Seq(
   "org.scalatest" %% "scalatest-funsuite" % "3.2.10" % Test,
  // "MrPowers" % "spark-fast-tests" % "2.2.0_0.5.0" % "test"
 
-  "com.thetradedesk" %% "geronimo" % "0.2.20-SNAPSHOT",
+  "com.thetradedesk" %% "geronimo" % "0.2.44-SNAPSHOT",
   "com.thetradedesk" %% "eldorado-core" % "1.0.285-spark-3.2.1"
 )
 

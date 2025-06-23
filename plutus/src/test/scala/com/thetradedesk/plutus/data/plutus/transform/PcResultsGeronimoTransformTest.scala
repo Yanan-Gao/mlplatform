@@ -97,6 +97,10 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
     assert(res5.PlutusVersionUsed.isDefined == false)
     assert(res6.PlutusVersionUsed.isDefined)
     assert(res6.PlutusVersionUsed.get == modelVersionsUsedWithPlutus("plutus"))
+
+    // Validating idcount propogation
+    assert(resultList.get(0).IdCount == 2, "Validating that idcount is propogated")
+    assert(resultList.get(0).TemperatureInCelsius == Some(30.0), "Validating that temperature is propogated")
   }
 
   test("nullIfEmpty test") {

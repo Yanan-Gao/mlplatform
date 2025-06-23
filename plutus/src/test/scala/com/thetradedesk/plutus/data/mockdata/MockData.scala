@@ -53,7 +53,15 @@ object MockData {
       BidRequestId = "1",
       DealId = "",
 
-      UIID = Option("000"),
+      UIID = Option("0000"),
+      CookieTDID = Option("0000"),
+      DeviceAdvertisingId = Option(""),
+      UnifiedId2 = Option(""),
+      EUID = Option(""),
+      DATId = Option(""),
+      IdentityLinkId = Option(""),
+      IdType = Option("TDID"),
+      IdCount = 2,
 
       AdjustedBidCPMInUSD = 10000.0,
       BidsFirstPriceAdjustment = Some(0.9),
@@ -127,6 +135,8 @@ object MockData {
       ImpressionsFirstPriceAdjustment = Some(0.9),
 
       BillingEventId = None,
+      RelevanceScore = None,
+      NormalizedRelevanceScore = None,
       FeeFeatureUsage = FeeFeatureUsage,
 
       IsImp = true,
@@ -167,9 +177,55 @@ object MockData {
       JanusVariantMap = JanusVariantMap,
       ModelVersionsUsed = ModelVersionsUsed,
       UserAgeInDays = Option(20),
+      UserTargetingDataIds = Array[Long](1000001, 2000001, 3000001),
+      FCapCounterArray = Array(
+        FCapCounter(CounterId = 10L, FrequencyCount = 1L, LastResetTimeStamp = 100L, ResetIntervalInMinutes = 12),
+        FCapCounter(CounterId = 20L, FrequencyCount = 2L, LastResetTimeStamp = 0L, ResetIntervalInMinutes = 13),
+        FCapCounter(CounterId = 30L, FrequencyCount = 3L, LastResetTimeStamp = 1L, ResetIntervalInMinutes = 0)
+      ),
+      VirtualCampaignId = Option(1),
 
+      // SPO fields columns
       AdInfoSpoInventoryIdHash = Some(0L),
-      AdInfoSpoFilteredStatusId = Some(0)
+      AdInfoSpoFilteredStatusId = Some(0),
+      SpoVNextEnabledComponentsStatus = Some(0),
+
+      VideoPlaybackType = Option(VideoPlaybackTypeLookupRecord()),
+
+      TransactionId = Some(""),
+      SyntheticTransactionId = Some(""),
+
+      AdRefresh = Some(1),
+      StreamingMediaNetwork = Some(""),
+      StreamingMediaChannel = Some(""),
+      //    LiveStream = Some(true),
+      ContentLengthInSeconds = Some(60),
+      //    MatchedGenre = Some(""),
+      ContentProductionQuality = Option(ProductionQualityLookupRecord()),
+      MatchedContentRating = Some(""),
+      ContentGenre1 = Some(""),
+
+      ContentEpisode = Some(5),
+      ContentTitle = Some("The Great Escape"),
+      ContentSeries = Some("Adventure Chronicles"),
+      ContentSeason = Some("Season 2"),
+      ContentContextType = None,
+
+      Carrier = Some(101),
+      VideoViewabilityScore = Some(0.85),
+      VideoPlayerSize = None,
+
+      DisplayViewabilityScore = Some(0.75),
+
+      IdiosyncraticSegment = None,
+      InventoryChannel = None,
+
+      NativePlacementTypeId = Some(3),
+      QualityScore = Some(0.92),
+      SupplyVendorSkippabilityConstraint = None,
+      TTDNativeContextTypeId = Some(7),
+
+      TemperatureInCelsius = Some(30.0),
     )
 
   val privateContractsMock = PrivateContractRecord(
@@ -286,6 +342,8 @@ object MockData {
     DealId = dealId,
 
     UIID = Some("000"),
+    IdType = Option("TDID"),
+    IdCount = 2,
 
     AdjustedBidCPMInUSD = adjustedBidCPMInUSD,
     BidsFirstPriceAdjustment = fpa, //Some(0.73),
@@ -434,7 +492,37 @@ object MockData {
 
     FloorBufferAdjustment = 1.0,
     FloorBuffer = 0.2,
-    MaxBidCpmInBucks = maxBidCpmInBucks
+    MaxBidCpmInBucks = maxBidCpmInBucks,
+
+    VideoPlaybackType = Option(VideoPlaybackTypeLookupRecord()),
+    AdRefresh = Some(1),
+    StreamingMediaNetwork = Some(""),
+    StreamingMediaChannel = Some(""),
+    ContentLengthInSeconds = Some(60),
+    ContentProductionQuality = Option(ProductionQualityLookupRecord()),
+    MatchedContentRating = Some(""),
+    ContentGenre1 = Some(""),
+
+    ContentEpisode = Some(5),
+    ContentTitle = Some("The Great Escape"),
+    ContentSeries = Some("Adventure Chronicles"),
+    ContentSeason = Some("Season 2"),
+    ContentContextType = None,
+
+    Carrier = Some(101),
+    VideoViewabilityScore = Some(0.85),
+    VideoPlayerSize = None,
+
+    DisplayViewabilityScore = Some(0.75),
+
+    IdiosyncraticSegment = None, 
+    InventoryChannel = None, 
+
+    NativePlacementTypeId = Some(3),
+    QualityScore = Some(0.92),
+    SupplyVendorSkippabilityConstraint = None,
+    TTDNativeContextTypeId = Some(7),
+    TemperatureInCelsius = Some(22.0)
   )
 
   def supplyVendorMock(supplyVendorName: String = "google", openPathEnabled: Boolean = false) = SupplyVendorRecord(
