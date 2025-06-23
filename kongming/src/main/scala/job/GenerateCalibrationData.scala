@@ -1,6 +1,8 @@
 package job
 
+import com.thetradedesk.geronimo.shared.encodeStringIdUdf
 import com.thetradedesk.kongming.datasets._
+import com.thetradedesk.kongming.features.Features.encodeDatasetForCBuffer
 import com.thetradedesk.kongming._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
@@ -20,6 +22,9 @@ object GenerateCalibrationData extends KongmingBaseJob {
   val cvrChangeCap = config.getInt("cvrChangeCap", 20)
   val cvrImpressionMin = config.getInt("cvrImpressionMin", 1000)
   val defaultCvrPercentile = config.getDouble("defaultCvrPercentile", 0.75)
+  val partitionCount = config.getInt("partitionCount", partCount.SampledImpressionForIsoReg)
+  val saveDataAsCSV = config.getBoolean("saveDataAsCSV", true)
+  val saveDataAsCBuffer = config.getBoolean("saveDataAsCBuffer", true)
 
   private def sampledImpressionForCalibration(attributedData: Dataset[OutOfSampleAttributionRecord], adgroupCampaignCVR: Dataset[_]): Dataset[OutOfSampleAttributionRecord] = {
     val attDataToSample = attributedData.join(
@@ -101,9 +106,33 @@ object GenerateCalibrationData extends KongmingBaseJob {
     // 3. Sample adgroups that satisfy IsotonicPosCntMin for adgroup and campaign
     val sampledImpression = sampledImpressionForCalibration(attributedData, adgroupCampaignCVR)
 
-    val isotonicSampledRows = SampledImpressionForIsotonicRegDataset().writePartition(
-      sampledImpression, date, Some(partCount.SampledImpressionForIsoReg)
-    )
+    var isotonicSampledRows = ("", 0L)
+
+    if (saveDataAsCSV) {
+      isotonicSampledRows = SampledImpressionForIsotonicRegDataset().writePartition(
+        sampledImpression, date, Some(partitionCount)
+      )
+    }
+
+    if (saveDataAsCBuffer) {
+      val contextualColNames = (0 to 30).map(i => "ContextualCategoriesTier1_Column" + i.toString)
+      val audienceIdColNames = (0 to 29).map(i => "AudienceId_Column" + i.toString)
+      val userDataColNames = (0 to 140).map(i => "UserData_Column" + i.toString)
+      // Temporary hack to make it work with the flattened dataset. This can be simplified once we remove the Csv datasets
+      val sampledArrayImpression = sampledImpression
+        .withColumn("ContextualCategoriesTier1", array(contextualColNames.head, contextualColNames.tail: _*))
+        .withColumn("AudienceId", array(audienceIdColNames.head, audienceIdColNames.tail: _*))
+        .withColumn("UserData", array(userDataColNames.head, userDataColNames.tail: _*))
+        .withColumn("AdGroupIdEncoded", encodeStringIdUdf('AdGroupIdStr))
+        .withColumn("CampaignIdEncoded", encodeStringIdUdf('CampaignIdStr))
+        .withColumn("AdvertiserIdEncoded", encodeStringIdUdf('AdvertiserIdStr))
+        .withColumn("UserTargetingDataIds", typedLit(Seq()))
+        .withColumn("IdType", lit(0))
+        .withColumn("IdCount", lit(0))
+        .withColumn("UserAgeInDays", lit(0f))
+      isotonicSampledRows = ArraySampledImpressionForIsotonicRegDataset().writePartition(encodeDatasetForCBuffer[ArrayOutOfSampleAttributionRecord](sampledArrayImpression), date, None, partitionCount, evalBatchSize)
+    }
+
     val cvrScalingRows = CvrForScalingDataset().writePartition(
       allCampaignCVR, date, Some(partCount.CvrRescaling)
     )
