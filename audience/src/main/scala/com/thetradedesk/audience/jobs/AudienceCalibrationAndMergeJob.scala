@@ -1,6 +1,6 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.datasets.{AdGroupDataSet, AudienceModelPolicyReadableDataset, AudienceModelThresholdRecord, AudienceModelThresholdWritableDataset, CampaignSeedDataset, Model}
+import com.thetradedesk.audience.datasets.{AdGroupDataSet, AudienceModelPolicyReadableDataset, AudienceModelThresholdRecord, AudienceModelThresholdWritableDataset, CampaignSeedDataset, Model, CrossDeviceVendor}
 import com.thetradedesk.audience.jobs.AudienceCalibrationAndMergeJob.prometheus
 import com.thetradedesk.audience.jobs.TdidEmbeddingDotProductGeneratorOOS.EmbeddingSize
 import com.thetradedesk.audience.{audienceVersionDateFormat, date, dateTime, ttdReadEnv, ttdWriteEnv}
@@ -60,11 +60,11 @@ object AudienceCalibrationAndMergeJob {
 
     val previousPolicyTable = AudienceModelPolicyReadableDataset(Model.RSM)
       .readSinglePartition(recentVersionOption.get.asInstanceOf[java.time.LocalDateTime])(spark)
-      .filter((col("CrossDeviceVendorId") === 0))
+      .filter((col("CrossDeviceVendorId") === CrossDeviceVendor.None.id))
       .select("SyntheticId", "IsSensitive")
     val currentPolicyTable = AudienceModelPolicyReadableDataset(Model.RSM)
       .readSinglePartition(dateTime)(spark)
-      .filter((col("CrossDeviceVendorId") === 0))
+      .filter((col("CrossDeviceVendorId") === CrossDeviceVendor.None.id))
       .select("SyntheticId", "IsSensitive")
       
     val previousEmbeddingPath = s"s3://${Config.mlplatformS3Bucket}/${Config.embeddingDataS3Path}/${recentVersionStr}000000"
