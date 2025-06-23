@@ -26,7 +26,10 @@ object Imp2BrModelInferenceDataGenerator {
 
   def getAllUiidsUdfWithSample(sampleFun: String => Boolean) = udf((tdid: String, deviceAdvertisingId: String, uid2: String, euid: String, identityLinkId: String) => {
     val uiids = ArrayBuffer[String]()
-    if (tdid != null && tdid != doNotTrackTDID && sampleFun(tdid)) {
+
+    // when CookieTDID == DeviceAdvertisingId, keep the latter
+    // we don't expect clash among other id types
+    if (tdid != null && tdid != doNotTrackTDID && sampleFun(tdid) && tdid != deviceAdvertisingId) {
       uiids += tdid
     }
     if (deviceAdvertisingId != null && deviceAdvertisingId != doNotTrackTDID && sampleFun(deviceAdvertisingId)) {
