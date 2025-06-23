@@ -21,9 +21,10 @@ object AudienceModelOfflineMetricsGeneratorJob {
 
   object Config {
     val mlplatformS3Bucket = S3Utils.refinePath(config.getString("mlplatformS3Bucket", "thetradedesk-mlplatform-us-east-1"))
-    val metricOutputS3Path = S3Utils.refinePath(config.getString("metricOutputS3Path", s"data/${ttdReadEnv}/audience/RSMV2/measurement/finalModelMetaData/v=1"))
+    val metricOutputS3Path = S3Utils.refinePath(config.getString("metricOutputS3Path", s"data/${ttdWriteEnv}/audience/RSMV2/measurement/finalModelMetaData/v=1"))
     val inferenceDataS3Path = S3Utils.refinePath(config.getString("inferenceDataS3Path", s"data/${ttdReadEnv}/audience/RSMV2/prediction"))
-
+    val embeddingDataS3Path = S3Utils.refinePath(config.getString("embeddingDataS3Path", s"configdata/${ttdReadEnv}/audience/embedding/RSMV2/v=1"))
+    val embeddingRecentVersion = config.getString("embeddingRecentVersion", default = null)
     val prThreshold = config.getDouble("prThreshold", default = 0.5)
     val numAUCBuckets = config.getInt("numAUCBuckets", default = 100000)
     val writeMode = config.getString("writeMode", "overwrite")
@@ -37,16 +38,34 @@ object AudienceModelOfflineMetricsGeneratorJob {
   def runETLPipeline(): Unit = {
 
     val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
-    val dateTime = date.atStartOfDay()
-    val outputPath = s"s3://${Config.mlplatformS3Bucket}/${Config.metricOutputS3Path}/${date.format(formatter)}000000"
+    val dateTime = date.minusDays(1).atStartOfDay()
+    val oosOutputPath = s"s3://${Config.mlplatformS3Bucket}/${Config.metricOutputS3Path}/oos/${date.format(formatter)}000000"
+    val populationOutputPath = s"s3://${Config.mlplatformS3Bucket}/${Config.metricOutputS3Path}/population/${date.format(formatter)}000000"
+
+    val embeddingTableDateFormatter = DateTimeFormatter.ofPattern(audienceVersionDateFormat)
+    val availableEmbeddingVersions = S3Utils
+    .queryCurrentDataVersions(Config.mlplatformS3Bucket, Config.embeddingDataS3Path)
+    .map(LocalDateTime.parse(_, embeddingTableDateFormatter))
+    .toSeq
+    .sortWith(_.isAfter(_))
+
+    val recentVersionOption = if (Config.embeddingRecentVersion != null) Some(Config.embeddingRecentVersion)
+    else availableEmbeddingVersions.find(_.isBefore(dateTime))
+
+    val recentVersionStr = recentVersionOption.get.asInstanceOf[java.time.LocalDateTime].toLocalDate.format(formatter)
 
     val currentPolicyTable = AudienceModelPolicyReadableDataset(Model.RSM)
       .readSinglePartition(dateTime)(spark)
       .filter((col("CrossDeviceVendorId") === 0))
       .select("SyntheticId", "IsSensitive").distinct()
 
+    val previousPolicyTable = AudienceModelPolicyReadableDataset(Model.RSM)
+      .readSinglePartition(recentVersionOption.get.asInstanceOf[java.time.LocalDateTime])(spark)
+      .filter((col("CrossDeviceVendorId") === 0))
+      .select("SyntheticId", "IsSensitive").distinct()
+
     val populationInferencePath = s"s3://${Config.mlplatformS3Bucket}/${Config.inferenceDataS3Path}/population_data/v=1/model_version=${date.format(formatter)}000000/${date.format(formatter)}000000/"
-    val OOSInferencePath = s"s3://${Config.mlplatformS3Bucket}/${Config.inferenceDataS3Path}/oos_data/v=1/model_version=${date.format(formatter)}000000/${date.format(formatter)}000000/"
+    val OOSInferencePath = s"s3://${Config.mlplatformS3Bucket}/${Config.inferenceDataS3Path}/oos_data/v=1/model_version=${recentVersionStr}000000/${date.format(formatter)}000000/"
 
     val populationInferenceData = spark.read.parquet(populationInferencePath)
     val oosInferenceData = spark.read.parquet(OOSInferencePath)
@@ -95,27 +114,31 @@ object AudienceModelOfflineMetricsGeneratorJob {
                                             .withColumn("pred", when('IsSensitive, 'sen_pred).otherwise('pred))
                                             .cache
     val oosInferenceDataExploded = explodeColumns(oosInferenceData, explodCols).withColumnRenamed("SyntheticIds", "SyntheticId")
-                                            .join(currentPolicyTable, Seq("SyntheticId"),"left")
+                                            .join(previousPolicyTable, Seq("SyntheticId"),"left")
                                             .withColumn("pred", when('IsSensitive, 'sen_pred).otherwise('pred))
                                             .cache
     
     val popMetricPrefix = "Population"
-    val populationMetric = aggregateMetrics(populationInferenceDataExploded, popMetricPrefix, Seq("SyntheticId"))
+    val populationMetric = aggregateMetrics(populationInferenceDataExploded, popMetricPrefix, Seq("SyntheticId","IsSensitive"))
 
     val oosMetricPrefix = "OOS"
-    val oosMetric = aggregateMetrics(oosInferenceDataExploded, oosMetricPrefix, Seq("SyntheticId"))                              
+    val oosMetric = aggregateMetrics(oosInferenceDataExploded, oosMetricPrefix, Seq("SyntheticId","IsSensitive"))                              
                                              
     val populationOverallMetric = aggregateMetrics(populationInferenceDataExploded, popMetricPrefix)
                                               .withColumn("SyntheticId", lit(-1))
+                                              .withColumn("IsSensitive", lit(false))
+                                              
                                           
     val oosOverallMetric = aggregateMetrics(oosInferenceDataExploded, oosMetricPrefix) 
                                               .withColumn("SyntheticId", lit(-1))
+                                              .withColumn("IsSensitive", lit(false))
 
     
-    val finalMetric = populationMetric.unionByName(populationOverallMetric)
-                      .join(oosMetric.unionByName(oosOverallMetric), Seq("SyntheticId"), "outer")
+    val finalPopulationMetric = populationMetric.unionByName(populationOverallMetric).withColumn("model_version", lit(s"${date.format(formatter)}000000"))
+    val finalOOSMetric = oosMetric.unionByName(oosOverallMetric).withColumn("model_version", lit(s"${recentVersionStr}000000"))
     
-    finalMetric.repartition(1).write.option("compression", "gzip").mode(Config.writeMode).parquet(outputPath)
+    finalPopulationMetric.repartition(1).write.option("compression", "gzip").mode(Config.writeMode).parquet(populationOutputPath)
+    finalOOSMetric.repartition(1).write.option("compression", "gzip").mode(Config.writeMode).parquet(oosOutputPath)
             
   }
 }
