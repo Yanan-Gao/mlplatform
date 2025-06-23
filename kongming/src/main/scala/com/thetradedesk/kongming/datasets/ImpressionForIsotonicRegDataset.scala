@@ -1,6 +1,9 @@
 package com.thetradedesk.kongming.datasets
+
 import com.thetradedesk.spark.datasets.core.Csv
 import com.thetradedesk.spark.util.TTDConfig.config
+
+import com.thetradedesk.kongming.{BaseFolderPath, MLPlatformS3Root}
 
 final case class ImpressionForIsotonicRegRecord(
                                                 Level:String,
@@ -20,3 +23,7 @@ case class SampledImpressionForIsotonicRegDataset(experimentOverride: Option[Str
   fileFormat = Csv.WithHeader,
   experimentOverride = experimentOverride
 )
+
+case class ArraySampledImpressionForIsotonicRegDataset(experimentOverride: Option[String] = None)
+  extends DateSplitPartitionedS3CBufferDataset[ArrayOutOfSampleAttributionRecord](
+    MLPlatformS3Root, s"${BaseFolderPath}/calibration/sampledimpressionforscoring/v=2", experimentOverride = experimentOverride)
