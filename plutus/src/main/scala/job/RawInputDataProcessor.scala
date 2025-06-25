@@ -37,7 +37,7 @@ object RawInputDataProcessor extends Logger {
 
     val brBfLoc = BidsImpressions.BIDSIMPRESSIONSS3 + f"${envForRead}/bidsimpressions/"
 
-    val bidsImpressions = loadParquetData[BidsImpressionsSchema](brBfLoc, date, source = Some("plutus"))
+    val bidsImpressions = loadParquetData[BidsImpressionsSchema](brBfLoc, date, source = Some("plutus"), nullIfColAbsent = true)
       .filter(col("AuctionType") === 1 && $"SupplyVendor".isin(svNames: _*)) // Note the difference with Impression Data
 
 
