@@ -365,6 +365,6 @@ package object data {
 
   // Setting this to `envForRead` will isolate each task in the chain so each task reads
   // upstream data from prod instead of test locations.
-  var envForReadInternal: String = envForRead
+  var envForReadInternal: String = envForWrite
 
 }
