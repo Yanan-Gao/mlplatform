@@ -36,6 +36,7 @@ package object featurestore {
 
   val normalUserBidCountPerHour = config.getInt("normalUserBidCountPerHour", default = 200)
   val overrideOutput = config.getBoolean("overrideOutput", default = false)
+  val saltSize = config.getInt("saltSize", default = 100)
   val s3Client = AmazonS3ClientBuilder.standard.withRegion(Regions.US_EAST_1).build
 
   val userDownSampleBasePopulation = config.getInt("userDownSampleBasePopulation", default = 1000000)

@@ -2,17 +2,19 @@ datasource: BidContextual
 rootPath: s3a://thetradedesk-mlplatform-us-east-1
 prefix: /prod/features/data/contextualwithbid/v=1/date={dateStr}/hour={hourInt}/
 outputRootPath: s3a://thetradedesk-mlplatform-us-east-1
-initOutputPrefix: /features/feature_store/{ttdEnv}/profiles/source=contextualwithbid/index={indexPartition}/job={jobName}/v=1/date={dateStr}/hour={hourInt}/
-outputPrefix: /features/feature_store/{ttdEnv}/profiles/source=contextualwithbid/index={indexPartition}/job={jobName}/v=1/date={dateStr}/
-grain: hour
+initOutputPrefix: /features/feature_store/{ttdEnv}/profiles/source=contextualwithbid/index={indexPartition}/job=InitialAggJob/v=1/
+grain: hour # append date partition base on grain size, e.g. if grain=hour, then date={dateStr}/hour={hourInt}/
+outputPrefix: /features/feature_store/{ttdEnv}/profiles/source=contextualwithbid/index={indexPartition}/job=RollupAggJob/v=1/date={dateStr}/
+aggLevels: [ AdvertiserId, CampaignId, TDID ]
 aggregations:
   - field: ContextualEmbeddingCategories
     dataType: array_int
     aggWindows: [ 1, 3, 7 ]
     windowUnit: day
-    aggFunc: [ frequency ]
+    aggFunc: [ Frequency ]
   - field: ContextualProbabilityScores
     dataType: array_float
+    arraySize: 646
     aggWindows: [ 1, 3, 7 ]
     windowUnit: day
-    aggFunc: [ mean, max ]
+    aggFunc: [ VectorMean, VectorMax ]

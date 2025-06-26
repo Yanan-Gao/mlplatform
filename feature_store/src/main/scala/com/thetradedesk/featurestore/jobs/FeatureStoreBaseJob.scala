@@ -5,6 +5,7 @@ import com.thetradedesk.featurestore.datasets.{ProcessedDataset, ProfileDataset}
 import com.thetradedesk.featurestore.features.Features._
 import com.thetradedesk.featurestore.transform.AggregateTransform._
 import com.thetradedesk.featurestore.transform.Merger.joinDataFrames
+import com.thetradedesk.spark.TTDSparkContext
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.functions._
@@ -27,20 +28,28 @@ abstract class FeatureStoreBaseJob {
 
   def main(args: Array[String]): Unit = {
 
-    val prometheus = getPrometheus
-    val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
-    val jobDurationGaugeTimer = jobDurationGauge.startTimer()
-    val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
-
-    val rows = runTransform(args)
-
-    // push metrics of output dataset row counts
-    rows.foreach { case (datasetName, rowCount) =>
-      outputRowsWrittenGauge.labels(datasetName).set(rowCount)
+    if (ttdEnv == "local") {
+      TTDSparkContext.setTestMode()
     }
-    // push job runtime
-    val runTime = jobDurationGaugeTimer.setDuration()
-    prometheus.pushMetrics()
+
+    if (ttdEnv == "local") {
+      runTransform(args)
+    } else {
+      val prometheus = getPrometheus
+      val jobDurationGauge = prometheus.createGauge(RunTimeGaugeName, "Job execution time in seconds")
+      val jobDurationGaugeTimer = jobDurationGauge.startTimer()
+      val outputRowsWrittenGauge = prometheus.createGauge(OutputRowCountGaugeName, "Number of rows written", "DataSet")
+
+      val rows = runTransform(args)
+
+      // push metrics of output dataset row counts
+      rows.foreach { case (datasetName, rowCount) =>
+        outputRowsWrittenGauge.labels(datasetName).set(rowCount)
+      }
+      // push job runtime
+      val runTime = jobDurationGaugeTimer.setDuration()
+      prometheus.pushMetrics()
+    }
 
     spark.catalog.clearCache()
     spark.stop()

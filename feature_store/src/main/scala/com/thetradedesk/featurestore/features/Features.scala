@@ -12,10 +12,29 @@ object Features {
 
   object AggFunc extends Enumeration {
     type AggFunc = Value
-    val Sum, Count, Mean, NonZeroMean, Median, Percentiles, Desc, NonZeroCount, Min, Max, TopN, Frequency = Value
+    val Sum, Count, Mean, NonZeroMean, Median, Percentiles, Desc, NonZeroCount, Min, Max, TopN, Frequency,
+    VectorSum, VectorCount, VectorMean, VectorNonZeroMean, VectorNonZeroCount, VectorDesc, VectorMin, VectorMax
+    = Value
 
     def fromString(value: String): Option[AggFunc] = {
       values.find(_.toString.equalsIgnoreCase(value))
+    }
+
+    def isVectorFunc(aggFunc: AggFunc): Boolean = {
+      AggFunc.getInitialAggFunc(aggFunc) == VectorDesc
+    }
+
+    def getInitialAggFunc(aggFunc: AggFunc): AggFunc = {
+      aggFunc match {
+        case Sum | Count | NonZeroCount |
+             Desc | Min | Max |
+             Mean | NonZeroMean | Desc => Desc
+        case VectorSum | VectorCount | VectorMean |
+             VectorNonZeroMean | VectorNonZeroCount | VectorDesc |
+             VectorMin | VectorMax | VectorDesc => VectorDesc
+        case Frequency | TopN => Frequency
+        case _ => throw new UnsupportedOperationException(s"Unsupported initial aggregation function: $aggFunc")
+      }
     }
 
     // Custom decoder for AggFunc
@@ -31,17 +50,19 @@ object Features {
 
   trait AggSpecs {
     def aggField: String
+
     def aggWindowDay: Int
   }
 
   case class CategoryFeatAggSpecs(
-                              aggField: String,
-                              aggWindowDay: Int,
-                              topN: Int,
-                              dataType: String,
-                              cardinality: Int,
-                              featureName: String,
-                            ) extends AggSpecs
+                                   aggField: String,
+                                   aggWindowDay: Int,
+                                   topN: Int,
+                                   dataType: String,
+                                   cardinality: Int,
+                                   featureName: String,
+                                 ) extends AggSpecs
+
   object CategoryFeatAggSpecs {
     def apply(aggField: String, aggWindow: Int, topN: Int, dataType: String, cardinality: Int): CategoryFeatAggSpecs = {
       val featureName = s"Top${topN}${aggField}Last${aggWindow}D"
@@ -50,11 +71,12 @@ object Features {
   }
 
   case class ContinuousFeatAggSpecs(
-                              aggField: String,
-                              aggWindowDay: Int,
-                              aggFunc: AggFunc,
-                              featureName: String,
-                            ) extends AggSpecs
+                                     aggField: String,
+                                     aggWindowDay: Int,
+                                     aggFunc: AggFunc,
+                                     featureName: String,
+                                   ) extends AggSpecs
+
   object ContinuousFeatAggSpecs {
     def apply(aggField: String, aggWindow: Int, aggFunc: AggFunc): ContinuousFeatAggSpecs = {
       val featureName = s"${aggFunc}${aggField}Last${aggWindow}D"
@@ -68,7 +90,8 @@ object Features {
                                 denomField: String,
                                 ratioMetrics: String,
                                 featureName: String,
-                            ) extends AggSpecs
+                              ) extends AggSpecs
+
   object RatioFeatAggSpecs {
     def apply(aggField: String, aggWindow: Int, denomField: String, ratioMetrics: String): RatioFeatAggSpecs = {
       val featureName = s"${ratioMetrics}Last${aggWindow}D"

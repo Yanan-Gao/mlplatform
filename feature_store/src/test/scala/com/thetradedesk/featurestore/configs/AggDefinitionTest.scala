@@ -27,7 +27,7 @@ class AggDefinitionTest extends AnyFunSuite {
             "ttdEnv" -> "test",
             "hourInt" -> "1"
         )
-        val outputDataSet = ProfileDataset(rootPath = initAggDef.outputRootPath, prefix = initAggDef.initOutputPrefix, overridesMap)
+        val outputDataSet = ProfileDataset(rootPath = initAggDef.outputRootPath, prefix = initAggDef.initOutputPrefix, grain = Some(initAggDef.grain), overrides = overridesMap)
         assertResult("s3a://thetradedesk-mlplatform-us-east-1/features/feature_store/test/profiles/source=contextualwithbid/index=UIID/job=InitialAggJob/v=1/date=20250603/hour=1")(outputDataSet.datasetPath)
     }
 
