@@ -35,5 +35,8 @@ object FeatureConstants {
 
   val SingleUnitWindow = Seq(1)
 
+  val GrainHour = "hour"
+  val GrainDay = "day"
 
+  val ColFeatureKey = "FeatureKey"
 }

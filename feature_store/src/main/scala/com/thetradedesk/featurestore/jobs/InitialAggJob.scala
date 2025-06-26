@@ -8,6 +8,7 @@ import com.thetradedesk.featurestore.features.Features._
 import com.thetradedesk.featurestore.jobs.AggAttributions.sourcePartition
 import com.thetradedesk.featurestore.transform.DescriptionAgg.{ArrayDescAggregator, DescAggregator, DescMergeAggregator}
 import com.thetradedesk.featurestore.transform.FrequencyAgg.{ArrayFrequencyAggregator, FrequencyAggregator, FrequencyMergeAggregator}
+import com.thetradedesk.featurestore.transform.VectorDescriptionAgg.{VectorDescAggregator, VectorDescMergeAggregator}
 import com.thetradedesk.featurestore.utils.StringUtils
 import com.thetradedesk.spark.TTDSparkContext.spark
 import org.apache.spark.sql.functions.{transform, _}
@@ -46,7 +47,8 @@ object InitialAggJob extends FeatureStoreBaseJob {
     val outputDataSet = ProfileDataset(
       rootPath = initialAggDef.outputRootPath,
       prefix = initialAggDef.initOutputPrefix,
-      overridesMap
+      grain = Some(initialAggDef.grain),
+      overrides = overridesMap
     )
 
     if (!overrideOutput && outputDataSet.isProcessed) {
@@ -73,7 +75,7 @@ object InitialAggJob extends FeatureStoreBaseJob {
                        inputDf: Dataset[_],
                        aggLevel: String,
                        aggDef: AggDefinition,
-                       saltSize: Int = 200
+                       saltSize: Int = saltSize
                      ): Dataset[_] = {
     val aggCols = genAggCols(aggDef)
     val mergeCols = genMergeCols(aggDef)
@@ -97,17 +99,13 @@ object InitialAggJob extends FeatureStoreBaseJob {
     else fieldAggSpec.aggFuncs.map { func =>
       val column = func match {
         case AggFunc.Desc => genDescMergeCol(fieldAggSpec, func)
+        case AggFunc.VectorDesc => genVectorDescMergeCol(fieldAggSpec, func)
         case AggFunc.Frequency => genFrequencyMergeCol(fieldAggSpec, func)
-        case AggFunc.TopN => genTopnMergeCol(fieldAggSpec, func)
+        case AggFunc.TopN => genFrequencyMergeCol(fieldAggSpec, func)
         case _ => throw new RuntimeException(s"Unsupported aggFunc ${func} for field ${fieldAggSpec.field}")
       }
       column.alias(s"${fieldAggSpec.field}_${func}")
     }
-  }
-
-  private def genTopnMergeCol(spec: FieldAggSpec, func: AggFunc): Column = {
-    val descUdaf = udaf(new FrequencyMergeAggregator(spec.topN))
-    descUdaf(col(s"${spec.field}_Temp_${func}"))
   }
 
   private def genFrequencyMergeCol(spec: FieldAggSpec, func: AggFunc): Column = {
@@ -117,6 +115,12 @@ object InitialAggJob extends FeatureStoreBaseJob {
 
   private def genDescMergeCol(spec: FieldAggSpec, func: AggFunc): Column = {
     val descUdaf = udaf(new DescMergeAggregator())
+    descUdaf(col(s"${spec.field}_Temp_${func}"))
+  }
+
+  private def genVectorDescMergeCol(spec: FieldAggSpec, func: AggFunc): Column = {
+    if (spec.arraySize < 1) throw new RuntimeException(s"Unsupported aggFunc ${func} for field ${spec.field}")
+    val descUdaf = udaf(new VectorDescMergeAggregator(spec.arraySize))
     descUdaf(col(s"${spec.field}_Temp_${func}"))
   }
 
@@ -130,6 +134,7 @@ object InitialAggJob extends FeatureStoreBaseJob {
     else fieldAggSpec.aggFuncs.map { func =>
       val column = func match {
         case AggFunc.Desc => genDescCol(fieldAggSpec)
+        case AggFunc.VectorDesc => genVectorDescCol(fieldAggSpec)
         case AggFunc.Frequency => genFrequencyCol(fieldAggSpec)
         case AggFunc.TopN => genFrequencyCol(fieldAggSpec)
         case _ => throw new RuntimeException(s"Unsupported aggFunc ${func} for field ${fieldAggSpec.field}")
@@ -147,6 +152,15 @@ object InitialAggJob extends FeatureStoreBaseJob {
       val descUdaf = udaf(new DescAggregator())
       descUdaf(col(fieldAggSpec.field).cast(DoubleType))
     }
+  }
+
+  private def genVectorDescCol(fieldAggSpec: FieldAggSpec): Column = {
+    if (!fieldAggSpec.dataType.startsWith("array")) throw new RuntimeException(s"Unsupported aggFunc ${fieldAggSpec.aggFuncs} for field ${fieldAggSpec.field}")
+    if (fieldAggSpec.arraySize < 1) throw new RuntimeException(s"Unsupported arraySize ${fieldAggSpec.arraySize} for aggFunc ${fieldAggSpec.aggFuncs} for field ${fieldAggSpec.field}")
+
+    val doubleArray = transform(col(fieldAggSpec.field), num => num.cast(DoubleType))
+    val descUdaf = udaf(new VectorDescAggregator(fieldAggSpec.arraySize))
+    descUdaf(doubleArray)
   }
 
   private def genFrequencyCol(fieldAggSpec: FieldAggSpec): Column = {

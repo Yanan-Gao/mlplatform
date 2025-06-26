@@ -5,6 +5,7 @@ outputRootPath: s3://output-bucket
 outputPrefix: /prefix/date={data_yyyyMMdd}/hour={hour_num}/
 initOutputPrefix: /prefix/date={data_yyyyMMdd}/hour={hour_num}/
 grain: hour
+aggLevels: [ AdvertiserId, CampaignId, TDID ]
 aggregations:
   - field: FieldA
     dataType: array_int

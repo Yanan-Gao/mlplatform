@@ -1,8 +1,9 @@
 package com.thetradedesk.featurestore.configs
 
-import com.thetradedesk.featurestore.constants.FeatureConstants.SingleUnitWindow
+import com.thetradedesk.featurestore.constants.FeatureConstants.{GrainDay, SingleUnitWindow}
 import com.thetradedesk.featurestore.features.Features.AggFunc
 import com.thetradedesk.featurestore.features.Features.AggFunc.AggFunc
+import com.thetradedesk.featurestore.ttdEnv
 import org.yaml.snakeyaml.Yaml
 
 import scala.collection.JavaConverters._
@@ -20,6 +21,7 @@ case class AggDefinition(
                           outputPrefix: String,
                           initOutputPrefix: String,
                           grain: String,
+                          aggLevels: Set[String],
                           aggregations: Seq[FieldAggSpec]
                         ) {
   /**
@@ -36,6 +38,7 @@ case class AggDefinition(
 case class FieldAggSpec(
                          field: String,
                          dataType: String,
+                         arraySize: Int = -1,
                          aggWindows: Seq[Int],
                          windowUnit: String,
                          topN: Int = -1,
@@ -50,24 +53,13 @@ case class FieldAggSpec(
     val initialAggFunctions = new mutable.HashSet[AggFunc]()
     var initialTopN = -1
 
-    aggFuncs.foreach {
-      case func @ (AggFunc.Sum | AggFunc.Count | AggFunc.NonZeroCount | 
-                  AggFunc.Desc | AggFunc.Min | AggFunc.Max | 
-                  AggFunc.Mean | AggFunc.NonZeroMean) =>
-        initialAggFunctions += AggFunc.Desc
-
-      case AggFunc.Frequency =>
-        initialAggFunctions += AggFunc.Frequency
-
-      case AggFunc.TopN =>
-        initialAggFunctions += AggFunc.Frequency
-        initialTopN = topN * 100 // Apply multiplier for base aggregation
-
-      case func =>
-        throw new UnsupportedOperationException(
-          s"Unsupported aggregation function: $func for field $field"
-        )
-    }
+    aggFuncs.foreach(x => {
+      val initFunc = AggFunc.getInitialAggFunc(x)
+      initialAggFunctions += initFunc
+      if (x == AggFunc.TopN) {
+        initialTopN = topN * 100
+      }
+    })
 
     copy(
       aggWindows = SingleUnitWindow,
@@ -76,10 +68,18 @@ case class FieldAggSpec(
       aggFuncs = initialAggFunctions.toSeq
     )
   }
+
+  def getWindowSuffix: String = {
+    windowUnit match {
+      case GrainDay => "D"
+      case _ => throw new IllegalArgumentException(s"Unsupported window unit: $windowUnit")
+    }
+
+  }
 }
 
 object AggDefinition {
-  private val YAML_BASE_PATH = "/jobconfigsv2"
+  private val YAML_BASE_PATH = if (ttdEnv == "local") "/jobconfigsv2_local" else "/jobconfigsv2"
 
   def loadConfig(dataSource: Option[String] = None, filePath: Option[String] = None): AggDefinition = {
     require(dataSource.nonEmpty || filePath.nonEmpty, "Both dataSource and filePath are empty")
@@ -89,7 +89,23 @@ object AggDefinition {
       case None => loadByFilePath(filePath.get)
     }
 
-    parseYamlConfig(configString)
+    val config = parseYamlConfig(configString)
+    validateConfig(config)
+    config
+  }
+
+  private def validateConfig(config: AggDefinition): Unit = {
+    config.aggregations.foreach { agg =>
+      agg.aggFuncs.foreach { func =>
+        if (func == AggFunc.TopN && agg.topN < 1) {
+          throw new IllegalArgumentException(s"TopN is not specified for field ${agg.field}")
+        }
+
+        if (AggFunc.isVectorFunc(func) && agg.arraySize < 1) {
+          throw new IllegalArgumentException(s"Array size is not specified for field ${agg.field}")
+        }
+      }
+    }
   }
 
   private def parseYamlConfig(configString: String): AggDefinition = {
@@ -110,6 +126,7 @@ object AggDefinition {
         outputPrefix = yamlMap("outputPrefix").toString,
         initOutputPrefix = yamlMap("initOutputPrefix").toString,
         grain = yamlMap("grain").toString,
+        aggLevels = yamlMap("aggLevels").asInstanceOf[java.util.List[String]].asScala.toSet,
         aggregations = aggregations
       )
     } match {
@@ -130,8 +147,10 @@ object AggDefinition {
         FieldAggSpec(
           field = aggField,
           dataType = scalaAgg("dataType").toString,
+          arraySize = scalaAgg.getOrElse("arraySize", -1).asInstanceOf[Int],
           aggWindows = scalaAgg("aggWindows").asInstanceOf[java.util.List[Int]].asScala,
           windowUnit = scalaAgg("windowUnit").toString,
+          topN = scalaAgg.getOrElse("topN", -1).asInstanceOf[Int],
           aggFuncs = parseAggFunctions(scalaAgg, aggField)
         )
       }
