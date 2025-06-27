@@ -48,6 +48,7 @@ libraryDependencies ++= Seq(
   "com.github.mrpowers" %% "spark-fast-tests" % "1.2.0" % Test,
   "com.aerospike" % "aerospike-client-jdk8" % "8.1.0",
   "org.yaml" % "snakeyaml" % "2.2",
+  "com.amazonaws" % "aws-java-sdk-glue" % "1.12.654",
 )
 
 assembly / assemblyOption := (assembly / assemblyOption).value.copy(includeScala = false)
