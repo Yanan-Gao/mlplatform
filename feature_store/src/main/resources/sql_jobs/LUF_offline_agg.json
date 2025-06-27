@@ -1,0 +1,99 @@
+{
+  "name": "LUF-offline-aggregation",
+  "config":{
+    "dt": "__REQUIRED_ARGUMENT__",
+    "ttd.env": "__REQUIRED_ARGUMENT__",
+    "yesterday": "__REQUIRED_ARGUMENT__",
+    "base_s3_path": "s3://thetradedesk-mlplatform-us-east-1/features/feature_store/${ttd.env}/online"
+  },
+  "input":{
+    "parquet":{
+      "click_today": "${base_s3_path}/clicktracker/parquet/date=${dt}/",
+      "click_yesterday": "${base_s3_path}/clicktracker/parquet/date=${yesterday}/",
+      "event_today": "${base_s3_path}/eventtracker/parquet/date=${dt}/",
+      "event_yesterday": "${base_s3_path}/eventtracker/parquet/date=${yesterday}/",
+      "conversion_today": "${base_s3_path}/conversiontracker/parquet/date=${dt}/",
+      "conversion_yesterday": "${base_s3_path}/conversiontracker/parquet/date=${yesterday}/"
+    },
+    "csv":{
+
+    },
+    "tfrecord":{
+
+    }
+  },
+  "output":{
+    "location":"s3://thetradedesk-mlplatform-us-east-1/features/feature_store/${ttd.env}/online/user_feature_agg/date=${dt}/",
+    "format": "parquet",
+    "partition": 100,
+    "sideOutputs": [
+      {
+        "sql": "ALTER TABLE audauto_feature.online_user_feature_agg ADD IF NOT EXISTS PARTITION (date='${dt}')",
+        "location": "",
+        "format": "parquet",
+        "partition": 1
+      }
+    ]
+  },
+  "sql": "with click_yesterday_top10 as (
+    select tdid, timestamp, site, adgroupid, clickstatus
+    from (
+      select tdid, timestamp, site, adgroupid, clickstatus, row_number() over (partition by tdid order by timestamp desc) as rnk
+      from click_yesterday
+    ) where rnk <= 10
+  ),
+  click_unioned as (
+    select tdid, struct(timestamp, site, adgroupid, clickstatus) as click
+    from (
+      select tdid, timestamp, site, adgroupid, case when clickstatus='Normal' then 1 else 2 end as clickstatus
+      from click_today
+      union all
+      select tdid, timestamp, site, adgroupid, case when clickstatus='Normal' then 1 else 2 end as clickstatus
+      from click_yesterday_top10
+    )
+  ),
+  click_agg as (
+    select tdid, array_sort(collect_list(click), (l, r) -> case when l.timestamp < r.timestamp then 1 when l.timestamp = r.timestamp then 0 else -1 end)  as click
+    from click_unioned
+    group by tdid
+  ),
+  conversion_yesterday_last10 as (
+    select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip
+    from (
+      select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip, row_number() over (partition by tdid order by timestamp desc) rnk
+      from (
+        select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip
+        from event_yesterday
+        union all
+        select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip
+        from conversion_yesterday
+      )
+    ) where rnk <= 10
+  ),
+  conversion_unioned as (
+    select tdid, collect_list(struct(timestamp, advertiserid, trackingtagid, referralurl, normalizedReferralurl, ipaddress, country, region, city, zip)) as conversion
+    from (
+      select tdid, timestamp, advertiserid, trackingtagid, referralurl, split(referralurl, '\\\\?')[0] as normalizedReferralurl, ipaddress, country, region, city, zip
+      from (
+        select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip
+        from conversion_yesterday_last10
+        union all
+        select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip
+        from event_today
+        union all
+        select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip
+        from conversion_today
+      )
+    )
+    group by tdid
+  ),
+  conversion_agg as (
+      select tdid, array_sort(conversion, (l, r) -> case when l.timestamp < r.timestamp then 1 when l.timestamp = r.timestamp then 0 else -1 end) conversion
+      from conversion_unioned
+  ),
+  joined as (
+    select * from conversion_agg FULL JOIN click_agg using (tdid)
+  )
+  select tdid, click, conversion from joined
+"
+}

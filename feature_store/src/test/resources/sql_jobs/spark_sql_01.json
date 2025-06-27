@@ -1,0 +1,44 @@
+{
+  "name": "LUF-offline-aggregation",
+  "config":{
+    "date": "__REQUIRED_ARGUMENT__",
+    "env": "__REQUIRED_ARGUMENT__",
+    "yesterday": "__REQUIRED_ARGUMENT__",
+    "base_s3_path": "s3://thetradedesk-mlplatform-us-east-1/features/feature_store/${env}/online"
+  },
+  "input":{
+    "parquet":{
+      "click_today": "${base_s3_path}/clicktracker/parquet/date=${date}/hour=23/"
+    },
+    "csv":{
+
+    },
+    "tfrecord":{
+
+    }
+  },
+  "output":{
+    "location":"${base_s3_path}/user_feature_agg/date=${date}/",
+    "format": "csv",
+    "partition": 1,
+    "partitionBy": ["split"],
+    "sideOutputs": [
+      {
+        "sql": "select abc from __MAIN_DATAFRAME__",
+        "location": "${base_s3_path}/user_feature_agg_side/date=${date}/",
+        "format": "parquet",
+        "partition": 2,
+        "partitionBy": [
+          "dt"
+        ]
+      }
+    ]
+  },
+  "sql": "select * from
+  click_today limit 10"
+
+
+
+
+
+}
