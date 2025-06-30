@@ -282,7 +282,7 @@ object CampaignFloorBufferCandidateSelectionTransform {
     floorBufferJobMetrics.countByFloorBuffer.collect().foreach { row =>
       val bufferFloorValue = row.getAs[Double]("BBF_FloorBuffer")
       val countValue = row.getAs[Long]("count")
-      floorBufferMetrics.labels(bufferFloorValue.toString).set(countValue)
+      floorBufferMetrics.labels(Map("FloorBuffer" -> bufferFloorValue.toString)).set(countValue)
     }
     numFloorBufferRowsWritten.set(floorBufferJobMetrics.floorBufferTotalCount)
     numFloorBufferRollbackRowsWritten.set(floorBufferJobMetrics.floorBufferRollbackTotalCount)

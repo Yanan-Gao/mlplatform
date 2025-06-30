@@ -532,10 +532,15 @@ object HadesCampaignAdjustmentsTransform {
 
     import job.campaignbackoff.CampaignAdjustmentsJob.{hadesCampaignCounts, hadesMetrics}
 
-    hadesCampaignCounts.labels("HadesProblemCampaigns").set(hadesIsProblemCampaignsCount)
-    hadesCampaignCounts.labels("HadesAdjustedCampaigns").set(hadesTotalAdjustmentsCount)
+    hadesCampaignCounts.labels(Map("status" -> "HadesProblemCampaigns")).set(hadesIsProblemCampaignsCount)
+    hadesCampaignCounts.labels(Map("status" -> "HadesAdjustedCampaigns")).set(hadesTotalAdjustmentsCount)
     metrics.foreach { metric =>
-      hadesMetrics.labels(metric.CampaignType, metric.PacingType, metric.OptoutType, metric.AdjustmentQuantile.toString).set(metric.Count)
+      hadesMetrics.labels(Map(
+        "CampaignType" -> metric.CampaignType,
+        "Pacing" -> metric.PacingType,
+        "OptOut" -> metric.OptoutType,
+        "Quantile" -> metric.AdjustmentQuantile.toString)
+      ).set(metric.Count)
     }
 
     hadesAdjustmentsDataset

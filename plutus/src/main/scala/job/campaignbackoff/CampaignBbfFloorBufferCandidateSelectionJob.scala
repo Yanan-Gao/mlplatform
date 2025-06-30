@@ -7,7 +7,7 @@ import com.thetradedesk.plutus.data.transform.campaignfloorbuffer.{CampaignFloor
 import com.thetradedesk.spark.TTDSparkContext
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
-import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import com.thetradedesk.spark.util.opentelemetry.OtelClient
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import org.apache.spark.sql.functions.{col, lit}
@@ -28,12 +28,12 @@ object CampaignBbfFloorBufferCandidateSelectionJob {
   val expBucketRangeEnd = config.getInt("expBucketRangeEnd", 0)
   val expFloorBuffer = config.getDouble("expFloorBuffer", platformWideBuffer)
 
-  val prometheus = new PrometheusClient("CampaignBackoff", "CampaignBbfFloorBufferCandidateSelectionJob")
-  val jobDurationGauge = prometheus.createGauge("campaign_bbf_floor_buffer_selection_job_run_time_seconds", "Job execution time in seconds")
-  val numFloorBufferRowsWritten = prometheus.createGauge("campaign_bbf_floor_buffer_num_rows", "Number of total rows in floor buffer file (or campaigns)")
-  val numAdhocFloorBufferRowsWritten = prometheus.createGauge("campaign_bbf_adhoc_floor_buffer_num_rows", "Number of total rows in adhoc floor buffer file (or campaigns)")
-  val numFloorBufferRollbackRowsWritten = prometheus.createGauge("campaign_bbf_floor_buffer_rollback_num_rows", "Number of total rows rolled back (or campaigns)")
-  val floorBufferMetrics = prometheus.createGauge("campaign_bbf_floor_buffer_count_by_val", "Number of total rows for each floor buffer", "FloorBuffer")
+  val otelClient = new OtelClient("CampaignBackoff", "CampaignBbfFloorBufferCandidateSelectionJob")
+  val jobDurationGauge = otelClient.createGauge("campaign_bbf_floor_buffer_selection_job_run_time_seconds", "Job execution time in seconds")
+  val numFloorBufferRowsWritten = otelClient.createGauge("campaign_bbf_floor_buffer_num_rows", "Number of total rows in floor buffer file (or campaigns)")
+  val numAdhocFloorBufferRowsWritten = otelClient.createGauge("campaign_bbf_adhoc_floor_buffer_num_rows", "Number of total rows in adhoc floor buffer file (or campaigns)")
+  val numFloorBufferRollbackRowsWritten = otelClient.createGauge("campaign_bbf_floor_buffer_rollback_num_rows", "Number of total rows rolled back (or campaigns)")
+  val floorBufferMetrics = otelClient.createGauge("campaign_bbf_floor_buffer_count_by_val", "Number of total rows for each floor buffer")
 
   def main(args: Array[String]): Unit = {
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
@@ -84,7 +84,7 @@ object CampaignBbfFloorBufferCandidateSelectionJob {
     )
 
     jobDurationGaugeTimer.setDuration()
-    prometheus.pushMetrics()
+    otelClient.pushMetrics()
     TTDSparkContext.spark.stop()
   }
 
