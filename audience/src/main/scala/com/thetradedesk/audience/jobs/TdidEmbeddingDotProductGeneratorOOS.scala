@@ -1,7 +1,7 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.datasets.{CrossDeviceVendor, DataSource}
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.isDeviceIdSampled1Percent
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.{_isDeviceIdSampledNPercent, isDeviceIdSampled1Percent}
 import com.thetradedesk.audience.{date, dateFormatter, shouldTrackTDID, ttdEnv}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -42,6 +42,7 @@ object TdidEmbeddingDotProductGeneratorOOS {
   val minMaxSeedEmb = config.getDouble("minMaxSeedEmb", 1e-6)
   val r = config.getDouble("r", 1e-8f).toFloat
   val loc_factor = config.getDouble("loc_factor", 0.8f).toFloat
+  val samplingRate = config.getInt("sampling_rate", 3)
 
   val sigmoid = (x: Float) => (1.0f / (1.0f + math.exp(-x))).toFloat
 
@@ -72,6 +73,8 @@ object TdidEmbeddingDotProductGeneratorOOS {
     }
   }
   val convertUID2ToGUIDUDF = udf(convertUID2ToGUID _)
+
+  private def makeSampleUdf(n: Int) = udf((id: String) => _isDeviceIdSampledNPercent(id, n))
 
   /////
   def runETLPipeline(): Unit = {
@@ -155,6 +158,9 @@ object TdidEmbeddingDotProductGeneratorOOS {
     )
 
 
+
+
+    val isIdSampled = makeSampleUdf(samplingRate)
     (0 to 9).filter(density_split < 0 || _ == density_split).foreach(i => {
       //val i = 1
       print(f"Process split ${i}")
@@ -163,7 +169,7 @@ object TdidEmbeddingDotProductGeneratorOOS {
       val dataset_prepare_to_calculate = df_tdid_embs(i).select('TDID.as("TDID"), 'cnt, 'sen_pred_avg.cast(ArrayType(FloatType)).as("bdSenEmb"), 'non_sen_pred_avg.cast(ArrayType(FloatType)).as("bdNonSenEmb"))
 
       df_density_features(i) = df_density_features(i)
-        .filter(isDeviceIdSampled1Percent('TDID))
+        .filter(isIdSampled('TDID))
         .select("TDID", "SyntheticId_Level1", "SyntheticId_Level2")
 
       val df_final_with_seed_density = dataset_prepare_to_calculate

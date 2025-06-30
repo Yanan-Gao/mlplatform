@@ -1,5 +1,6 @@
 package com.thetradedesk.audience.jobs
 
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.isDeviceIdSampled1Percent
 import com.thetradedesk.audience.{date, dateFormatter, ttdEnv}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -26,7 +27,8 @@ object UploadEmbeddings {
   def main(args: Array[String]): Unit = {
 
     val embedding = spark.read.parquet(tdid_emb_path).withColumnRenamed("TDID", "UIID").cache
-    val totalAdgroupCount = embedding.count;
+    val embeddingFiltered = embedding.filter(isDeviceIdSampled1Percent('TDID))
+    val totalAdgroupCount = embeddingFiltered.count;
 
     // each embedding is 64 * 4 bytes = 256bytes, or 1/4 kb.
     // max size of each files for coldstorage process to pick up is 100mb.
@@ -40,14 +42,14 @@ object UploadEmbeddings {
 
     // non-sensitive results  type=301/date=20250228/hour=16/batch=01
     // push partition_ids 0 to 6 to first date
-    embedding
+    embeddingFiltered
       .select('UIID, 'non_sen_pred_avg.cast("array<float>").as("embedding"))
       .repartition(totalPartitions)
       .write.format("parquet").mode("overwrite")
       .save(emb_bucket_dest + "type=" + nonsensitive_emb_enum + "/date=" + dateStr + "/hour=" + "%02d".format(base_hour) + "/batch=" + "%02d".format(batch_id));
 
     // sensitive results type=302/date=20250228/hour=16/batch=01
-    embedding.select('UIID, 'sen_pred_avg.cast("array<float>").as("embedding"))
+    embeddingFiltered.select('UIID, 'sen_pred_avg.cast("array<float>").as("embedding"))
       .repartition(totalPartitions)
       .write.format("parquet").mode("overwrite")
       .save(emb_bucket_dest + "type=" + sensitive_emb_enum + "/date=" + dateStr + "/hour=" + "%02d".format(base_hour) + "/batch=" + "%02d".format(batch_id));

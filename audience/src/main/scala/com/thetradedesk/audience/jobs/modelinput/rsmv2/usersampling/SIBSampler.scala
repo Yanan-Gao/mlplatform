@@ -110,6 +110,24 @@ object SIBSampler extends Sampler {
     userIsSampled(guidAsLongs.MostSigBits, guidAsLongs.LeastSigBits, 1000000, 100000)
   }
 
+  def _isDeviceIdSampledNPercent(deviceId: String, n: Int): Boolean = {
+
+    if ( n > 100 || n < 1 ) {
+      throw new IllegalArgumentException("Sampling percentage cannot exceed 100% or be less than 1% (n must be ≤ 100 && >= 1)")
+    }
+
+    if (deviceId == "") {
+      return false
+    }
+
+    // Parse GUID
+    val guidAsLongs = guidToLongs(deviceId)
+
+    // Must match Constants.UserIsSampled in AdPlatform.
+    // Also must stay constant between runs in prod as we read datasets produced from multiple runs.
+    userIsSampled(guidAsLongs.MostSigBits, guidAsLongs.LeastSigBits, 1000000, 10000 * n) // sample 1%
+  }
+
   def _isDeviceIdSampled1Percent(deviceId: String): Boolean = {
 
     if (deviceId == "") {

@@ -1,5 +1,6 @@
 package com.thetradedesk.audience.jobs
 
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.isDeviceIdSampled1Percent
 import com.thetradedesk.audience.{date, dateFormatter, ttdEnv}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -10,12 +11,14 @@ import org.apache.spark.sql.functions._
 object TdidSeedScoreScale {
   val salt=config.getString("salt", "TRM")
 
+  val samplingRate = config.getInt("sampling_rate", 3)
   val dateStr = date.format(dateFormatter)
   val raw_score_path = config.getString("raw_score_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/tdid2seedid_raw/v=1/date=${dateStr}/")
   val seed_id_path = config.getString(
     "seed_id_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/seedids/v=2/date=${dateStr}/")
   val policy_table_path = config.getString(
     "policy_table_path", s"s3://thetradedesk-mlplatform-us-east-1/configdata/prod/audience/policyTable/RSM/v=1/${dateStr}000000/")
+  val full_out_path = config.getString("full_out_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/tdid2seedid_all/v=1/date=${dateStr}/")
   val out_path = config.getString("out_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/tdid2seedid/v=1/date=${dateStr}/")
   val population_score_path = config.getString("population_score_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/seedpopulationscore/v=1/date=${dateStr}/")
 
@@ -70,6 +73,7 @@ object TdidSeedScoreScale {
       .withColumn("Score", expr(s"transform(Score, (x, i) -> cast(least(${userLevelUpperCap}, x / avg_array[i]) as float))"))
       .drop("avg_array")
 
+
     df_final
       .withColumn("split", abs(xxhash64(concat(col("TDID"), lit(salt)))) % lit(10))
       .write
@@ -77,7 +81,7 @@ object TdidSeedScoreScale {
       .format("parquet")
       .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
       .mode("overwrite")
-      .save(out_path)
+      .save(full_out_path)
 
     // PopulationScore
 
@@ -107,6 +111,18 @@ object TdidSeedScoreScale {
       .mode("overwrite")
       .save(population_score_path)
 
+    df_normalized.unpersist()
+
+    //filter at 1% for downstream consumers
+    val df_final_split = spark.read.format("parquet").load(full_out_path)
+    df_final_split
+      .filter(isDeviceIdSampled1Percent('TDID))
+      .write
+      .partitionBy("split")
+      .format("parquet")
+      .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
+      .mode("overwrite")
+      .save(out_path)
   }
 
   def main(args: Array[String]): Unit = {
