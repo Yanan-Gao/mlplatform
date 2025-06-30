@@ -1,7 +1,7 @@
 package com.thetradedesk.audience.jobs
 import com.thetradedesk.audience.datasets.{AudienceModelInputDataset, AudienceModelInputRecord, Model}
 import com.thetradedesk.audience.{audienceVersionDateFormat, date, dateTime, doNotTrackTDID, ttdEnv}
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler._isDeviceIdSampled1Percent
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.{_isDeviceIdSampled1Percent, _isDeviceIdSampledNPercent}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, readModelFeatures}
@@ -23,6 +23,16 @@ object Imp2BrModelInferenceDataGenerator {
   val modelVersion = s"${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}"
   val featuresJsonPath= config.getString(
     "feature_path", s"s3://thetradedesk-mlplatform-us-east-1/models/prod/RSM/full_model/${modelVersion}/features.json")
+
+  val samplingRate = config.getInt("sampling_rate", 3)
+
+  private def makeSampleFun(n: Int): String => Boolean = {
+     (id: String) => {
+       if (id == null || id.isEmpty) false
+       else _isDeviceIdSampledNPercent(id, n)
+       }
+  }
+
 
   def getAllUiidsUdfWithSample(sampleFun: String => Boolean) = udf((tdid: String, deviceAdvertisingId: String, uid2: String, euid: String, identityLinkId: String) => {
     val uiids = ArrayBuffer[String]()
@@ -49,7 +59,7 @@ object Imp2BrModelInferenceDataGenerator {
 
   def runETLPipeline(): Unit = {
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack=Some(0), source = Some(GERONIMO_DATA_SOURCE))
-      .withColumn("Uiids", getAllUiidsUdfWithSample(_isDeviceIdSampled1Percent)('CookieTDID, 'DeviceAdvertisingId, 'UnifiedId2, 'EUID, 'IdentityLinkId))
+      .withColumn("Uiids", getAllUiidsUdfWithSample(makeSampleFun( samplingRate ))('CookieTDID, 'DeviceAdvertisingId, 'UnifiedId2, 'EUID, 'IdentityLinkId))
       .withColumn("TDID", explode(col("Uiids")))
       .drop("Uiids")
       .filter("SUBSTRING(TDID, 9, 1) = '-'")
