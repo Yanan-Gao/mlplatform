@@ -11,4 +11,6 @@ final case class DailyClickRecord(
 case class DailyClickDataset(experimentOverride: Option[String] = None) extends KongMingDataset[DailyClickRecord](
   s3DatasetPath = "dailyclick/v=1",
   experimentOverride = experimentOverride
-)
+  ) {
+  override protected def getMetastoreTableName: String = "dailyclick"
+}

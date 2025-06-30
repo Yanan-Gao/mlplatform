@@ -14,4 +14,6 @@ final case class DailyBidFeedbackRecord(
 case class DailyBidFeedbackDataset(experimentOverride: Option[String] = None) extends KongMingDataset[DailyBidFeedbackRecord](
   s3DatasetPath = "dailybidfeedback/v=1",
   experimentOverride = experimentOverride
-)
+  ) {
+  override protected def getMetastoreTableName: String = "dailybidfeedback"
+}

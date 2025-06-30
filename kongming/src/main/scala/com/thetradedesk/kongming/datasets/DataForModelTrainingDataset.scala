@@ -456,6 +456,7 @@ case class DataCsvForModelTrainingDatasetLastTouch(experimentOverride: Option[St
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
   ) {
+  override protected def getMetastoreTableName: String = "trainset"
 }
 
 case class DataCsvForModelTrainingDatasetClick(experimentOverride: Option[String] = None)
@@ -464,6 +465,7 @@ case class DataCsvForModelTrainingDatasetClick(experimentOverride: Option[String
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
   ) {
+  override protected def getMetastoreTableName: String = "trainset_click"
 }
 
 case class DataIncCsvForModelTrainingDatasetLastTouch(experimentOverride: Option[String] = None)
@@ -472,6 +474,7 @@ case class DataIncCsvForModelTrainingDatasetLastTouch(experimentOverride: Option
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
   ) {
+  override protected def getMetastoreTableName: String = "trainset_inc"
 }
 
 case class DataIncCsvForModelTrainingDatasetClick(experimentOverride: Option[String] = None)
@@ -480,6 +483,7 @@ case class DataIncCsvForModelTrainingDatasetClick(experimentOverride: Option[Str
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
   ) {
+  override protected def getMetastoreTableName: String = "trainset_click_inc"
 }
 
 case class UserDataIncCsvForModelTrainingDatasetLastTouch(experimentOverride: Option[String] = None)
@@ -488,6 +492,7 @@ case class UserDataIncCsvForModelTrainingDatasetLastTouch(experimentOverride: Op
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
   ) {
+  override protected def getMetastoreTableName: String = "trainset_userdata_inc"
 }
 
 case class UserDataCsvForModelTrainingDatasetLastTouch(experimentOverride: Option[String] = None)
@@ -496,6 +501,7 @@ case class UserDataCsvForModelTrainingDatasetLastTouch(experimentOverride: Optio
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
   ) {
+  override protected def getMetastoreTableName: String = "trainset_userdata"
 }
 
 case class UserDataCsvForModelTrainingDatasetClick(experimentOverride: Option[String] = None)
@@ -504,6 +510,7 @@ case class UserDataCsvForModelTrainingDatasetClick(experimentOverride: Option[St
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
   ) {
+  override protected def getMetastoreTableName: String = "trainset_click_userdata"
 }
 
 case class UserDataIncCsvForModelTrainingDatasetClick(experimentOverride: Option[String] = None)
@@ -512,6 +519,7 @@ case class UserDataIncCsvForModelTrainingDatasetClick(experimentOverride: Option
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
   ) {
+  override protected def getMetastoreTableName: String = "trainset_click_userdata_inc"
 }
 
 case class ArrayUserDataIncCsvForModelTrainingDatasetLastTouch(experimentOverride: Option[String] = None)

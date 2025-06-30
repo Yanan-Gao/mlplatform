@@ -13,4 +13,6 @@ final case class DailyConversionDataRecord( TrackingTagId: String,
 case class DailyConversionDataset(experimentOverride: Option[String] = None) extends KongMingDataset[DailyConversionDataRecord](
   s3DatasetPath = "dailyconversion/v=1",
   experimentOverride = experimentOverride
-)
+  ) {
+  override protected def getMetastoreTableName: String = "dailyconversion"
+}

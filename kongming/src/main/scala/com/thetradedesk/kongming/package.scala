@@ -42,6 +42,7 @@ package object kongming {
   val LogsDiscrepancyCountGaugeName = "logs_discrepancy_count"
 
   var writeThroughHdfs = config.getBoolean("writeThroughHdfs", true)
+  var EnablePartitionRegister = config.getBoolean("enablePartitionRegister", false)
 
   var date = config.getDate("date" , LocalDate.now())
   val RoundUpTimeUnit = "minute"

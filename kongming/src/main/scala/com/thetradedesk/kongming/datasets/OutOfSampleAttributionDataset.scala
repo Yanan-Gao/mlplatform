@@ -275,14 +275,20 @@ case class OutOfSampleAttributionDatasetDeprecated(delayNDays: Int, experimentOv
     GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/outofsampleattributionset/v=1/delay=${delayNDays}D/userDataOptIn=1",
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
-)
+) {
+  override protected def shouldRegisterMetastorePartition: Boolean = false
+}
 
 case class OutOfSampleAttributionDataset(delayNDays: Int, experimentOverride: Option[String] = None)
-  extends DateSplitPartitionedS3Dataset[OutOfSampleAttributionRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/outofsampleattributionset_userdataoptin/v=1/delay=${delayNDays}D",
+  extends ExtendedDateSplitS3Dataset[OutOfSampleAttributionRecord](
+    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/outofsampleattributionset_userdataoptin/v=1",
     fileFormat = Csv.WithHeader,
-    experimentOverride = experimentOverride
-  )
+    experimentOverride = experimentOverride,
+    extraPartitionName = "delay",
+    extraPartitionValue = s"${delayNDays}D"
+  ) {
+  override protected def getMetastoreTableName: String = "outofsampleattributionset_userdataoptin"
+}
 
 final case class OldOutOfSampleAttributionRecord(
                                                   AdGroupId: Int,
@@ -402,11 +408,15 @@ final case class OldOutOfSampleAttributionRecord(
                                                 )
 
 case class OldOutOfSampleAttributionDataset(delayNDays: Int, experimentOverride: Option[String] = None)
-  extends DateSplitPartitionedS3Dataset[OldOutOfSampleAttributionRecord](
-    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/outofsampleattributionset/v=1/delay=${delayNDays}D/",
+  extends ExtendedDateSplitS3Dataset[OldOutOfSampleAttributionRecord](
+    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/outofsampleattributionset/v=1",
     fileFormat = Csv.WithHeader,
-    experimentOverride = experimentOverride
-  )
+    experimentOverride = experimentOverride,
+    extraPartitionName = "delay",
+    extraPartitionValue = s"${delayNDays}D"
+  ) {
+  override protected def getMetastoreTableName: String = "outofsampleattributionset"
+}
 
 final case class ArrayOutOfSampleAttributionRecord(
                                                AdGroupId: Int,

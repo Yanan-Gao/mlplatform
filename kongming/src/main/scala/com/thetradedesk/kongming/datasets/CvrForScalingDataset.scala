@@ -11,4 +11,6 @@ final case class CvrForScalingRecord(
 case class CvrForScalingDataset(experimentOverride: Option[String] = None) extends KongMingDataset[CvrForScalingRecord](
   s3DatasetPath = "calibration/cvrforscaling/v=1",
   experimentOverride = experimentOverride
-)
+ ) {
+  override protected def getMetastoreTableName: String = "cvrforscaling"
+}

@@ -264,7 +264,10 @@ case class DailyOfflineScoringDataset(experimentOverride: Option[String] = None)
   s3DatasetPath = "dailyofflinescore/v=2",
   experimentOverride = experimentOverride,
   fileFormat = Csv.WithHeader
-)
+  ) {
+  override protected def getMetastoreTableName: String = "dailyofflinescore"
+}
+
 
 final case class OldDailyOfflineScoringRecord(
                                            AdGroupId: Int,
@@ -328,7 +331,9 @@ case class OldDailyOfflineScoringDataset(experimentOverride: Option[String] = No
   s3DatasetPath = "dailyofflinescore/v=1",
   experimentOverride = experimentOverride,
   fileFormat = TFRecord.Example
-)
+) {
+  override protected def shouldRegisterMetastorePartition: Boolean = false
+}
 
 final case class ArrayDailyOfflineScoringRecord(
                                            AdGroupId: Int,
