@@ -25,18 +25,29 @@ import java.time.{LocalDate, LocalDateTime}
 import scala.util.Random
 // import java.io.ObjectInputFilter.Config
 
-object CalibrationInputDataGeneratorJob {
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
+
+object CalibrationInputDataGeneratorJob
+  extends AutoConfigResolvingETLJobBase(
+    env = config.getString("confettiEnv", "prod"),
+    experimentName = config.getStringOption("confettiExperiment"),
+    groupName = "audience",
+    jobName = "CalibrationInputDataGeneratorJob") {
+
   val prometheus = new PrometheusClient("AudienceCalibrationDataJob", "RSMCalibrationInputDataGeneratorJob")
 
-
   def main(args: Array[String]): Unit = {
-    runETLPipeline()
+    execute()
     prometheus.pushMetrics()
   }
 
-  def runETLPipeline(): Unit = {
-    RSMCalibrationInputDataGenerator.generateMixedOOSData(date)
+  override def runETLPipeline(conf: Map[String, String]): Map[String, String] = {
+    val dt = conf.get("date_time").map(LocalDateTime.parse).getOrElse(LocalDateTime.now())
+    date = dt.toLocalDate
+    dateTime = dt
 
+    RSMCalibrationInputDataGenerator.generateMixedOOSData(date)
+    Map("status" -> "success")
   }
 }
 
