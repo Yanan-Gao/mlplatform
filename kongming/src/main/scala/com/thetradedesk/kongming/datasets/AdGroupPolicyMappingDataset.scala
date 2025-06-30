@@ -16,4 +16,6 @@ final case class AdGroupPolicyMappingRecord(ConfigKey: String,
 case class AdGroupPolicyMappingDataset(experimentOverride: Option[String] = None) extends KongMingDataset[AdGroupPolicyMappingRecord](
   s3DatasetPath = "dailyadgrouppolicymapping/v=1",
   experimentOverride = experimentOverride
-)
+  ) {
+  override protected def getMetastoreTableName: String = "dailyadgrouppolicymapping"
+}

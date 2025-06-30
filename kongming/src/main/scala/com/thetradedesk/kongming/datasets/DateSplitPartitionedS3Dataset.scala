@@ -1,10 +1,10 @@
 package com.thetradedesk.kongming.datasets
 
 import com.thetradedesk.MetadataType
-import com.thetradedesk.kongming.{JobExperimentName, getExperimentVersion, writeThroughHdfs}
+import com.thetradedesk.kongming.{EnablePartitionRegister, JobExperimentName, getExperimentVersion, task, writeThroughHdfs}
 import com.thetradedesk.spark.datasets.core._
 import org.apache.spark.sql.{Dataset, SaveMode, SparkSession}
-import org.apache.spark.sql.functions.{lit, size, min, max}
+import org.apache.spark.sql.functions.{lit, max, min, size}
 import com.thetradedesk.spark.TTDSparkContext
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.listener.WriteListener
@@ -47,6 +47,52 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
 
   override def toStoragePartition2(split: String): String = split
 
+  protected def getMetastoreTableName: String = {
+    "unknown_table"
+  }
+
+  protected def getMetastoreDbName: String = {
+    (task, environment) match {
+      case ("roas", Production) => "roas"
+      case ("roas", _) => "roas_test"
+
+      case (_, Production) => "cpa"
+      case (_, _) => "cpa_test"
+    }
+  }
+
+  protected def shouldRegisterMetastorePartition: Boolean = true
+
+  protected def registerMetastorePartition(partition1: LocalDate, partition2: String): Unit = {
+    if (!shouldRegisterMetastorePartition || isExperiment) return
+
+    val db = getMetastoreDbName
+    val table = getMetastoreTableName
+    val datePart = partition1.format(DateTimeFormatter.BASIC_ISO_DATE)
+
+    try {
+      if (table == "unknown_table") {
+        throw new IllegalStateException("Subclasses must override `getMetastoreTableName` to provide a valid table name.")
+      }
+
+      val sqlStatement =
+        s"""ALTER TABLE `$db`.`$table`
+           |ADD IF NOT EXISTS PARTITION (date='$datePart', split='$partition2')""".stripMargin
+
+      println(sqlStatement)
+      spark.sql(sqlStatement)
+      spark.catalog.refreshTable(s"$db.$table")
+
+    } catch {
+      case e: IllegalStateException =>
+        println(s"[ERROR] Partition registration skipped due to missing metastore table name: ${e.getMessage}")
+      case e: org.apache.spark.sql.AnalysisException =>
+        println(s"[ERROR] Metastore operation failed for table `$db`.`$table`: ${e.getMessage}")
+      case e: Exception =>
+        println(s"[ERROR] Unexpected error during partition registration: ${e.getMessage}")
+    }
+  }
+
   def writePartition(dataSet: Dataset[T], partition1: LocalDate, partition2: String, coalesceToNumFiles: Option[Int]): (String, Long) = {
     // write to and read from test folders for ProdTesting environment to get the correct row count
     val isProdTesting = environment == ProdTesting
@@ -66,6 +112,10 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
     // save row count as metadata
     val dataSetName = s"${this.getClass.getSimpleName}/${partition2}"
     MetadataDataset(getExperimentVersion).writeRecord(count, partition1, MetadataType.rowCount, dataSetName)
+
+    if(EnablePartitionRegister) {
+      registerMetastorePartition(partition1, partition2)
+    }
 
     (dataSetName, count)
 

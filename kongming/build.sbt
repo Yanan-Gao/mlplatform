@@ -36,6 +36,7 @@ libraryDependencies ++= Seq(
   "com.thetradedesk" %% "geronimo" % "0.2.42-SNAPSHOT",
   "com.thetradedesk" %% "eldorado-core" % "1.0.285-spark-3.2.1",
   "com.thetradedesk" %% "feature_store" % "20250218045228-SNAPSHOT",
+  "com.amazonaws" % "aws-java-sdk-glue" % "1.12.654",
 )
 
 libraryDependencySchemes += "com.thetradedesk" %% "geronimo" % VersionScheme.Always

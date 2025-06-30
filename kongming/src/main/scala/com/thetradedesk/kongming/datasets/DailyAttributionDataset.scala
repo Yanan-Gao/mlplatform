@@ -32,7 +32,9 @@ final case class DailyAttributionRecord(
 case class DailyAttributionDataset(experimentOverride: Option[String] = None) extends KongMingDataset[DailyAttributionRecord](
   s3DatasetPath = "dailyattribution/v=1",
   experimentOverride = experimentOverride
-)
+  ) {
+  override protected def getMetastoreTableName: String = "dailyattribution"
+}
 
 
 final case class DailyAttributionEventsRecord(
@@ -55,4 +57,5 @@ case class DailyAttributionEventsDataset(experimentOverride: Option[String] = No
     fileFormat = Parquet,
     experimentOverride = experimentOverride
   ) {
+  override protected def getMetastoreTableName: String = "dailyattributionevents"
 }

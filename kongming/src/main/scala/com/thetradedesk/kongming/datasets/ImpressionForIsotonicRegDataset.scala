@@ -22,7 +22,9 @@ case class SampledImpressionForIsotonicRegDataset(experimentOverride: Option[Str
   s3DatasetPath = "calibration/sampledimpressionforscoring/v=1",
   fileFormat = Csv.WithHeader,
   experimentOverride = experimentOverride
-)
+  ) {
+  override protected def getMetastoreTableName: String = "sampledimpressionforscoring"
+}
 
 case class ArraySampledImpressionForIsotonicRegDataset(experimentOverride: Option[String] = None)
   extends DateSplitPartitionedS3CBufferDataset[ArrayOutOfSampleAttributionRecord](

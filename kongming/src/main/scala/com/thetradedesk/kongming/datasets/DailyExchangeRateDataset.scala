@@ -14,4 +14,6 @@ case class CurrencyExchangeRateDataSet() extends ProvisioningS3DataSet[DailyExch
 case class DailyExchangeRateDataset(experimentOverride: Option[String] = None) extends KongMingDataset[DailyExchangeRateRecord](
   s3DatasetPath = "dailyexchangerate/v=1",
   experimentOverride = experimentOverride
-)
+) {
+  override protected def getMetastoreTableName: String = "dailyexchangerate"
+}
