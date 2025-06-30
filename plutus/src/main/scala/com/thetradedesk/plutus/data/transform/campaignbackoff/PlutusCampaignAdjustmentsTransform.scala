@@ -584,11 +584,11 @@ object PlutusCampaignAdjustmentsTransform extends Logger {
     val isValuePacingCount = campaignAdjustmentsPacingDataset.filter(col("IsValuePacing") === true && col("AddedDate").isNotNull && col("CampaignPCAdjustment") =!= 1).count()
     val isValuePacingRatioOfAdjustedCampaigns = isValuePacingCount.toDouble / activeAdjustedCampaignsCount.toDouble
 
-    campaignCounts.labels("NewCampaigns").set(newCampaignsCount)
-    campaignCounts.labels("EndedFlightCampaigns").set(endedFlightResetCampaignsCount)
-    campaignCounts.labels("WorsePacingCampaigns").set(worsePacingResetCampaignsCount)
-    campaignCounts.labels("ActiveAdjustedCampaigns").set(activeAdjustedCampaignsCount)
-    campaignCounts.labels("DACampaigns").set(isValuePacingRatioOfAdjustedCampaigns)
+    campaignCounts.labels(Map("status" -> "NewCampaigns")).set(newCampaignsCount)
+    campaignCounts.labels(Map("status" -> "EndedFlightCampaigns")).set(endedFlightResetCampaignsCount)
+    campaignCounts.labels(Map("status" -> "WorsePacingCampaigns")).set(worsePacingResetCampaignsCount)
+    campaignCounts.labels(Map("status" -> "ActiveAdjustedCampaigns")).set(activeAdjustedCampaignsCount)
+    campaignCounts.labels(Map("status" -> "DACampaigns")).set(isValuePacingRatioOfAdjustedCampaigns)
 
     campaignAdjustmentsPacingDataset
   }

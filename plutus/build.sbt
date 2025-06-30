@@ -28,7 +28,7 @@ libraryDependencies ++= Seq(
  // "MrPowers" % "spark-fast-tests" % "2.2.0_0.5.0" % "test"
 
   "com.thetradedesk" %% "geronimo" % "0.2.44-SNAPSHOT",
-  "com.thetradedesk" %% "eldorado-core" % "1.0.285-spark-3.2.1"
+  "com.thetradedesk" %% "eldorado-core" % "1.0.322-spark-3.2.1"
 )
 
 lazy val protoVersion: SettingKey[String] =
@@ -63,6 +63,7 @@ assemblyMergeStrategy in assembly := {
   case PathList("org", "apache", "scala", _@_*) => MergeStrategy.discard
   case PathList("org", "apache", "spark", "sql", "execution", _@_*) => MergeStrategy.discard
   case PathList("META-INF", "services", file) if file.startsWith("io.openlineage.client.transports.TransportBuilder") => MergeStrategy.first
+  case PathList("META-INF", "services", file) if file.startsWith("io.opentelemetry.exporter.internal.grpc.GrpcSenderProvider") => MergeStrategy.first
   case PathList("META-INF", _@_*) => MergeStrategy.discard
 
   case _ => MergeStrategy.first
@@ -75,5 +76,6 @@ testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oD")
 // note: this is required for circe and spark to work properly
 assembly / assemblyShadeRules := Seq(
   ShadeRule.rename("shapeless.**" -> "new_shapeless.@1").inAll,
-  ShadeRule.rename("cats.kernel.**" -> s"new_cats.kernel.@1").inAll
-)
+  ShadeRule.rename("cats.kernel.**" -> s"new_cats.kernel.@1").inAll,
+  ShadeRule.rename("okhttp3.**" -> "shade.okhttp3.@1").inAll,
+  ShadeRule.rename("okio.**" -> "shade.okio.@1").inAll)

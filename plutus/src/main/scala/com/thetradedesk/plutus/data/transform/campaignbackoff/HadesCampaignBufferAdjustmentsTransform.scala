@@ -10,7 +10,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.{AdGroupDataSet, AdGroupRecord, CampaignDataSet}
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
-import job.campaignbackoff.CampaignAdjustmentsJob.hadesCampaignCounts
+import job.campaignbackoff.CampaignAdjustmentsJob.{hadesCampaignCounts}
 import org.apache.hadoop.shaded.org.apache.commons.math3.special.Erf
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions._
@@ -593,10 +593,16 @@ object HadesCampaignBufferAdjustmentsTransform {
 
     import job.campaignbackoff.CampaignAdjustmentsJob.hadesBackoffV3Metrics
 
-    hadesCampaignCounts.labels("HadesProblemCampaigns").set(hadesIsProblemCampaignsCount)
-    hadesCampaignCounts.labels("HadesAdjustedCampaigns").set(hadesTotalAdjustmentsCount)
+    hadesCampaignCounts.labels(Map("status" -> "HadesProblemCampaigns")).set(hadesIsProblemCampaignsCount)
+    hadesCampaignCounts.labels(Map("status" -> "HadesAdjustedCampaigns")).set(hadesTotalAdjustmentsCount)
     metrics.foreach { metric =>
-      hadesBackoffV3Metrics.labels(metric.CampaignType, metric.PacingType, metric.OptoutType, metric.AdjustmentQuantile.toString, metric.Buffer).set(metric.Count)
+      hadesBackoffV3Metrics.labels(Map(
+        "CampaignType" -> metric.CampaignType,
+        "Pacing" -> metric.PacingType,
+        "OptOut" -> metric.OptoutType,
+        "Quantile" -> metric.AdjustmentQuantile.toString,
+        "Backoff" -> metric.Buffer)
+      ).set(metric.Count)
     }
 
     hadesBufferAdjustmentsDataset
