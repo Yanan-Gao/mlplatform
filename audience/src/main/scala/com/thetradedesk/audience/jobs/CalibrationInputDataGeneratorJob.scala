@@ -53,9 +53,11 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
     val tag = config.getString("tag", default = "Seed_None")
     val version = config.getInt("version", default = 1)
     val lookBack = config.getInt("lookBack", default = 3)
+    val coalesceProdData = config.getBoolean("coalesceProdData", default = false) // for testing and experiment, when data is missing in ttdReadEnv, use prod data
     val startDate = config.getDate("startDate",  default = LocalDate.parse("2025-02-13"))
     val oosDataS3Bucket = S3Utils.refinePath(config.getString("oosDataS3Bucket", "thetradedesk-mlplatform-us-east-1"))
     val oosDataS3Path = S3Utils.refinePath(config.getString("oosDataS3Path", s"data/${ttdReadEnv}/audience/RSMV2/Seed_None/v=1"))
+    val oosProdDataS3Path = S3Utils.refinePath(config.getString("oosDataS3Path", s"data/prod/audience/RSMV2/Seed_None/v=1"))
     val calibrationOutputData3Path = S3Utils.refinePath(config.getString("oosDataS3Path", s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None/v=1"))
     val subFolderKey = config.getString("subFolderKey", default = "mixedForward")
     val subFolderValue = config.getString("subFolderValue", default = "Calibration")
@@ -68,6 +70,7 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
 
     val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
     val basePath = "s3://" + Config.oosDataS3Bucket + "/" + Config.oosDataS3Path
+    val prodBasePath = "s3://" + Config.oosDataS3Bucket + "/" + Config.oosProdDataS3Path
     val outputBasePath = "s3://" + Config.oosDataS3Bucket + "/" + Config.calibrationOutputData3Path
 
     val targetPath = constructPath(date, basePath)
@@ -80,8 +83,9 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
 
     val validPaths = candidateDates.flatMap { date =>
       val pathStr = constructPath(date, basePath)
-      if (pathExists(pathStr)) Some(pathStr) else None
-      }.reverse
+      val prodPathStr = constructPath(date, prodBasePath)
+      if (pathExists(pathStr)) Some(pathStr) else if (Config.coalesceProdData && pathExists(prodPathStr)) Some(prodPathStr) else None
+    }.reverse
 
     if (validPaths.isEmpty) {
       throw new Exception("No valid paths found within the lookback window.")
@@ -95,12 +99,24 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
 
     val dfs: Seq[DataFrame] = pathWeightPairs.map { case (pathStr, weight) => {
       val df = spark.read.format("tfrecord").load(pathStr).sample(withReplacement = false, fraction = weight)
-      if (!df.columns.contains("AliasedSupplyPublisherIdCityHashed")) {
-        // TODO: remove, temporary solution during transition to new density feature
-        df.withColumn("AliasedSupplyPublisherIdCityHashed", lit(null).cast("long"))
+      // backward compatibility, to be cleaned up
+      if (df.columns.contains("FeatureValueHashed")) {
+        df.withColumnRenamed("FeatureValueHashed", "SiteZipHashed")
       } else {
         df
       }
+
+      val potentiallyMissingColumns = Map(
+        "AliasedSupplyPublisherIdCityHashed" -> "long",
+        "IdTypesBitmap" -> "int",
+        "CookieTDID" -> "string",
+        "DeviceAdvertisingId" -> "string",
+        "IdentityLinkId" -> "string",
+        "EUID" -> "string",
+        "UnifiedId2" -> "string",
+      )
+
+      addMissingColumns(df, potentiallyMissingColumns)
     }
     }
   
@@ -126,6 +142,17 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
     val dayStr = date.format(formatter)
     s"$basePath/${dayStr}000000/split=OOS"
   }
+
+  def addMissingColumns(df: DataFrame, columnSpec: Map[String, String]): DataFrame = {
+    columnSpec.foldLeft(df) { case (df, (colName, typeName)) =>
+      if (df.columns.contains(colName)) {
+        df
+      } else {
+        df.withColumn(colName, lit(null).cast(typeName))
+      }
+    }
+  }
+
 }
 
 object RSMCalibrationInputDataGenerator extends CalibrationInputDataGenerator(prometheus: PrometheusClient) {
