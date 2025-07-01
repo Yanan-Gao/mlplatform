@@ -45,6 +45,11 @@ final case class RelevanceOnlineRecord(
         Longitude: Double,
 
         TDID: String,
+        DeviceAdvertisingId: String,
+        CookieTDID: String,
+        UnifiedId2: String,
+        EUID: String,
+        IdentityLinkId: String,
         BidRequestId: String,
         AdvertiserId: Option[Int],
         CampaignId: String,

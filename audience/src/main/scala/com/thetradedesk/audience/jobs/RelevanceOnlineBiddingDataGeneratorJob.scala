@@ -21,6 +21,7 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode, SparkSession}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
+import com.thetradedesk.audience.transform.IDTransform.{filterOnIdTypesSym, idTypesBitmap, joinOnIdTypes}
 
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -57,17 +58,22 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
     val aggSeed = AggregatedSeedReadableDataset()
       .readPartition(date)(spark)
       .filter(sampler.samplingFunction('TDID))
-      .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .cache()
+      .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
 
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))
       .filter('IsImp)
+      .filter(filterOnIdTypesSym(sampler.samplingFunction)) // featurestore should use the same split function to put all idtypes into the same bin
       .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdType))
       .withColumn("TDID", when(col("TDID") === "00000000-0000-0000-0000-000000000000", null).otherwise(col("TDID")))
       .filter(col("TDID").isNotNull)
-      .filter(sampler.samplingFunction('TDID))
       .select('BidRequestId, // use to connect with bidrequest, to get more features
+        'DeviceAdvertisingId,
+        'CookieTDID,
+        'UnifiedId2,
+        'EUID,
+        'IdentityLinkId,
         'AdvertiserId,
         'AdGroupId,
         'SupplyVendor,
@@ -102,12 +108,12 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
         'sin_minute_day,
         'cos_minute_day,
         'CampaignId,
-        'TDID,
         'LogEntryTime,
         'ContextualCategories,
         'MatchedSegments,
         'UserSegmentCount,
-        'RelevanceScore
+        'RelevanceScore,
+        'TDID
       )
       .filter('RelevanceScore.isNotNull && 'RelevanceScore >= 0 && 'RelevanceScore <= 1)
       .withColumnRenamed("RelevanceScore", "OnlineRelevanceScore")
@@ -138,8 +144,9 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
       .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(DoubleType)))
       .withColumn("HasMatchedSegments", when('MatchedSegments.isNull,0).otherwise(1))
       .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(DoubleType)))
-      .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
+      .withColumn("IdTypesBitmap", idTypesBitmap)
       .cache()
+      .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
 
     val policyTable = AudienceModelPolicyReadableDataset(AudienceModelInputGeneratorConfig.model)
       .readSinglePartition(dateTime)(spark)
@@ -156,11 +163,29 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
 
     val devicetype = DeviceTypeDataset().readPartition(date)(spark)
 
-    val joinedImpressionsWithCampaignSeed = bidsImpressions
+    val joinedImpressionsWithCampaign = bidsImpressions
       .join(campaignSeed, Seq("CampaignId"), "inner")
       //.withColumn("SyntheticIds", array($"SyntheticId".cast(IntegerType))) // Ensure SyntheticIds is a long array
       .withColumn("SyntheticIds", $"SyntheticId".cast(IntegerType)) // single element array will be convert to scalar value, so use scalar to save computing
-      .join(aggSeed, Seq("TDID"), "left")
+
+    // use less columns for faster operation
+    val simpleJoinedImpressionsWithCampaign = joinedImpressionsWithCampaign.select(
+        'BidRequestId,
+        'DeviceAdvertisingId,
+        'CookieTDID,
+        'UnifiedId2,
+        'EUID,
+        'IdentityLinkId,
+        'SeedId,
+        'SyntheticIds,
+        'Site,
+        'Zip,
+        'AliasedSupplyPublisherId,
+        'City,
+        'IsSensitive)
+
+    // joinOnIdTypes will explode the dataframe with idtypes
+    val joinedImpressionsWithCampaignSeed = joinOnIdTypes(simpleJoinedImpressionsWithCampaign.toDF(), aggSeed.toDF(), "left")
       .withColumn(
         "Targets",
         when(array_contains($"SeedIds", $"SeedId"), lit(1.0f))
@@ -208,14 +233,6 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
             col("Targets")
           )
       )
-      .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(DoubleType)))
-      .withColumn("HasMatchedSegments", when('MatchedSegments.isNull,0).otherwise(1))
-      .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(DoubleType)))
-      .join(devicetype, devicetype("DeviceTypeId") === bidsImpressions("DeviceType"), "left")
-      .withColumn("DeviceTypeName", when(col("DeviceTypeName").isNotNull, 'DeviceTypeName)
-                       .otherwise("Unknown"))
-      .drop("DeviceTypeId")
-      .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .cache()
 
     val feature_store_user = TDIDDensityScoreReadableDataset().readPartition(date.minusDays(1), subFolderKey = Some("split"), subFolderValue = Some("1"))(spark)
@@ -223,7 +240,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
 
     val feature_store_seed = DailySeedDensityScoreReadableDataset().readPartition(date.minusDays(1))(spark).select('FeatureKey, 'FeatureValueHashed, 'SeedId, 'DensityScore)
 
-    val bidsImpressionExtend = generateContextualFeatureTier1(joinedImpressionsWithCampaignSeed)
+    val bidsImpressionExtend = joinedImpressionsWithCampaignSeed
     .join(feature_store_user, Seq("TDID"), "left")
     .withColumn(
       "ZipSiteLevel_Seed",
@@ -250,9 +267,28 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
       )
       .drop("score_category", "DensityScore")
 
+    // aggregate the targets and density features with max logic and join back with features
+    // not use tdid from joinOnIdTypes -> will duplicate the info here
+    val bidsImpressionExtendAgg = bidsImpressionExtend.groupBy("BidRequestId", "SiteZipHashed", "AliasedSupplyPublisherIdCityHashed")
+      .agg(max("Targets").as("Targets"),
+      max("PersonGraphTargets").as("PersonGraphTargets"),
+      max("HouseholdGraphTargets").as("HouseholdGraphTargets"),
+      max("ZipSiteLevel_Seed").as("ZipSiteLevel_Seed"))
+
+    // get the full features back for each bidrequest
+    val bidsImpressionExtendLabeled = generateContextualFeatureTier1(joinedImpressionsWithCampaign.join(bidsImpressionExtendAgg, Seq("BidRequestId"), "inner")
+                                      .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(DoubleType)))
+                                      .withColumn("HasMatchedSegments", when('MatchedSegments.isNull,0).otherwise(1))
+                                      .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(DoubleType)))
+                                      .join(devicetype, devicetype("DeviceTypeId") === joinedImpressionsWithCampaign("DeviceType"), "left")
+                                      .withColumn("DeviceTypeName", when(col("DeviceTypeName").isNotNull, 'DeviceTypeName)
+                                                      .otherwise("Unknown"))
+                                      .drop("DeviceTypeId"))
+                                      .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
+
     val rawJson = readModelFeatures(featuresJsonSourcePath)()
 
-    val result = ModelFeatureTransform.modelFeatureTransform[RelevanceOnlineRecord](bidsImpressionExtend, rawJson)
+    val result = ModelFeatureTransform.modelFeatureTransform[RelevanceOnlineRecord](bidsImpressionExtendLabeled, rawJson)
 
     val subFolderKey = config.getString("subFolderKey", default = "split")
     val subFolderValue = config.getString("subFolderValue", default = "OOS")

@@ -121,4 +121,14 @@ object IDTransform {
       .map(e => sampleFun(col(e.toString)))
       .reduce(_ || _)
   }
+
+  // use to get the IDtype back
+  def getExistingIdTypes(bitmap: Int): Seq[IDType.Value] = {
+    IDType.values.toSeq
+      .filter(_ != IDType.Unknown)
+      .filter { idType =>
+        val mask = 1 << (idType.id - 1)
+        (bitmap & mask) != 0
+      }
+  }
 }
