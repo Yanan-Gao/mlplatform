@@ -11,7 +11,7 @@ object RelevanceModelInputGeneratorConfig {
   val useTmpFeatureGenerator = config.getBoolean("useTmpFeatureGenerator", default = false)
   val extraSamplingThreshold = config.getDouble("extraSamplingThreshold", 0.05)
   val rsmV2FeatureSourcePath = config.getString("rsmV2FeatureSourcePath", "/featuresV2.json")
-  val rsmV2FeatureDestPath = config.getString("rsmV2FeatureSourcePath", s"s3a://thetradedesk-mlplatform-us-east-1/configdata/${ttdWriteEnv}/audience/schema/RSMV2/v=1/${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}/features.json")
+  val rsmV2FeatureDestPath = config.getString("rsmV2FeatureDestPath", s"s3a://thetradedesk-mlplatform-us-east-1/configdata/${ttdWriteEnv}/audience/schema/RSMV2/v=1/${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}/features.json")
   val subFolder = config.getString("subFolder", "Full")
   val optInSeedEmptyTagPath = config.getString("optInSeedEmptyTagPath", s"s3a://thetradedesk-mlplatform-us-east-1/data/${ttdWriteEnv}/audience/RSMV2/Seed_None/v=1/${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}/_${subFolder}_EMPTY")
   val densityFeatureReadPathWithoutSlash = config.getString("densityFeatureReadPathWithoutSlash", s"profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1")

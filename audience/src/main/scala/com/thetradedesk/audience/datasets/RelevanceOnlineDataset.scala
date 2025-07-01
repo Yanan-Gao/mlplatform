@@ -59,7 +59,8 @@ final case class RelevanceOnlineRecord(
         HouseholdGraphTargets: Double, // array type in training
         SiteZipHashed: Long,
         AliasedSupplyPublisherIdCityHashed: Long,
-        ZipSiteLevel_Seed: Int // array type in training
+        ZipSiteLevel_Seed: Int, // array type in training
+        IdTypesBitmap: Int
 )
 
 case class RelevanceOnlineDataset(model: String, tag: String, version: Int = 1) extends LightWritableDataset[RelevanceOnlineRecord](s"${ttdWriteEnv}/audience/${model}/${tag}/v=${version}", ML_PLATFORM_ROOT, audienceResultCoalesce, dateFormat = audienceVersionDateFormat)

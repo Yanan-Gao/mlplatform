@@ -1,12 +1,14 @@
 package com.thetradedesk.audience.jobs.modelinput.rsmv2
 
 import com.thetradedesk.audience.datasets._
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.BidImpSideDataGenerator.readBidImpressionWithNecessary
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.SubFolder
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig._
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface.{BidSideDataRecord, SeedLabelSideDataRecord}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.feature.userzipsite.{UserZipSiteLevelFeatureExternalReader, UserZipSiteLevelFeatureGenerator}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.optinseed.OptInSeedFactory
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.seedlabelside.PostExtraSamplingSeedLabelSideDataGenerator
+import com.thetradedesk.audience.transform.IDTransform.joinOnIdTypes
 import com.thetradedesk.audience.{audienceResultCoalesce, dateTime}
 import com.thetradedesk.geronimo.shared.readModelFeatures
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
@@ -14,8 +16,9 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{Dataset, SaveMode}
+import org.apache.spark.sql.{DataFrame, Dataset, SaveMode}
 
 object RelevanceModelInputGeneratorJob {
   val prometheus = new PrometheusClient("RelevanceModelJob", "RelevanceModelInputGeneratorJob")
@@ -23,14 +26,13 @@ object RelevanceModelInputGeneratorJob {
   val jobProcessSize = prometheus.createGauge(s"relevance_etl_job_process_size", "RelevanceModelInputGeneratorJob process size", "model", "date", "data_source", "cross_device_vendor")
 
   def generateTrainingDataset(bidImpSideData: Dataset[BidSideDataRecord], seedLabelSideData: Dataset[SeedLabelSideDataRecord]) = {
-
-    val res = bidImpSideData.join(seedLabelSideData,"TDID")
-      .select("Site","Zip","TDID","BidRequestId","AdvertiserId","AliasedSupplyPublisherId",
+    val res = bidImpSideData.join(seedLabelSideData, "BidRequestId")
+      .select("TDID", "Site","Zip","BidRequestId","SplitRemainder","AdvertiserId","AliasedSupplyPublisherId",
         "Country","DeviceMake","DeviceModel","RequestLanguages","RenderingContext","DeviceType",
         "OperatingSystemFamily","Browser","Latitude","Longitude","Region","InternetConnectionType",
         "OperatingSystem","ZipSiteLevel_Seed","Targets","SyntheticIds","City","sin_hour_week","cos_hour_week",
         "sin_hour_day","cos_hour_day","sin_minute_hour","cos_minute_hour","sin_minute_day","cos_minute_day",
-        "MatchedSegments", "MatchedSegmentsLength", "HasMatchedSegments", "UserSegmentCount")
+        "MatchedSegments", "MatchedSegmentsLength", "HasMatchedSegments", "UserSegmentCount", "IdTypesBitmap")
 
     val rawJson = readModelFeatures(rsmV2FeatureSourcePath)()
 
@@ -41,7 +43,6 @@ object RelevanceModelInputGeneratorJob {
     // totalSplits default is 10 which train:val:holdout -> 8:1:1
     val totalSplits = trainValHoldoutTotalSplits
     val resultSet = ModelFeatureTransform.modelFeatureTransform[RelevanceModelInputRecord](res, rawJson)
-      .withColumn("SplitRemainder", abs(xxhash64(concat('TDID, lit(splitRemainderHashSalt)))) % totalSplits)
       .withColumn("SubFolder",
         when('SplitRemainder === lit(SubFolder.Val.id), SubFolder.Val.id)
           .when('SplitRemainder === lit(SubFolder.Holdout.id), SubFolder.Holdout.id)
@@ -93,9 +94,11 @@ object RelevanceModelInputGeneratorJob {
     val optInSeedGenerator = OptInSeedFactory.fromString(optInSeedType, optInSeedFilterExpr)
     val optInSeed = optInSeedGenerator.generate()
     val count = optInSeed.count()
+    val rawBidReq = readBidImpressionWithNecessary()
+
     if (count > 0) {
       // prepare left
-      val bidRes = BidImpSideDataGenerator.prepareBidImpSideFeatureDataset()
+      val bidRes = BidImpSideDataGenerator.prepareBidImpSideFeatureDataset(rawBidReq)
       // prepare feature
       val userFs = if (useTmpFeatureGenerator) {
         UserZipSiteLevelFeatureGenerator.getFeature(bidRes.rawBidReqData, optInSeed)
@@ -105,7 +108,7 @@ object RelevanceModelInputGeneratorJob {
       // prepare right
       val seedLabelSideData = PostExtraSamplingSeedLabelSideDataGenerator.prepareSeedSideFeatureAndLabel(optInSeed, bidRes.bidSideTrainingData, userFs)
       // join left and right
-      generateTrainingDataset(bidRes.bidSideTrainingData, seedLabelSideData)
+      generateTrainingDataset(bidRes.rawBidReqData, seedLabelSideData)
     } else {
       FSUtils.writeStringToFile(optInSeedEmptyTagPath, "")(spark)
     }
