@@ -3,8 +3,8 @@ package com.thetradedesk.audience.datasets
 import com.thetradedesk.audience.{audienceResultCoalesce, audienceVersionDateFormat, ttdWriteEnv}
 
 final case class RelevanceModelInputRecord(
-                                           TDID: String,
                                            InternetConnectionType: Option[Int],
+                                           SplitRemainder: Int,
                                            sin_hour_week: Double,
                                            cos_hour_week: Double,
                                            sin_hour_day: Double,
@@ -37,7 +37,9 @@ final case class RelevanceModelInputRecord(
                                            MatchedSegments: Array[Long],
                                            MatchedSegmentsLength: Double,
                                            HasMatchedSegments: Option[Int],
-                                           UserSegmentCount: Double
+                                           UserSegmentCount: Double,
+                                           IdTypesBitmap: Integer,
+                                           TDID: String,
                                          )
 
 case class RelevanceModelInputDataset(model: String, tag: String, version: Int = 1) extends

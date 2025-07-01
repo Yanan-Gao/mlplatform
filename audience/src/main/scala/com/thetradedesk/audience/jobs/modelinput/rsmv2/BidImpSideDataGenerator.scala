@@ -1,9 +1,11 @@
 package com.thetradedesk.audience.jobs.modelinput.rsmv2
 
 import com.thetradedesk.audience.{date, getUiid}
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.{intermediateResultBasePathEndWithoutSlash, overrideMode, samplerName, saveIntermediateResult, sensitiveFeatureColumns}
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.{intermediateResultBasePathEndWithoutSlash, overrideMode, samplerName, saveIntermediateResult, splitRemainderHashSalt, trainValHoldoutTotalSplits, sensitiveFeatureColumns}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface.{BidResult, BidSideDataRecord}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
+import com.thetradedesk.audience.transform.IDTransform
+import com.thetradedesk.audience.transform.IDTransform.{allIdWithType, filterOnIdTypes, filterOnIdTypesSym, idTypesBitmap}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -19,13 +21,17 @@ object BidImpSideDataGenerator {
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
     val bidsImpressionsLongRaw = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))
+      .filter(filterOnIdTypesSym(sampler.samplingFunction))
       .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdType))
-      .filter('TDID.isNotNull && 'TDID =!= lit("00000000-0000-0000-0000-000000000000"))
-      .filter(sampler.samplingFunction('TDID))
       .select(
+          "TDID",
           "Site",
           "Zip",
-          "TDID",
+          "DeviceAdvertisingId",
+          "CookieTDID",
+          "UnifiedId2",
+          "EUID",
+          "IdentityLinkId",
           "BidRequestId",
           "AdvertiserId",
           "AliasedSupplyPublisherId",
@@ -54,6 +60,8 @@ object BidImpSideDataGenerator {
           "MatchedSegments",
           "UserSegmentCount"
       )
+      .withColumn("SplitRemainderUserId", coalesce('DeviceAdvertisingId, 'CookieTDID, 'UnifiedId2, 'EUID, 'IdentityLinkId))
+      .withColumn("SplitRemainder", (abs(xxhash64(concat('SplitRemainderUserId, lit(splitRemainderHashSalt)))) % trainValHoldoutTotalSplits).cast("int"))
       .withColumn("OperatingSystemFamily", 'OperatingSystemFamily("value"))
       .withColumn("Browser", 'Browser("value"))
       .withColumn("RenderingContext", 'RenderingContext("value"))
@@ -67,6 +75,7 @@ object BidImpSideDataGenerator {
       .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(DoubleType)))
       .withColumn("HasMatchedSegments", when('MatchedSegments.isNull,0).otherwise(1))
       .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(DoubleType)))
+      .withColumn("IdTypesBitmap", idTypesBitmap)
 
     // mask sensitive
     val bidsImpressionsLong = sensitiveFeatureColumns.foldLeft(bidsImpressionsLongRaw) { (currentDs, colName) =>
@@ -81,21 +90,22 @@ object BidImpSideDataGenerator {
     if (saveIntermediateResult) {
       writePath = s"s3://${intermediateResultBasePathEndWithoutSlash}/${dateStr}/bidreq"
     }
-    RSMV2SharedFunction.writeOrCache(Option(writePath), overrideMode, bidsImpressionsLong).as[BidSideDataRecord]
+    RSMV2SharedFunction.writeOrCache(Option(writePath), overrideMode, bidsImpressionsLong, cache=false).as[BidSideDataRecord]
   }
 
-  def prepareBidImpSideFeatureDataset(): BidResult = {
+  def prepareBidImpSideFeatureDataset(rawBidReq: Dataset[BidSideDataRecord]): BidResult = {
 
     val dateStr = RSMV2SharedFunction.getDateStr()
-    val rawBidReq = readBidImpressionWithNecessary()
 
     // one TDID random keep one record
     // TODO:  how big of a change in model perf it will make if we have more samples per TDID
     val res = rawBidReq
       .withColumn("rand", rand())
+      .withColumn("AllIdsWithIdTypes", allIdWithType)
+      .withColumn("TDID", col("AllIdsWithIdTypes").getField("_1"))
       .withColumn("row", row_number().over(Window.partitionBy("TDID").orderBy("rand")))
       .filter(col("row") === 1)
-      .drop("rand", "row")
+      .drop("rand", "row", "AllIdsWithIdTypes")
 
     var writePath: String = null
     if (saveIntermediateResult) {

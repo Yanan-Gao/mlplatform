@@ -35,7 +35,7 @@ object IDTransform {
 
   object IDType extends Enumeration {
     type IDType = Value
-    val Unknown, DeviceAdvertisingId, CookieTDID, UnifiedId2, EUID, IdentityLinkId, DATId = Value
+    val Unknown, DeviceAdvertisingId, CookieTDID, UnifiedId2, EUID, IdentityLinkId = Value
   }
 
   val allIdWithTypeUDF = udf((
@@ -43,8 +43,7 @@ object IDTransform {
                                CookieTDID: String,
                                UnifiedId2: String,
                                EUID: String,
-                               IdentityLinkId: String,
-                               DATId: String
+                               IdentityLinkId: String
                              ) => {
     val buffer = new ArrayBuffer[(String, Int)](6)
 
@@ -65,9 +64,6 @@ object IDTransform {
     if (IdentityLinkId != null && IdentityLinkId != doNotTrackTDID) {
       buffer.append((IdentityLinkId, IDType.IdentityLinkId.id))
     }
-    if (DATId != null && DATId != doNotTrackTDID) {
-      buffer.append((DATId, IDType.DATId.id))
-    }
     buffer.toArray
   })
 
@@ -77,13 +73,14 @@ object IDTransform {
       col("CookieTDID"),
       col("UnifiedId2"),
       col("EUID"),
-      col("IdentityLinkId"),
-      col("DATId")))
+      col("IdentityLinkId")
+    )
+  )
 
   def joinOnIdType(df1: DataFrame, df2: DataFrame, idType: IDType, joinType: String = "inner"): DataFrame = {
     df1
       .withColumn("X", col(idType.toString))
-      .drop("CookieTDID", "DeviceAdvertisingId", "UnifiedId2", "EUID", "IdentityLinkId", "DATId", "TDID")
+      .drop("CookieTDID", "DeviceAdvertisingId", "UnifiedId2", "EUID", "IdentityLinkId", "TDID")
       .withColumnRenamed("X", "TDID")
       .where('TDID.isNotNull && 'TDID =!= doNotTrackTDIDColumn)
       .join(df2.where('idType === lit(idType.id)), Seq("TDID"), joinType)
@@ -96,11 +93,27 @@ object IDTransform {
       .reduce(_ union _)
   }
 
+  def idTypesBitmap : Column =
+    IDType.values.filter(_ != IDType.Unknown)
+      .map { idType =>
+        when(col(idType.toString).isNotNull && col(idType.toString) =!= lit(doNotTrackTDIDColumn),
+          lit(1 << (idType.id - 1)))
+          .otherwise(lit(0))
+      }.reduce(_ bitwiseOR _)
+      .cast("integer")
+
+  val hasIdType = udf((bitmap: Int, idType: Int) => {
+    val mask = 1 << (idType - 1)
+    (bitmap & mask) != 0
+  })
+
   def filterOnIdType(idType: IDType, sampleFun: Column => Column): Column = {
     sampleFun(col(idType.toString))
   }
 
   def filterOnIdTypes(sampleFun: Column => Column): Column = filterExclusiveIDTypes(sampleFun, IDType.Unknown)
+
+  def filterOnIdTypesSym(sampleFun: Symbol => Column): Column = filterOnIdTypes(col => sampleFun(Symbol(col.toString())))
 
   def filterExclusiveIDTypes(sampleFun: Column => Column, exclusiveIDTypes: IDType*): Column = {
     IDType.values

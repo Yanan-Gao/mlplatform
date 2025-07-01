@@ -56,6 +56,12 @@ libraryDependencies ++= Seq(
   "com.adbrain" %% "neocortex-spark-3" % "3.0.1-SNAPSHOT" excludeAll(guava, awsJavaSdkBundle, logback, jacksonCore) withSources()
 )
 
+dependencyOverrides ++= Seq(
+  "com.fasterxml.jackson.core" % "jackson-core" % "2.12.7",
+  "com.fasterxml.jackson.core" % "jackson-databind" % "2.12.7",
+  "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.7"
+)
+
 assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
 assemblyJarName in assembly := "audience.jar"
 
