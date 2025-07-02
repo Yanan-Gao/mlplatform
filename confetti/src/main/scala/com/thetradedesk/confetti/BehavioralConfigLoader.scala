@@ -1,22 +1,20 @@
 package com.thetradedesk.confetti
 
-import com.thetradedesk.confetti.utils.{HashUtils, S3Utils}
+import com.thetradedesk.confetti.utils.S3Utils
 import org.yaml.snakeyaml.Yaml
 
-import java.time.LocalDateTime
 import scala.collection.JavaConverters._
 
 class BehavioralConfigLoader(env: String, experimentName: Option[String], groupName: String, jobName: String) {
 
   /**
-    * Load behavioral configuration from S3, render runtime variables and write
-    * the rendered configuration back to the runtime location.
-    */
-  def loadConfig(): Map[String, String] = {
+   * Load behavioral configuration from S3, render runtime variables and write
+   * the rendered configuration back to the runtime location.
+   */
+  def loadRuntimeConfigs(runtimeVars: Map[String, String]): Map[String, String] = {
     val config = readConfigFromS3()
-    val runtimeVars = Map("date_time" -> LocalDateTime.now().toString)
     val renderedConfig = renderRuntimeVariables(config, runtimeVars)
-    writeRuntimeConfig(renderedConfig)
+    checkForUnresolvedVariables(renderedConfig)
     renderedConfig
   }
 
@@ -30,14 +28,15 @@ class BehavioralConfigLoader(env: String, experimentName: Option[String], groupN
   }
 
   /**
-    * Render runtime variables in the configuration.
-    * @param config       the configuration map with placeholders
-    * @param runtimeVars  values to substitute for placeholders like {{var}}
-    */
+   * Render runtime variables in the configuration.
+   *
+   * @param config      the configuration map with placeholders
+   * @param runtimeVars values to substitute for placeholders like {{var}}
+   */
   private def renderRuntimeVariables(
-      config: Map[String, String],
-      runtimeVars: Map[String, String]
-  ): Map[String, String] = {
+                                      config: Map[String, String],
+                                      runtimeVars: Map[String, String]
+                                    ): Map[String, String] = {
     def render(value: String): String =
       runtimeVars.foldLeft(value) { case (acc, (k, v)) =>
         acc.replace(s"{{${k}}}", v)
@@ -54,13 +53,26 @@ class BehavioralConfigLoader(env: String, experimentName: Option[String], groupN
     config.map { case (k, v) => k -> render(v) }
   }
 
+  /**
+   * Validate that all configuration values are fully resolved.
+   * Throws IllegalArgumentException if any value still contains
+   * placeholder patterns like `{{var}}`.
+   *
+   * @param config configuration map to validate
+   */
+  private def checkForUnresolvedVariables(config: Map[String, String]): Unit = {
+    val unresolved = config.filter { case (_, v) => v.contains("{{") && v.contains("}}") }
+    if (unresolved.nonEmpty) {
+      val entries = unresolved.map { case (k, v) => s"$k=$v" }.mkString(", ")
+      throw new IllegalArgumentException(s"Config contains unresolved variables: $entries. " +
+        s"This means that during this job runtime, the variables didn't get injected correctly.")
+    }
+  }
+
   /** Convert the map back to YAML and write it to the runtime config location. */
-  private def writeRuntimeConfig(config: Map[String, String]): Unit = {
+  def writeYaml(config: Map[String, String], runtimePath: String): Unit = {
     val yaml = new Yaml()
     val rendered = yaml.dump(config.asJava)
-    val hash = HashUtils.sha256Base64(rendered)
-    val runtimePath =
-      s"s3://thetradedesk-mlplatform-us-east-1/configdata/confetti/runtime-configs/$env/$groupName/$jobName/$hash/behavioral_config.yml"
     S3Utils.writeToS3(runtimePath, rendered)
   }
 

@@ -1,9 +1,10 @@
 package com.thetradedesk.confetti
 
-import com.thetradedesk.confetti.utils.{HashUtils, S3Utils}
+import com.thetradedesk.confetti.utils.HashUtils
 import org.yaml.snakeyaml.Yaml
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
+import java.time.LocalDateTime
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
@@ -33,15 +34,6 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
   )
 
   /**
-   * Load behavioral config and render runtime config using BehavioralConfigLoader.
-   */
-  private final def loadConfigAndRenderRuntimeConfig(): Unit = {
-    val config = loader.loadConfig()
-    configHash = HashUtils.sha256Base64(new Yaml().dump(config.asJava))
-    jobConfig = Some(utils.ConfigFactory.fromMap[C](config))
-  }
-
-  /**
    * Access the parsed configuration for the job. Throws an exception if
    * configuration has not been loaded.
    */
@@ -53,25 +45,22 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
    */
   def runETLPipeline(): Map[String, String]
 
-  /**
-   * Write result map into Confetti runtime config folder.
-   */
-  private final def writeResult(result: Map[String, String]): Unit = {
-    val yaml = new Yaml()
-    val rendered = yaml.dump(result.asJava)
-    val runtimePath =
-      s"s3://thetradedesk-mlplatform-us-east-1/configdata/confetti/runtime-configs/$env/$groupName/$jobName/$configHash/results.yml"
-    S3Utils.writeToS3(runtimePath, rendered)
-  }
-
   /** Executes the job by loading configuration, running the pipeline and writing the results. */
-  final def execute(): Unit = {
-    loadConfigAndRenderRuntimeConfig()
+  private final def execute(): Unit = {
+    // todo assemble runtime vars.
+    val runtimeVars = Map("date_time" -> LocalDateTime.now().toString)
+
+
+    val config = loader.loadRuntimeConfigs(runtimeVars)
+    jobConfig = Some(utils.ConfigFactory.fromMap[C](config))
     if (jobConfig.isEmpty) {
       throw new IllegalStateException("Config not initialized")
     }
+    configHash = HashUtils.sha256Base64(new Yaml().dump(config.asJava))
+    val runtimePathBase = s"s3://thetradedesk-mlplatform-us-east-1/configdata/confetti/runtime-configs/$env/$groupName/$jobName/$configHash/"
+    loader.writeYaml(config, runtimePathBase + "behavioral_config.yml")
     val result = runETLPipeline()
-    writeResult(result)
+    loader.writeYaml(result, runtimePathBase + "results.yml")
   }
 
   /** Entry point for jobs extending this base. Executes the pipeline and pushes metrics. */
