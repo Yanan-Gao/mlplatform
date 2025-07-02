@@ -4,7 +4,7 @@ import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.{audienceResultCoalesce, ttdReadEnv, ttdWriteEnv}
 import com.thetradedesk.audience.utils.Logger.Log
-import com.thetradedesk.audience.utils.S3Utils
+import com.thetradedesk.audience.utils.{MapConfigReader, S3Utils}
 import com.thetradedesk.audience.{shouldConsiderTDID3, _}
 import com.thetradedesk.audience.jobs.CalibrationInputDataGeneratorJob.prometheus
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
@@ -76,28 +76,32 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
   */
 
   object Config {
-    var model: String = "RSMV2"
-    var tag: String = "Seed_None"
-    var version: Int = 1
-    var lookBack: Int = 3
-    var startDate: LocalDate = LocalDate.parse("2025-02-13")
-    var oosDataS3Bucket: String = S3Utils.refinePath("thetradedesk-mlplatform-us-east-1")
-    var oosDataS3Path: String = S3Utils.refinePath(s"data/${ttdReadEnv}/audience/RSMV2/Seed_None/v=1")
-    var calibrationOutputData3Path: String = S3Utils.refinePath(s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None/v=1")
-    var subFolderKey: String = "mixedForward"
-    var subFolderValue: String = "Calibration"
+    case class Conf(
+      model: String,
+      tag: String,
+      version: Int,
+      lookBack: Int,
+      startDate: LocalDate,
+      oosDataS3Bucket: String,
+      oosDataS3Path: String,
+      calibrationOutputData3Path: String,
+      subFolderKey: String,
+      subFolderValue: String
+    )
+
+    private var confOpt: Option[Conf] = None
+
+    def apply(): Conf =
+      confOpt.getOrElse(throw new IllegalStateException("Config has not been loaded"))
 
     def load(map: Map[String, String]): Unit = {
-      model = map.getOrElse("model", model)
-      tag = map.getOrElse("tag", tag)
-      version = map.get("version").map(_.toInt).getOrElse(version)
-      lookBack = map.get("lookBack").map(_.toInt).getOrElse(lookBack)
-      startDate = map.get("startDate").map(LocalDate.parse).getOrElse(startDate)
-      oosDataS3Bucket = map.get("oosDataS3Bucket").map(S3Utils.refinePath).getOrElse(oosDataS3Bucket)
-      oosDataS3Path = map.get("oosDataS3Path").map(S3Utils.refinePath).getOrElse(oosDataS3Path)
-      calibrationOutputData3Path = map.get("calibrationOutputData3Path").map(S3Utils.refinePath).getOrElse(calibrationOutputData3Path)
-      subFolderKey = map.getOrElse("subFolderKey", subFolderKey)
-      subFolderValue = map.getOrElse("subFolderValue", subFolderValue)
+      // refine S3 paths after loading
+      val raw = MapConfigReader.read[Conf](map)
+      confOpt = Some(raw.copy(
+        oosDataS3Bucket = S3Utils.refinePath(raw.oosDataS3Bucket),
+        oosDataS3Path = S3Utils.refinePath(raw.oosDataS3Path),
+        calibrationOutputData3Path = S3Utils.refinePath(raw.calibrationOutputData3Path)
+      ))
     }
   }
 
@@ -107,8 +111,9 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
     val start = System.currentTimeMillis()
 
     val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
-    val basePath = "s3://" + Config.oosDataS3Bucket + "/" + Config.oosDataS3Path
-    val outputBasePath = "s3://" + Config.oosDataS3Bucket + "/" + Config.calibrationOutputData3Path
+    val c = Config()
+    val basePath = "s3://" + c.oosDataS3Bucket + "/" + c.oosDataS3Path
+    val outputBasePath = "s3://" + c.oosDataS3Bucket + "/" + c.calibrationOutputData3Path
 
     val targetPath = constructPath(date, basePath)
 
@@ -116,7 +121,7 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
       throw new Exception(s"Target date path $targetPath does not exist.")
     }
 
-    val candidateDates = (0 to Config.lookBack).map(days => date.minusDays(days)).filter(date => !date.isBefore(Config.startDate))
+    val candidateDates = (0 to c.lookBack).map(days => date.minusDays(days)).filter(date => !date.isBefore(c.startDate))
 
     val validPaths = candidateDates.flatMap { date =>
       val pathStr = constructPath(date, basePath)
@@ -151,7 +156,7 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
         .format("tfrecord")
         .option("recordType", "Example")
         .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
-        .save(s"$outputBasePath/${date.format(formatter)}000000/${Config.subFolderKey}=${Config.subFolderValue}")
+        .save(s"$outputBasePath/${date.format(formatter)}000000/${c.subFolderKey}=${c.subFolderValue}")
 
     resultTableSize.labels(dateTime.toLocalDate.toString).set(result.count())
     jobRunningTime.labels(dateTime.toLocalDate.toString).set(System.currentTimeMillis() - start)
