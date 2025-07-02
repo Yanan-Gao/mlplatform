@@ -46,6 +46,7 @@ object CalibrationInputDataGeneratorJob
     date = dt.toLocalDate
     dateTime = dt
 
+    CalibrationInputDataGenerator.Config.load(conf)
     RSMCalibrationInputDataGenerator.generateMixedOOSData(date)
     Map("status" -> "success")
   }
@@ -59,6 +60,7 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
   val sampleUDF = shouldConsiderTDID3(config.getInt("hitRateUserDownSampleHitPopulation", default = 1000000), config.getString("saltToSampleHitRate", default = "0BgGCE"))(_)
 
 
+  /*
   object Config {
     val model = config.getString("model", default = "RSMV2")
     val tag = config.getString("tag", default = "Seed_None")
@@ -70,6 +72,33 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
     val calibrationOutputData3Path = S3Utils.refinePath(config.getString("oosDataS3Path", s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None/v=1"))
     val subFolderKey = config.getString("subFolderKey", default = "mixedForward")
     val subFolderValue = config.getString("subFolderValue", default = "Calibration")
+  }
+  */
+
+  object Config {
+    var model: String = "RSMV2"
+    var tag: String = "Seed_None"
+    var version: Int = 1
+    var lookBack: Int = 3
+    var startDate: LocalDate = LocalDate.parse("2025-02-13")
+    var oosDataS3Bucket: String = S3Utils.refinePath("thetradedesk-mlplatform-us-east-1")
+    var oosDataS3Path: String = S3Utils.refinePath(s"data/${ttdReadEnv}/audience/RSMV2/Seed_None/v=1")
+    var calibrationOutputData3Path: String = S3Utils.refinePath(s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None/v=1")
+    var subFolderKey: String = "mixedForward"
+    var subFolderValue: String = "Calibration"
+
+    def load(map: Map[String, String]): Unit = {
+      model = map.getOrElse("model", model)
+      tag = map.getOrElse("tag", tag)
+      version = map.get("version").map(_.toInt).getOrElse(version)
+      lookBack = map.get("lookBack").map(_.toInt).getOrElse(lookBack)
+      startDate = map.get("startDate").map(LocalDate.parse).getOrElse(startDate)
+      oosDataS3Bucket = map.get("oosDataS3Bucket").map(S3Utils.refinePath).getOrElse(oosDataS3Bucket)
+      oosDataS3Path = map.get("oosDataS3Path").map(S3Utils.refinePath).getOrElse(oosDataS3Path)
+      calibrationOutputData3Path = map.get("calibrationOutputData3Path").map(S3Utils.refinePath).getOrElse(calibrationOutputData3Path)
+      subFolderKey = map.getOrElse("subFolderKey", subFolderKey)
+      subFolderValue = map.getOrElse("subFolderValue", subFolderValue)
+    }
   }
 
 
