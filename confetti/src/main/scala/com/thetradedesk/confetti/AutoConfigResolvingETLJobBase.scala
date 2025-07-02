@@ -17,10 +17,10 @@ import scala.reflect.runtime.universe._
  * before running the user defined ETL pipeline and writes its result to S3.
  */
 
-abstract class AutoConfigResolvingETLJobBase[C: TypeTag: ClassTag](env: String,
-                                                                  experimentName: Option[String],
-                                                                  groupName: String,
-                                                                  jobName: String) {
+abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
+                                                                    experimentName: Option[String],
+                                                                    groupName: String,
+                                                                    jobName: String) {
 
   private val loader = new BehavioralConfigLoader(env, experimentName, groupName, jobName)
   private val s3Client: AmazonS3 = AmazonS3ClientBuilder.standard().withRegion(Regions.US_EAST_1).build()
@@ -30,7 +30,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag: ClassTag](env: String,
   /**
    * Load behavioral config and render runtime config using BehavioralConfigLoader.
    */
-  final def loadConfigAndRenderRuntimeConfig(): Unit = {
+  private final def loadConfigAndRenderRuntimeConfig(): Unit = {
     val config = loader.loadConfig()
     configHash = hashConfig(new Yaml().dump(config.asJava))
     val stringMap = config.map { case (k, v) => k -> v.toString }
@@ -45,21 +45,14 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag: ClassTag](env: String,
     internalConfig.getOrElse(throw new IllegalStateException("Config not initialized"))
 
   /**
-   * Run the ETL pipeline using the loaded config.
+   * Run the ETL pipeline using the loaded config, exposure for user's implementation.
    */
   def runETLPipeline(): Map[String, String]
-
-  /** Convenience method to construct a case class from the config map. */
-  final def configFromMap[T: scala.reflect.runtime.universe.TypeTag: scala.reflect.ClassTag](
-      config: Map[String, String],
-      postProcess: T => T = (t: T) => t): T = {
-    utils.ConfigFactory.fromMap[T](config, postProcess)
-  }
 
   /**
    * Write result map into Confetti runtime config folder.
    */
-  final def writeResult(result: Map[String, String]): Unit = {
+  private final def writeResult(result: Map[String, String]): Unit = {
     val yaml = new Yaml()
     val rendered = yaml.dump(result.asJava)
     val runtimePath =
