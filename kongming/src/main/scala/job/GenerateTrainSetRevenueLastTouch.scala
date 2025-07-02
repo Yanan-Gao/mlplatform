@@ -1,6 +1,5 @@
 package job
 
-import com.thetradedesk.geronimo.shared.encodeStringIdUdf
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.features.Features._
