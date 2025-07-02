@@ -3,6 +3,7 @@ package com.thetradedesk.confetti
 import com.amazonaws.regions.Regions
 import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder, AmazonS3URI}
 import org.yaml.snakeyaml.Yaml
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
@@ -22,10 +23,20 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
                                                                     groupName: String,
                                                                     jobName: String) {
 
+  /** Name of the Prometheus application. Must be provided by subclasses. */
+  protected def prometheusAppName: String
+
+  /** Name of the Prometheus job. Must be provided by subclasses. */
+  protected def prometheusJobName: String
+
   private val loader = new BehavioralConfigLoader(env, experimentName, groupName, jobName)
   private val s3Client: AmazonS3 = AmazonS3ClientBuilder.standard().withRegion(Regions.US_EAST_1).build()
   private var configHash: String = _
   private var internalConfig: Option[C] = None
+  val prometheus = new PrometheusClient(
+    prometheusAppName,
+    prometheusJobName
+  )
 
   /**
    * Load behavioral config and render runtime config using BehavioralConfigLoader.
@@ -68,6 +79,12 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
     }
     val result = runETLPipeline()
     writeResult(result)
+  }
+
+  /** Entry point for jobs extending this base. Executes the pipeline and pushes metrics. */
+  final def main(args: Array[String]): Unit = {
+    execute()
+    prometheus.pushMetrics()
   }
 
   private def writeToS3(path: String, data: String): Unit = {

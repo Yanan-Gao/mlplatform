@@ -36,13 +36,8 @@ object CalibrationInputDataGeneratorJob
     experimentName = config.getStringOption("confettiExperiment"),
     groupName = "audience",
     jobName = "CalibrationInputDataGeneratorJob") {
-
-  val prometheus = new PrometheusClient("AudienceCalibrationDataJob", "RSMCalibrationInputDataGeneratorJob")
-
-  def main(args: Array[String]): Unit = {
-    execute()
-    prometheus.pushMetrics()
-  }
+  override val prometheusAppName: String = "AudienceCalibrationDataJob"
+  override val prometheusJobName: String = "RSMCalibrationInputDataGeneratorJob"
 
   override def runETLPipeline(): Map[String, String] = {
     val conf = getConfig
@@ -133,5 +128,5 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
   }
 }
 
-object RSMCalibrationInputDataGenerator extends CalibrationInputDataGenerator(prometheus: PrometheusClient) {
+object RSMCalibrationInputDataGenerator extends CalibrationInputDataGenerator(prometheus) {
 }
