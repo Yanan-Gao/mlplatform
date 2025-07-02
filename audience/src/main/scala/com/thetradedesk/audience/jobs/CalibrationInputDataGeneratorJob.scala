@@ -27,6 +27,30 @@ import scala.util.Random
 
 import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 
+case class Config(
+  model: String,
+  tag: String,
+  version: Int,
+  lookBack: Int,
+  startDate: LocalDate,
+  oosDataS3Bucket: String,
+  oosDataS3Path: String,
+  calibrationOutputData3Path: String,
+  subFolderKey: String,
+  subFolderValue: String
+)
+
+object Config {
+  def load(map: Map[String, String]): Config = {
+    val raw = MapConfigReader.read[Config](map)
+    raw.copy(
+      oosDataS3Bucket = S3Utils.refinePath(raw.oosDataS3Bucket),
+      oosDataS3Path = S3Utils.refinePath(raw.oosDataS3Path),
+      calibrationOutputData3Path = S3Utils.refinePath(raw.calibrationOutputData3Path)
+    )
+  }
+}
+
 object CalibrationInputDataGeneratorJob
   extends AutoConfigResolvingETLJobBase(
     env = config.getString("confettiEnv", "prod"),
@@ -46,8 +70,8 @@ object CalibrationInputDataGeneratorJob
     date = dt.toLocalDate
     dateTime = dt
 
-    CalibrationInputDataGenerator.Config.load(conf)
-    RSMCalibrationInputDataGenerator.generateMixedOOSData(date)
+    val jobConf = Config.load(conf)
+    RSMCalibrationInputDataGenerator.generateMixedOOSData(date, jobConf)
     Map("status" -> "success")
   }
 }
@@ -60,58 +84,17 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
   val sampleUDF = shouldConsiderTDID3(config.getInt("hitRateUserDownSampleHitPopulation", default = 1000000), config.getString("saltToSampleHitRate", default = "0BgGCE"))(_)
 
 
-  /*
-  object Config {
-    val model = config.getString("model", default = "RSMV2")
-    val tag = config.getString("tag", default = "Seed_None")
-    val version = config.getInt("version", default = 1)
-    val lookBack = config.getInt("lookBack", default = 3)
-    val startDate = config.getDate("startDate",  default = LocalDate.parse("2025-02-13"))
-    val oosDataS3Bucket = S3Utils.refinePath(config.getString("oosDataS3Bucket", "thetradedesk-mlplatform-us-east-1"))
-    val oosDataS3Path = S3Utils.refinePath(config.getString("oosDataS3Path", s"data/${ttdReadEnv}/audience/RSMV2/Seed_None/v=1"))
-    val calibrationOutputData3Path = S3Utils.refinePath(config.getString("oosDataS3Path", s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None/v=1"))
-    val subFolderKey = config.getString("subFolderKey", default = "mixedForward")
-    val subFolderValue = config.getString("subFolderValue", default = "Calibration")
-  }
-  */
-
-  object Config {
-    case class Conf(
-      model: String,
-      tag: String,
-      version: Int,
-      lookBack: Int,
-      startDate: LocalDate,
-      oosDataS3Bucket: String,
-      oosDataS3Path: String,
-      calibrationOutputData3Path: String,
-      subFolderKey: String,
-      subFolderValue: String
-    )
-
-    private var confOpt: Option[Conf] = None
-
-    def apply(): Conf =
-      confOpt.getOrElse(throw new IllegalStateException("Config has not been loaded"))
-
-    def load(map: Map[String, String]): Unit = {
-      // refine S3 paths after loading
-      val raw = MapConfigReader.read[Conf](map)
-      confOpt = Some(raw.copy(
-        oosDataS3Bucket = S3Utils.refinePath(raw.oosDataS3Bucket),
-        oosDataS3Path = S3Utils.refinePath(raw.oosDataS3Path),
-        calibrationOutputData3Path = S3Utils.refinePath(raw.calibrationOutputData3Path)
-      ))
-    }
-  }
 
 
-  def generateMixedOOSData(date: LocalDate): Unit = {
+
+
+
+  def generateMixedOOSData(date: LocalDate, conf: Config): Unit = {
 
     val start = System.currentTimeMillis()
 
     val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
-    val c = Config()
+    val c = conf
     val basePath = "s3://" + c.oosDataS3Bucket + "/" + c.oosDataS3Path
     val outputBasePath = "s3://" + c.oosDataS3Bucket + "/" + c.calibrationOutputData3Path
 
