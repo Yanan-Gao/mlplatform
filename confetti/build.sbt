@@ -8,6 +8,7 @@ val awsVersion = "1.12.654"
 
 libraryDependencies ++= Seq(
   "org.yaml" % "snakeyaml" % "2.2",
-  "com.amazonaws" % "aws-java-sdk-s3" % awsVersion
+  "com.amazonaws" % "aws-java-sdk-s3" % awsVersion,
+  "org.scala-lang" % "scala-reflect" % scalaVersion.value
 )
 
