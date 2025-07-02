@@ -26,7 +26,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
 
   private val loader = new BehavioralConfigLoader(env, experimentName, groupName, jobName)
   private var configHash: String = _
-  private var internalConfig: Option[C] = None
+  private var jobConfig: Option[C] = None
   val prometheus = new PrometheusClient(
     prometheusAppName,
     prometheusJobName
@@ -39,7 +39,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
     val config = loader.loadConfig()
     configHash = HashUtils.sha256Base64(new Yaml().dump(config.asJava))
     val stringMap = config.map { case (k, v) => k -> v.toString }
-    internalConfig = Some(utils.ConfigFactory.fromMap[C](stringMap))
+    jobConfig = Some(utils.ConfigFactory.fromMap[C](stringMap))
   }
 
   /**
@@ -47,7 +47,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
    * configuration has not been loaded.
    */
   protected final def getConfig: C =
-    internalConfig.getOrElse(throw new IllegalStateException("Config not initialized"))
+    jobConfig.getOrElse(throw new IllegalStateException("Config not initialized"))
 
   /**
    * Run the ETL pipeline using the loaded config, exposure for user's implementation.
@@ -68,7 +68,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
   /** Executes the job by loading configuration, running the pipeline and writing the results. */
   final def execute(): Unit = {
     loadConfigAndRenderRuntimeConfig()
-    if (internalConfig.isEmpty) {
+    if (jobConfig.isEmpty) {
       throw new IllegalStateException("Config not initialized")
     }
     val result = runETLPipeline()
