@@ -9,7 +9,7 @@ val prometheusVersion = "0.9.0"
 lazy val audience = (project in file(".")).dependsOn(confetti).settings(
   name := "audience",
   version := "0.0.0",
-  scalaVersion := "2.12.15",
+  scalaVersion := "2.12.15")
 
 resolvers += "bintray-spark-packages" at "https://dl.bintray.com/spark-packages/maven/"
 
@@ -78,4 +78,4 @@ assembly / assemblyShadeRules := Seq(
   ShadeRule.rename("shapeless.**" -> "new_shapeless.@1").inAll,
   ShadeRule.rename("cats.kernel.**" -> s"new_cats.kernel.@1").inAll
 )
-)
+
