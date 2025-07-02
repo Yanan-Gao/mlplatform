@@ -1,14 +1,9 @@
 package com.thetradedesk.confetti
 
-import com.amazonaws.regions.Regions
-import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder, AmazonS3URI}
+import com.thetradedesk.confetti.utils.{HashUtils, S3Utils}
 import org.yaml.snakeyaml.Yaml
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
-import java.io.ByteArrayInputStream
-import java.nio.charset.StandardCharsets
-import java.security.MessageDigest
-import java.util.Base64
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
@@ -30,7 +25,6 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
   protected def prometheusJobName: String
 
   private val loader = new BehavioralConfigLoader(env, experimentName, groupName, jobName)
-  private val s3Client: AmazonS3 = AmazonS3ClientBuilder.standard().withRegion(Regions.US_EAST_1).build()
   private var configHash: String = _
   private var internalConfig: Option[C] = None
   val prometheus = new PrometheusClient(
@@ -43,7 +37,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
    */
   private final def loadConfigAndRenderRuntimeConfig(): Unit = {
     val config = loader.loadConfig()
-    configHash = hashConfig(new Yaml().dump(config.asJava))
+    configHash = HashUtils.sha256Base64(new Yaml().dump(config.asJava))
     val stringMap = config.map { case (k, v) => k -> v.toString }
     internalConfig = Some(utils.ConfigFactory.fromMap[C](stringMap))
   }
@@ -68,7 +62,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
     val rendered = yaml.dump(result.asJava)
     val runtimePath =
       s"s3://thetradedesk-mlplatform-us-east-1/configdata/confetti/runtime-configs/$env/$groupName/$jobName/$configHash/results.yml"
-    writeToS3(runtimePath, rendered)
+    S3Utils.writeToS3(runtimePath, rendered)
   }
 
   /** Executes the job by loading configuration, running the pipeline and writing the results. */
@@ -87,15 +81,4 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
     prometheus.pushMetrics()
   }
 
-  private def writeToS3(path: String, data: String): Unit = {
-    val uri = new AmazonS3URI(path)
-    val bytes = data.getBytes(StandardCharsets.UTF_8)
-    val is = new ByteArrayInputStream(bytes)
-    s3Client.putObject(uri.getBucket, uri.getKey, is, null)
-  }
-
-  private def hashConfig(content: String): String = {
-    val digest = MessageDigest.getInstance("SHA-256").digest(content.getBytes(StandardCharsets.UTF_8))
-    Base64.getEncoder.encodeToString(digest)
-  }
 }
