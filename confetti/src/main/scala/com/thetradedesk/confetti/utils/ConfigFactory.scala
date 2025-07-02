@@ -1,4 +1,4 @@
-package com.thetradedesk.audience.utils
+package com.thetradedesk.confetti.utils
 
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._

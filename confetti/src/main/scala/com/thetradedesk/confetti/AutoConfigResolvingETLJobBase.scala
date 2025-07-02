@@ -9,33 +9,52 @@ import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import java.util.Base64
 import scala.collection.JavaConverters._
+import scala.reflect.ClassTag
+import scala.reflect.runtime.universe._
 
 /**
  * Base class for Confetti ETL jobs that automatically resolves configuration
  * before running the user defined ETL pipeline and writes its result to S3.
  */
-abstract class AutoConfigResolvingETLJobBase(env: String,
-                                             experimentName: Option[String],
-                                             groupName: String,
-                                             jobName: String) {
 
-  private val loader = new BehaviroalConfigLoader(env, experimentName, groupName, jobName)
+abstract class AutoConfigResolvingETLJobBase[C: TypeTag: ClassTag](env: String,
+                                                                  experimentName: Option[String],
+                                                                  groupName: String,
+                                                                  jobName: String) {
+
+  private val loader = new BehavioralConfigLoader(env, experimentName, groupName, jobName)
   private val s3Client: AmazonS3 = AmazonS3ClientBuilder.standard().withRegion(Regions.US_EAST_1).build()
   private var configHash: String = _
+  private var internalConfig: Option[C] = None
 
   /**
-   * Load behavioral config and render runtime config using BehaviroalConfigLoader.
+   * Load behavioral config and render runtime config using BehavioralConfigLoader.
    */
-  final def loadConfigAndRenderRuntimeConfig(): Map[String, Any] = {
+  final def loadConfigAndRenderRuntimeConfig(): Unit = {
     val config = loader.loadConfig()
     configHash = hashConfig(new Yaml().dump(config.asJava))
-    config
+    val stringMap = config.map { case (k, v) => k -> v.toString }
+    internalConfig = Some(utils.ConfigFactory.fromMap[C](stringMap))
   }
 
   /**
-   * Run the ETL pipeline using the provided config.
+   * Access the parsed configuration for the job. Throws an exception if
+   * configuration has not been loaded.
    */
-  def runETLPipeline(config: Map[String, String]): Map[String, String]
+  protected final def getConfig: C =
+    internalConfig.getOrElse(throw new IllegalStateException("Config not initialized"))
+
+  /**
+   * Run the ETL pipeline using the loaded config.
+   */
+  def runETLPipeline(): Map[String, String]
+
+  /** Convenience method to construct a case class from the config map. */
+  final def configFromMap[T: scala.reflect.runtime.universe.TypeTag: scala.reflect.ClassTag](
+      config: Map[String, String],
+      postProcess: T => T = (t: T) => t): T = {
+    utils.ConfigFactory.fromMap[T](config, postProcess)
+  }
 
   /**
    * Write result map into Confetti runtime config folder.
@@ -50,8 +69,11 @@ abstract class AutoConfigResolvingETLJobBase(env: String,
 
   /** Executes the job by loading configuration, running the pipeline and writing the results. */
   final def execute(): Unit = {
-    val config = loadConfigAndRenderRuntimeConfig().map { case (k, v) => k -> v.toString }
-    val result = runETLPipeline(config)
+    loadConfigAndRenderRuntimeConfig()
+    if (internalConfig.isEmpty) {
+      throw new IllegalStateException("Config not initialized")
+    }
+    val result = runETLPipeline()
     writeResult(result)
   }
 

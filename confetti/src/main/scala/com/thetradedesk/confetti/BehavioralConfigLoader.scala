@@ -11,7 +11,7 @@ import java.util.Base64
 import java.time.LocalDateTime
 import scala.collection.JavaConverters._
 
-class BehaviroalConfigLoader(env: String, experimentName: Option[String], groupName: String, jobName: String) {
+class BehavioralConfigLoader(env: String, experimentName: Option[String], groupName: String, jobName: String) {
 
   private val s3Client: AmazonS3 = AmazonS3ClientBuilder.standard().withRegion(Regions.US_EAST_1).build()
 

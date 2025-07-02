@@ -4,7 +4,7 @@ import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.{audienceResultCoalesce, ttdReadEnv, ttdWriteEnv}
 import com.thetradedesk.audience.utils.Logger.Log
-import com.thetradedesk.audience.utils.{S3Utils, ConfigFactory}
+import com.thetradedesk.audience.utils.S3Utils
 import com.thetradedesk.audience.{shouldConsiderTDID3, _}
 import com.thetradedesk.audience.jobs.CalibrationInputDataGeneratorJob.prometheus
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
@@ -37,12 +37,13 @@ case class Config(
   oosDataS3Path: String,
   calibrationOutputData3Path: String,
   subFolderKey: String,
-  subFolderValue: String
+  subFolderValue: String,
+  date_time: String
 )
 
 
 object CalibrationInputDataGeneratorJob
-  extends AutoConfigResolvingETLJobBase(
+  extends AutoConfigResolvingETLJobBase[Config](
     env = config.getString("confettiEnv", "prod"),
     experimentName = config.getStringOption("confettiExperiment"),
     groupName = "audience",
@@ -55,16 +56,16 @@ object CalibrationInputDataGeneratorJob
     prometheus.pushMetrics()
   }
 
-  override def runETLPipeline(conf: Map[String, String]): Map[String, String] = {
-    val dt = conf.get("date_time").map(LocalDateTime.parse).getOrElse(LocalDateTime.now())
+  override def runETLPipeline(): Map[String, String] = {
+    val conf = getConfig
+    val dt = LocalDateTime.parse(conf.date_time)
     date = dt.toLocalDate
     dateTime = dt
 
-    val rawConf = ConfigFactory.fromMap[Config](conf)
-    val jobConf = rawConf.copy(
-      oosDataS3Bucket = S3Utils.refinePath(rawConf.oosDataS3Bucket),
-      oosDataS3Path = S3Utils.refinePath(rawConf.oosDataS3Path),
-      calibrationOutputData3Path = S3Utils.refinePath(rawConf.calibrationOutputData3Path)
+    val jobConf = conf.copy(
+      oosDataS3Bucket = S3Utils.refinePath(conf.oosDataS3Bucket),
+      oosDataS3Path = S3Utils.refinePath(conf.oosDataS3Path),
+      calibrationOutputData3Path = S3Utils.refinePath(conf.calibrationOutputData3Path)
     )
     RSMCalibrationInputDataGenerator.generateMixedOOSData(date, jobConf)
     Map("status" -> "success")

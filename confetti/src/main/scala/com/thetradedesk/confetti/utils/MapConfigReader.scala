@@ -1,4 +1,4 @@
-package com.thetradedesk.audience.utils
+package com.thetradedesk.confetti.utils
 
 import java.time.LocalDate
 import scala.collection.mutable.ListBuffer
@@ -8,7 +8,8 @@ import scala.reflect.ClassTag
 
 /** Utility for reading configuration from a Map[String,String].
   * Collects errors for missing or malformed values so callers can
-  * report all issues at once.
+  * report all issues at once. Optional configuration fields are not
+  * supported; missing keys will result in a failure.
   */
 class MapConfigReader(map: Map[String, String]) {
   private val errors = ListBuffer.empty[String]
