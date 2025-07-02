@@ -12,7 +12,7 @@ class BehavioralConfigLoader(env: String, experimentName: Option[String], groupN
     * Load behavioral configuration from S3, render runtime variables and write
     * the rendered configuration back to the runtime location.
     */
-  def loadConfig(): Map[String, Any] = {
+  def loadConfig(): Map[String, String] = {
     val config = readConfigFromS3()
     val runtimeVars = Map("date_time" -> LocalDateTime.now().toString)
     val renderedConfig = renderRuntimeVariables(config, runtimeVars)
@@ -21,12 +21,12 @@ class BehavioralConfigLoader(env: String, experimentName: Option[String], groupN
   }
 
   /** Read the YAML configuration from S3 and decode it into a map. */
-  private def readConfigFromS3(): Map[String, Any] = {
+  private def readConfigFromS3(): Map[String, String] = {
     val path = buildConfigPath()
     val yamlStr = S3Utils.readFromS3(path)
     val yaml = new Yaml()
     val javaMap = yaml.load[java.util.Map[String, Any]](yamlStr)
-    javaMap.asScala.toMap[String, Any]
+    javaMap.asScala.map { case (k, v) => k -> v.toString }.toMap
   }
 
   /**
@@ -35,25 +35,27 @@ class BehavioralConfigLoader(env: String, experimentName: Option[String], groupN
     * @param runtimeVars  values to substitute for placeholders like {{var}}
     */
   private def renderRuntimeVariables(
-      config: Map[String, Any],
+      config: Map[String, String],
       runtimeVars: Map[String, String]
-  ): Map[String, Any] = {
+  ): Map[String, String] = {
+    def render(value: String): String =
+      runtimeVars.foldLeft(value) { case (acc, (k, v)) =>
+        acc.replace(s"{{${k}}}", v)
+      }
+    // Nested map/list support is currently disabled but kept for potential future use
+    /*
     def render(value: Any): Any = value match {
-      case s: String =>
-        runtimeVars.foldLeft(s) { case (acc, (k, v)) =>
-          acc.replace(s"{{${k}}}", v)
-        }
-      case m: Map[_, _] =>
-        renderRuntimeVariables(m.asInstanceOf[Map[String, Any]], runtimeVars)
-      case it: Iterable[_] =>
-        it.map(render).toList
+      case s: String => runtimeVars.foldLeft(s) { case (acc, (k, v)) => acc.replace(s"{{${k}}}", v) }
+      case m: Map[_, _] => renderRuntimeVariables(m.asInstanceOf[Map[String, String]], runtimeVars)
+      case it: Iterable[_] => it.map(render).toList
       case other => other
     }
+    */
     config.map { case (k, v) => k -> render(v) }
   }
 
   /** Convert the map back to YAML and write it to the runtime config location. */
-  private def writeRuntimeConfig(config: Map[String, Any]): Unit = {
+  private def writeRuntimeConfig(config: Map[String, String]): Unit = {
     val yaml = new Yaml()
     val rendered = yaml.dump(config.asJava)
     val hash = HashUtils.sha256Base64(rendered)

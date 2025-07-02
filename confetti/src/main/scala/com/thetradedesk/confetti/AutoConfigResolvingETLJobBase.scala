@@ -38,8 +38,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
   private final def loadConfigAndRenderRuntimeConfig(): Unit = {
     val config = loader.loadConfig()
     configHash = HashUtils.sha256Base64(new Yaml().dump(config.asJava))
-    val stringMap = config.map { case (k, v) => k -> v.toString }
-    jobConfig = Some(utils.ConfigFactory.fromMap[C](stringMap))
+    jobConfig = Some(utils.ConfigFactory.fromMap[C](config))
   }
 
   /**

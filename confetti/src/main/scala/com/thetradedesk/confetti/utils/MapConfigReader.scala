@@ -34,6 +34,45 @@ class MapConfigReader(map: Map[String, String]) {
       None
   }
 
+  def getDouble(key: String): Option[Double] = map.get(key) match {
+    case Some(v) =>
+      Try(v.toDouble).toOption match {
+        case Some(d) => Some(d)
+        case None =>
+          errors += s"$key is expecting Double type"
+          None
+      }
+    case None =>
+      errors += s"$key does not exist"
+      None
+  }
+
+  def getLong(key: String): Option[Long] = map.get(key) match {
+    case Some(v) =>
+      Try(v.toLong).toOption match {
+        case Some(l) => Some(l)
+        case None =>
+          errors += s"$key is expecting Long type"
+          None
+      }
+    case None =>
+      errors += s"$key does not exist"
+      None
+  }
+
+  def getBoolean(key: String): Option[Boolean] = map.get(key) match {
+    case Some(v) =>
+      Try(v.toBoolean).toOption match {
+        case Some(b) => Some(b)
+        case None =>
+          errors += s"$key is expecting Boolean type"
+          None
+      }
+    case None =>
+      errors += s"$key does not exist"
+      None
+  }
+
   def getDate(key: String): Option[LocalDate] = map.get(key) match {
     case Some(v) =>
       Try(LocalDate.parse(v)).toOption match {
@@ -59,7 +98,7 @@ class MapConfigReader(map: Map[String, String]) {
   /**
     * Construct an instance of the given case class using reflection. Field names
     * must match configuration keys exactly and supported types are String,
-    * Int and java.time.LocalDate.
+    * Int, Long, Double, Boolean and java.time.LocalDate.
     */
   def as[T: TypeTag: ClassTag]: T = {
     val mirror = runtimeMirror(getClass.getClassLoader)
@@ -75,6 +114,9 @@ class MapConfigReader(map: Map[String, String]) {
       val opt =
         if (t =:= typeOf[String]) getString(name)
         else if (t =:= typeOf[Int]) getInt(name)
+        else if (t =:= typeOf[Double]) getDouble(name)
+        else if (t =:= typeOf[Long]) getLong(name)
+        else if (t =:= typeOf[Boolean]) getBoolean(name)
         else if (t =:= typeOf[LocalDate]) getDate(name)
         else {
           errors += s"$name has unsupported type $t"
