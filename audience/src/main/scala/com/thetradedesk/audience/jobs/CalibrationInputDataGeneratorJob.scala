@@ -78,20 +78,13 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
   val resultTableSize = prometheus.createGauge(s"audience_calibration_input_data_generation_size", "RSMCalibrationInputDataGenerator table size", "date")
   val sampleUDF = shouldConsiderTDID3(config.getInt("hitRateUserDownSampleHitPopulation", default = 1000000), config.getString("saltToSampleHitRate", default = "0BgGCE"))(_)
 
-
-
-
-
-
-
   def generateMixedOOSData(date: LocalDate, conf: Config): Unit = {
 
     val start = System.currentTimeMillis()
 
     val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
-    val c = conf
-    val basePath = "s3://" + c.oosDataS3Bucket + "/" + c.oosDataS3Path
-    val outputBasePath = "s3://" + c.oosDataS3Bucket + "/" + c.calibrationOutputData3Path
+    val basePath = "s3://" + conf.oosDataS3Bucket + "/" + conf.oosDataS3Path
+    val outputBasePath = "s3://" + conf.oosDataS3Bucket + "/" + conf.calibrationOutputData3Path
 
     val targetPath = constructPath(date, basePath)
 
@@ -99,7 +92,7 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
       throw new Exception(s"Target date path $targetPath does not exist.")
     }
 
-    val candidateDates = (0 to c.lookBack).map(days => date.minusDays(days)).filter(date => !date.isBefore(c.startDate))
+    val candidateDates = (0 to conf.lookBack).map(days => date.minusDays(days)).filter(date => !date.isBefore(conf.startDate))
 
     val validPaths = candidateDates.flatMap { date =>
       val pathStr = constructPath(date, basePath)
@@ -134,7 +127,7 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
         .format("tfrecord")
         .option("recordType", "Example")
         .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
-        .save(s"$outputBasePath/${date.format(formatter)}000000/${c.subFolderKey}=${c.subFolderValue}")
+        .save(s"$outputBasePath/${date.format(formatter)}000000/${conf.subFolderKey}=${conf.subFolderValue}")
 
     resultTableSize.labels(dateTime.toLocalDate.toString).set(result.count())
     jobRunningTime.labels(dateTime.toLocalDate.toString).set(System.currentTimeMillis() - start)
