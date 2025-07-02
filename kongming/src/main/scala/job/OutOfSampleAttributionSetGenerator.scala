@@ -1,6 +1,6 @@
 package job
 
-import com.thetradedesk.geronimo.shared.{encodeStringIdUdf, loadParquetData}
+import com.thetradedesk.geronimo.shared.loadParquetData
 import com.thetradedesk.geronimo.shared.schemas.BidFeedbackDataset
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets._

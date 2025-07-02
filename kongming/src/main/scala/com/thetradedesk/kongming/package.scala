@@ -1,6 +1,7 @@
 package com.thetradedesk
 
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
+import com.thetradedesk.geronimo.shared.CHAR_SET
 import com.thetradedesk.kongming.datasets.{AdGroupPolicyMappingRecord, AdGroupPolicyRecord, AdGroupRecord}
 import com.thetradedesk.spark.datasets.core.SchemaPolicy.{SchemaPolicyType, DefaultUseFirstFileSchema, MergeAllFilesSchema, StrictCaseClassSchema}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -10,7 +11,8 @@ import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.Encoder
-import org.apache.spark.sql.functions.{broadcast, col, lit, when}
+import org.apache.spark.sql.expressions.UserDefinedFunction
+import org.apache.spark.sql.functions.{broadcast, col, lit, udf, when}
 
 import java.time.LocalDate
 
@@ -171,6 +173,29 @@ package object kongming {
     0 -> "UserData"
   )
 
+  val CHAR_MAP = CHAR_SET.zipWithIndex.map({case (char, i) => (char, (i + 1).toLong)}).toMap
+
+  def encodeStringId(id: String): Long = {
+    if (id.length() > 10) {
+      throw new Exception("Cannot encode string with more than 10 characters")
+    }
+
+    var result = 0l
+    var shift = 0l
+
+    for (c <- id) {
+      if (!CHAR_MAP.contains(c)) {
+        throw new Exception("String contains unsupported character " + id)
+      }
+
+      result |= CHAR_MAP(c) << shift
+      shift += 6
+    }
+
+    result
+  }
+
+  def encodeStringIdUdf: UserDefinedFunction = udf((id: String) => encodeStringId(id))
 }
 
 object MetadataType extends Enumeration {

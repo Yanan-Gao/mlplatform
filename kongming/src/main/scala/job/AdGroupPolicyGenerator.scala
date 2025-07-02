@@ -1,6 +1,6 @@
 package job
 
-import com.thetradedesk.geronimo.shared.{shiftModUdf, encodeStringIdUdf}
+import com.thetradedesk.geronimo.shared.shiftModUdf
 import com.thetradedesk.kongming._
 import com.thetradedesk.kongming.datasets.{AdGroupDataSet, AdGroupPolicyDataset, AdGroupPolicyMappingDataset, AdGroupPolicyMappingRecord, AdGroupPolicyRecord, AdvertiserDataSet, CampaignConversionReportingColumnDataSet, CampaignDataSet, CampaignFlightDataSet, CampaignROIGoalDataSet, DailyPositiveCountSummaryDataset, PartnerDataSet, PartnerGroupDataSet}
 import com.thetradedesk.kongming.transform.TrainSetFeatureMappingTransform

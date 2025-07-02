@@ -1,8 +1,8 @@
 package com.thetradedesk.kongming.transform
 
-import com.thetradedesk.geronimo.shared.encodeStringIdUdf
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.kongming.datasets._
+import com.thetradedesk.kongming.encodeStringIdUdf
 import com.thetradedesk.kongming.transform.ContextualTransform.generateContextualFeatureTier1
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
