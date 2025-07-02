@@ -4,7 +4,7 @@ import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.{audienceResultCoalesce, ttdReadEnv, ttdWriteEnv}
 import com.thetradedesk.audience.utils.Logger.Log
-import com.thetradedesk.audience.utils.{MapConfigReader, S3Utils}
+import com.thetradedesk.audience.utils.{S3Utils, ConfigFactory}
 import com.thetradedesk.audience.{shouldConsiderTDID3, _}
 import com.thetradedesk.audience.jobs.CalibrationInputDataGeneratorJob.prometheus
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
@@ -40,16 +40,6 @@ case class Config(
   subFolderValue: String
 )
 
-object Config {
-  def load(map: Map[String, String]): Config = {
-    val raw = MapConfigReader.read[Config](map)
-    raw.copy(
-      oosDataS3Bucket = S3Utils.refinePath(raw.oosDataS3Bucket),
-      oosDataS3Path = S3Utils.refinePath(raw.oosDataS3Path),
-      calibrationOutputData3Path = S3Utils.refinePath(raw.calibrationOutputData3Path)
-    )
-  }
-}
 
 object CalibrationInputDataGeneratorJob
   extends AutoConfigResolvingETLJobBase(
@@ -70,7 +60,12 @@ object CalibrationInputDataGeneratorJob
     date = dt.toLocalDate
     dateTime = dt
 
-    val jobConf = Config.load(conf)
+    val rawConf = ConfigFactory.fromMap[Config](conf)
+    val jobConf = rawConf.copy(
+      oosDataS3Bucket = S3Utils.refinePath(rawConf.oosDataS3Bucket),
+      oosDataS3Path = S3Utils.refinePath(rawConf.oosDataS3Path),
+      calibrationOutputData3Path = S3Utils.refinePath(rawConf.calibrationOutputData3Path)
+    )
     RSMCalibrationInputDataGenerator.generateMixedOOSData(date, jobConf)
     Map("status" -> "success")
   }
