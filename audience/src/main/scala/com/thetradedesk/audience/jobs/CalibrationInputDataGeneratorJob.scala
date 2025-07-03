@@ -1,6 +1,5 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.jobs.CalibrationInputDataGeneratorJob.prometheus
 import com.thetradedesk.audience.utils.S3Utils
 import com.thetradedesk.audience._
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -128,5 +127,5 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
   }
 }
 
-object RSMCalibrationInputDataGenerator extends CalibrationInputDataGenerator(prometheus.get) {
+object RSMCalibrationInputDataGenerator extends CalibrationInputDataGenerator(CalibrationInputDataGeneratorJob.prometheus.get) {
 }
