@@ -114,14 +114,14 @@ object GenerateTrainSetLastTouch extends KongmingBaseJob {
         .drop("PosCount","NegCount","NegRatio","PosRatio", "rand")
     }).reduce(_.union(_)).cache()
 
-    val preFeatureSamples = sampledImpressionWithAttribution.selectAs[PreFeatureJoinRecordV2]
+    val preFeatureSamples = sampledImpressionWithAttribution.selectAs[UserDataValidationDataForKongmingModelTrainingRecord]
     val positiveSamples = preFeatureSamples.filter($"Target" === lit(1))
     val negativeSamples = preFeatureSamples.filter($"Target" ===lit(0))
 
     //adjust weight for positive samples
     val positiveSampleWithAdjustedWeight = 
       if (applyPositiveReweight) {
-        positiveSamples.withColumn("Weight", col("CPACountWeight")).selectAs[PreFeatureJoinRecordV2]
+        positiveSamples.withColumn("Weight", col("CPACountWeight")).selectAs[UserDataValidationDataForKongmingModelTrainingRecord]
       } else {
         positiveSamples
       }
@@ -130,21 +130,16 @@ object GenerateTrainSetLastTouch extends KongmingBaseJob {
 
     val negativeSampleWithAdjustedWeight = 
       if (applyNegativeReweight) {
-        generateWeightForNegativeV2[PreFeatureJoinRecordV2](negativeSamples, positiveSamples, conversionLookback, Some(negativeWeightMethod), methodDistParams = negWeightParams)
+        generateWeightForNegativeV2[UserDataValidationDataForKongmingModelTrainingRecord](negativeSamples, positiveSamples, conversionLookback, Some(negativeWeightMethod), methodDistParams = negWeightParams)
       } else {
         negativeSamples
       }
 
-    val preFeatureSamplesWithAdjustedWeight = 
-        positiveSampleWithAdjustedWeight
-        .union(negativeSampleWithAdjustedWeight)
-        .groupBy("BidRequestIdStr", "Target").agg(avg("Weight").cast("float").as("Weight"))
-
-    val featureSamplesWithAdjustedWeight = 
-      sampledImpressionWithAttribution.drop($"Weight")
-      .join(preFeatureSamplesWithAdjustedWeight.select($"BidRequestIdStr",$"Target",$"Weight"), Seq("BidRequestIdStr","Target"), "inner")
-      .withColumn("Weight", $"Weight".cast("float"))
-      .withColumn("Target", $"Target".cast("float"))
+    val featureSamplesWithAdjustedWeight =
+      positiveSampleWithAdjustedWeight
+       .union(negativeSampleWithAdjustedWeight)
+       .withColumn("Weight", avg("Weight").over(Window.partitionBy("BidRequestIdStr", "Target")).cast("float"))
+       .withColumn("Target", $"Target".cast("float"))
 
     featureSamplesWithAdjustedWeight.selectAs[UserDataValidationDataForModelTrainingRecord](nullIfAbsent = true)
   }
@@ -167,8 +162,6 @@ object GenerateTrainSetLastTouch extends KongmingBaseJob {
       }
 
     val adjustedValParquet = trainDataWithSplit.filter($"split" === lit("val"))
-
-    trainDataWithSplit.unpersist()
 
     var trainsetRows = Array.fill(2)("", 0L)
 

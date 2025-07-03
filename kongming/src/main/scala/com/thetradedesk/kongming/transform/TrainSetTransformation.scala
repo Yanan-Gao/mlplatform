@@ -5,7 +5,7 @@ import com.thetradedesk.geronimo.shared.{ARRAY_INT_FEATURE_TYPE, FLOAT_FEATURE_T
 import com.thetradedesk.kongming.datasets._
 import com.thetradedesk.kongming.transform.ContextualTransform.generateContextualFeatureTier1
 import com.thetradedesk.kongming.transform.AudienceIdTransform.AudienceFeature
-import com.thetradedesk.kongming.{CustomGoalTypeId, IncludeInCustomGoal, date, task}
+import com.thetradedesk.kongming.{CustomGoalTypeId, IncludeInCustomGoal, date, samplingSeed, task}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -257,7 +257,7 @@ object TrainSetTransformation {
         .withColumn("BidDiffDayInt", floor($"BidDiffDayInSeconds"))
         .join(broadcast(adGroupRangeConvDist), Seq("CampaignIdEncoded", "BidDiffDayInt"), "left")
         .withColumn("WeightDecayFunc", lit(1) - lit(methodDistParams.Offset) * exp(lit(methodDistParams.Coefficient) * $"BidDiffDayInSeconds"))
-        .withColumn("Weight", when($"CampaignGroupSize" > methodDistParams.Threshold, $"PosPctInNDay").otherwise($"WeightDecayFunc").cast(DoubleType))
+        .withColumn("Weight", when($"CampaignGroupSize" > methodDistParams.Threshold, $"PosPctInNDay").otherwise($"WeightDecayFunc").cast("float"))
       }
       case _ => { // default is non-weighting
         negativeSamples
@@ -585,20 +585,16 @@ object TrainSetTransformation {
   }
 
   def balanceWeightForTrainset(trainset: Dataset[UserDataValidationDataForModelTrainingRecord], desiredNegOverPos: Int): Dataset[UserDataValidationDataForModelTrainingRecord] = {
-    // Cache the trainset as we are using it multiple times
-    val cachedTrainset = trainset.cache()
+    val windowSpec = Window.partitionBy("AdGroupIdEncoded")
 
-    val sumWeight = cachedTrainset.filter(col("Target") === 0).groupBy("AdGroupIdEncoded").agg(sum("Weight").as("NegSumWeight"))
-    .join(cachedTrainset.filter(col("Target") === 1).groupBy("AdGroupIdEncoded").agg(sum("Weight").as("PosSumWeight")), Seq("AdGroupIdEncoded"), "inner")
-
-    // Repartition to distribute data evenly across partitions
-    val repartitionedSumWeight = 
-      sumWeight
-      .withColumn("Coefficient", when($"PosSumWeight" > 0, $"NegSumweight" / $"PosSumWeight").otherwise($"NegSumWeight"))
-      .repartition(col("AdGroupIdEncoded"))
-
-    val adjustedTrainset = cachedTrainset.join(broadcast(repartitionedSumWeight), Seq("AdGroupIdEncoded"), "inner")
-          .withColumn("Weight", when(col("Target") === 1, col("Weight") * col("Coefficient") / lit(desiredNegOverPos)).otherwise(col("Weight")).cast("float"))
+    val adjustedTrainset = trainset
+     .withColumn("NegSumWeight", sum(when(col("Target") === 0, col("Weight")).otherwise(lit(0))).over(windowSpec))
+     .withColumn("PosSumWeight", sum(when(col("Target") === 1, col("Weight")).otherwise(lit(0))).over(windowSpec))
+     .filter(col("NegSumWeight") > 0 && col("PosSumWeight") > 0)
+     .withColumn("Coefficient", col("NegSumWeight") / col("PosSumWeight"))
+     .withColumn("Weight", when(col("Target") === 1, col("Weight") * col("Coefficient") / lit(desiredNegOverPos)).otherwise(col("Weight")).cast("float"))
+     .drop("NegSumWeight", "PosSumWeight", "Coefficient")
+     .orderBy(rand(seed = samplingSeed))
 
     adjustedTrainset.selectAs[UserDataValidationDataForModelTrainingRecord]
   }
