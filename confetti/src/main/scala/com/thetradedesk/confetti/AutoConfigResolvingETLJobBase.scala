@@ -19,11 +19,8 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
                                                                     groupName: String,
                                                                     jobName: String) {
 
-  /** Name of the Prometheus application. Must be provided by subclasses. */
-  protected def prometheusAppName: String
-
-  /** Name of the Prometheus job. Must be provided by subclasses. */
-  protected def prometheusJobName: String
+  /** Optional Prometheus client for pushing metrics. */
+  protected val prometheus: Option[PrometheusClient]
 
   private val loader = new BehavioralConfigLoader(env, experimentName, groupName, jobName)
   private val log = CloudWatchLoggerFactory.getLogger(
@@ -32,10 +29,6 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
   )
   private var configHash: String = _
   private var jobConfig: Option[C] = None
-  val prometheus = new PrometheusClient(
-    prometheusAppName,
-    prometheusJobName
-  )
 
   /**
    * Access the parsed configuration for the job. Throws an exception if
@@ -71,7 +64,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
   /** Entry point for jobs extending this base. Executes the pipeline and pushes metrics. */
   final def main(args: Array[String]): Unit = {
     execute()
-    prometheus.pushMetrics()
+    prometheus.foreach(_.pushMetrics())
   }
 
 }
