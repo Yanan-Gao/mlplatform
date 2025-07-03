@@ -35,6 +35,7 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
   def generateTrainSetRevenue()(implicit prometheus: PrometheusClient): Dataset[UserDataValidationDataForModelTrainingRecord] = {
     val startDate = date.minusDays(conversionLookback)
     val win = Window.partitionBy($"CampaignIdEncoded", $"AdGroupIdEncoded")
+    val winByDay = Window.partitionBy($"CampaignIdEncoded", $"AdGroupIdEncoded", $"ImpDayIndex")
 
     // Imp [T-ConvLB, T]
     val sampledImpressions = (0 to conversionLookback).map(i => {
@@ -65,7 +66,6 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
         .withColumn("rand", rand(seed = samplingSeed))
         .filter($"rand" <= $"ratio")
         .drop("BRConv", "ratio", "rand")
-        .cache()
 
       val impWithAttr = dailyImp.join(broadcast(sampledAttr.select($"BidRequestId".alias("BidRequestIdStr"), $"Target", $"Revenue")), Seq("BidRequestIdStr"), "left")
         .withColumn("Target", coalesce('Target, lit(0)))
@@ -74,21 +74,24 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
         .withColumn("AdGroupIdEncoded", encodeStringIdUdf('AdGroupIdStr))
         .withColumn("CampaignIdEncoded", encodeStringIdUdf('CampaignIdStr))
         .withColumn("AdvertiserIdEncoded", encodeStringIdUdf('AdvertiserIdStr))
-        .withColumn("PosCount", sum(when($"Target" === lit(1), 1).otherwise(0)).over(win))
-        .withColumn("NegCount", sum(when($"Target" === lit(0), 1).otherwise(0)).over(win))
-        .withColumn("NegRatio", $"PosCount" * lit(desiredNegOverPos) / $"NegCount")
         .withColumn("UserDataOptIn", lit(2))
+        .withColumn("ImpDayIndex", lit(i))
+        .withColumn("Weight", lit(1.0f))
 
-      sampledAttr.unpersist()
-
-      impWithAttr.filter($"Target" === lit(1)).union(
-          impWithAttr.filter($"Target" ===lit(0))
-          .withColumn("rand", rand(seed = samplingSeed))
-          .filter($"rand" < $"NegRatio").drop("rand")
-        ).withColumn("Weight", lit(1.0f))
-        .drop("PosCount","NegCount","NegRatio")
+      impWithAttr
 
     }).reduce(_.union(_))
+     // filter by day to ensure desiredNegOverPos ratio
+     .withColumn("PosCountByDay", sum(when($"Target" === lit(1), 1).otherwise(0)).over(winByDay))
+     .withColumn("NegCountByDay", sum(when($"Target" === lit(0), 1).otherwise(0)).over(winByDay))
+     .withColumn("SampleRatioByDay",
+       when($"Target" === lit(1), lit(1)) // pos sampling ratio set to 1 to ensure all positives are kept in this stage
+        .otherwise($"PosCountByDay" * lit(desiredNegOverPos) / $"NegCountByDay")
+     )
+     .withColumn("rand", rand(seed = samplingSeed))
+     .filter($"rand" < $"SampleRatioByDay")
+     .drop("PosCountByDay","NegCountByDay","SampleRatioByDay","rand","ImpDayIndex")
+     // filter by total to ensure maxPositiveCount per adgroup
       .withColumn("PosCount", sum(when($"Target" === lit(1), 1).otherwise(0)).over(win))
       .withColumn("NegCount", sum(when($"Target" === lit(0), 1).otherwise(0)).over(win))
       .withColumn("SampleRatio",
@@ -129,6 +132,7 @@ object GenerateTrainSetRevenueLastTouch extends KongmingBaseJob {
       .repartition(trainSetPartitionCount, rand(seed = samplingSeed)).orderBy(rand(seed = samplingSeed))
       .withColumn("IsInTrainSet", when(abs(hash($"BidRequestIdStr") % 100) <= trainRatio * 100, lit(true)).otherwise(false))
       .withColumn("split", when($"IsInTrainSet" === lit(true), "train").otherwise("val"))
+      .cache()
 
     val adjustedTrainParquet = trainDataWithSplit.filter($"split" === lit("train"))
     val adjustedValParquet = trainDataWithSplit.filter($"split" === lit("val"))
