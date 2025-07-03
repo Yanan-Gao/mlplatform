@@ -58,7 +58,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
 
     val config = loader.loadRuntimeConfigs(runtimeVars)
     logger.info(new Yaml().dump(config.asJava))
-    jobConfig = Some(utils.ConfigFactory.fromMap[C](config))
+    jobConfig = Some(utils.MapConfigReader.read[C](config))
     if (jobConfig.isEmpty) {
       throw new IllegalStateException("Config not initialized")
     }
