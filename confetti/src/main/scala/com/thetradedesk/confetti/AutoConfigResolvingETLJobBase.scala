@@ -1,6 +1,6 @@
 package com.thetradedesk.confetti
 
-import com.thetradedesk.confetti.utils.{CloudWatchLoggerFactory, HashUtils}
+import com.thetradedesk.confetti.utils.{CloudWatchLogger, CloudWatchLoggerFactory, HashUtils}
 import org.yaml.snakeyaml.Yaml
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
@@ -23,9 +23,9 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
   protected val prometheus: Option[PrometheusClient]
 
   private val loader = new BehavioralConfigLoader(env, experimentName, groupName, jobName)
-  private val log = CloudWatchLoggerFactory.getLogger(
-    s"/mlplatform/confetti/$env/$groupName",
-    getClass.getSimpleName
+  private val logger = CloudWatchLoggerFactory.getLogger(
+    "mlplatform",
+    s"${env}-${experimentName}-${groupName}-${jobName}"
   )
   private var configHash: String = _
   private var jobConfig: Option[C] = None
@@ -36,6 +36,8 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
    */
   protected final def getConfig: C =
     jobConfig.getOrElse(throw new IllegalStateException("Config not initialized"))
+
+  protected final def getLogger: CloudWatchLogger = logger
 
   /**
    * Run the ETL pipeline using the loaded config, exposure for user's implementation.
@@ -49,7 +51,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
 
 
     val config = loader.loadRuntimeConfigs(runtimeVars)
-    log.info(new Yaml().dump(config.asJava))
+    logger.info(new Yaml().dump(config.asJava))
     jobConfig = Some(utils.ConfigFactory.fromMap[C](config))
     if (jobConfig.isEmpty) {
       throw new IllegalStateException("Config not initialized")
@@ -63,6 +65,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
 
   /** Entry point for jobs extending this base. Executes the pipeline and pushes metrics. */
   final def main(args: Array[String]): Unit = {
+    logger.info(s"Start executing: ${env}-${experimentName}-${groupName}-${jobName}")
     execute()
     prometheus.foreach(_.pushMetrics())
   }
