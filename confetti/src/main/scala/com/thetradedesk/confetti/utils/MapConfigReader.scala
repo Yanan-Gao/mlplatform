@@ -7,10 +7,10 @@ import scala.reflect.runtime.universe._
 import scala.reflect.ClassTag
 
 /** Utility for reading configuration from a Map[String,String].
-  * Collects errors for missing or malformed values so callers can
-  * report all issues at once. Optional configuration fields are not
-  * supported; missing keys will result in a failure.
-  */
+ * Collects errors for missing or malformed values so callers can
+ * report all issues at once. Optional configuration fields are not
+ * supported; missing keys will result in a failure.
+ */
 class MapConfigReader(map: Map[String, String]) {
   private val errors = ListBuffer.empty[String]
 
@@ -87,7 +87,7 @@ class MapConfigReader(map: Map[String, String]) {
   }
 
   /** Print any collected errors and throw IllegalArgumentException if present. */
-  def assertValid(): Unit = {
+  private def assertValid(): Unit = {
     if (errors.nonEmpty) {
       println("Invalid config values:")
       errors.foreach(e => println(s"- $e"))
@@ -96,11 +96,11 @@ class MapConfigReader(map: Map[String, String]) {
   }
 
   /**
-    * Construct an instance of the given case class using reflection. Field names
-    * must match configuration keys exactly and supported types are String,
-    * Int, Long, Double, Boolean and java.time.LocalDate.
-    */
-  def as[T: TypeTag: ClassTag]: T = {
+   * Construct an instance of the given case class using reflection. Field names
+   * must match configuration keys exactly and supported types are String,
+   * Int, Long, Double, Boolean and java.time.LocalDate.
+   */
+  def as[T: TypeTag : ClassTag]: T = {
     val mirror = runtimeMirror(getClass.getClassLoader)
     val tpe = typeOf[T]
     val classSymbol = tpe.typeSymbol.asClass
@@ -136,6 +136,6 @@ object MapConfigReader {
   def apply(map: Map[String, String]): MapConfigReader = new MapConfigReader(map)
 
   /** Convenience method to directly construct a case class from the map. */
-  def read[T: TypeTag: ClassTag](map: Map[String, String]): T =
+  def read[T: TypeTag : ClassTag](map: Map[String, String]): T =
     MapConfigReader(map).as[T]
 }

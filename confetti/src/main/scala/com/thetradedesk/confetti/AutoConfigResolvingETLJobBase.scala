@@ -1,6 +1,6 @@
 package com.thetradedesk.confetti
 
-import com.thetradedesk.confetti.utils.{CloudWatchLogger, CloudWatchLoggerFactory, HashUtils}
+import com.thetradedesk.confetti.utils.{CloudWatchLogger, CloudWatchLoggerFactory, HashUtils, S3Utils}
 import org.yaml.snakeyaml.Yaml
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
@@ -24,8 +24,8 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
 
   private val loader = new BehavioralConfigLoader(env, experimentName, groupName, jobName)
   private val logger = CloudWatchLoggerFactory.getLogger(
-    "mlplatform",
-    s"${env}-${experimentName}-${groupName}-${jobName}"
+    s"mlplatform-$env",
+    s"${experimentName.filter(_.nonEmpty).map(n => s"$n-").getOrElse("")}$groupName-$jobName"
   )
   private var configHash: String = _
   private var jobConfig: Option[C] = None
@@ -39,6 +39,13 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
 
   protected final def getLogger: CloudWatchLogger = logger
 
+  /** Entry point for jobs extending this base. Executes the pipeline and pushes metrics. */
+  final def main(args: Array[String]): Unit = {
+    logger.info(s"Start executing: ${env}-${experimentName}-${groupName}-${jobName}")
+    execute()
+    prometheus.foreach(_.pushMetrics())
+  }
+
   /**
    * Run the ETL pipeline using the loaded config, exposure for user's implementation.
    */
@@ -49,7 +56,6 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
     // todo assemble runtime vars.
     val runtimeVars = Map("date_time" -> LocalDateTime.now().toString)
 
-
     val config = loader.loadRuntimeConfigs(runtimeVars)
     logger.info(new Yaml().dump(config.asJava))
     jobConfig = Some(utils.ConfigFactory.fromMap[C](config))
@@ -58,16 +64,16 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
     }
     configHash = HashUtils.sha256Base64(new Yaml().dump(config.asJava))
     val runtimePathBase = s"s3://thetradedesk-mlplatform-us-east-1/configdata/confetti/runtime-configs/$env/$groupName/$jobName/$configHash/"
-    loader.writeYaml(config, runtimePathBase + "behavioral_config.yml")
+    writeYaml(config, runtimePathBase + "behavioral_config.yml")
     val result = runETLPipeline()
-    loader.writeYaml(result, runtimePathBase + "results.yml")
+    writeYaml(result, runtimePathBase + "results.yml")
   }
 
-  /** Entry point for jobs extending this base. Executes the pipeline and pushes metrics. */
-  final def main(args: Array[String]): Unit = {
-    logger.info(s"Start executing: ${env}-${experimentName}-${groupName}-${jobName}")
-    execute()
-    prometheus.foreach(_.pushMetrics())
+  /** Convert the map back to YAML and write it to the runtime config location. */
+  private def writeYaml(config: Map[String, String], s3Path: String): Unit = {
+    val yaml = new Yaml()
+    val rendered = yaml.dump(config.asJava)
+    S3Utils.writeToS3(s3Path, rendered)
   }
 
 }

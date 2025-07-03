@@ -6,12 +6,11 @@ import com.amazonaws.services.logs.model._
 import scala.collection.JavaConverters._
 
 /**
-  * Simple logger that writes messages to AWS CloudWatch Logs.
-  *
-  * @param logGroup  name of the CloudWatch log group
-  * @param logStream name of the CloudWatch log stream
-  */
-
+ * Simple logger that writes messages to AWS CloudWatch Logs.
+ *
+ * @param logGroup  name of the CloudWatch log group
+ * @param logStream name of the CloudWatch log stream
+ */
 class CloudWatchLogger(client: AWSLogs, logGroup: String, logStream: String) {
   // Cache the next sequence token so we don't have to fetch it from CloudWatch
   // for every log entry. It is refreshed after each putLogEvents call.
@@ -24,8 +23,11 @@ class CloudWatchLogger(client: AWSLogs, logGroup: String, logStream: String) {
   }
 
   def debug(message: String): Unit = log("DEBUG", message)
+
   def info(message: String): Unit = log("INFO", message)
+
   def warn(message: String): Unit = log("WARN", message)
+
   def error(message: String): Unit = log("ERROR", message)
 
   def log(level: String, message: String): Unit = {

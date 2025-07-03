@@ -69,13 +69,6 @@ class BehavioralConfigLoader(env: String, experimentName: Option[String], groupN
     }
   }
 
-  /** Convert the map back to YAML and write it to the runtime config location. */
-  def writeYaml(config: Map[String, String], runtimePath: String): Unit = {
-    val yaml = new Yaml()
-    val rendered = yaml.dump(config.asJava)
-    S3Utils.writeToS3(runtimePath, rendered)
-  }
-
   private def buildConfigPath(): String = {
     val expDir = experimentName.filter(_.nonEmpty).map(n => s"$n/").getOrElse("")
     s"s3://thetradedesk-mlplatform-us-east-1/configdata/confetti/configs/$env/$expDir$groupName/$jobName/behavioral_config.yml"
