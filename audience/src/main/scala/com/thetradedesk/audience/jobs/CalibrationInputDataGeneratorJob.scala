@@ -11,28 +11,26 @@ import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
 
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, LocalDateTime}
-
 import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 
-case class Config(
-                   model: String,
-                   tag: String,
-                   version: Int,
-                   lookBack: Int,
-                   startDate: LocalDate,
-                   oosDataS3Bucket: String,
-                   oosDataS3Path: String,
-                   calibrationOutputData3Path: String,
-                   subFolderKey: String,
-                   subFolderValue: String,
-                   date_time: String
-                 )
-
+case class CalibrationInputDataGeneratorJobConfig(
+                                                   model: String,
+                                                   tag: String,
+                                                   version: Int,
+                                                   lookBack: Int,
+                                                   startDate: LocalDate,
+                                                   oosDataS3Bucket: String,
+                                                   oosDataS3Path: String,
+                                                   calibrationOutputData3Path: String,
+                                                   subFolderKey: String,
+                                                   subFolderValue: String,
+                                                   date_time: String
+                                                 )
 
 object CalibrationInputDataGeneratorJob
-  extends AutoConfigResolvingETLJobBase[Config](
-    env = config.getString("confettiEnv", "prod"),
-    experimentName = config.getStringOption("confettiExperiment"),
+  extends AutoConfigResolvingETLJobBase[CalibrationInputDataGeneratorJobConfig](
+    env = config.getStringRequired("env"),
+    experimentName = config.getStringOption("experimentName"),
     groupName = "audience",
     jobName = "CalibrationInputDataGeneratorJob") {
   override val prometheus: Option[PrometheusClient] =
@@ -61,7 +59,7 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
   val resultTableSize = prometheus.createGauge(s"audience_calibration_input_data_generation_size", "RSMCalibrationInputDataGenerator table size", "date")
   val sampleUDF = shouldConsiderTDID3(config.getInt("hitRateUserDownSampleHitPopulation", default = 1000000), config.getString("saltToSampleHitRate", default = "0BgGCE"))(_)
 
-  def generateMixedOOSData(date: LocalDate, conf: Config): Unit = {
+  def generateMixedOOSData(date: LocalDate, conf: CalibrationInputDataGeneratorJobConfig): Unit = {
 
     val start = System.currentTimeMillis()
 
