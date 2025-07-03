@@ -18,6 +18,8 @@ resolvers += "TTDNexusReleases" at "https://nexus.adsrvr.org/repository/ttd-rele
 libraryDependencies ++= Seq(
   "org.yaml" % "snakeyaml" % "2.2",
   "com.amazonaws" % "aws-java-sdk-s3" % awsVersion,
+  "com.amazonaws" % "aws-java-sdk-logs" % awsVersion,
+  "log4j" % "log4j" % "1.2.17",
   "org.scala-lang" % "scala-reflect" % scalaVersion.value,
   "io.prometheus" % "simpleclient" % prometheusVersion,
   "io.prometheus" % "simpleclient_common" % prometheusVersion,
