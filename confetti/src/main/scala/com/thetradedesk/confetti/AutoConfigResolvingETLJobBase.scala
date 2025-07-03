@@ -1,6 +1,6 @@
 package com.thetradedesk.confetti
 
-import com.thetradedesk.confetti.utils.{CloudWatchLogFactory, HashUtils}
+import com.thetradedesk.confetti.utils.{CloudWatchLoggerFactory, HashUtils}
 import org.yaml.snakeyaml.Yaml
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
@@ -26,7 +26,10 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
   protected def prometheusJobName: String
 
   private val loader = new BehavioralConfigLoader(env, experimentName, groupName, jobName)
-  private val log = CloudWatchLogFactory.getLogger(getClass, s"/mlplatform/confetti/$env/$groupName")
+  private val log = CloudWatchLoggerFactory.getLogger(
+    s"/mlplatform/confetti/$env/$groupName",
+    getClass.getSimpleName
+  )
   private var configHash: String = _
   private var jobConfig: Option[C] = None
   val prometheus = new PrometheusClient(
