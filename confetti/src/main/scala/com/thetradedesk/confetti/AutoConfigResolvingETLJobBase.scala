@@ -1,6 +1,6 @@
 package com.thetradedesk.confetti
 
-import com.thetradedesk.confetti.utils.HashUtils
+import com.thetradedesk.confetti.utils.{CloudWatchLogFactory, HashUtils}
 import org.yaml.snakeyaml.Yaml
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
@@ -26,6 +26,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
   protected def prometheusJobName: String
 
   private val loader = new BehavioralConfigLoader(env, experimentName, groupName, jobName)
+  private val log = CloudWatchLogFactory.getLogger(getClass, s"/mlplatform/confetti/$env/$groupName")
   private var configHash: String = _
   private var jobConfig: Option[C] = None
   val prometheus = new PrometheusClient(
@@ -52,6 +53,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
 
 
     val config = loader.loadRuntimeConfigs(runtimeVars)
+    log.info(new Yaml().dump(config.asJava))
     jobConfig = Some(utils.ConfigFactory.fromMap[C](config))
     if (jobConfig.isEmpty) {
       throw new IllegalStateException("Config not initialized")
