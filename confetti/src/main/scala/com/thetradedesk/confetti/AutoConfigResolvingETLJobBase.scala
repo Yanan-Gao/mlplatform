@@ -1,6 +1,6 @@
 package com.thetradedesk.confetti
 
-import com.thetradedesk.confetti.utils.{CloudWatchLogger, CloudWatchLoggerFactory, HashUtils, S3Utils}
+import com.thetradedesk.confetti.utils.{CloudWatchLogger, CloudWatchLoggerFactory, HashUtils, S3Utils, MapConfigReader}
 import org.yaml.snakeyaml.Yaml
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
@@ -58,7 +58,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
 
     val config = loader.loadRuntimeConfigs(runtimeVars)
     logger.info(new Yaml().dump(config.asJava))
-    jobConfig = Some(utils.MapConfigReader.read[C](config))
+    jobConfig = Some(new MapConfigReader(config, logger).as[C])
     if (jobConfig.isEmpty) {
       throw new IllegalStateException("Config not initialized")
     }

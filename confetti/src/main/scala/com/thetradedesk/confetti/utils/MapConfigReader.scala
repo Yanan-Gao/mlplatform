@@ -2,16 +2,16 @@ package com.thetradedesk.confetti.utils
 
 import java.time.LocalDate
 import scala.collection.mutable.ListBuffer
-import scala.util.Try
-import scala.reflect.runtime.universe._
 import scala.reflect.ClassTag
+import scala.reflect.runtime.universe._
+import scala.util.Try
 
 /** Utility for reading configuration from a Map[String,String].
  * Collects errors for missing or malformed values so callers can
  * report all issues at once. Optional configuration fields are not
  * supported; missing keys will result in a failure.
  */
-class MapConfigReader(map: Map[String, String]) {
+class MapConfigReader(map: Map[String, String], logger: CloudWatchLogger) {
   private val errors = ListBuffer.empty[String]
 
   def getString(key: String): Option[String] = map.get(key) match {
@@ -89,9 +89,9 @@ class MapConfigReader(map: Map[String, String]) {
   /** Print any collected errors and throw IllegalArgumentException if present. */
   private def assertValid(): Unit = {
     if (errors.nonEmpty) {
-      println("Invalid config values:")
-      errors.foreach(e => println(s"- $e"))
-      throw new IllegalArgumentException("Invalid configuration")
+      val message = ("Invalid config values:" +: errors.map(e => s"- $e")).mkString("\n")
+      logger.error(message)
+      throw new IllegalArgumentException(message)
     }
   }
 
@@ -130,12 +130,4 @@ class MapConfigReader(map: Map[String, String]) {
     val ctorMirror = classMirror.reflectConstructor(ctor)
     ctorMirror(values.map(_.get): _*).asInstanceOf[T]
   }
-}
-
-object MapConfigReader {
-  def apply(map: Map[String, String]): MapConfigReader = new MapConfigReader(map)
-
-  /** Convenience method to directly construct a case class from the map. */
-  def read[T: TypeTag : ClassTag](map: Map[String, String]): T =
-    MapConfigReader(map).as[T]
 }
