@@ -1,7 +1,7 @@
 package com.thetradedesk.featurestore.datasets
 
 import com.thetradedesk.featurestore._
-import com.thetradedesk.featurestore.constants.FeatureConstants.{GrainDay, GrainHour}
+import com.thetradedesk.featurestore.rsm.CommonEnums.Grain.{Daily, Grain, Hourly}
 import com.thetradedesk.featurestore.utils.{PathUtils, StringUtils}
 import com.thetradedesk.spark.util.io.FSUtils
 import org.apache.spark.sql.{Dataset, SaveMode}
@@ -9,7 +9,7 @@ import org.apache.spark.sql.{Dataset, SaveMode}
 
 case class ProfileDataset(rootPath: String = MLPlatformS3Root,
                           prefix: String,
-                          grain: Option[String] = None,
+                          grain: Option[Grain] = None,
                           overrides: Map[String, String]) extends ProfileBaseDataset(
   rootPath,
   prefix,
@@ -31,7 +31,7 @@ case class ProfileDataset(rootPath: String = MLPlatformS3Root,
 
 abstract class ProfileBaseDataset(rootPath: String,
                                   prefix: String,
-                                  grain: Option[String] = None,
+                                  grain: Option[Grain] = None,
                                   parameters: Map[String, String]) {
 
   lazy val datasetPath: String = StringUtils.applyNamedFormat(getPrefixFormat, parameters)
@@ -40,8 +40,8 @@ abstract class ProfileBaseDataset(rootPath: String,
     var prefixFormat = PathUtils.concatPath(rootPath, prefix)
     if (grain.isDefined) {
       val datePartition = grain.get match {
-        case GrainDay => "/date={dateStr}"
-        case GrainHour => "/date={dateStr}/hour={hourInt}"
+        case Daily => "/date={dateStr}"
+        case Hourly => "/date={dateStr}/hour={hourInt}"
         case _ => throw new RuntimeException(s"Unsupported grain type ${grain}")
       }
       prefixFormat = PathUtils.concatPath(prefixFormat, datePartition)
@@ -58,12 +58,13 @@ abstract class ProfileBaseDataset(rootPath: String,
 
     DatasetWriter.writeDataSet(dataset,
       datasetPath,
-      None, // let spark decide
+      numPartitions,
       format = format,
       saveMode = saveMode,
       writeThroughHdfs = writeThroughHdfs
     )
 
-    dataset.count()
+    //    dataset.count() stop expensive counting now
+    0
   }
 }

@@ -33,10 +33,10 @@ package object featurestore {
   val aggLevel: String = config.getString("aggLevel", "UIID")
   val writeThroughHdfs: Boolean = config.getBoolean("writeThroughHdfs", true)
   val densityFeatureWindowSizeDays = config.getInt("DensityFeatureWindowSizeDays", default = 1)
+  val grain = config.getString("grain", "hour")
 
   val normalUserBidCountPerHour = config.getInt("normalUserBidCountPerHour", default = 200)
   val overrideOutput = config.getBoolean("overrideOutput", default = false)
-  val saltSize = config.getInt("saltSize", default = 100)
   val s3Client = AmazonS3ClientBuilder.standard.withRegion(Regions.US_EAST_1).build
 
   val userDownSampleBasePopulation = config.getInt("userDownSampleBasePopulation", default = 1000000)

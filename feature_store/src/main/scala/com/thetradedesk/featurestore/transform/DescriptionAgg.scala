@@ -1,119 +1,71 @@
 package com.thetradedesk.featurestore.transform
 
-import com.thetradedesk.featurestore.transform.AggregateTransform.BaseAggregator
+import com.thetradedesk.featurestore.constants.FeatureConstants.ColFeatureKeyCount
 import org.apache.spark.sql._
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
+import org.apache.spark.sql.expressions.Aggregator
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types.LongType
 
 object DescriptionAgg {
 
-  // Description statistics buffer
-  case class DescBuffer(
-                         var count: Double = 0,
-                         var nonZeroCount: Double = 0,
-                         var sum: Double = 0,
-                         var min: Double = 0,
-                         var max: Double = 0,
-                         var allNull: Double = 1
-                       ) {
-    private def updateMinMax(value: Double): Unit = {
-      min = if (allNull == 1) value else math.min(min, value)
-      max = if (allNull == 1) value else math.max(max, value)
-    }
+  case class VectorDescBuffer(var vector: Array[Double] = Array.empty[Double])
 
-    def add(value: Option[Double]): Unit = {
-      value.foreach { v =>
-        count += 1
-        sum += v
-        updateMinMax(v)
-        if (v != 0) nonZeroCount += 1
-        allNull = 0
+  /**
+   * Base trait for vector aggregators with common functionality
+   */
+  trait VectorDescBaseAggregator extends Aggregator[Array[Double], VectorDescBuffer, Option[Array[Double]]] {
+    override def bufferEncoder: Encoder[VectorDescBuffer] = Encoders.product[VectorDescBuffer]
+    override def outputEncoder: Encoder[Option[Array[Double]]] = implicitly(ExpressionEncoder[Option[Array[Double]]])
+    override def zero: VectorDescBuffer = VectorDescBuffer()
+    
+    // Abstract method that defines the operation to perform on vector elements
+    protected def operation(a: Double, b: Double): Double
+    
+    override def reduce(buffer: VectorDescBuffer, element: Array[Double]): VectorDescBuffer = {
+      if (element == null || element.isEmpty) {
+        return buffer
       }
-    }
-
-    def addSeq(seq: Option[Seq[Double]]): Unit = {
-      seq.foreach { s =>
-        count += s.size
-        sum += s.sum
-        updateMinMax(s.min)
-        max = math.max(max, s.max)
-        nonZeroCount += s.count(_ != 0)
-        allNull = 0
+      
+      if (buffer.vector.isEmpty) {
+        buffer.vector = element
+      } else {
+        buffer.vector = buffer.vector.zip(element).map { case (a, b) => operation(a, b) }
       }
+      buffer
     }
-
-    def merge(other: DescBuffer): Unit = {
-      if (other.allNull == 0) {
-        count += other.count
-        nonZeroCount += other.nonZeroCount
-        sum += other.sum
-        min = if (allNull == 1) other.min else math.min(min, other.min)
-        max = if (allNull == 1) other.max else math.max(max, other.max)
-        allNull = 0
+    
+    override def merge(b1: VectorDescBuffer, b2: VectorDescBuffer): VectorDescBuffer = {
+      if (b2.vector.isEmpty) {
+        return b1
       }
-    }
-
-    def merge(other: Map[String, Double]): Unit = {
-      if (other("allNull") == 0) {
-        count += other("count")
-        nonZeroCount += other("nonZeroCount")
-        sum += other("sum")
-        min = if (allNull == 1) other("min") else math.min(min, other("min"))
-        max = if (allNull == 1) other("max") else math.max(max, other("max"))
-        allNull = 0
+      
+      if (b1.vector.isEmpty) {
+        b1.vector = b2.vector
+      } else {
+        b1.vector = b1.vector.zip(b2.vector).map { case (a, b) => operation(a, b) }
       }
-    }
-
-    def finish: Map[String, Double] = Map(
-      "count" -> count,
-      "nonZeroCount" -> nonZeroCount,
-      "sum" -> sum,
-      "min" -> min,
-      "max" -> max,
-      "allNull" -> allNull
-    )
-  }
-
-  // Description statistics aggregators
-  trait DescBaseAggregator[IN] extends BaseAggregator[IN, DescBuffer, Map[String, Double]] {
-    override def bufferEncoder: Encoder[DescBuffer] = Encoders.product[DescBuffer]
-
-    override def outputEncoder: Encoder[Map[String, Double]] = implicitly(ExpressionEncoder[Map[String, Double]])
-
-    override def zero: DescBuffer = DescBuffer()
-
-    override def merge(b1: DescBuffer, b2: DescBuffer): DescBuffer = {
-      b1.merge(b2)
       b1
     }
-
-    override def finish(reduction: DescBuffer): Map[String, Double] = {
-      reduction.finish
+    
+    override def finish(reduction: VectorDescBuffer): Option[Array[Double]] = {
+      if (reduction.vector.isEmpty) None else Some(reduction.vector)
     }
   }
 
-
-  class DescMergeAggregator extends DescBaseAggregator[Map[String, Double]] {
-
-    override def reduce(buffer: DescBuffer, element: Map[String, Double]): DescBuffer = {
-      buffer.merge(element)
-      buffer
-    }
+  class VectorSumAggregator extends VectorDescBaseAggregator {
+    override protected def operation(a: Double, b: Double): Double = a + b
   }
 
-  class DescAggregator extends DescBaseAggregator[Option[Double]] {
-
-    override def reduce(buffer: DescBuffer, element: Option[Double]): DescBuffer = {
-      buffer.add(element)
-      buffer
-    }
+  class VectorMinAggregator extends VectorDescBaseAggregator {
+    override protected def operation(a: Double, b: Double): Double = math.min(a, b)
   }
 
-  class ArrayDescAggregator extends DescBaseAggregator[Option[Seq[Double]]] {
-
-    override def reduce(buffer: DescBuffer, element: Option[Seq[Double]]): DescBuffer = {
-      buffer.addSeq(element)
-      buffer
-    }
+  class VectorMaxAggregator extends VectorDescBaseAggregator {
+    override protected def operation(a: Double, b: Double): Double = math.max(a, b)
   }
 
+  def genKeyCountCol(aLevel: String): Array[Column] = {
+    Array(count(col(aLevel)).cast(LongType).alias(ColFeatureKeyCount))
+  }
 }

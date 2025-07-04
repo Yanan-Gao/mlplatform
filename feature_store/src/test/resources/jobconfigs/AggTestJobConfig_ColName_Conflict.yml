@@ -45,3 +45,9 @@ aggregations:
     windowUnit: day
     topN: 15
     aggFunc: [ count ]
+  - field: FieldA_Frequency # FieldA_Frequency is a conflict with FieldA with function Frequency
+    dataType: array_int
+    aggWindows: [ 1, 3, 7 ]
+    windowUnit: day
+    topN: 15
+    aggFunc: [ Frequency ]

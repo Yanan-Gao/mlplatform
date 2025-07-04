@@ -39,4 +39,5 @@ object FeatureConstants {
   val GrainDay = "day"
 
   val ColFeatureKey = "FeatureKey"
+  val ColFeatureKeyCount = "FeatureKeyCount"
 }

@@ -10,7 +10,9 @@ version := "1.0.3"
 
 scalaVersion := "2.12.15"
 
-val sparkVersion = "3.2.1"
+// For now, we can define a different spark version by passing -DsparkVersion
+val sparkVersion = sys.props.getOrElse("sparkVersion", "3.2.1")
+
 val prometheusVersion = "0.9.0"
 
 resolvers += "bintray-spark-packages" at "https://dl.bintray.com/spark-packages/maven/"

@@ -3,8 +3,9 @@ package com.thetradedesk.featurestore.jobs
 import com.thetradedesk.featurestore._
 import com.thetradedesk.featurestore.datasets.{ProcessedDataset, ProfileDataset}
 import com.thetradedesk.featurestore.features.Features._
+import com.thetradedesk.featurestore.rsm.CommonEnums.Grain
 import com.thetradedesk.featurestore.transform.AggregateTransform._
-import com.thetradedesk.featurestore.transform.Merger.joinDataFrames
+import com.thetradedesk.featurestore.transform.Merger.joinDataSets
 import com.thetradedesk.spark.TTDSparkContext
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -69,7 +70,7 @@ abstract class FeatureStoreAggJob extends FeatureStoreBaseJob {
 
   override def jobName: String = s"${getClass.getSimpleName.stripSuffix("$")}"
 
-  val profileDataPath = "features/feature_store/{ttdEnv}/profiles/source={sourcePartition}/index={indexPartition}/job=${jobName}/v=1/"
+  val profileDataPath = "{ttdEnv}/profiles/source={sourcePartition}/index={indexPartition}/job={jobName}/v=1/"
 
   val sourcePartition: String
 
@@ -118,10 +119,10 @@ abstract class FeatureStoreAggJob extends FeatureStoreBaseJob {
       "jobName" -> jobName,
       "indexPartition" -> aggLevel,
       "dateStr" -> getDateStr(date),
-      "ttdEnv" -> ttdEnv
+      "ttdEnv" -> ttdEnv,
     )
 
-    val profileDataset = ProfileDataset(prefix = profileDataPath, overrides = overridesMap)
+    val profileDataset = ProfileDataset(prefix = profileDataPath, grain = Some(Grain.Daily), overrides = overridesMap)
     if (!overrideOutput && profileDataset.isProcessed) {
       println(s"ProfileDataSet ${profileDataset.datasetPath} existed, skip processing " +
         s"source ${sourcePartition}, aggLevel ${aggLevel}, aggregation job ${jobName}")
@@ -138,7 +139,7 @@ abstract class FeatureStoreAggJob extends FeatureStoreBaseJob {
     }.toList
 
     // merge data from different readRange
-    val resDf = outputDfs.reduceLeft((df1: Dataset[_], df2: Dataset[_]) => joinDataFrames(df1, df2))
+    val resDf = outputDfs.reduceLeft((df1: Dataset[_], df2: Dataset[_]) => joinDataSets(df1, df2))
 
     val rows = profileDataset.writeWithRowCountLog(resDf)
 

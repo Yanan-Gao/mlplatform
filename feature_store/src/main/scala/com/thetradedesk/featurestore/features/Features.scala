@@ -12,28 +12,19 @@ object Features {
 
   object AggFunc extends Enumeration {
     type AggFunc = Value
-    val Sum, Count, Mean, NonZeroMean, Median, Percentiles, Desc, NonZeroCount, Min, Max, TopN, Frequency,
-    VectorSum, VectorCount, VectorMean, VectorNonZeroMean, VectorNonZeroCount, VectorDesc, VectorMin, VectorMax
+    val Sum, Count, Mean, NonZeroMean, Median, Percentiles, Desc, NonZeroCount, Min, Max, TopN, Frequency
     = Value
 
     def fromString(value: String): Option[AggFunc] = {
       values.find(_.toString.equalsIgnoreCase(value))
     }
 
-    def isVectorFunc(aggFunc: AggFunc): Boolean = {
-      AggFunc.getInitialAggFunc(aggFunc) == VectorDesc
-    }
-
-    def getInitialAggFunc(aggFunc: AggFunc): AggFunc = {
+    def getInitialAggFunc(aggFunc: AggFunc): Set[AggFunc] = {
       aggFunc match {
-        case Sum | Count | NonZeroCount |
-             Desc | Min | Max |
-             Mean | NonZeroMean | Desc => Desc
-        case VectorSum | VectorCount | VectorMean |
-             VectorNonZeroMean | VectorNonZeroCount | VectorDesc |
-             VectorMin | VectorMax | VectorDesc => VectorDesc
-        case Frequency | TopN => Frequency
-        case _ => throw new UnsupportedOperationException(s"Unsupported initial aggregation function: $aggFunc")
+        case Mean => Set(Sum, Count)
+        case NonZeroMean => Set(Sum, NonZeroCount)
+        case Frequency | TopN => Set(Frequency)
+        case _ => Set(aggFunc)
       }
     }
 
