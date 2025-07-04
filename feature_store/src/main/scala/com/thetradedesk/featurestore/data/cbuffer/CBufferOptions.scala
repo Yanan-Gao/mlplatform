@@ -16,7 +16,9 @@ case class CBufferOptions(schemaPath: Option[String],
                           fixedChunkBuffer: Boolean,
                           encryptedMode: Boolean,
                           codecFactory: CompressionCodecFactory,
-                          columnBased: Boolean)
+                          columnBased: Boolean,
+                          supportBinary: Boolean
+                         )
 
 object CBufferOptions {
   def apply(parameters: CaseInsensitiveMap[String]): CBufferOptions = CBufferOptions(parameters.get(SchemaPathName),
@@ -31,7 +33,8 @@ object CBufferOptions {
     "true".equals(parameters.getOrElse(FixedChunkBufferKey, "false")),
     encryptedMode = false,
     null,
-    "true".equals(parameters.getOrElse(ColumnBasedKey, "false")))
+    "true".equals(parameters.getOrElse(ColumnBasedKey, "false")),
+    "true".equals(parameters.getOrElse(SupportBinaryKey, "true")))
 
   def apply(parameters: Map[String, String]): CBufferOptions = this (CaseInsensitiveMap[String](parameters))
 }

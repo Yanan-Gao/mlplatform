@@ -29,6 +29,7 @@ package object featurestore {
   var dateTime: LocalDateTime = config.getDateTime("dateTime", date.atStartOfDay())
   var ttdEnv: String = config.getString("ttd.env", "dev")
   var readEnv: String = config.getString("readEnv", "prod")
+  var writeEnv: String = config.getString("writeEnv", ttdEnv)
   val aggDataSource: String = config.getString("aggDataSource", "")
   val aggLevel: String = config.getString("aggLevel", "UIID")
   val writeThroughHdfs: Boolean = config.getBoolean("writeThroughHdfs", true)

@@ -82,7 +82,6 @@ audience:push_bits_merge_request_spark3.5:
       changes:
         - "audience/src/main/scala/**/*"
         - "audience/build.sbt"
-      when: manual
   script:
     - pushd ./audience/
     - sbt -DsparkVersion="${ALTERNATE_SPARK_VERSION}" "set test in assembly := {}" clean assembly

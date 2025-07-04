@@ -18,11 +18,14 @@ object SchemaHelper {
         }), columnBased)
   }
 
-  def inferSchema(features: Array[CBufferFeature]): StructType = {
+  def inferSchema(features: Array[CBufferFeature], supportBinary: Boolean): StructType = {
     StructType(
       features.map {
         case CBufferFeature(name, _, _, dataType: DataType, false) =>
           StructField(name, dataType = toSparkDataType(dataType))
+        case CBufferFeature(name, _, arrayLength, DataType.Byte, true) =>
+          if (supportBinary) StructField(name, dataType = BinaryType, metadata = new MetadataBuilder().putLong(ArrayLengthKey, arrayLength).build())
+          else StructField(name, dataType = ArrayType(toSparkDataType(DataType.Byte)), metadata = new MetadataBuilder().putLong(ArrayLengthKey, arrayLength).build())
         case CBufferFeature(name, _, arrayLength, dataType: DataType, true) =>
           StructField(name, dataType = ArrayType(toSparkDataType(dataType)), metadata = new MetadataBuilder().putLong(ArrayLengthKey, arrayLength).build())
       })
@@ -66,7 +69,7 @@ object SchemaHelper {
     case FloatType => (DataType.Float, false)
     case DoubleType => (DataType.Double, false)
     case StringType => (DataType.String, false)
-    case BinaryType => (DataType.Byte, true)
+    case BinaryType | ArrayType(ByteType, _) => (DataType.Byte, true)
     case ArrayType(elementType, _) =>
       if (topTile)
         (toInternalDataType(elementType, topTile = false)._1, true)
@@ -111,7 +114,7 @@ object SchemaHelper {
         }
       }).map(_._1)
       .zipWithIndex
-      .map{
+      .map {
         case (e, idx) => {
           nextStep(e._2, e._3, e._4)
           e._2 match {

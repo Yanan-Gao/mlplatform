@@ -76,7 +76,7 @@ object CBufferDataSource {
                          paths: Seq[String])
                        (implicit sparkSession: SparkSession): Option[StructType] = {
     val featureOption = readFeatureSchema(options, paths)
-    Some(SchemaHelper.inferSchema(featureOption))
+    Some(SchemaHelper.inferSchema(featureOption, options.supportBinary))
   }
 
   final def writeSchema(

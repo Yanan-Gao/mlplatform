@@ -73,9 +73,14 @@ case class CBufferColumnBasedChunk(schema: StructType, features: Array[CBufferFe
       case (CBufferFeature(_, _, _, DataType.Double, false), ordinal, featureIndex) =>
         this.columnBuffers(featureIndex).putDouble(value.getDouble(ordinal))
       case (CBufferFeature(_, _, 0, DataType.Byte, true), ordinal, featureIndex) =>
-        val bytes = value.getBinary(ordinal)
-        checkBufferBound(featureIndex, bytes.length)
-        this.columnBuffers(featureIndex).put(bytes)
+        if (binaryOrdinals.contains(ordinal)) {
+          val bytes = value.getBinary(ordinal)
+          checkBufferBound(featureIndex, bytes.length)
+          this.columnBuffers(featureIndex).put(bytes)
+        } else {
+          writeVarLengthArray(value, DataType.Byte, ordinal, featureIndex, (arr, i) =>
+            this.columnBuffers(featureIndex).put(arr.getByte(i)))
+        }
       case (CBufferFeature(_, _, 0, DataType.Short, true), ordinal, featureIndex) =>
         writeVarLengthArray(value, DataType.Short, ordinal, featureIndex, (arr, i) =>
           this.columnBuffers(featureIndex).putShort(arr.getShort(i)))
@@ -91,24 +96,29 @@ case class CBufferColumnBasedChunk(schema: StructType, features: Array[CBufferFe
       case (CBufferFeature(_, _, 0, DataType.Double, true), ordinal, featureIndex) =>
         writeVarLengthArray(value, DataType.Double, ordinal, featureIndex, (arr, i) =>
           this.columnBuffers(featureIndex).putDouble(arr.getDouble(i)))
-      case (CBufferFeature(_, _, arrayLength, DataType.Byte, true), ordinal, featureIndex) =>
-        val bytes = value.getBinary(ordinal)
-        assert(arrayLength == bytes.length, "fixed array feature length must be equal as defined")
-        this.columnBuffers(featureIndex).put(bytes)
-      case (CBufferFeature(_, _, arrayLength, DataType.Short, true), ordinal, featureIndex) =>
-        writeFixedLengthArray(value, arrayLength, ordinal, (arr, i) =>
+      case (CBufferFeature(name, _, arrayLength, DataType.Byte, true), ordinal, featureIndex) =>
+        if (binaryOrdinals.contains(ordinal)) {
+          val bytes = value.getBinary(ordinal)
+          assert(arrayLength == bytes.length, s"fixed array feature $name length ${bytes.length} must be equal as defined $arrayLength")
+          this.columnBuffers(featureIndex).put(bytes)
+        } else {
+          writeFixedLengthArray(name, value, arrayLength, ordinal, (arr, i) =>
+            this.columnBuffers(featureIndex).put(arr.getByte(i)))
+        }
+      case (CBufferFeature(name, _, arrayLength, DataType.Short, true), ordinal, featureIndex) =>
+        writeFixedLengthArray(name, value, arrayLength, ordinal, (arr, i) =>
           this.columnBuffers(featureIndex).putShort(arr.getShort(i)))
-      case (CBufferFeature(_, _, arrayLength, DataType.Int, true), ordinal, featureIndex) =>
-        writeFixedLengthArray(value, arrayLength, ordinal, (arr, i) =>
+      case (CBufferFeature(name,  _, arrayLength, DataType.Int, true), ordinal, featureIndex) =>
+        writeFixedLengthArray(name, value, arrayLength, ordinal, (arr, i) =>
           this.columnBuffers(featureIndex).putInt(arr.getInt(i)))
-      case (CBufferFeature(_, _, arrayLength, DataType.Long, true), ordinal, featureIndex) =>
-        writeFixedLengthArray(value, arrayLength, ordinal, (arr, i) =>
+      case (CBufferFeature(name, _, arrayLength, DataType.Long, true), ordinal, featureIndex) =>
+        writeFixedLengthArray(name, value, arrayLength, ordinal, (arr, i) =>
           this.columnBuffers(featureIndex).putLong(arr.getLong(i)))
-      case (CBufferFeature(_, _, arrayLength, DataType.Float, true), ordinal, featureIndex) =>
-        writeFixedLengthArray(value, arrayLength, ordinal, (arr, i) =>
+      case (CBufferFeature(name,  _, arrayLength, DataType.Float, true), ordinal, featureIndex) =>
+        writeFixedLengthArray(name, value, arrayLength, ordinal, (arr, i) =>
           this.columnBuffers(featureIndex).putFloat(arr.getFloat(i)))
-      case (CBufferFeature(_, _, arrayLength, DataType.Double, true), ordinal, featureIndex) =>
-        writeFixedLengthArray(value, arrayLength, ordinal, (arr, i) =>
+      case (CBufferFeature(name, _, arrayLength, DataType.Double, true), ordinal, featureIndex) =>
+        writeFixedLengthArray(name, value, arrayLength, ordinal, (arr, i) =>
           this.columnBuffers(featureIndex).putDouble(arr.getDouble(i)))
       case (CBufferFeature(_, _, _, DataType.String, false), ordinal, featureIndex) =>
         val bytes = value.getUTF8String(ordinal).getBytes

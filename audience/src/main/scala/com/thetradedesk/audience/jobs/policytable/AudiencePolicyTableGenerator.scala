@@ -164,27 +164,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
   }
 
   def readGraphData(date: LocalDate, crossDeviceVendor: CrossDeviceVendor)(implicit spark: SparkSession): DataFrame = {
-    val graphData = {
-      if (crossDeviceVendor == CrossDeviceVendor.IAV2Person) {
-        CrossDeviceGraphUtil
-          .readGraphData(date, LightCrossDeviceGraphDataset())
-          .where(shouldTrackTDID('uiid) && 'score > lit(Config.graphScoreThreshold))
-          .select('uiid.alias("TDID"), 'personId.alias("groupId"))
-      } else if (crossDeviceVendor == CrossDeviceVendor.IAV2Household) {
-        CrossDeviceGraphUtil
-          .readGraphData(date, LightCrossDeviceHouseholdGraphDataset())
-          .where(shouldTrackTDID('uiid) && 'score > lit(Config.graphScoreThreshold))
-          .select('uiid.alias("TDID"), 'householdID.alias("groupId"))
-      } else {
-        throw new UnsupportedOperationException(s"crossDeviceVendor ${crossDeviceVendor} is not supported")
-      }
-    }
-
-    if (dryRun) {
-      graphData.where(samplingFunction('groupId))
-    } else {
-      graphData
-    }
+    CrossDeviceGraphUtil.readGraphData(date, crossDeviceVendor, Config.graphScoreThreshold, Some(samplingFunction))
   }
 
   def generateGraphMapping(sourceGraph: DataFrame): DataFrame = {
