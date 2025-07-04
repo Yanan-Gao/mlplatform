@@ -1,20 +1,20 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.datasets.{AdGroupDataSet, AudienceModelPolicyReadableDataset, AudienceModelThresholdRecord, AudienceModelThresholdWritableDataset, CampaignSeedDataset, Model, CrossDeviceVendor}
+import com.thetradedesk.audience.datasets.{AudienceModelPolicyReadableDataset, CrossDeviceVendor, Model}
 import com.thetradedesk.audience.jobs.TdidEmbeddingDotProductGeneratorOOS.EmbeddingSize
-import com.thetradedesk.audience.{audienceVersionDateFormat, date, dateTime, ttdReadEnv, ttdWriteEnv}
 import com.thetradedesk.audience.utils.S3Utils
+import com.thetradedesk.audience.{audienceVersionDateFormat, date}
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
+import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.FloatType
 
-import java.time.{LocalDate, LocalDateTime}
 import java.time.format.DateTimeFormatter
-import org.apache.spark.sql.DataFrame
+import java.time.{LocalDate, LocalDateTime}
 
 case class AudienceCalibrationAndMergeJobConfig(
   model: String,
@@ -46,7 +46,6 @@ object AudienceCalibrationAndMergeJob
     val conf = getConfig
     val dt = LocalDateTime.parse(conf.date_time)
     date = dt.toLocalDate
-    dateTime = dt
 
     val jobConf = conf.copy(
       mlplatformS3Bucket = S3Utils.refinePath(conf.mlplatformS3Bucket),
@@ -172,7 +171,7 @@ object AudienceCalibrationAndMergeJob
                               .join(minMaxMetric,Seq("SyntheticId"),"left")
                               .withColumn("pred", when('min_pred.isNotNull, least(greatest('pred-'min_pred,lit(0))/('max_pred-'min_pred),lit(1.0) )).otherwise('pred))
                               .withColumn("r", lit(jobConf.baselineHitRate))
-                              .withColumn("weights",('r + (lit(1)-'r)*(lit(1)- lit(1)/(lit(1)+exp(-(lit(-jobConf.smoothFactor)*('pred-lit(jobConf.locationFactor)))))))
+                              .withColumn("weights",'r + (lit(1)-'r)*(lit(1)- lit(1)/(lit(1)+exp(-(lit(-jobConf.smoothFactor)*('pred-lit(jobConf.locationFactor)))))))
                               .withColumn("pred", 'pred*'weights)
                               .groupBy("SyntheticId")
                               .agg(
