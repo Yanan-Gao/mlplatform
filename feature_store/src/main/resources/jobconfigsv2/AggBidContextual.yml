@@ -1,20 +1,43 @@
-datasource: BidContextual
-rootPath: s3a://thetradedesk-mlplatform-us-east-1
-prefix: /prod/features/data/contextualwithbid/v=1/date={dateStr}/hour={hourInt}/
-outputRootPath: s3a://thetradedesk-mlplatform-us-east-1
-initOutputPrefix: /features/feature_store/{ttdEnv}/profiles/source=contextualwithbid/index={indexPartition}/job=InitialAggJob/v=1/
-grain: hour # append date partition base on grain size, e.g. if grain=hour, then date={dateStr}/hour={hourInt}/
-outputPrefix: /features/feature_store/{ttdEnv}/profiles/source=contextualwithbid/index={indexPartition}/job=RollupAggJob/v=1/date={dateStr}/
-aggLevels: [ AdvertiserId, CampaignId, TDID ]
+dataSource:
+  name: BidContextual
+  rootPath: s3a://thetradedesk-mlplatform-us-east-1
+  prefix: /prod/features/data/contextualwithbid/v=1/date={dateStr}/hour={hourInt}/
+  format: parquet
+
+# aggregation levels configuration
+aggLevels:
+  - level: AdvertiserId
+    saltSize: 100
+    initAggGrains: [hour]
+    initWritePartitions: 10
+    enableFeatureKeyCount: true
+  - level: CampaignId 
+    saltSize: 100
+    initAggGrains: [ hour ]
+    initWritePartitions: 10
+    enableFeatureKeyCount: true
+  - level: TDID
+    saltSize: -1
+    initAggGrains: [ hour, day ]
+    initWritePartitions: 600
+    rollupWritePartitions: 20000
+    enableFeatureKeyCount: true
+
+initAggConfig:
+  outputRootPath: "s3a://thetradedesk-mlplatform-us-east-1"
+  outputPrefix: /features/feature_store/{ttdEnv}/profiles/source=contextualwithbid/index={indexPartition}/job={grain}InitialAggJob/v=1/
+
+rollupAggConfig:
+  outputRootPath: "s3a://thetradedesk-mlplatform-us-east-1"
+  outputPrefix: /features/feature_store/{ttdEnv}/profiles/source=contextualwithbid/index={indexPartition}/job=RollupAggJob/v=1/date={dateStr}/
+  windowGrain: day
+
 aggregations:
   - field: ContextualEmbeddingCategories
     dataType: array_int
     aggWindows: [ 1, 3, 7 ]
-    windowUnit: day
     aggFunc: [ Frequency ]
   - field: ContextualProbabilityScores
-    dataType: array_float
-    arraySize: 646
+    dataType: vector
     aggWindows: [ 1, 3, 7 ]
-    windowUnit: day
-    aggFunc: [ VectorMean, VectorMax ]
+    aggFunc: [ Mean, Max ]

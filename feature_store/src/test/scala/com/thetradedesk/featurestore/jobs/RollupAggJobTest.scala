@@ -13,22 +13,23 @@ class RollupAggJobTest extends TTDSparkTest {
 
   test("RollupAggJob should correctly aggregate description data from InitAggJob") {
     val df = Seq(
-      ("user1", Map("count" -> 3, "nonZeroCount" -> 3, "sum" -> 30, "min" -> 1, "max" -> 11, "allNull" -> 0)),
-      ("user1", Map("count" -> 3, "nonZeroCount" -> 3, "sum" -> 60, "min" -> 2, "max" -> 12, "allNull" -> 0)),
-      ("user2", Map("count" -> 2, "nonZeroCount" -> 2, "sum" -> 70, "min" -> 30, "max" -> 40, "allNull" -> 0)),
-      ("user2", Map("count" -> 2, "nonZeroCount" -> 2, "sum" -> 70, "min" -> 30, "max" -> 40, "allNull" -> 1)) // this should be ignored
-    ).toDF("FeatureKey", "valueA_Desc")
+      // count, nonZeroCount, sum, min, max
+      ("user1", 3, 3, Some(30), Some(1), Some(11)),
+      ("user1", 3, 3, Some(60), Some(2), Some(12)),
+      ("user2", 2, 2, Some(70), Some(30), Some(40)),
+      ("user2", 0, 0, null, null, null)
+    ).toDF("FeatureKey", "valueA_Count", "valueA_NonZeroCount", "valueA_Sum", "valueA_Min", "valueA_Max")
 
     val aggDef = createTestAggDefinition(FieldAggSpec(
       field = "valueA",
       dataType = "double",
       aggWindows = Seq(1, 3),
-      windowUnit = "day",
       aggFuncs = Seq(AggFunc.Mean, AggFunc.Sum, AggFunc.Count, AggFunc.Min, AggFunc.Max)
     ))
 
-    val result = RollupAggJob.aggByDefinition(df, aggDef, 3).collect().toList
+    val result = RollupAggJob.aggAndSelectByDefinition(df, aggDef, 3, aggDef.aggLevels.head).collect().toList
     result should contain theSameElementsAs Seq(
+      // mean, sum, count, min, max
       Row("user1", 15, 90, 6, 1, 12),
       Row("user2", 35, 70, 2, 30, 40)
     )
@@ -44,12 +45,11 @@ class RollupAggJobTest extends TTDSparkTest {
       field = "valueA",
       dataType = "double",
       aggWindows = Seq(1),
-      windowUnit = "day",
       topN = 2,
       aggFuncs = Seq(AggFunc.TopN)
     ))
 
-    val result = RollupAggJob.aggByDefinition(df, aggDef, 1).collect().toList
+    val result = RollupAggJob.aggAndSelectByDefinition(df, aggDef, 1, aggDef.aggLevels.head).collect().toList
     result should contain theSameElementsAs Seq(
       Row("user1", Seq("value6", "value5")),
     )
@@ -65,11 +65,10 @@ class RollupAggJobTest extends TTDSparkTest {
       field = "valueA",
       dataType = "double",
       aggWindows = Seq(1),
-      windowUnit = "day",
       aggFuncs = Seq(AggFunc.Frequency)
     ))
 
-    val result = RollupAggJob.aggByDefinition(df, aggDef, 1).collect().toList
+    val result = RollupAggJob.aggAndSelectByDefinition(df, aggDef, 1, aggDef.aggLevels.head).collect().toList
     result should contain theSameElementsAs Seq(
       Row("user1", Map("value1" -> 2, "value2" -> 4, "value3" -> 6, "value4" -> 8, "value5" -> 60, "value6" -> 72)),
     )
@@ -85,18 +84,16 @@ class RollupAggJobTest extends TTDSparkTest {
       field = "valueA",
       dataType = "double",
       aggWindows = Seq(1),
-      windowUnit = "day",
       aggFuncs = Seq(AggFunc.Frequency)
     ), FieldAggSpec(
       field = "valueB",
       dataType = "double",
       aggWindows = Seq(1, 3, 5),
-      windowUnit = "day",
       aggFuncs = Seq(AggFunc.Frequency)
     ))
 
     // agg for window 3, valueA is not included
-    val result = RollupAggJob.aggByDefinition(df, aggDef, 3).collect().toList
+    val result = RollupAggJob.aggAndSelectByDefinition(df, aggDef, 3, aggDef.aggLevels.head).collect().toList
     result should contain theSameElementsAs Seq(
       Row("user1", Map("value1" -> 22, "value2" -> 44)),
     )
@@ -104,23 +101,23 @@ class RollupAggJobTest extends TTDSparkTest {
 
   test("InitialAggJob should correctly aggregate vector values with Desc aggregation") {
     val df = Seq(
-      ("user1", Seq(Seq(1, 1), Seq(11, 12), Seq(11, 12), Seq(11, 12))),
-      ("user2", Seq(Seq(2, 2), Seq(6, 12), Seq(1, 3), Seq(5, 9))),
-    ).toDF("FeatureKey", "valueA_VectorDesc")
+      // count, sum, min, max
+      ("user1", 2, Seq(16, 12), Seq(1, 4), Seq(2, 5)),
+      ("user1", 2, Seq(4, 6), Seq(1, 5), Seq(1, 6)),
+      ("user2", 4, Seq(8, 16), Seq(5, 8), Seq(9, 12)),
+    ).toDF("FeatureKey", "valueA_Count", "valueA_Sum", "valueA_Min", "valueA_Max")
 
     val aggDef = createTestAggDefinition(FieldAggSpec(
       field = "valueA",
-      dataType = "array_int",
-      arraySize = 2,
+      dataType = "vector",
       aggWindows = Seq(1),
-      windowUnit = "day",
-      aggFuncs = Seq(AggFunc.VectorMean, AggFunc.VectorMax)
+      aggFuncs = Seq(AggFunc.Mean, AggFunc.Max)
     ))
 
-    val result = RollupAggJob.aggByDefinition(df, aggDef, 1).collect().toList
+    val result = RollupAggJob.aggAndSelectByDefinition(df, aggDef, 1, aggDef.aggLevels.head).collect().toList
     result should contain theSameElementsAs Seq(
-      Row("user1", Seq(11, 12), Seq(11, 12)),
-      Row("user2", Seq(3, 6), Seq(5, 9)),
+      Row("user1", Seq(5, 4.5), Seq(2, 6)),
+      Row("user2", Seq(2, 4), Seq(9, 12)),
     )
   }
 }

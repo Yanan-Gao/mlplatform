@@ -1,20 +1,42 @@
-datasource: BidContextual
-rootPath: /Users/sven.zhang/Documents/local_test
-prefix: /source=contextualwithbid/raw/date={dateStr}/hour={hourInt}
-outputRootPath: /Users/sven.zhang/Documents/local_test
-initOutputPrefix: /source=contextualwithbid/index={indexPartition}/job=InitAggJob
-grain: hour # append date partition base on grain size, e.g. if grain=hour, then date={dateStr}/hour={hourInt}/
-outputPrefix: /source=contextualwithbid/index={indexPartition}/job=RollupAggJob/date={dateStr}
-aggLevels: [ AdvertiserId, CampaignId, TDID ]
+dataSource:
+  name: BidContextual
+  rootPath: /Users/sven.zhang/Documents/local_test
+  prefix: /source=contextualwithbid/raw/date={dateStr}/hour={hourInt}
+  format: parquet
+
+aggLevels:
+  - level: AdvertiserId
+    saltSize: 5
+    initAggGrains: [ hour ]
+    initWritePartitions: 1
+    rollupWritePartitions: 1
+  - level: CampaignId
+    saltSize: 5
+    initAggGrains: [ hour ]
+    initWritePartitions: 1
+    rollupWritePartitions: 1
+  - level: TDID
+    saltSize: -1
+    initAggGrains: [ hour, day ]
+    initWritePartitions: 1
+    rollupWritePartitions: 1
+
+initAggConfig:
+  outputRootPath: /Users/sven.zhang/Documents/local_test
+  outputPrefix: /source=contextualwithbid/index={indexPartition}/job={grain}InitialAggJob
+  dataIntegrity: AT_LEAST_ONE
+
+rollupAggConfig:
+  outputRootPath: /Users/sven.zhang/Documents/local_test
+  outputPrefix: /source=contextualwithbid/index={indexPartition}/job=RollupAggJob/date={dateStr}
+  windowGrain: day
+
 aggregations:
   - field: ContextualEmbeddingCategories
     dataType: array_int
     aggWindows: [ 1, 3, 7 ]
-    windowUnit: day
-    aggFunc: [ frequency ]
+    aggFunc: [ Frequency ]
   - field: ContextualProbabilityScores
-    dataType: array_float
-    arraySize: 646
+    dataType: vector
     aggWindows: [ 1, 3, 7 ]
-    windowUnit: day
-    aggFunc: [ VectorMean, VectorMax ]
+    aggFunc: [ Mean, Max ]

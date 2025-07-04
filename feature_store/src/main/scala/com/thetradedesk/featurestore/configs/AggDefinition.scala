@@ -1,8 +1,12 @@
 package com.thetradedesk.featurestore.configs
 
-import com.thetradedesk.featurestore.constants.FeatureConstants.{GrainDay, SingleUnitWindow}
+import com.thetradedesk.featurestore.aggfunctions.AggFuncProcessorFactory
+import com.thetradedesk.featurestore.constants.FeatureConstants.SingleUnitWindow
 import com.thetradedesk.featurestore.features.Features.AggFunc
 import com.thetradedesk.featurestore.features.Features.AggFunc.AggFunc
+import com.thetradedesk.featurestore.rsm.CommonEnums.DataIntegrity.DataIntegrity
+import com.thetradedesk.featurestore.rsm.CommonEnums.Grain.Grain
+import com.thetradedesk.featurestore.rsm.CommonEnums.{DataIntegrity, Grain}
 import com.thetradedesk.featurestore.ttdEnv
 import org.yaml.snakeyaml.Yaml
 
@@ -11,28 +15,34 @@ import scala.collection.mutable
 import scala.io.Source
 import scala.util.{Failure, Success, Try}
 
+case class DataSourceConfig(
+                             name: String,
+                             rootPath: String,
+                             prefix: String,
+                             format: String = "parquet"
+                           )
 
-case class AggDefinition(
-                          datasource: String,
-                          format: String,
-                          rootPath: String,
-                          prefix: String,
-                          outputRootPath: String,
-                          outputPrefix: String,
-                          initOutputPrefix: String,
-                          grain: String,
-                          aggLevels: Set[String],
-                          aggregations: Seq[FieldAggSpec]
-                        ) {
-  /**
-   * Extracts initial aggregation definition for the given time grain
-   * @return AggDefinition with initial aggregation specs
-   */
-  def extractInitialAggDefinition(): AggDefinition = {
-    val initialAggregations = aggregations.map(_.extractFieldAggSpec(grain))
-    
-    copy(aggregations = initialAggregations)
+case class AggTaskConfig(
+                            outputRootPath: String,
+                            outputPrefix: String,
+                            windowGrain: Option[Grain] = None, // only applied for rollup config
+                            dataIntegrity: DataIntegrity = DataIntegrity.AllExist
+                          )
+
+case class AggLevelConfig(
+                           level: String,
+                           saltSize: Int,
+                           initAggGrains: Array[Grain],
+                           initWritePartitions: Option[Int] = None,
+                           rollupWritePartitions: Option[Int] = None,
+                           enableFeatureKeyCount: Boolean = true
+                         ) {
+  override def equals(obj: Any): Boolean = obj match {
+    case that: AggLevelConfig => this.level == that.level
+    case _ => false
   }
+
+  override def hashCode(): Int = level.hashCode
 }
 
 case class FieldAggSpec(
@@ -40,22 +50,22 @@ case class FieldAggSpec(
                          dataType: String,
                          arraySize: Int = -1,
                          aggWindows: Seq[Int],
-                         windowUnit: String,
                          topN: Int = -1,
                          aggFuncs: Seq[AggFunc]
                        ) {
-  /**
-   * Extracts initial aggregation specification for the given time unit
-   * @param windowUnit Time unit for aggregation
+
+  /** Extracts initial aggregation specification for the given time unit
+   *
    * @return FieldAggSpec with initial aggregation functions
    */
-  def extractFieldAggSpec(windowUnit: String): FieldAggSpec = {
+  def extractFieldAggSpec: FieldAggSpec = {
     val initialAggFunctions = new mutable.HashSet[AggFunc]()
     var initialTopN = -1
 
     aggFuncs.foreach(x => {
-      val initFunc = AggFunc.getInitialAggFunc(x)
-      initialAggFunctions += initFunc
+      val initFuncs = AggFuncProcessorFactory.getProcessor(dataType, x).initialAggFuncs
+      initialAggFunctions ++= initFuncs
+      // TopN is a special case, multiply by 100 to get the more accurate topN value later in rollup aggregation
       if (x == AggFunc.TopN) {
         initialTopN = topN * 100
       }
@@ -63,26 +73,39 @@ case class FieldAggSpec(
 
     copy(
       aggWindows = SingleUnitWindow,
-      windowUnit = windowUnit,
       topN = initialTopN,
       aggFuncs = initialAggFunctions.toSeq
     )
   }
+}
 
-  def getWindowSuffix: String = {
-    windowUnit match {
-      case GrainDay => "D"
-      case _ => throw new IllegalArgumentException(s"Unsupported window unit: $windowUnit")
-    }
+case class AggDefinition(
+                          dataSource: DataSourceConfig,
+                          aggLevels: Set[AggLevelConfig],
+                          initAggConfig: AggTaskConfig,
+                          rollupAggConfig: AggTaskConfig,
+                          aggregations: Seq[FieldAggSpec]
+                        ) {
 
+  /** Extracts initial aggregation definition for the given time grain */
+  def extractInitialAggDefinition(): AggDefinition = {
+    val initialAggregations = aggregations.map(_.extractFieldAggSpec)
+    copy(aggregations = initialAggregations)
   }
 }
 
 object AggDefinition {
-  private val YAML_BASE_PATH = if (ttdEnv == "local") "/jobconfigsv2_local" else "/jobconfigsv2"
+  private val YAML_BASE_PATH =
+    if (ttdEnv == "local") "/jobconfigsv2_local" else "/jobconfigsv2"
 
-  def loadConfig(dataSource: Option[String] = None, filePath: Option[String] = None): AggDefinition = {
-    require(dataSource.nonEmpty || filePath.nonEmpty, "Both dataSource and filePath are empty")
+  def loadConfig(
+                  dataSource: Option[String] = None,
+                  filePath: Option[String] = None
+                ): AggDefinition = {
+    require(
+      dataSource.nonEmpty || filePath.nonEmpty,
+      "Both dataSource and filePath are empty"
+    )
 
     val configString = dataSource match {
       case Some(ds) => loadFromClassPath(ds)
@@ -98,42 +121,86 @@ object AggDefinition {
     config.aggregations.foreach { agg =>
       agg.aggFuncs.foreach { func =>
         if (func == AggFunc.TopN && agg.topN < 1) {
-          throw new IllegalArgumentException(s"TopN is not specified for field ${agg.field}")
-        }
-
-        if (AggFunc.isVectorFunc(func) && agg.arraySize < 1) {
-          throw new IllegalArgumentException(s"Array size is not specified for field ${agg.field}")
+          throw new IllegalArgumentException(
+            s"TopN is not specified for field ${agg.field}"
+          )
         }
       }
+    }
+    val initAggDef = config.extractInitialAggDefinition()
+    val allFields = initAggDef.aggregations.map(_.field).toSet
+    val allAggFields = initAggDef.aggregations.flatMap(agg => agg.aggFuncs.map(func => (s"${agg.field}_${func}"))).toSet
+    val conflicts = allFields intersect allAggFields
+    if (conflicts.nonEmpty) {
+      throw new IllegalArgumentException(
+        s"Column name conflicts found: ${conflicts.mkString(", ")}"
+      )
     }
   }
 
   private def parseYamlConfig(configString: String): AggDefinition = {
     val yaml = new Yaml()
-    
+
     Try {
       val javaMap = yaml.load[java.util.Map[String, Any]](configString)
       val yamlMap = javaMap.asScala.toMap
 
       val aggregations = parseAggregations(yamlMap)
-      
+      val dataSourceMap = yamlMap("dataSource").asInstanceOf[java.util.Map[String, Any]].asScala.toMap
+      val initAggConfigMap = yamlMap("initAggConfig").asInstanceOf[java.util.Map[String, Any]].asScala.toMap
+      val rollupAggConfigMap = yamlMap("rollupAggConfig").asInstanceOf[java.util.Map[String, Any]].asScala.toMap
+
       AggDefinition(
-        datasource = yamlMap("datasource").toString,
-        format = yamlMap.getOrElse("format", "parquet").toString,
-        rootPath = yamlMap("rootPath").toString,
-        prefix = yamlMap("prefix").toString,
-        outputRootPath = yamlMap("outputRootPath").toString,
-        outputPrefix = yamlMap("outputPrefix").toString,
-        initOutputPrefix = yamlMap("initOutputPrefix").toString,
-        grain = yamlMap("grain").toString,
-        aggLevels = yamlMap("aggLevels").asInstanceOf[java.util.List[String]].asScala.toSet,
+        dataSource = DataSourceConfig(
+          name = dataSourceMap("name").toString,
+          rootPath = dataSourceMap("rootPath").toString,
+          prefix = dataSourceMap("prefix").toString,
+          format = dataSourceMap.getOrElse("format", "parquet").toString
+        ),
+        aggLevels = parseAggLevels(yamlMap),
+        initAggConfig = AggTaskConfig(
+          outputRootPath = initAggConfigMap("outputRootPath").toString,
+          outputPrefix = initAggConfigMap("outputPrefix").toString,
+          dataIntegrity = DataIntegrity.fromString(initAggConfigMap.getOrElse("dataIntegrity", "all_exist").toString)
+        ),
+        rollupAggConfig = AggTaskConfig(
+          outputRootPath = initAggConfigMap("outputRootPath").toString,
+          outputPrefix = rollupAggConfigMap("outputPrefix").toString,
+          windowGrain = Some(Grain.fromString(rollupAggConfigMap("windowGrain").toString).getOrElse(throw new IllegalArgumentException(s"Unable to parse window grain from " +
+            s": ${rollupAggConfigMap("windowGrain")}"))),
+          dataIntegrity = DataIntegrity.fromString(rollupAggConfigMap.getOrElse("dataIntegrity", "all_exist").toString)
+        ),
         aggregations = aggregations
       )
     } match {
       case Success(config) => config
-      case Failure(e) => 
-        throw new IllegalArgumentException(s"Failed to parse YAML configuration: $configString", e)
+      case Failure(e) =>
+        throw new IllegalArgumentException(
+          s"Failed to parse YAML configuration: $configString",
+          e
+        )
     }
+  }
+
+  private def parseAggLevels(yamlMap: Map[String, Any]): Set[AggLevelConfig] = {
+    yamlMap("aggLevels")
+      .asInstanceOf[java.util.List[java.util.Map[String, Any]]]
+      .asScala
+      .map { agg =>
+        val scalaAgg = agg.asScala.toMap
+        AggLevelConfig(
+          level = scalaAgg("level").toString,
+          saltSize = scalaAgg.getOrElse("saltSize", -1).asInstanceOf[Int],
+          initAggGrains = scalaAgg("initAggGrains")
+            .asInstanceOf[java.util.List[String]]
+            .asScala
+            .map(str => Grain.fromString(str).getOrElse(throw new IllegalArgumentException(s"Unable to parse initial grain from : $str"))).toArray,
+          initWritePartitions = scalaAgg.get("initWritePartitions").map(_.asInstanceOf[Int]),
+          rollupWritePartitions = scalaAgg.get("rollupWritePartitions").map(_.asInstanceOf[Int]),
+          enableFeatureKeyCount = scalaAgg.getOrElse("enableFeatureKeyCount", true).asInstanceOf[Boolean]
+        )
+      }
+      .toSet
   }
 
   private def parseAggregations(yamlMap: Map[String, Any]): Seq[FieldAggSpec] = {
@@ -143,13 +210,12 @@ object AggDefinition {
       .map { agg =>
         val scalaAgg = agg.asScala.toMap
         val aggField = scalaAgg("field").toString
-        
+
         FieldAggSpec(
           field = aggField,
           dataType = scalaAgg("dataType").toString,
           arraySize = scalaAgg.getOrElse("arraySize", -1).asInstanceOf[Int],
           aggWindows = scalaAgg("aggWindows").asInstanceOf[java.util.List[Int]].asScala,
-          windowUnit = scalaAgg("windowUnit").toString,
           topN = scalaAgg.getOrElse("topN", -1).asInstanceOf[Int],
           aggFuncs = parseAggFunctions(scalaAgg, aggField)
         )
@@ -161,9 +227,13 @@ object AggDefinition {
       .asInstanceOf[java.util.List[String]]
       .asScala
       .map { str =>
-        AggFunc.fromString(str).getOrElse(
-          throw new IllegalArgumentException(s"Unable to parse aggregation function: $str, for field $aggField")
-        )
+        AggFunc
+          .fromString(str)
+          .getOrElse(
+            throw new IllegalArgumentException(
+              s"Unable to parse aggregation function: $str, for field $aggField"
+            )
+          )
       }
   }
 
@@ -174,7 +244,9 @@ object AggDefinition {
         throw new IllegalArgumentException(s"YAML file not found: $filePath")
       }
       Source.fromInputStream(inputStream).mkString
-    }.getOrElse(throw new IllegalArgumentException(s"Failed to load YAML file: $filePath"))
+    }.getOrElse(
+      throw new IllegalArgumentException(s"Failed to load YAML file: $filePath")
+    )
   }
 
   private def loadFromClassPath(dataSource: String): String = {
@@ -185,6 +257,10 @@ object AggDefinition {
         throw new IllegalArgumentException(s"YAML file not found: $yamlPath")
       }
       Source.fromInputStream(inputStream).mkString
-    }.getOrElse(throw new IllegalArgumentException(s"Failed to load YAML from classpath: $yamlPath"))
+    }.getOrElse(
+      throw new IllegalArgumentException(
+        s"Failed to load YAML from classpath: $yamlPath"
+      )
+    )
   }
 }

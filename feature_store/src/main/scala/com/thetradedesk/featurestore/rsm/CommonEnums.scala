@@ -16,4 +16,30 @@ object CommonEnums {
     type FeatureKey = Value
     val None, AliasedSupplyPublisherIdCity, SiteZip = Value
   }
+
+  object Grain extends Enumeration {
+    type Grain = Value
+    val Hourly, Daily = Value
+    
+    def fromString(s: String): Option[Grain] = {
+      s.toLowerCase match {
+        case "hour" | "hourly" => Some(Hourly)
+        case "day" | "daily" => Some(Daily)
+        case _ => None
+      }
+    }
+  }
+
+  object DataIntegrity extends Enumeration {
+    type DataIntegrity = Value
+    val AllExist, AtLeastOne = Value
+
+    def fromString(s: String): DataIntegrity = {
+      s.toLowerCase match {
+        case "allexists" | "all_exist" => AllExist
+        case "atleastone" | "at_least_one" => AtLeastOne
+        case _ => AllExist
+      }
+    }
+  }
 }
