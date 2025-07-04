@@ -508,15 +508,15 @@ object MockData {
     DoNotTrack = Option(DoNotTrackLookupRecord()),
     CreativeId = Option(""),
 
-    PrivateContractId =  "", //16,777,217
+    PrivateContractId = "", //16,777,217
     ReferrerUrl = Some("https://www.usnews.com//best-schools/cs"),
-    ContextualCategories = Some(Seq[Long](123456789,267891234)),
+    ContextualCategories = Some(Seq[Long](123456789, 267891234)),
     IsAdFormatOptimizationEnabled = Some(true),
     IsGeoSegmentOptimizationEnabled = Some(false),
     KoaCanBidUpEnabled = Some(false), // assist only with performance
     IsEnabled = Some(true),
     UserSegmentCount = Some(1000),
-    MatchedSegments = Seq[Long](20000001,20000002),
+    MatchedSegments = Seq[Long](20000001, 20000002),
     ExpectedValue = Option(0.001),
     RPacingValue = Option(0.1),
     JanusVariantMap = Option(Map.apply("modelA" -> "versionA1", "modelB" -> "versionB2")),
@@ -784,27 +784,35 @@ object MockData {
     DoubleFeat1 = 0.1.toDouble
   )
 
-  def featureSourceSchema(userFeatureMergeDefinition: UserFeatureMergeDefinition) = StructType(
+  def featureSourceSchema(userFeatureMergeDefinition: UserFeatureMergeDefinition, enableBinary: Boolean = true) = StructType(
     (userFeatureMergeDefinition
       .featureSourceDefinitions
-      .flatMap(e => e.features.map(featureDefinitionToStructField(e, _)))
+      .flatMap(e => e.features.map(featureDefinitionToStructField(e, _, enableBinary)))
       :+ StructField("TDID", StringType, false))
   )
 
-  private def featureDefinitionToStructField(featureSourceDefinition: FeatureSourceDefinition, featureDefinition: FeatureDefinition): StructField = {
+  private def featureDefinitionToStructField(featureSourceDefinition: FeatureSourceDefinition, featureDefinition: FeatureDefinition, enableBinary: Boolean): StructField = {
     if (featureDefinition.arrayLength == 0) {
-      StructField(s"${featureSourceDefinition.name}_${featureDefinition.name}", dataTypeToSparkType(featureDefinition.dtype), false)
+      StructField(s"${featureSourceDefinition.name}_${featureDefinition.name}", dataTypeToSparkType(featureDefinition.dtype), nullable = false)
     } else {
       val metadata = new MetadataBuilder().putLong(ArrayLengthKey, if (featureDefinition.arrayLength == 1) 0 else featureDefinition.arrayLength).build()
-      StructField(s"${featureSourceDefinition.name}_${featureDefinition.name}", ArrayType(dataTypeToSparkType(featureDefinition.dtype), false), false, metadata = metadata)
+      if (featureDefinition.dtype == DataType.Byte && enableBinary) {
+        StructField(s"${featureSourceDefinition.name}_${featureDefinition.name}", BinaryType, nullable = false, metadata = metadata)
+      } else {
+        StructField(s"${featureSourceDefinition.name}_${featureDefinition.name}", ArrayType(dataTypeToSparkType(featureDefinition.dtype), containsNull = false), nullable = false, metadata = metadata)
+      }
     }
   }
 
   private def dataTypeToSparkType(dataType: DataType) = {
     dataType match {
       case DataType.Bool => BooleanType
-      case DataType.Byte | DataType.Short | DataType.Int | DataType.Long => LongType
-      case DataType.Float | DataType.Double => DoubleType
+      case DataType.Byte => ByteType
+      case DataType.Short => ShortType
+      case DataType.Int => IntegerType
+      case DataType.Long => LongType
+      case DataType.Float => FloatType
+      case DataType.Double => DoubleType
       case DataType.String => StringType
       case _ => throw new RuntimeException("should not happen")
     }
@@ -833,17 +841,26 @@ object MockData {
   }
 
   private def repeatDataType(dataType: DataType, n: Int) = {
-    (1 to n).map(_ => dataTypeToValue(dataType))
+    dataType match {
+      case DataType.Bool => (1 to n).map(_ => rnd.nextBoolean()).toArray
+      case DataType.Byte => (1 to n).map(_ => rnd.nextInt(127).asInstanceOf[Byte]).toArray
+      case DataType.Short => (1 to n).map(_ => rnd.nextInt(1024).asInstanceOf[Short]).toArray
+      case DataType.Int => (1 to n).map(_ => rnd.nextInt()).toArray
+      case DataType.Long => (1 to n).map(_ => rnd.nextLong()).toArray
+      case DataType.Float => (1 to n).map(_ => rnd.nextFloat()).toArray
+      case DataType.Double => (1 to n).map(_ => rnd.nextDouble()).toArray
+      case _ => throw new RuntimeException("should not happen")
+    }
   }
 
   private def dataTypeToValue(dataType: DataType) = {
     dataType match {
       case DataType.Bool => rnd.nextBoolean()
-      case DataType.Byte => rnd.nextInt(127).asInstanceOf[Long]
-      case DataType.Short => rnd.nextInt(1024).asInstanceOf[Long]
-      case DataType.Int => rnd.nextInt().asInstanceOf[Long]
+      case DataType.Byte => rnd.nextInt(127).asInstanceOf[Byte]
+      case DataType.Short => rnd.nextInt(1024).asInstanceOf[Short]
+      case DataType.Int => rnd.nextInt().asInstanceOf[Int]
       case DataType.Long => rnd.nextLong()
-      case DataType.Float => rnd.nextFloat().asInstanceOf[Double]
+      case DataType.Float => rnd.nextFloat().asInstanceOf[Float]
       case DataType.Double => rnd.nextDouble()
       case DataType.String => rnd.nextInt().toString
       case _ => throw new RuntimeException("should not happen")

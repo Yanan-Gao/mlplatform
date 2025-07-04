@@ -24,6 +24,7 @@ object CBufferConstants {
   val BigEndianKey = "bigEndian"
   val FixedChunkBufferKey = "fixedChunkBuffer"
   val ColumnBasedKey = "columnBasedChunk"
+  val SupportBinaryKey = "supportBinary"
   val UseOffHeapKey = "useOffHeap"
   val ArrayLengthKey = "arrayLength"
 

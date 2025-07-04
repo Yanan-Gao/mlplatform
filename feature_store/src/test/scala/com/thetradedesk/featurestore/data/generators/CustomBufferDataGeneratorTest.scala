@@ -42,9 +42,9 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
     globalInc
   }
 
-  def testDataGenerationAndValidate(userFeatureMergeDefinition: UserFeatureMergeDefinition) = {
+  def testDataGenerationAndValidate(userFeatureMergeDefinition: UserFeatureMergeDefinition, enableBinary: Boolean = true) = {
     val dateTime = LocalDateTime.now()
-    val schema = MockData.featureSourceSchema(userFeatureMergeDefinition)
+    val schema = MockData.featureSourceSchema(userFeatureMergeDefinition, enableBinary)
 
     val data = Seq(
       MockData.randomFeatureSourceDataMock(userFeatureMergeDefinition),
@@ -57,19 +57,21 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
     df.printSchema()
     df.show(10, false)
 
-    createUserFeatureSourceDataFrame(dateTime, df, userFeatureMergeDefinition)
+    if (enableBinary) {
+      createUserFeatureSourceDataFrame(dateTime, df, userFeatureMergeDefinition)
 
-    val (result, schemaJson) = customBufferDataGenerator.generate(dateTime, userFeatureMergeDefinition)
+      val (result, schemaJson) = customBufferDataGenerator.generate(dateTime, userFeatureMergeDefinition)
 
-    val features = read[Seq[Feature]](schemaJson)
+      val features = read[Seq[Feature]](schemaJson)
 
-    result.show(10, false)
+      result.show(10, false)
 
-    val other = customBufferDataGenerator.readFromDataFrame(result, features, userFeatureMergeDefinition, true)
-    other.printSchema()
-    other.show(10, false)
+      val other = customBufferDataGenerator.readFromDataFrame(result, features, userFeatureMergeDefinition)
+      other.printSchema()
+      other.show(10, false)
 
-    assertSmallDatasetEquality(refineDataFrame(other, UserIDKey), refineDataFrame(df, UserIDKey))
+      assertSmallDatasetEquality(refineDataFrame(other, UserIDKey), refineDataFrame(df, UserIDKey))
+    }
 
     // validate cbuffer raw-based format
     val cbufferPath = subTempFolder()
@@ -82,6 +84,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
 
     val df2 = spark
       .read
+      .option("supportBinary", enableBinary.toString)
       .cb(cbufferPath)
 
     assertSmallDatasetEquality(refineDataFrame(df2, UserIDKey), refineDataFrame(df, UserIDKey))
@@ -98,6 +101,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
 
     val df3 = spark
       .read
+      .option("supportBinary", enableBinary.toString)
       .cb(cbufferPath2)
 
     assertSmallDatasetEquality(refineDataFrame(df3, UserIDKey), refineDataFrame(df, UserIDKey))
@@ -156,6 +160,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
     )
 
     testDataGenerationAndValidate(userFeatureMergeDefinition)
+    testDataGenerationAndValidate(userFeatureMergeDefinition, enableBinary = false)
   }
 
   test("run generate and validate result - short") {
@@ -291,7 +296,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
       "ufmd1", userFeatureFolder, Array(
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 3),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 30),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
@@ -299,12 +304,13 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 7),
-            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 9),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 31),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 32),
           )))
     )
 
     testDataGenerationAndValidate(userFeatureMergeDefinition)
+    testDataGenerationAndValidate(userFeatureMergeDefinition, enableBinary = false)
   }
 
   test("run generate and validate result - fixed short array") {
@@ -431,6 +437,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
     )
 
     testDataGenerationAndValidate(userFeatureMergeDefinition)
+    testDataGenerationAndValidate(userFeatureMergeDefinition, enableBinary = false)
   }
 
   test("run generate and validate result - dynamic short array") {
@@ -589,6 +596,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
     )
 
     testDataGenerationAndValidate(userFeatureMergeDefinition)
+    testDataGenerationAndValidate(userFeatureMergeDefinition, enableBinary = false)
   }
 
   test("run generate and validate result - edge case one boolean feature only") {
@@ -638,6 +646,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
     )
 
     testDataGenerationAndValidate(userFeatureMergeDefinition)
+    testDataGenerationAndValidate(userFeatureMergeDefinition, enableBinary = false)
   }
 
   override def afterAll(): Unit = {

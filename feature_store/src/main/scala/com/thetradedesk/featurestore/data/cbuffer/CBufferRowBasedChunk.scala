@@ -58,10 +58,15 @@ case class CBufferRowBasedChunk(schema: StructType, features: Array[CBufferFeatu
         this.chunkBuffer.putDouble(value.getDouble(ordinal))
       case (CBufferFeature(_, _, 0, DataType.Byte, true), ordinal, _) =>
         updateOffset()
-        val bytes = value.getBinary(ordinal)
-        checkBufferBound(this.offStart + bytes.length)
-        this.chunkBuffer.put(bytes)
-        resetOffset()
+        if (binaryOrdinals.contains(ordinal)) {
+          val bytes = value.getBinary(ordinal)
+          checkBufferBound(this.offStart + bytes.length)
+          this.chunkBuffer.put(bytes)
+          resetOffset()
+        } else {
+          writeVarLengthArray(value, DataType.Byte, ordinal, (arr, i) =>
+            this.chunkBuffer.put(arr.getByte(i)))
+        }
       case (CBufferFeature(_, _, 0, DataType.Short, true), ordinal, _) =>
         writeVarLengthArray(value, DataType.Short, ordinal, (arr, i) =>
           this.chunkBuffer.putShort(arr.getShort(i)))
@@ -77,24 +82,29 @@ case class CBufferRowBasedChunk(schema: StructType, features: Array[CBufferFeatu
       case (CBufferFeature(_, _, 0, DataType.Double, true), ordinal, _) =>
         writeVarLengthArray(value, DataType.Double, ordinal, (arr, i) =>
           this.chunkBuffer.putDouble(arr.getDouble(i)))
-      case (CBufferFeature(_, _, arrayLength, DataType.Byte, true), ordinal, _) =>
-        val bytes = value.getBinary(ordinal)
-        assert(arrayLength == bytes.length, "fixed array feature length must be equal as defined")
-        this.chunkBuffer.put(bytes)
-      case (CBufferFeature(_, _, arrayLength, DataType.Short, true), ordinal, _) =>
-        writeFixedLengthArray(value, arrayLength, ordinal, (arr, i) =>
+      case (CBufferFeature(name, _, arrayLength, DataType.Byte, true), ordinal, _) =>
+        if (binaryOrdinals.contains(ordinal)) {
+          val bytes = value.getBinary(ordinal)
+          assert(arrayLength == bytes.length, s"fixed array feature $name length ${bytes.length} must be equal as defined $arrayLength")
+          this.chunkBuffer.put(bytes)
+        } else {
+          writeFixedLengthArray(name, value, arrayLength, ordinal, (arr, i) =>
+            this.chunkBuffer.put(arr.getByte(i)))
+        }
+      case (CBufferFeature(name, _, arrayLength, DataType.Short, true), ordinal, _) =>
+        writeFixedLengthArray(name, value, arrayLength, ordinal, (arr, i) =>
           this.chunkBuffer.putShort(arr.getShort(i)))
-      case (CBufferFeature(_, _, arrayLength, DataType.Int, true), ordinal, _) =>
-        writeFixedLengthArray(value, arrayLength, ordinal, (arr, i) =>
+      case (CBufferFeature(name, _, arrayLength, DataType.Int, true), ordinal, _) =>
+        writeFixedLengthArray(name, value, arrayLength, ordinal, (arr, i) =>
           this.chunkBuffer.putInt(arr.getInt(i)))
-      case (CBufferFeature(_, _, arrayLength, DataType.Long, true), ordinal, _) =>
-        writeFixedLengthArray(value, arrayLength, ordinal, (arr, i) =>
+      case (CBufferFeature(name, _, arrayLength, DataType.Long, true), ordinal, _) =>
+        writeFixedLengthArray(name, value, arrayLength, ordinal, (arr, i) =>
           this.chunkBuffer.putLong(arr.getLong(i)))
-      case (CBufferFeature(_, _, arrayLength, DataType.Float, true), ordinal, _) =>
-        writeFixedLengthArray(value, arrayLength, ordinal, (arr, i) =>
+      case (CBufferFeature(name, _, arrayLength, DataType.Float, true), ordinal, _) =>
+        writeFixedLengthArray(name, value, arrayLength, ordinal, (arr, i) =>
           this.chunkBuffer.putFloat(arr.getFloat(i)))
-      case (CBufferFeature(_, _, arrayLength, DataType.Double, true), ordinal, _) =>
-        writeFixedLengthArray(value, arrayLength, ordinal, (arr, i) =>
+      case (CBufferFeature(name, _, arrayLength, DataType.Double, true), ordinal, _) =>
+        writeFixedLengthArray(name, value, arrayLength, ordinal, (arr, i) =>
           this.chunkBuffer.putDouble(arr.getDouble(i)))
       case (CBufferFeature(_, _, _, DataType.String, false), ordinal, _) =>
         updateOffset()

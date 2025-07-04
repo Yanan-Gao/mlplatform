@@ -1,17 +1,17 @@
 package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore._
-import com.thetradedesk.featurestore.rsm.CommonEnums.{CrossDeviceVendor, DataSource}
+import com.thetradedesk.featurestore.rsm.CommonEnums.CrossDeviceVendor
+import com.thetradedesk.featurestore.rsm.CommonEnums.DataSource.DataSource
 import com.thetradedesk.featurestore.transform.IDTransform.{allIdType, filterOnIdTypes}
 import com.thetradedesk.featurestore.transform.MappingIdSplitUDF
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.provisioning.CampaignFlightDataSet
-import com.thetradedesk.spark.util.io.FSUtils
+import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{DataFrame, SaveMode}
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -24,8 +24,9 @@ abstract class DensityFeatureBaseJob {
   val sensitiveFeaturePair = "AliasedSupplyPublisherIdCity"
   val featurePairs: List[(String, String)] = List(("AliasedSupplyPublisherId", "City"), ("Site", "Zip"))
 
-  val featurePairStrings = featurePairs.map { case (f1, f2) => s"$f1$f2"}
+  val featurePairStrings = featurePairs.map { case (f1, f2) => s"$f1$f2" }
 
+  val numSplits = 10
   val salt = "TRM"
 
   val filterSensitiveAdv: mutable.HashMap[String, Boolean] = mutable.HashMap[String, Boolean](
@@ -88,7 +89,7 @@ abstract class DensityFeatureBaseJob {
       val colsToKeep = colsToRead ++ featurePairs.map(e => s"${e._1}${e._2}Hashed") :+ "DeviceAdvertisingId" :+ "CookieTDID" :+ "UnifiedId2" :+ "EUID" :+ "IdentityLinkId"
 
       bidsImpressions
-        .select("BidRequestId", colsToKeep : _*)
+        .select("BidRequestId", colsToKeep: _*)
     }
     catch {
       case e: Throwable =>
@@ -119,6 +120,23 @@ abstract class DensityFeatureBaseJob {
         && ('EndDateExclusiveUTC.isNull || 'EndDateExclusiveUTC.gt(campaignEndDateTimeStr)))
       .select('CampaignId)
       .distinct()
+  }
+
+  def readTDIDSubDensityFeature(date: LocalDate, dataSource: DataSource, featurePair: String): DataFrame = {
+    val basePath = s"$MLPlatformS3Root/$readEnv/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJobSub/Source=${dataSource.toString}/FeatureKey=$featurePair/v=1/date=${getDateStr(date)}"
+    readAllSplits(date, basePath)
+  }
+
+  def readTDIDDensityFeature(date: LocalDate): DataFrame = {
+    val basePath = s"$MLPlatformS3Root/$readEnv/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/date=20250629/"
+    readAllSplits(date, basePath)
+  }
+
+  def readAllSplits(date: LocalDate, basePath: String): DataFrame = {
+    spark
+      .read
+      .option("basePath", basePath)
+      .parquet(((0 until 10).map(e => s"$basePath/split=$e")): _*)
   }
 
   def splitDensityScoreSlots(input: DataFrame): DataFrame = {
