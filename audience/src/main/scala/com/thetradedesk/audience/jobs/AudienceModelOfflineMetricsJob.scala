@@ -1,9 +1,9 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.datasets.{AdGroupDataSet, ModelOfflineMetricsDataset, ModelOfflineMetricsRecord, AudienceModelPolicyReadableDataset, AudienceModelThresholdRecord, AudienceModelThresholdWritableDataset, CampaignSeedDataset, Model}
+import com.thetradedesk.audience.datasets.{AdGroupDataSet, AudienceModelPolicyReadableDataset, AudienceModelThresholdRecord, AudienceModelThresholdWritableDataset, CampaignSeedDataset, Model, ModelOfflineMetricsDataset, ModelOfflineMetricsRecord}
 import com.thetradedesk.audience.jobs.AudienceCalibrationAndMergeJob.prometheus
-import com.thetradedesk.audience.{date, dateTime, ttdReadEnv, ttdWriteEnv, audienceVersionDateFormat}
-import com.thetradedesk.audience.utils.{S3Utils, precisionRecallAggregator, AUCPerGroupAggregator}
+import com.thetradedesk.audience.{audienceVersionDateFormat, date, dateFormatter, dateTime, ttdReadEnv, ttdWriteEnv}
+import com.thetradedesk.audience.utils.{AUCPerGroupAggregator, S3Utils, precisionRecallAggregator}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -11,6 +11,7 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.FloatType
+
 import java.time.{LocalDate, LocalDateTime}
 import java.time.format.DateTimeFormatter
 import org.apache.spark.sql.DataFrame
@@ -38,7 +39,7 @@ object AudienceModelOfflineMetricsGeneratorJob {
   def runETLPipeline(): Unit = {
 
     val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
-    val dateTime = date.minusDays(1).atStartOfDay()
+    val dateTime = date.atStartOfDay()
     val oosOutputPath = s"s3://${Config.mlplatformS3Bucket}/${Config.metricOutputS3Path}/oos/${date.format(formatter)}000000"
     val populationOutputPath = s"s3://${Config.mlplatformS3Bucket}/${Config.metricOutputS3Path}/population/${date.format(formatter)}000000"
 
@@ -49,10 +50,10 @@ object AudienceModelOfflineMetricsGeneratorJob {
     .toSeq
     .sortWith(_.isAfter(_))
 
-    val recentVersionOption = if (Config.embeddingRecentVersion != null) Some(Config.embeddingRecentVersion)
+    val recentVersionOption = if (Config.embeddingRecentVersion != null) Some(LocalDateTime.parse(Config.embeddingRecentVersion, formatter))
     else availableEmbeddingVersions.find(_.isBefore(dateTime))
 
-    val recentVersionStr = recentVersionOption.get.asInstanceOf[java.time.LocalDateTime].toLocalDate.format(formatter)
+    val recentVersionStr = recentVersionOption.get.toLocalDate.format(formatter)
 
     val currentPolicyTable = AudienceModelPolicyReadableDataset(Model.RSM)
       .readSinglePartition(dateTime)(spark)
@@ -60,7 +61,7 @@ object AudienceModelOfflineMetricsGeneratorJob {
       .select("SyntheticId", "IsSensitive").distinct()
 
     val previousPolicyTable = AudienceModelPolicyReadableDataset(Model.RSM)
-      .readSinglePartition(recentVersionOption.get.asInstanceOf[java.time.LocalDateTime])(spark)
+      .readSinglePartition(recentVersionOption.get)(spark)
       .filter((col("CrossDeviceVendorId") === 0))
       .select("SyntheticId", "IsSensitive").distinct()
 
