@@ -10,7 +10,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.{AdGroupDataSet, AdGroupRecord, CampaignDataSet}
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
-import job.campaignbackoff.CampaignAdjustmentsJob.{hadesCampaignCounts}
+import job.campaignbackoff.CampaignAdjustmentsJob.{hadesBackoffV3Metrics, hadesCampaignCounts}
 import org.apache.hadoop.shaded.org.apache.commons.math3.special.Erf
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions._
@@ -586,15 +586,22 @@ object HadesCampaignBufferAdjustmentsTransform {
     // Get final pushdowns
     val (hadesBufferAdjustmentsDataset, metrics) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData, underdeliveryThreshold)
 
-    HadesCampaignBufferAdjustmentsDataset.writeData(date, hadesBufferAdjustmentsDataset, fileCount)
+    // Set this flag to false on July 7th MR. Do not merge before July 6th 2025.
+    val resetBufferBackoff = true
+    val finalHadesBufferAdjustmentDataset =
+      if (resetBufferBackoff) {
+        hadesBufferAdjustmentsDataset.withColumn("BBF_FloorBuffer", lit(0.01)).selectAs[HadesBufferAdjustmentSchema]
+      } else {
+        hadesBufferAdjustmentsDataset
+      }
 
-    val hadesIsProblemCampaignsCount = hadesBufferAdjustmentsDataset.filter(col("Hades_isProblemCampaign") === true).count()
-    val hadesTotalAdjustmentsCount = hadesBufferAdjustmentsDataset.filter(col("HadesBackoff_FloorBuffer") < 1.0).count()
+    HadesCampaignBufferAdjustmentsDataset.writeData(date, finalHadesBufferAdjustmentDataset, fileCount)
 
-    import job.campaignbackoff.CampaignAdjustmentsJob.hadesBackoffV3Metrics
-
+    val hadesIsProblemCampaignsCount = finalHadesBufferAdjustmentDataset.filter(col("Hades_isProblemCampaign") === true).count()
+    val hadesTotalAdjustmentsCount = finalHadesBufferAdjustmentDataset.filter(col("HadesBackoff_FloorBuffer") < 1.0).count()
     hadesCampaignCounts.labels(Map("status" -> "HadesProblemCampaigns")).set(hadesIsProblemCampaignsCount)
     hadesCampaignCounts.labels(Map("status" -> "HadesAdjustedCampaigns")).set(hadesTotalAdjustmentsCount)
+
     metrics.foreach { metric =>
       hadesBackoffV3Metrics.labels(Map(
         "CampaignType" -> metric.CampaignType,
@@ -605,7 +612,7 @@ object HadesCampaignBufferAdjustmentsTransform {
       ).set(metric.Count)
     }
 
-    hadesBufferAdjustmentsDataset
+    finalHadesBufferAdjustmentDataset
   }
 }
 
