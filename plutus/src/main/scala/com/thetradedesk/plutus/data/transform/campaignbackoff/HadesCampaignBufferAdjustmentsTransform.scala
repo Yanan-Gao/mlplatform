@@ -586,8 +586,8 @@ object HadesCampaignBufferAdjustmentsTransform {
     // Get final pushdowns
     val (hadesBufferAdjustmentsDataset, metrics) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData, underdeliveryThreshold)
 
-    // Set this flag to false on July 7th MR. Do not merge before July 6th 2025.
-    val resetBufferBackoff = true
+    // Reset removed on July 7th merge
+    val resetBufferBackoff = false
     val finalHadesBufferAdjustmentDataset =
       if (resetBufferBackoff) {
         hadesBufferAdjustmentsDataset.withColumn("BBF_FloorBuffer", lit(0.01)).selectAs[HadesBufferAdjustmentSchema]
