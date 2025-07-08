@@ -7,7 +7,8 @@ import com.thetradedesk.featurestore.{MLPlatformS3Root, date, ttdEnv}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.core.AnnotatedSchemaBuilder
-import com.thetradedesk.spark.datasets.sources.SeedRecord
+import com.thetradedesk.spark.datasets.sources.{CampaignDataSet, SeedRecord}
+import com.thetradedesk.spark.datasets.sources.provisioning.CampaignFlightDataSet
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.io.FSUtils
 import org.apache.hadoop.fs.PathNotFoundException
@@ -18,6 +19,7 @@ import org.apache.spark.sql.{DataFrame, SaveMode}
 import java.sql.Timestamp
 import scala.concurrent.duration._
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 object DailyNewSeedFeaturePairDensityScore extends DensityFeatureBaseJob {
   override val jobName: String = "DailyNewSeedFeaturePairDensityScore"
@@ -45,22 +47,21 @@ object DailyNewSeedFeaturePairDensityScore extends DensityFeatureBaseJob {
   val densityFeatureScoreNewSeedMetadataPrefix = config.getString("densityFeatureScoreNewSeedPath",
     s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/metadata/newSeed${seedGroupFeatureKeys.mkString("")}/v=1")
 
+  val activeAdvertiserLookBackDays = config.getInt("activeAdvertiserLookBackDays", 180)
+  var newSeedLookBackDays = config.getInt("newSeedLookBackDays", 7)
+
   def findNewSeed(latestSeedDetailPath: String) = {
     val yesterday = date.minusDays(1)
 
     val restrictedAdvertisers = DaRestrictedAdvertiserDataset().readDate(date)
 
-    val policyTableToday = spark.read.parquet(latestSeedDetailPath)
-      // policy table does not include inactive advertisers' seeds
-      // thus need to make sure the new seeds here are actually seeds recently created
-      .filter(to_timestamp('CreatedAt, seedDetailsTimestampFormat).gt(lit(Timestamp.valueOf(date.atStartOfDay().minusDays(newSeedRecencyDays)))))
+    val policyTableToday = getEligibleSeeds(latestSeedDetailPath)
       .select("SeedId", "AdvertiserId", "Count")
       .join(restrictedAdvertisers, Seq("AdvertiserId"), "left")
       .withColumn(
         "IsSensitive",
         when(col("IsRestricted") === 1, lit(true)).otherwise(false)
       )
-      .filter('Count <= seedProcessUpperThreshold && 'Count >= seedProcessLowerThreshold)
       .select("SeedId", "IsSensitive")
 
     val policyTableYest = readPolicyTable(yesterday, DataSource.Seed.id)
@@ -68,6 +69,31 @@ object DailyNewSeedFeaturePairDensityScore extends DensityFeatureBaseJob {
 
     policyTableToday.join(policyTableYest, Seq("SeedId"), "left_anti").select("SeedId", "IsSensitive")
       .filter('IsSensitive === isSensitive)
+  }
+
+  // seeds under active advertiser or recently created seeds
+  def getEligibleSeeds(latestSeedDetailPath: String): DataFrame = {
+    val activeAdvertiserStartingDateStr = DateTimeFormatter
+      .ofPattern("yyyy-MM-dd 00:00:00")
+      .format(date.minusDays(activeAdvertiserLookBackDays))
+
+    val campaignFlights = CampaignFlightDataSet().readDate(date)
+    val campaigns = CampaignDataSet().readDate(date)
+
+    val activeAdvertisers = campaignFlights
+      .filter('EndDateExclusiveUTC.isNull || 'EndDateExclusiveUTC.gt(activeAdvertiserStartingDateStr))
+      .select('CampaignId)
+      .distinct()
+      .join(campaigns, Seq("CampaignId"))
+      .select('AdvertiserId)
+      .distinct()
+
+    val newSeedTimestamp = Timestamp.valueOf(date.atStartOfDay().minusDays(newSeedLookBackDays))
+
+    spark.read.parquet(latestSeedDetailPath)
+      .join(activeAdvertisers.as("a"), Seq("AdvertiserId"), "left")
+      .filter($"a.AdvertiserId".isNotNull || to_timestamp('CreatedAt, "yyyy-MM-dd'T'HH:mm:ss.SSSSSS").gt(lit(newSeedTimestamp)))
+      .filter('Count <= seedProcessUpperThreshold && 'Count >= seedProcessLowerThreshold)
   }
 
   def aggregateNewSeed(newSeedIds: DataFrame, seedDetailPath: String) = {
