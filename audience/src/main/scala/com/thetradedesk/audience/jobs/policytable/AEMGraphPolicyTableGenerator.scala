@@ -4,6 +4,7 @@ import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.jobs.policytable.AEMPolicyTableGenerator.{retrieveActiveCampaignConversionTrackerTagIds, samplingFunction}
 import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJob.prometheus
+import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJobConfig
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
@@ -14,8 +15,8 @@ import org.apache.spark.sql.functions._
 import java.sql.Timestamp
 import java.time.{LocalDate, LocalDateTime, ZoneOffset}
 
-object AEMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(
-  GoalType.CPA, Model.AEM, prometheus: PrometheusClient) {
+class AEMGraphPolicyTableGenerator(conf: AudiencePolicyTableGeneratorJobConfig, prometheus: PrometheusClient)
+  extends AudienceGraphPolicyTableGenerator(GoalType.CPA, Model.AEM, conf, prometheus) {
 
   private def retrieveActiveCampaignConversionTrackerTagIds(): DataFrame = {
     // prepare dataset
@@ -52,7 +53,7 @@ object AEMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(
 
   override def retrieveSourceDataWithDifferentGraphType(date: LocalDate, personGraph: DataFrame, householdGraph: DataFrame): SourceDataWithDifferentGraphType = {
     var conversionDataset = ConversionDataset(defaultCloudProvider)
-      .readRange(date.minusDays(Config.conversionLookBack).atStartOfDay(), date.plusDays(1).atStartOfDay())
+      .readRange(date.minusDays(conf.conversionLookBack).atStartOfDay(), date.plusDays(1).atStartOfDay())
       .select('TDID, 'TrackingTagId)
       .filter(samplingFunction('TDID))
 
@@ -64,8 +65,8 @@ object AEMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(
 
     val activeConversionTrackerTagId = retrieveActiveCampaignConversionTrackerTagIds()
 
-    if (Config.useSelectedPixel) {
-      val selectedTrackingTagIds = spark.read.parquet(Config.selectedPixelsConfigPath)
+    if (conf.useSelectedPixel) {
+      val selectedTrackingTagIds = spark.read.parquet(conf.selectedPixelsConfigPath)
         .join(trackingTagDataset, "TargetingDataId").select("TrackingTagId")
 
       conversionDataset =
@@ -88,7 +89,7 @@ object AEMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(
       .as[SourceMetaRecord]
 
     val TDID2ConversionPixel = conversionDataset
-      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .repartition(conf.bidImpressionRepartitionNum, 'TDID)
       .groupBy('TDID)
       .agg(collect_set('TrackingTagId).alias("SeedIds"))
       .as[AggregatedGraphTypeRecord]
@@ -131,4 +132,10 @@ object AEMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(
 
     TDID2ConversionIds.as[AggregatedGraphTypeRecord]
   }
+}
+
+object AEMGraphPolicyTableGenerator {
+  def generatePolicyTable(conf: AudiencePolicyTableGeneratorJobConfig): Unit =
+    new AEMGraphPolicyTableGenerator(conf, AudiencePolicyTableGeneratorJob.prometheus.get)
+      .generatePolicyTable()
 }
