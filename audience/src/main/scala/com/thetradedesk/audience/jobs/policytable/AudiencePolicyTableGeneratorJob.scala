@@ -20,23 +20,24 @@ object AudiencePolicyTableGeneratorJob
 
   override def runETLPipeline(): Map[String, String] = {
     val conf = getConfig
-    val dt = LocalDateTime.parse(conf.date_time)
-    date = dt.toLocalDate
-    dateTime = dt
-    val jobConf = conf.copy(
-      seedMetadataS3Bucket = S3Utils.refinePath(conf.seedMetadataS3Bucket),
-      seedMetadataS3Path = S3Utils.refinePath(conf.seedMetadataS3Path),
-      seedRawDataS3Bucket = S3Utils.refinePath(conf.seedRawDataS3Bucket),
-      seedRawDataS3Path = S3Utils.refinePath(conf.seedRawDataS3Path),
-      policyS3Bucket = S3Utils.refinePath(conf.policyS3Bucket),
-      policyS3Path = S3Utils.refinePath(conf.policyS3Path)
-    )
-    Model.withName(jobConf.modelName) match {
+    Model.withName(conf.modelName) match {
       case Model.RSM =>
-        RSMGraphPolicyTableGenerator.generatePolicyTable(jobConf)
+        RSMGraphPolicyTableGeneratorJob.main(Array.empty)
       case Model.AEM =>
+        val dt = LocalDateTime.parse(conf.date_time)
+        date = dt.toLocalDate
+        dateTime = dt
+        val jobConf = conf.copy(
+          seedMetadataS3Bucket = S3Utils.refinePath(conf.seedMetadataS3Bucket),
+          seedMetadataS3Path = S3Utils.refinePath(conf.seedMetadataS3Path),
+          seedRawDataS3Bucket = S3Utils.refinePath(conf.seedRawDataS3Bucket),
+          seedRawDataS3Path = S3Utils.refinePath(conf.seedRawDataS3Path),
+          policyS3Bucket = S3Utils.refinePath(conf.policyS3Bucket),
+          policyS3Path = S3Utils.refinePath(conf.policyS3Path)
+        )
         AEMGraphPolicyTableGenerator.generatePolicyTable(jobConf)
-      case _ => throw new Exception(s"unsupported Model[${conf.modelName}]")
+      case _ =>
+        throw new Exception(s"unsupported Model[${conf.modelName}]")
     }
     Map("status" -> "success")
   }

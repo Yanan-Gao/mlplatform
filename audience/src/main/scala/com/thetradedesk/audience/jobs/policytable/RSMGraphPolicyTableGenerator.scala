@@ -2,7 +2,7 @@ package com.thetradedesk.audience.jobs.policytable
 
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
-import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJob.prometheus
+import com.thetradedesk.audience.jobs.policytable.RSMGraphPolicyTableGeneratorJob.prometheus
 import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJobConfig
 import com.thetradedesk.audience.utils.{MapDensity, S3Utils, SeedPolicyUtils}
 import com.thetradedesk.spark.datasets.sources.ThirdPartyDataDataSet
@@ -290,6 +290,6 @@ class RSMGraphPolicyTableGenerator(conf: AudiencePolicyTableGeneratorJobConfig, 
 
 object RSMGraphPolicyTableGenerator {
   def generatePolicyTable(conf: AudiencePolicyTableGeneratorJobConfig): Unit =
-    new RSMGraphPolicyTableGenerator(conf, AudiencePolicyTableGeneratorJob.prometheus.get)
+    new RSMGraphPolicyTableGenerator(conf, RSMGraphPolicyTableGeneratorJob.prometheus.get)
       .generatePolicyTable()
 }
