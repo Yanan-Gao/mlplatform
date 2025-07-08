@@ -311,7 +311,9 @@ object MockData {
     MaxBidMultiplierCap = 1.2,
     FloorBufferAdjustment = 1.0,
     FloorBuffer = 0.2,
-    MaxBidCpmInBucks = 9
+    MaxBidCpmInBucks = 9,
+    Channel = "CTV",
+    Country = "USA"
   )
 
   val mbtwDataMock = MinimumBidToWinData(

@@ -56,6 +56,9 @@ case class PlutusLogsData(
                            // Fields from PredictiveClearingStrategy
                            Model: String,
                            Strategy: Int,
+
+                           Country: String,
+                           Channel: String
                          )
 
 case object PlutusLogsData {
@@ -115,6 +118,9 @@ case object PlutusLogsData {
           FloorBufferAdjustment = i.getFloorBufferAdjustment,
           FloorBuffer = i.getFloorBuffer,
           MaxBidCpmInBucks = i.getMaxBidCPMInBucks,
+
+          Channel = i.getChannel,
+          Country = i.getCountry
         )
       ).toDS()
       .where(
