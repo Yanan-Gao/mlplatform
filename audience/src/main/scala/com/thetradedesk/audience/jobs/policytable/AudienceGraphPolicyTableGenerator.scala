@@ -53,6 +53,7 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
 
   def generateRawPolicyTable(sourceMeta: Dataset[SourceMetaRecord], date: LocalDate): DataFrame = {
     val finalSeedData = getAggregatedSeedReadableDataset().readPartition(date)(spark).withColumnRenamed("SeedIds", "SourceIds")
+      .filter(col("IsOriginal").isNotNull)
 
     val nonGraphCount = rawSeedCount(finalSeedData)
     val personGraphCount =
@@ -124,7 +125,7 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
       .join(sourceData.HouseholdGraphData.select('TDID, 'SeedIds.alias("HouseholdGraphSeedIds")), Seq("TDID"), "outer")
 
     val allFinalSeedData =
-      allSeedData.join(uniqueTDIDs, Seq("TDID"), "inner")
+      allSeedData.join(uniqueTDIDs, Seq("TDID"), "left")
         .join(sampledGraph, Seq("TDID"), "left")
         .select('TDID, 'idType, 'IsOriginal,
           coalesce('SeedIds, typedLit(Array.empty[String])).alias("SeedIds"),
