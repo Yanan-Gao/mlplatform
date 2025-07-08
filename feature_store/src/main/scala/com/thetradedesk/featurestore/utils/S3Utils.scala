@@ -1,0 +1,40 @@
+package com.thetradedesk.featurestore.utils
+
+import com.amazonaws.regions.Regions
+import com.amazonaws.services.s3.AmazonS3ClientBuilder
+
+import scala.io.Source
+import scala.util.{Failure, Success, Try}
+
+object S3Utils {
+  val s3Client = AmazonS3ClientBuilder.standard.withRegion(Regions.US_EAST_1).build
+
+  def queryCurrentDataVersion(s3Bucket: String, s3Path: String): String = {
+    queryCurrentDataVersions(refinePath(s3Bucket), refinePath(s3Path)).mkString(",")
+  }
+
+  // search for the latest files
+  def queryCurrentDataVersions(s3Bucket: String, s3Path: String): Iterator[String] = {
+    val content = Try(Source.fromInputStream(s3Client.getObject(refinePath(s3Bucket), refinePath(s3Path) + "/_CURRENT").getObjectContent))
+    content match {
+      case Failure(_) => Iterator.empty
+      case Success(value) => {
+        value.getLines.map(s => s.trim)
+      }
+    }
+  }
+
+  def refinePath(path: String): String = {
+    path.stripPrefix("s3:").stripPrefix("s3a:").stripPrefix("s3n:").stripPrefix("/").stripSuffix("/")
+  }
+}
+
+object SeedPolicyUtils {
+  def getRecentVersion(bucket: String, path: String, recentVersion: String): String = {
+    val resolvedVersion =
+      if (recentVersion != null) recentVersion
+      else S3Utils.queryCurrentDataVersion(bucket, path)
+
+    s"s3a://$bucket/$path/$resolvedVersion"
+  }
+}

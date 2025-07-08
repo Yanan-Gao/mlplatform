@@ -31,7 +31,7 @@ object DailySeedMappingIdDensityScore extends DensityFeatureBaseJob {
     // read source datasets
     val seedDensity = readReIndexedSeedDensity(date)
     val campaignSeeds = readCampaignSeeds(date)
-    val policyTable = readPolicyTable(date.minusDays(1), DataSource.Seed.id)
+    val policyTable = readPolicyTable(date, DataSource.Seed.id)
 
     // filter active seeds
     val activeCampaigns = readActiveCampaigns(date)

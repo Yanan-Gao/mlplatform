@@ -87,7 +87,7 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
 
 
     val syntheticIdToMappingId =
-      spark.sparkContext.broadcast(readPolicyTable(date.minusDays(1), DataSource.Seed.id)
+      spark.sparkContext.broadcast(readPolicyTable(date, DataSource.Seed.id)
         .join(seedPriority, Seq("SeedId"), "left")
         .select('SyntheticId, 'MappingId, coalesce('SeedPriority, lit(SeedPriority.Other.id)).as("SeedPriority"))
         .as[(Int, Int, Int)]

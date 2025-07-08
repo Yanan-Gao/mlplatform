@@ -3,7 +3,7 @@ package com.thetradedesk.featurestore.jobs
 import com.thetradedesk.featurestore._
 import com.thetradedesk.featurestore.datasets.{ProcessedDataset, ProfileDataset}
 import com.thetradedesk.featurestore.features.Features._
-import com.thetradedesk.featurestore.rsm.CommonEnums.Grain
+import com.thetradedesk.featurestore.rsm.CommonEnums.{CrossDeviceVendor, Grain}
 import com.thetradedesk.featurestore.transform.AggregateTransform._
 import com.thetradedesk.featurestore.transform.Merger.joinDataSets
 import com.thetradedesk.spark.TTDSparkContext

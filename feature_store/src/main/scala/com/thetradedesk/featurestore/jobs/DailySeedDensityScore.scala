@@ -1,8 +1,11 @@
 package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore._
+import com.thetradedesk.featurestore.jobs.DailyNewSeedFeaturePairDensityScore.densityFeatureScoreNewSeedMetadataPrefix
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.util.TTDConfig.config
+import com.thetradedesk.spark.util.io.FSUtils
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
@@ -12,7 +15,7 @@ import java.time.LocalDate
 object DailySeedDensityScore extends DensityFeatureBaseJob {
 
   override val jobName: String = "DailySeedDensityScore"
-
+  val newSeedJobConfigName: String = config.getString("newSeedJobConfigName", "DailyNewSeedDensityScore")
   def readHourlySeedCounts(date: LocalDate, windowSizeDays: Int) = {
     val hourlySeedCountsS3Path = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/job=HourlySeedFeaturePairCount/v=1"
     spark
@@ -58,8 +61,28 @@ object DailySeedDensityScore extends DensityFeatureBaseJob {
     val seedDensityScore = populationFreqMap.join(inSeedDensity, Seq("FeatureKey", "FeatureValueHashed"))
       .withColumn("OutDensity", (col("PopulationCount") - col("DailyCount")) / (col("TotalPopulationCount") - col("DailyTotalCount")))
       .withColumn("DensityScore", col("InDensity") / (col("InDensity") + col("OutDensity")))
+      .select("FeatureKey", "FeatureValueHashed", "SeedId", "DensityScore")
+      .as[DailySeedDensityScoreEntity]
+
+    // union new seed densityScore
+    val densityScores = featurePairStrings.map { featurePair =>
+      val siteZipScoreNewSeedPathPreFix = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/config=$newSeedJobConfigName$featurePair/v=1"
+      val siteZipScoreNewSeedPath = s"${siteZipScoreNewSeedPathPreFix}/date=${dateStr}"
+      val siteZipScoreNewSeedMetaPath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/metadata/newSeed$featurePair/v=1/date=${dateStr}"
+      if (FSUtils.fileExists(siteZipScoreNewSeedMetaPath + "/_EMPTY")(spark) || FSUtils.fileExists(siteZipScoreNewSeedMetaPath + "/_OVER_MAX")(spark)) {
+        spark.emptyDataset[DailySeedDensityScoreEntity]
+      } else {
+        spark.read.parquet(siteZipScoreNewSeedPath).withColumn("FeatureKey", lit(featurePair))
+          .select("FeatureKey", "FeatureValueHashed", "SeedId", "DensityScore")
+          .as[DailySeedDensityScoreEntity]
+      }
+    }
+
+    val result = densityScores.reduce(_.union(_)).union(seedDensityScore)
 
     val writePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/job=$jobName/v=1/date=${dateStr}/"
-    seedDensityScore.coalesce(8192).write.mode(SaveMode.Overwrite).parquet(writePath)
+    result.coalesce(8192).write.mode(SaveMode.Overwrite).parquet(writePath)
   }
+
+
 }

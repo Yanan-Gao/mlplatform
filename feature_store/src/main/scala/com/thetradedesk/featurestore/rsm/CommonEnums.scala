@@ -42,4 +42,9 @@ object CommonEnums {
       }
     }
   }
+
+  object Tag extends Enumeration {
+    type Tag = Value
+    val None, UnderPerform, New, Small, Existing, Retention, Recall = Value
+  }
 }
