@@ -13,6 +13,7 @@ import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImp
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -30,18 +31,37 @@ import java.time.{LocalDate, LocalDateTime}
 import scala.util.Random
 // import java.io.ObjectInputFilter.Config
 
-object PopulationInputDataGeneratorJob {
-  val prometheus = new PrometheusClient("AudiencePopulationDataJob", "RSMPopulationInputDataGeneratorJob")
+case class PopulationInputDataGeneratorJobConfig(
+  model: String,
+  inputDataS3Bucket: String,
+  inputDataS3Path: String,
+  populationOutputData3Path: String,
+  customInputDataPath: String,
+  subFolderKey: String,
+  subFolderValue: String,
+  syntheticIdLength: Int,
+  date_time: String
+)
 
+object PopulationInputDataGeneratorJob
+  extends AutoConfigResolvingETLJobBase[PopulationInputDataGeneratorJobConfig](
+    env = config.getStringRequired("env"),
+    experimentName = config.getStringOption("experimentName"),
+    groupName = "audience",
+    jobName = "PopulationInputDataGeneratorJob") {
 
-  def main(args: Array[String]): Unit = {
-    runETLPipeline()
-    prometheus.pushMetrics()
-  }
+  override val prometheus: Option[PrometheusClient] =
+    Some(new PrometheusClient("AudiencePopulationDataJob", "RSMPopulationInputDataGeneratorJob"))
 
-  def runETLPipeline(): Unit = {
+  override def runETLPipeline(): Map[String, String] = {
+    val conf = getConfig
+    val dt = LocalDateTime.parse(conf.date_time)
+    date = dt.toLocalDate
+    dateTime = dt
+
+    RSMPopulationInputDataGenerator.Config.update(conf)
     RSMPopulationInputDataGenerator.generatePopulationData(date)
-
+    Map("status" -> "success")
   }
 }
 
@@ -54,14 +74,25 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
 
 
   object Config {
-    val model = config.getString("model", default = "RSMV2")
-    val inputDataS3Bucket = S3Utils.refinePath(config.getString("inputDataS3Bucket", "thetradedesk-mlplatform-us-east-1"))
-    val inputDataS3Path = S3Utils.refinePath(config.getString("inputDataS3Path", s"data/${ttdReadEnv}/audience/RSMV2/Imp_Seed_None/v=1"))
-    val populationOutputData3Path = S3Utils.refinePath(config.getString("populationOutputData3Path", s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None/v=1"))
-    val customInputDataPath = config.getString("customInputDataPath", default = null)
-    val subFolderKey = config.getString("subFolderKey", default = "split")
-    val subFolderValue = config.getString("subFolderValue", default = "Population")
-    val syntheticIdLength = config.getInt("syntheticIdLength", default = 500)
+    var model: String = _
+    var inputDataS3Bucket: String = _
+    var inputDataS3Path: String = _
+    var populationOutputData3Path: String = _
+    var customInputDataPath: String = _
+    var subFolderKey: String = _
+    var subFolderValue: String = _
+    var syntheticIdLength: Int = 500
+
+    def update(conf: PopulationInputDataGeneratorJobConfig): Unit = {
+      model = conf.model
+      inputDataS3Bucket = S3Utils.refinePath(conf.inputDataS3Bucket)
+      inputDataS3Path = S3Utils.refinePath(conf.inputDataS3Path)
+      populationOutputData3Path = S3Utils.refinePath(conf.populationOutputData3Path)
+      customInputDataPath = conf.customInputDataPath
+      subFolderKey = conf.subFolderKey
+      subFolderValue = conf.subFolderValue
+      syntheticIdLength = conf.syntheticIdLength
+    }
   }
 
 

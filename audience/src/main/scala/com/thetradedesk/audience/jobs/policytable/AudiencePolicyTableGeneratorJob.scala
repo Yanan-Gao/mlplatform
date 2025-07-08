@@ -1,29 +1,43 @@
 package com.thetradedesk.audience.jobs.policytable
 
 import com.thetradedesk.audience.datasets.Model
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import java.time.LocalDateTime
 
-object AudiencePolicyTableGeneratorJob {
-  val prometheus = new PrometheusClient("AudienceModelJob", "AudiencePolicyTableGeneratorJob")
+case class AudiencePolicyTableGeneratorJobConfig(
+  modelName: String,
+  lookBack: Int,
+  date_time: String
+)
 
-  object Config {
-    val model = Model.withName(config.getString("modelName", default = "RSM"))
-    val lookBack = config.getInt("lookBack", default = 3)
-  }
+object AudiencePolicyTableGeneratorJob
+  extends AutoConfigResolvingETLJobBase[AudiencePolicyTableGeneratorJobConfig](
+    env = config.getStringRequired("env"),
+    experimentName = config.getStringOption("experimentName"),
+    groupName = "audience",
+    jobName = "AudiencePolicyTableGeneratorJob") {
 
-  def main(args: Array[String]): Unit = {
-    runETLPipeline()
-    prometheus.pushMetrics()
-  }
+  override val prometheus: Option[PrometheusClient] =
+    Some(new PrometheusClient("AudienceModelJob", "AudiencePolicyTableGeneratorJob"))
 
-  def runETLPipeline(): Unit = {
-    Config.model match {
+  override def runETLPipeline(): Map[String, String] = {
+    val conf = getConfig
+    val dt = LocalDateTime.parse(conf.date_time)
+    date = dt.toLocalDate
+    dateTime = dt
+
+    val model = Model.withName(conf.modelName)
+
+    model match {
       case Model.RSM =>
         RSMGraphPolicyTableGenerator.generatePolicyTable()
       case Model.AEM =>
         AEMGraphPolicyTableGenerator.generatePolicyTable()
-      case _ => throw new Exception(s"unsupported Model[${Config.model}]")
+      case _ => throw new Exception(s"unsupported Model[$model]")
     }
+
+    Map("status" -> "success")
   }
 }

@@ -3,6 +3,9 @@ package com.thetradedesk.audience.jobs.modelinput.rsmv2
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.SubFolder
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig._
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
+import com.thetradedesk.spark.util.TTDConfig.config
+import java.time.LocalDateTime
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface.{BidSideDataRecord, SeedLabelSideDataRecord}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.feature.userzipsite.{UserZipSiteLevelFeatureExternalReader, UserZipSiteLevelFeatureGenerator}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.optinseed.OptInSeedFactory
@@ -17,10 +20,16 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{Dataset, SaveMode}
 
-object RelevanceModelInputGeneratorJob {
-  val prometheus = new PrometheusClient("RelevanceModelJob", "RelevanceModelInputGeneratorJob")
-  val jobRunningTime = prometheus.createGauge(s"relevance_etl_job_running_time", "RelevanceModelInputGeneratorJob running time", "model", "date")
-  val jobProcessSize = prometheus.createGauge(s"relevance_etl_job_process_size", "RelevanceModelInputGeneratorJob process size", "model", "date", "data_source", "cross_device_vendor")
+object RelevanceModelInputGeneratorJob
+  extends AutoConfigResolvingETLJobBase[RelevanceModelInputGeneratorJobConfig](
+    env = config.getStringRequired("env"),
+    experimentName = config.getStringOption("experimentName"),
+    groupName = "audience",
+    jobName = "RelevanceModelInputGeneratorJob") {
+  override val prometheus: Option[PrometheusClient] =
+    Some(new PrometheusClient("RelevanceModelJob", "RelevanceModelInputGeneratorJob"))
+  val jobRunningTime = prometheus.get.createGauge(s"relevance_etl_job_running_time", "RelevanceModelInputGeneratorJob running time", "model", "date")
+  val jobProcessSize = prometheus.get.createGauge(s"relevance_etl_job_process_size", "RelevanceModelInputGeneratorJob process size", "model", "date", "data_source", "cross_device_vendor")
 
   def generateTrainingDataset(bidImpSideData: Dataset[BidSideDataRecord], seedLabelSideData: Dataset[SeedLabelSideDataRecord]) = {
 
@@ -88,7 +97,11 @@ object RelevanceModelInputGeneratorJob {
     )
   }
 
-  def main(args: Array[String]): Unit = {
+  override def runETLPipeline(): Map[String, String] = {
+    val conf = getConfig
+    val dt = LocalDateTime.parse(conf.date_time)
+    dateTime = dt
+    RelevanceModelInputGeneratorConfig.update(conf)
     val start = System.currentTimeMillis()
     val optInSeedGenerator = OptInSeedFactory.fromString(optInSeedType, optInSeedFilterExpr)
     val optInSeed = optInSeedGenerator.generate()
@@ -111,7 +124,6 @@ object RelevanceModelInputGeneratorJob {
     }
 
     jobRunningTime.labels(RelevanceModelInputGeneratorConfig.model.toString.toLowerCase, dateTime.toLocalDate.toString).set(System.currentTimeMillis() - start)
-    prometheus.pushMetrics()
+    Map("status" -> "success")
   }
-  
 }
