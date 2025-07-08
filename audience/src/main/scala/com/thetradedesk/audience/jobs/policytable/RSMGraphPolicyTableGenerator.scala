@@ -8,6 +8,8 @@ import com.thetradedesk.spark.datasets.sources.ThirdPartyDataDataSet
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.core.AnnotatedSchemaBuilder
+import com.thetradedesk.spark.util.TTDConfig.config
+import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions.{transform => sql_transform, _}
@@ -20,16 +22,32 @@ import java.time.format.DateTimeFormatter
 object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(GoalType.Relevance, Model.RSM, prometheus: PrometheusClient) {
 
   val rsmSeedProcessCount = prometheus.createCounter("rsm_policy_table_job_seed_process_count", "RSM policy table job seed process record", "seedId", "success")
+  val readSeedDetailMode = config.getBoolean("readSeedDetailMode", false)
+  val MLPlatformS3Root: String = "s3a://thetradedesk-mlplatform-us-east-1/features/feature_store"
+  val densityFeatureScoreNewSeedPrefix = config.getString("densityFeatureScoreNewSeedPath",
+    s"$MLPlatformS3Root/prod/profiles/source=bidsimpression/index=SeedId/metadata/v=1/")
+
   private val seedDataSchema = new StructType()
     .add("TDID", StringType)
     .add("SeedIds", ArrayType(StringType))
 
+  def getDateStr(date: LocalDate): String = {
+    val dtf = DateTimeFormatter.ofPattern("yyyyMMdd")
+    date.format(dtf)
+  }
   private def retrieveSeedMeta(date: LocalDate): DataFrame = {
-    val seedDataFullPath = SeedPolicyUtils.getRecentVersion(
-      Config.seedMetadataS3Bucket,
-      Config.seedMetadataS3Path,
-      Config.seedMetaDataRecentVersion
-    )
+    val dateStr = getDateStr(date)
+    val siteZipScoreNewSeedMetadataPath = s"${densityFeatureScoreNewSeedPrefix}/date=${dateStr}/_SEED_DETAIL_PATH"
+
+    val seedDataFullPath = if (readSeedDetailMode) {
+      FSUtils.readStringFromFile(siteZipScoreNewSeedMetadataPath)(spark)
+    } else {
+      SeedPolicyUtils.getRecentVersion(
+        Config.seedMetadataS3Bucket,
+        Config.seedMetadataS3Path,
+        Config.seedMetaDataRecentVersion
+      )
+    }
 
     val country = CountryDataset().readPartition(date).select('ShortName, 'LongName).distinct()
     val countryMap: Map[String, String] = country.collect()
