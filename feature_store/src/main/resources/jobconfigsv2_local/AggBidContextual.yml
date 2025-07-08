@@ -9,17 +9,14 @@ aggLevels:
     saltSize: 5
     initAggGrains: [ hour ]
     initWritePartitions: 1
-    rollupWritePartitions: 1
   - level: CampaignId
     saltSize: 5
     initAggGrains: [ hour ]
     initWritePartitions: 1
-    rollupWritePartitions: 1
   - level: TDID
     saltSize: -1
     initAggGrains: [ hour, day ]
     initWritePartitions: 1
-    rollupWritePartitions: 1
 
 initAggConfig:
   outputRootPath: /Users/sven.zhang/Documents/local_test

@@ -196,7 +196,7 @@ object AggDefinition {
             .asScala
             .map(str => Grain.fromString(str).getOrElse(throw new IllegalArgumentException(s"Unable to parse initial grain from : $str"))).toArray,
           initWritePartitions = scalaAgg.get("initWritePartitions").map(_.asInstanceOf[Int]),
-          rollupWritePartitions = scalaAgg.get("rollupWritePartitions").map(_.asInstanceOf[Int]),
+          rollupWritePartitions = scalaAgg.get("rollupWritePartitions").map(_.asInstanceOf[Int]).orElse(scalaAgg.get("initWritePartitions").map(_.asInstanceOf[Int])),
           enableFeatureKeyCount = scalaAgg.getOrElse("enableFeatureKeyCount", true).asInstanceOf[Boolean]
         )
       }
