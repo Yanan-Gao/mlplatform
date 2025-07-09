@@ -12,6 +12,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import com.thetradedesk.audience.utils.GraphPolicyTableUtils
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 
@@ -30,54 +31,19 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
 
   def getAggregatedSeedReadableDataset(): LightReadableDataset[AggregatedSeedRecord]
 
-  private def rawSeedCount(allFinalSeedData: DataFrame): DataFrame = {
-    allFinalSeedData
-      .select(explode('SourceIds).alias("SourceId"),'IsOriginal)
-      .groupBy('SourceId, 'IsOriginal)
-      .count()
-      .withColumn("CrossDeviceVendorId", lit(CrossDeviceVendor.None.id))
-      .cache()
-  }
-
-  private def extendGraphSeedCount(nonGraphCount: DataFrame, allFinalSeedData: DataFrame, crossDeviceVendor: CrossDeviceVendor): DataFrame = {
-    allFinalSeedData
-      .select(explode(if (crossDeviceVendor == IAV2Person) 'PersonGraphSeedIds else 'HouseholdGraphSeedIds).alias("SourceId"), 'IsOriginal)
-      .groupBy('SourceId, 'IsOriginal)
-      .count()
-      .join(nonGraphCount.select('SourceId, 'IsOriginal, 'count.alias("RawCount"))
-        , Seq("SourceId", "IsOriginal"), "left")
-      .withColumn("RawCount", coalesce(col("RawCount"), lit(0)))
-      .select('SourceId, 'IsOriginal, ('count + 'RawCount).alias("count"))
-      .withColumn("CrossDeviceVendorId", lit(crossDeviceVendor.id))
-  }
 
   def generateRawPolicyTable(sourceMeta: Dataset[SourceMetaRecord], date: LocalDate): DataFrame = {
     val finalSeedData = getAggregatedSeedReadableDataset().readPartition(date)(spark).withColumnRenamed("SeedIds", "SourceIds")
 
-    val nonGraphCount = rawSeedCount(finalSeedData)
-    val personGraphCount =
-      extendGraphSeedCount(nonGraphCount, finalSeedData, CrossDeviceVendor.IAV2Person)
-    val householdGraphCount =
-      extendGraphSeedCount(nonGraphCount, finalSeedData, CrossDeviceVendor.IAV2Household)
-
-    val policyTable =
-      nonGraphCount
-        .union(personGraphCount)
-        .union(householdGraphCount)
-        .groupBy("SourceId", "CrossDeviceVendorId")
-        .agg(
-          sum(when($"IsOriginal" === 1, 'count).otherwise(0)).as("ActiveSize"),
-          sum('count).as("ExtendedActiveSize")
-        )
-        .join(sourceMeta, Seq("SourceId"), "inner")
-        .select(('ActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ActiveSize"),
-          ('ExtendedActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ExtendedActiveSize"),
-          'CrossDeviceVendorId, 'SourceId, 'Count.alias("Size"), 'TargetingDataId, 'Source, 'topCountryByDensity, 'PermissionTag)
-        .withColumn("GoalType", lit(goalType.id))
-        .withColumn("StorageCloud", lit(Config.storageCloud))
-        .cache()
-
-    policyTable
+    GraphPolicyTableUtils
+      .generateRawPolicyTable(
+        sourceMeta,
+        finalSeedData,
+        userDownSampleBasePopulation,
+        userDownSampleHitPopulation,
+        goalType.id,
+        Config.storageCloud
+      )
   }
 
   override def retrieveSourceData(date: LocalDate): DataFrame = {
