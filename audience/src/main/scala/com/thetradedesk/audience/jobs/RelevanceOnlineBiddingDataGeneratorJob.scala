@@ -1,31 +1,23 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
-import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.audience.datasets._
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorJob
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
 import com.thetradedesk.audience.transform.ContextualTransform.generateContextualFeatureTier1
-import com.thetradedesk.audience.utils.Logger.Log
-import com.thetradedesk.audience.{date, dateTime, _}
-import com.thetradedesk.geronimo.shared.readModelFeatures
-import com.thetradedesk.audience.jobs.HitRateReportingTableGeneratorJob.prometheus
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.RSMV2UserSampleSalt
+import com.thetradedesk.audience._
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
+import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, readModelFeatures}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
-import com.thetradedesk.spark.util.io.FSUtils
+import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.commons.lang3.exception.ExceptionUtils
+import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode, SparkSession}
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
 
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
-import java.time.{LocalDate, LocalDateTime}
-import scala.util.Random
+import java.time.LocalDate
 
 object RelevanceOnlineBiddingDataGeneratorJob {
   val prometheus = new PrometheusClient("ModelQualityJob", "RelevanceOnlineBiddingDataGeneratorJob")
@@ -37,7 +29,6 @@ object RelevanceOnlineBiddingDataGeneratorJob {
 
   def runETLPipeline(): Unit = {
     new RelevanceOnlineBiddingDataGenerator(prometheus).generate(date)
-
   }
 }
 
@@ -49,6 +40,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
   val sampler = SamplerFactory.fromString("RSMV2Measurement")
 
   def generate(date: LocalDate): Unit = {
+    val RSMV2UserSampleSalt = config.getStringRequired("RSMV2UserSampleSalt")
 
     val dateTime = date.atStartOfDay()
 
@@ -56,7 +48,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
 
     val aggSeed = AggregatedSeedReadableDataset()
       .readPartition(date)(spark)
-      .filter(sampler.samplingFunction('TDID))
+      .filter(sampler.samplingFunction('TDID, RelevanceModelInputGeneratorJob.jobConfig))
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .cache()
 
@@ -66,7 +58,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
       .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdType))
       .withColumn("TDID", when(col("TDID") === "00000000-0000-0000-0000-000000000000", null).otherwise(col("TDID")))
       .filter(col("TDID").isNotNull)
-      .filter(sampler.samplingFunction('TDID))
+      .filter(sampler.samplingFunction('TDID, RelevanceModelInputGeneratorJob.jobConfig))
       .select('BidRequestId, // use to connect with bidrequest, to get more features
         'AdvertiserId,
         'AdGroupId,

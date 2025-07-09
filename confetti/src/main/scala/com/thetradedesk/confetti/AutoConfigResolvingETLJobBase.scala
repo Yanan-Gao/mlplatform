@@ -1,0 +1,85 @@
+package com.thetradedesk.confetti
+
+import com.thetradedesk.confetti.utils.{CloudWatchLogger, CloudWatchLoggerFactory, MapConfigReader, S3Utils}
+import com.thetradedesk.spark.util.TTDConfig.config
+import org.yaml.snakeyaml.Yaml
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
+
+import scala.collection.JavaConverters._
+import scala.reflect.ClassTag
+import scala.reflect.runtime.universe._
+
+/**
+ * Base class for Confetti ETL jobs that automatically resolves configuration
+ * before running the user defined ETL pipeline and writes its result to S3.
+ */
+
+abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](groupName: String, jobName: String) {
+  val confettiEnv = config.getStringRequired("confettiEnv")
+  val experimentName = config.getStringOption("experimentName")
+  val runtimeConfigBasePath = config.getStringRequired("confettiRuntimeConfigBasePath")
+
+  /** Optional Prometheus client for pushing metrics. */
+  protected val prometheus: Option[PrometheusClient]
+
+  private val logger = CloudWatchLoggerFactory.getLogger(
+    s"mlplatform-$confettiEnv",
+    s"${experimentName.filter(_.nonEmpty).map(n => s"$n-").getOrElse("")}$groupName-$jobName"
+  )
+  private var jobConfig: Option[C] = None
+
+  /**
+   * Access the parsed configuration for the job. Throws an exception if
+   * configuration has not been loaded.
+   */
+  protected final def getConfig: C =
+    jobConfig.getOrElse(throw new IllegalStateException("Config not initialized"))
+
+  protected final def getLogger: CloudWatchLogger = logger
+
+  /** Entry point for jobs extending this base. Executes the pipeline and pushes metrics. */
+  final def main(args: Array[String]): Unit = {
+    logger.info(s"Start executing: ${confettiEnv}-${experimentName}-${groupName}-${jobName}")
+    execute()
+    prometheus.foreach(_.pushMetrics())
+  }
+
+  /**
+   * Run the ETL pipeline using the loaded config, exposure for user's implementation.
+   */
+  def runETLPipeline(): Map[String, String]
+
+  /** Executes the job by loading configuration, running the pipeline and writing the results. */
+  private val runtimePathBase: String =
+    if (runtimeConfigBasePath.endsWith("/")) runtimeConfigBasePath else runtimeConfigBasePath + "/"
+
+  private final def execute(): Unit = {
+    val yamlPaths = S3Utils.listYamlFiles(runtimePathBase)
+    val config = yamlPaths
+      .map(readYaml)
+      .foldLeft(Map.empty[String, String])(_ ++ _)
+    logger.info(new Yaml().dump(config.asJava))
+    jobConfig = Some(new MapConfigReader(config, logger).as[C])
+    if (jobConfig.isEmpty) {
+      throw new IllegalStateException("Config not initialized")
+    }
+    val result = runETLPipeline()
+    writeYaml(result, runtimePathBase + "results.yml")
+  }
+
+  /** Read a YAML file from S3 into a map. */
+  private def readYaml(path: String): Map[String, String] = {
+    val yamlStr = S3Utils.readFromS3(path)
+    val yaml = new Yaml()
+    val javaMap = yaml.load[java.util.Map[String, Any]](yamlStr)
+    javaMap.asScala.map { case (k, v) => k -> v.toString }.toMap
+  }
+
+  /** Convert the map back to YAML and write it to the runtime config location. */
+  private def writeYaml(config: Map[String, String], s3Path: String): Unit = {
+    val yaml = new Yaml()
+    val rendered = yaml.dump(config.asJava)
+    S3Utils.writeToS3(s3Path, rendered)
+  }
+
+}
