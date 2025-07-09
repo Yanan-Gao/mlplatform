@@ -16,10 +16,8 @@ import java.time.LocalDate
 import java.sql.Timestamp
 import java.time.format.DateTimeFormatter
 
-case class RSMPolicyTableJob(date: LocalDate)
 
-
-object RSMPolicyTableJob extends AudienceGraphPolicyTableGenerator(GoalType.Relevance, Model.RSM) {
+object RSMGraphPolicyTableJob extends AudienceGraphPolicyTableGenerator(GoalType.Relevance, Model.RSM) {
 
   val prometheus: PrometheusClient = new PrometheusClient("AudienceModelJob", "RSMGraphPolicyTableJob")
   override def getPrometheus: PrometheusClient = prometheus
