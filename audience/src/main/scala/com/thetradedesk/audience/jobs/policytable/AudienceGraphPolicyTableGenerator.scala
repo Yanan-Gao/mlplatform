@@ -22,7 +22,11 @@ import java.time.LocalDate
 IMPORTANT:
 seed here don't represent kokai seed, it represents any pixel(group of tdid) in TTD (including kokai seed, conversion tracker etc.)
 */
-abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Model) extends AudiencePolicyTableGenerator(model) {
+abstract class AudienceGraphPolicyTableGenerator(
+    goalType: GoalType,
+    model: Model,
+    config: AudiencePolicyTableJobConfig)
+    extends AudiencePolicyTableGenerator(model, config) {
   def retrieveSourceMetaData(date: LocalDate): Dataset[SourceMetaRecord]
 
   def retrieveSourceDataWithDifferentGraphType(date: LocalDate, personGraph: DataFrame, householdGraph: DataFrame): SourceDataWithDifferentGraphType
@@ -42,13 +46,13 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
         userDownSampleBasePopulation,
         userDownSampleHitPopulation,
         goalType.id,
-        Config.storageCloud
+        config.storageCloud
       )
   }
 
   override def retrieveSourceData(date: LocalDate): DataFrame = {
     val successFile = getAggregatedSeedReadableDataset().DatePartitionedPath(Some(date)) + "/_SUCCESS"
-    if (Config.reuseAggregatedSeedIfPossible && FSUtils.fileExists(successFile)(spark)) {
+    if (config.reuseAggregatedSeedIfPossible && FSUtils.fileExists(successFile)(spark)) {
       val sourceMeta = retrieveSourceMetaData(date)
       // step 5. generate policy table
       return generateRawPolicyTable(sourceMeta, date)
@@ -64,7 +68,7 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
       .select('TDID, 'groupId)
       .where(samplingFunction('TDID))
       .withColumnRenamed("groupId", "personId")
-      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .repartition(config.bidImpressionRepartitionNum, 'TDID)
 
     val householdGraph = readGraphData(date, CrossDeviceVendor.IAV2Household)(spark).cache()
 
@@ -72,7 +76,7 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
       .select('TDID, 'groupId)
       .where(samplingFunction('TDID))
       .withColumnRenamed("groupId", "householdId")
-      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .repartition(config.bidImpressionRepartitionNum, 'TDID)
 
     val sampledGraph = sampledPersonGraph
       .join(sampledHouseholdGraph, Seq("TDID"), "outer")
