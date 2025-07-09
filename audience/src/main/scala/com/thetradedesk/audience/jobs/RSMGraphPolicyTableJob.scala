@@ -1,4 +1,4 @@
-package com.thetradedesk.audience.jobs.policytable
+package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
@@ -12,12 +12,14 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions.{transform => sql_transform, _}
 import org.apache.spark.sql.types.{ArrayType, StringType, StructType}
+import java.time.LocalDate
 
 import java.sql.Timestamp
-import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(GoalType.Relevance, Model.RSM, prometheus: PrometheusClient) {
+case class RSMJobConfig(date: LocalDate)
+
+object RSMGraphPolicyTableJob extends AudienceGraphPolicyTableGenerator(GoalType.Relevance, Model.RSM, prometheus: PrometheusClient) {
 
   val rsmSeedProcessCount = prometheus.createCounter("rsm_policy_table_job_seed_process_count", "RSM policy table job seed process record", "seedId", "success")
   private val seedDataSchema = new StructType()
@@ -284,4 +286,7 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
     TDID2Seeds.as[AggregatedGraphTypeRecord]
   }
 
+  def run(spark: SparkSession, config: RSMJobConfig): Unit = {
+    generatePolicyTable()
+  }
 }

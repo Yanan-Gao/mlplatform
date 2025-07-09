@@ -1,6 +1,9 @@
 package com.thetradedesk.audience.jobs.policytable
 
 import com.thetradedesk.audience.datasets.Model
+import com.thetradedesk.audience.jobs.{AEMGraphPolicyTableJob, AEMJobConfig, RSMGraphPolicyTableJob, RSMJobConfig}
+import com.thetradedesk.audience.date
+import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
@@ -20,10 +23,9 @@ object AudiencePolicyTableGeneratorJob {
   def runETLPipeline(): Unit = {
     Config.model match {
       case Model.RSM =>
-        RSMGraphPolicyTableGenerator.generatePolicyTable()
+        RSMGraphPolicyTableJob.run(spark, RSMJobConfig(date))
       case Model.AEM =>
-        AEMGraphPolicyTableGenerator.generatePolicyTable()
+        AEMGraphPolicyTableJob.run(spark, AEMJobConfig(date))
       case _ => throw new Exception(s"unsupported Model[${Config.model}]")
     }
-  }
-}
+  }}

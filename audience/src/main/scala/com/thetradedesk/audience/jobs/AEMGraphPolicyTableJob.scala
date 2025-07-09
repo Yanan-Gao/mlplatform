@@ -1,4 +1,4 @@
-package com.thetradedesk.audience.jobs.policytable
+package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
@@ -14,7 +14,9 @@ import org.apache.spark.sql.functions._
 import java.sql.Timestamp
 import java.time.{LocalDate, LocalDateTime, ZoneOffset}
 
-object AEMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(
+case class AEMJobConfig(date: LocalDate)
+
+object AEMGraphPolicyTableJob extends AudienceGraphPolicyTableGenerator(
   GoalType.CPA, Model.AEM, prometheus: PrometheusClient) {
 
   private def retrieveActiveCampaignConversionTrackerTagIds(): DataFrame = {
@@ -130,5 +132,9 @@ object AEMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(
       .select(explode('TDIDs).alias("TDID"), 'SeedIds)
 
     TDID2ConversionIds.as[AggregatedGraphTypeRecord]
+  }
+
+  def run(spark: SparkSession, config: AEMJobConfig): Unit = {
+    generatePolicyTable()
   }
 }
