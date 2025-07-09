@@ -38,8 +38,6 @@ final case class DailySeedDensityScoreRecord(
         FeatureKey: String,
         FeatureValueHashed: Long,
         SeedId: Option[String],
-        InDensity: Option[Double],
-        OutDensity: Option[Double],
         DensityScore: Option[Double]
 )
 
