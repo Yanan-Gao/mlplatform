@@ -1,4 +1,4 @@
-package com.thetradedesk.audience.jobs
+package com.thetradedesk.audience.jobs.policytable
 
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
