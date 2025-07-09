@@ -6,6 +6,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.util.TTDConfig.config
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.SparkContext
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.{DataFrame, Row, SaveMode}
@@ -45,7 +46,6 @@ object TdidEmbeddingDotProductGenerator
 //  val seed_list_path="s3://thetradedesk-mlplatform-us-east-1/data/prod/audience/relevanceseedsdataset/v=1/date=20250216/"
   val policy_table_path ="s3://thetradedesk-mlplatform-us-east-1/configdata/prod/audience/policyTable/RSM/v=1/20250216000000/"
   val seed_id_path ="s3://thetradedesk-mlplatform-us-east-1/data/dev/audience/scores/seedids/v=2/date=20250216/"
-  val EmbeddingSize = 64
   val EmbeddingSize = 64
 
 //  val extractSubarray = udf { (group: Int, arr: Seq[Double]) =>
@@ -265,8 +265,7 @@ object TdidEmbeddingDotProductGenerator
   override def runETLPipeline(): Map[String, String] = {
     val conf = getConfig
     val dt = LocalDateTime.parse(conf.date_time)
-    date = dt.toLocalDate
-    dateTime = dt
+    val date = dt.toLocalDate
 
     val out_path = conf.out_path
     val avail_path = conf.avail_path

@@ -11,6 +11,7 @@ import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.types.FloatType
 import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.util.TTDConfig.config
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
 import java.time.format.DateTimeFormatter
 import scala.collection.mutable.ArrayBuffer

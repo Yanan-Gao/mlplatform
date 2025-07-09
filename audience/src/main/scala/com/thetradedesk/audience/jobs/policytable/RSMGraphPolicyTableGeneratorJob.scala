@@ -4,7 +4,6 @@ import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.audience.{date, dateTime}
-import com.thetradedesk.audience.jobs.policytable.{AudiencePolicyTableGeneratorConfig, RSMGraphPolicyTableGenerator}
 import java.time.LocalDateTime
 
 object RSMGraphPolicyTableGeneratorJob

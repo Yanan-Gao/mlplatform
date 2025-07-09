@@ -12,7 +12,6 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorConfig
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 

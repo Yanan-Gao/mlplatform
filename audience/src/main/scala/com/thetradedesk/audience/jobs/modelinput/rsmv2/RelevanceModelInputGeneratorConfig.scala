@@ -1,10 +1,7 @@
 package com.thetradedesk.audience.jobs.modelinput.rsmv2
 
 import com.thetradedesk.audience.datasets.Model
-import com.thetradedesk.audience.{audienceVersionDateFormat, dateTime, ttdEnv, ttdWriteEnv}
-import com.thetradedesk.spark.util.TTDConfig.config
-
-import java.time.format.DateTimeFormatter
+import com.thetradedesk.audience.datasets.Model.Model
 
 case class RelevanceModelInputGeneratorJobConfig(
   modelName: String,

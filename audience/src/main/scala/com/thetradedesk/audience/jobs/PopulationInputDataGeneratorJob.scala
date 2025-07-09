@@ -313,5 +313,5 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
   }
 }
 
-object RSMPopulationInputDataGenerator extends PopulationInputDataGenerator(prometheus: PrometheusClient) {
+object RSMPopulationInputDataGenerator extends PopulationInputDataGenerator(prometheus.get) {
 }
