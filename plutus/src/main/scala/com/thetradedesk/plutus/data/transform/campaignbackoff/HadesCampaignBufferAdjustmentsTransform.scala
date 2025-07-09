@@ -31,7 +31,7 @@ object HadesCampaignBufferAdjustmentsTransform {
 
   val EPSILON = 0.01
   val MinimumFloorBuffer = 0.01
-  val MaximumFloorBuffer = 0.85
+  val MaximumFloorBuffer = 1
 
   val MinTestBucketIncluded = 0.0
   val MaxTestBucketExcluded = 0.9
