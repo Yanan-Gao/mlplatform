@@ -2,10 +2,10 @@ package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
-import com.thetradedesk.audience.jobs.policytable.{AggregatedGraphTypeRecord, AudienceGraphPolicyTableGenerator, SourceDataWithDifferentGraphType, SourceMetaRecord}
+import com.thetradedesk.audience.jobs.policytable.{AggregatedGraphTypeRecord, AudienceGraphPolicyTableGenerator, SourceDataWithDifferentGraphType, SourceMetaRecord, AudiencePolicyTableJobConfig, AudiencePolicyTableGenerator}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
+import com.thetradedesk.spark.util.TTDConfig.{config => ttdConfig, defaultCloudProvider}
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
@@ -13,12 +13,22 @@ import org.apache.spark.sql.functions._
 import java.sql.Timestamp
 import java.time.{LocalDate, LocalDateTime, ZoneOffset}
 
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 
-object AEMGraphPolicyTableJob extends AudienceGraphPolicyTableGenerator(GoalType.CPA, Model.AEM) {
 
-  val prometheus: PrometheusClient = new PrometheusClient("AudienceModelJob", "AEMGraphPolicyTableJob")
+object AEMGraphPolicyTableJob
+  extends AutoConfigResolvingETLJobBase[AudiencePolicyTableJobConfig](
+    env = ttdConfig.getStringRequired("env"),
+    experimentName = ttdConfig.getStringOption("experimentName"),
+    groupName = "audience",
+    jobName = "AEMGraphPolicyTableJob") {
 
-  override def getPrometheus: PrometheusClient = prometheus
+  override val prometheus: Option[PrometheusClient] =
+    Some(new PrometheusClient("AudienceModelJob", "AEMGraphPolicyTableJob"))
+
+  private def createGenerator(conf: AudiencePolicyTableJobConfig) =
+    new AudienceGraphPolicyTableGenerator(GoalType.CPA, Model.AEM, conf) {
+      override def getPrometheus: PrometheusClient = prometheus.get
 
   private def retrieveActiveCampaignConversionTrackerTagIds(): DataFrame = {
     // prepare dataset
@@ -55,7 +65,7 @@ object AEMGraphPolicyTableJob extends AudienceGraphPolicyTableGenerator(GoalType
 
   override def retrieveSourceDataWithDifferentGraphType(date: LocalDate, personGraph: DataFrame, householdGraph: DataFrame): SourceDataWithDifferentGraphType = {
     var conversionDataset = ConversionDataset(defaultCloudProvider)
-      .readRange(date.minusDays(Config.conversionLookBack).atStartOfDay(), date.plusDays(1).atStartOfDay())
+      .readRange(date.minusDays(config.conversionLookBack).atStartOfDay(), date.plusDays(1).atStartOfDay())
       .select('TDID, 'TrackingTagId)
       .filter(samplingFunction('TDID))
 
@@ -67,8 +77,8 @@ object AEMGraphPolicyTableJob extends AudienceGraphPolicyTableGenerator(GoalType
 
     val activeConversionTrackerTagId = retrieveActiveCampaignConversionTrackerTagIds()
 
-    if (Config.useSelectedPixel) {
-      val selectedTrackingTagIds = spark.read.parquet(Config.selectedPixelsConfigPath)
+    if (config.useSelectedPixel) {
+      val selectedTrackingTagIds = spark.read.parquet(config.selectedPixelsConfigPath)
         .join(trackingTagDataset, "TargetingDataId").select("TrackingTagId")
 
       conversionDataset =
@@ -91,7 +101,7 @@ object AEMGraphPolicyTableJob extends AudienceGraphPolicyTableGenerator(GoalType
       .as[SourceMetaRecord]
 
     val TDID2ConversionPixel = conversionDataset
-      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .repartition(config.bidImpressionRepartitionNum, 'TDID)
       .groupBy('TDID)
       .agg(collect_set('TrackingTagId).alias("SeedIds"))
       .as[AggregatedGraphTypeRecord]
@@ -134,13 +144,15 @@ object AEMGraphPolicyTableJob extends AudienceGraphPolicyTableGenerator(GoalType
 
     TDID2ConversionIds.as[AggregatedGraphTypeRecord]
   }
+}
 
-  def runETLPipeline(): Unit = {
-    generatePolicyTable()
-  }
-
-  def main(args: Array[String]): Unit = {
-    runETLPipeline()
-    prometheus.pushMetrics()
+  override def runETLPipeline(): Map[String, String] = {
+    val conf = getConfig
+    val dt = LocalDateTime.parse(conf.date_time)
+    date = dt.toLocalDate
+    dateTime = dt
+    val generator = createGenerator(conf)
+    generator.generatePolicyTable()
+    Map("status" -> "success")
   }
 }
