@@ -12,11 +12,9 @@ import org.apache.spark.sql.functions._
 import java.sql.Timestamp
 import java.time.{LocalDate, LocalDateTime, ZoneOffset}
 
-private val aemPolicyPrometheus = new PrometheusClient("AudienceModelJob", "AEMPolicyTableGenerator")
-
-object AEMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.AEM, aemPolicyPrometheus) {
-
-  val prometheus: PrometheusClient = aemPolicyPrometheus
+object AEMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.AEM) {
+  val prometheus: PrometheusClient = new PrometheusClient("AudienceModelJob", "AEMPolicyTableGenerator")
+  override def getPrometheus: PrometheusClient = prometheus
 
   override def retrieveSourceData(date: LocalDate): DataFrame = {
     retrieveConversionData(date: LocalDate)

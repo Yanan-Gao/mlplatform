@@ -16,13 +16,13 @@ import java.time.LocalDate
 import java.sql.Timestamp
 import java.time.format.DateTimeFormatter
 
-private val rsmPrometheus = new PrometheusClient("AudienceModelJob", "RSMGraphPolicyTableJob")
+case class RSMPolicyTableJob(date: LocalDate)
 
-case class RSMJobConfig(date: LocalDate)
 
-object RSMGraphPolicyTableJob extends AudienceGraphPolicyTableGenerator(GoalType.Relevance, Model.RSM, rsmPrometheus) {
+object RSMPolicyTableJob extends AudienceGraphPolicyTableGenerator(GoalType.Relevance, Model.RSM) {
 
-  val prometheus: PrometheusClient = rsmPrometheus
+  val prometheus: PrometheusClient = new PrometheusClient("AudienceModelJob", "RSMGraphPolicyTableJob")
+  override def getPrometheus: PrometheusClient = prometheus
 
   val rsmSeedProcessCount = prometheus.createCounter("rsm_policy_table_job_seed_process_count", "RSM policy table job seed process record", "seedId", "success")
   private val seedDataSchema = new StructType()
@@ -289,12 +289,8 @@ object RSMGraphPolicyTableJob extends AudienceGraphPolicyTableGenerator(GoalType
     TDID2Seeds.as[AggregatedGraphTypeRecord]
   }
 
-  def run(spark: SparkSession, config: RSMJobConfig): Unit = {
-    generatePolicyTable()
-  }
-
   def runETLPipeline(): Unit = {
-    run(spark, RSMJobConfig(date))
+    generatePolicyTable()
   }
 
   def main(args: Array[String]): Unit = {
