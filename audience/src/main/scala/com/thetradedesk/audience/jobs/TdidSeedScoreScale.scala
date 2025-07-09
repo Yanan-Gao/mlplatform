@@ -3,30 +3,51 @@ package com.thetradedesk.audience.jobs
 import com.thetradedesk.audience.{date, dateFormatter, ttdEnv}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.util.TTDConfig.config
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.functions._
 
+import java.time.{LocalDate, LocalDateTime}
 
-object TdidSeedScoreScale {
-  val salt=config.getString("salt", "TRM")
+case class TdidSeedScoreScaleConfig(
+  salt: String,
+  raw_score_path: String,
+  seed_id_path: String,
+  policy_table_path: String,
+  out_path: String,
+  population_score_path: String,
+  smooth_factor: Double,
+  userLevelUpperCap: Double,
+  accuracy: Int,
+  sampleRateForPercentile: Double,
+  skipPercentile: Boolean,
+  runDate: LocalDate
+)
 
-  val dateStr = date.format(dateFormatter)
-  val raw_score_path = config.getString("raw_score_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/tdid2seedid_raw/v=1/date=${dateStr}/")
-  val seed_id_path = config.getString(
-    "seed_id_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/seedids/v=2/date=${dateStr}/")
-  val policy_table_path = config.getString(
-    "policy_table_path", s"s3://thetradedesk-mlplatform-us-east-1/configdata/prod/audience/policyTable/RSM/v=1/${dateStr}000000/")
-  val out_path = config.getString("out_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/tdid2seedid/v=1/date=${dateStr}/")
-  val population_score_path = config.getString("population_score_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/seedpopulationscore/v=1/date=${dateStr}/")
+object TdidSeedScoreScale
+  extends AutoConfigResolvingETLJobBase[TdidSeedScoreScaleConfig](
+    groupName = "audience",
+    jobName = "TdidSeedScoreScale") {
 
-  val smooth_factor = config.getDouble("smooth_factor", 30f).toFloat
-  val userLevelUpperCap = config.getDouble("userLevelUpperCap", 1e6f).toFloat
-  val accuracy = config.getInt("accuracy", 1000)
-  val sampleRateForPercentile = config.getDouble("sampleRateForPercentile", 0.3)
-  val skipPercentile = config.getBoolean("skipPercentile", true)
+  override val prometheus: Option[PrometheusClient] = None
 
   /////
-  def runETLPipeline(): Unit = {
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
+    date = conf.runDate
+    val dateStr = date.format(dateFormatter)
+    val salt = conf.salt
+    val raw_score_path = conf.raw_score_path
+    val seed_id_path = conf.seed_id_path
+    val policy_table_path = conf.policy_table_path
+    val out_path = conf.out_path
+    val population_score_path = conf.population_score_path
+    val smooth_factor = conf.smooth_factor.toFloat
+    val userLevelUpperCap = conf.userLevelUpperCap.toFloat
+    val accuracy = conf.accuracy
+    val sampleRateForPercentile = conf.sampleRateForPercentile
+    val skipPercentile = conf.skipPercentile
     val df_seed_list = spark.read.format("parquet").load(seed_id_path)
     val seed_info = df_seed_list.collect()
     //val arrayLength = df_seed_list.select("SeedId").as[Seq[String]].first().length
@@ -103,13 +124,9 @@ object TdidSeedScoreScale {
       .select("SeedId", "PopulationSeedScore", "ActiveSize", "PopulationSeedScoreRaw", "p25", "p50", "p75") // keep the raw population score, in case need it for debug
       .coalesce(1)
       .write
-      .format("parquet")
-      .mode("overwrite")
-      .save(population_score_path)
+        .format("parquet")
+        .mode("overwrite")
+        .save(population_score_path)
 
-  }
-
-  def main(args: Array[String]): Unit = {
-    runETLPipeline()
   }
 }

@@ -1,58 +1,71 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.datasets.{AdGroupDataSet, AudienceModelPolicyReadableDataset, AudienceModelThresholdRecord, AudienceModelThresholdWritableDataset, CampaignSeedDataset, Model, CrossDeviceVendor}
+import com.thetradedesk.audience.datasets.{AudienceModelPolicyReadableDataset, CrossDeviceVendor, Model}
 import com.thetradedesk.audience.jobs.TdidEmbeddingDotProductGeneratorOOS.EmbeddingSize
-import com.thetradedesk.audience.{audienceVersionDateFormat, date, dateTime, ttdReadEnv, ttdWriteEnv}
 import com.thetradedesk.audience.utils.S3Utils
+import com.thetradedesk.audience.{audienceVersionDateFormat, date}
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.FloatType
 
-import java.time.{LocalDate, LocalDateTime}
 import java.time.format.DateTimeFormatter
-import org.apache.spark.sql.DataFrame
+import java.time.{LocalDate, LocalDateTime}
 
-object AudienceCalibrationAndMergeJob {
-  val prometheus = new PrometheusClient("AudienceModelJob", "AudienceCalibrationAndMergeJob")
+case class AudienceCalibrationAndMergeJobConfig(
+  model: String,
+  mlplatformS3Bucket: String,
+  tmpNonSenEmbeddingDataS3Path: String,
+  tmpSenEmbeddingDataS3Path: String,
+  embeddingDataS3Path: String, // input path.
+  outputEmbeddingPath: String,
+  inferenceDataS3Path: String,
+  embeddingRecentVersion: Option[String],
+  anchorStartDate: LocalDate,
+  smoothFactor: Double,
+  locationFactor: Double,
+  baselineHitRate: Double,
+  recursiveWeight: Double,
+  writeMode: String,
+  runDate: LocalDate
+)
 
-  object Config {
-    val model = Model.withName(config.getString("modelName", default = "RSM"))
-    val mlplatformS3Bucket = S3Utils.refinePath(config.getString("mlplatformS3Bucket", "thetradedesk-mlplatform-us-east-1"))
-    val tmpNonSenEmbeddingDataS3Path = S3Utils.refinePath(config.getString("tmpNonSenEmbeddingDataS3Path", s"configdata/${ttdReadEnv}/audience/embedding_temp/RSMV2/nonsensitive/v=1"))
-    val tmpSenEmbeddingDataS3Path = S3Utils.refinePath(config.getString("tmpSenEmbeddingDataS3Path", s"configdata/${ttdReadEnv}/audience/embedding_temp/RSMV2/sensitive/v=1"))
-    val embeddingDataS3Path = S3Utils.refinePath(config.getString("embeddingDataS3Path", s"configdata/${ttdReadEnv}/audience/embedding/RSMV2/v=1"))
-    val inferenceDataS3Path = S3Utils.refinePath(config.getString("inferenceDataS3Path", s"data/${ttdWriteEnv}/audience/RSMV2/prediction"))
-    val embeddingRecentVersion = config.getString("embeddingRecentVersion", default = null)
-    val anchorStartDate = config.getDate("anchorStartDate",  default = LocalDate.parse("2025-03-05"))
-    val smoothFactor = config.getDouble("smoothFactor", default = 30.0)
-    val locationFactor = config.getDouble("locationFactor", default = 0.8)
-    val baselineHitRate = config.getDouble("baselineHitRate", default = 1E-8)
-    val recursiveWeight = config.getDouble("recursiveWeight", default = 0.1)
-    val writeMode = config.getString("writeMode", "overwrite")
-  }
+object AudienceCalibrationAndMergeJob
+  extends AutoConfigResolvingETLJobBase[AudienceCalibrationAndMergeJobConfig](
+    groupName = "audience",
+    jobName = "AudienceCalibrationAndMergeJob") {
+  override val prometheus: Option[PrometheusClient] =
+    Some(new PrometheusClient("AudienceModelJob", "AudienceCalibrationAndMergeJob"))
 
-  def main(args: Array[String]): Unit = {
-    runETLPipeline()
-    prometheus.pushMetrics()
-  }
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
+    val date = conf.runDate
+    val dateTime = conf.runDate.atStartOfDay()
 
-  def runETLPipeline(): Unit = {
+    val jobConf = conf.copy(
+      mlplatformS3Bucket = S3Utils.refinePath(conf.mlplatformS3Bucket),
+      tmpNonSenEmbeddingDataS3Path = S3Utils.refinePath(conf.tmpNonSenEmbeddingDataS3Path),
+      tmpSenEmbeddingDataS3Path = S3Utils.refinePath(conf.tmpSenEmbeddingDataS3Path),
+      embeddingDataS3Path = S3Utils.refinePath(conf.embeddingDataS3Path),
+      inferenceDataS3Path = S3Utils.refinePath(conf.inferenceDataS3Path)
+    )
 
     val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
-    val dateTime = date.atStartOfDay()
 
     val embeddingTableDateFormatter = DateTimeFormatter.ofPattern(audienceVersionDateFormat)
     val availableEmbeddingVersions = S3Utils
-    .queryCurrentDataVersions(Config.mlplatformS3Bucket, Config.embeddingDataS3Path)
+    .queryCurrentDataVersions(jobConf.mlplatformS3Bucket, jobConf.embeddingDataS3Path)
     .map(LocalDateTime.parse(_, embeddingTableDateFormatter))
     .toSeq
     .sortWith(_.isAfter(_))
 
-    val recentVersionOption = if (Config.embeddingRecentVersion != null) Some(Config.embeddingRecentVersion)
-    else availableEmbeddingVersions.find(_.isBefore(dateTime))
+    val recentVersionOption = jobConf.embeddingRecentVersion
+      .map(LocalDateTime.parse(_, embeddingTableDateFormatter))
+      .orElse(availableEmbeddingVersions.find(_.isBefore(dateTime)))
 
     val recentVersionStr = recentVersionOption.get.asInstanceOf[java.time.LocalDateTime].toLocalDate.format(formatter)
 
@@ -65,11 +78,11 @@ object AudienceCalibrationAndMergeJob {
       .filter((col("CrossDeviceVendorId") === CrossDeviceVendor.None.id))
       .select("SyntheticId", "IsSensitive")
       
-    val previousEmbeddingPath = s"s3://${Config.mlplatformS3Bucket}/${Config.embeddingDataS3Path}/${recentVersionStr}000000"
-    val currentNonSenTmpEmbeddingPath = s"s3://${Config.mlplatformS3Bucket}/${Config.tmpNonSenEmbeddingDataS3Path}/${date.format(formatter)}000000"
-    val currentSenTmpEmbeddingPath = s"s3://${Config.mlplatformS3Bucket}/${Config.tmpSenEmbeddingDataS3Path}/${date.format(formatter)}000000"
+    val previousEmbeddingPath = s"s3://${jobConf.mlplatformS3Bucket}/${jobConf.embeddingDataS3Path}/${recentVersionStr}000000"
+    val currentNonSenTmpEmbeddingPath = s"s3://${jobConf.mlplatformS3Bucket}/${jobConf.tmpNonSenEmbeddingDataS3Path}/${date.format(formatter)}000000"
+    val currentSenTmpEmbeddingPath = s"s3://${jobConf.mlplatformS3Bucket}/${jobConf.tmpSenEmbeddingDataS3Path}/${date.format(formatter)}000000"
     
-    val outputEmbeddingPath = config.getString("overrideEmbeddingPath", s"s3://${Config.mlplatformS3Bucket}/${Config.embeddingDataS3Path}/${date.format(formatter)}000000")
+    val outputEmbeddingPath = jobConf.outputEmbeddingPath
 
     val alignEmbeddingColumn = when(size('Embedding) === lit(EmbeddingSize * 4), slice('Embedding, EmbeddingSize + 1, EmbeddingSize * 3)).otherwise('Embedding)
     val embeddingCols = Seq("SyntheticId", "Embedding", "Thresholds", "Threshold", "AvgScore")
@@ -79,9 +92,9 @@ object AudienceCalibrationAndMergeJob {
     val previousEmbeddingTable = spark.read.parquet(previousEmbeddingPath).withColumn("Embedding", alignEmbeddingColumn)
     
 
-    val previousCalibrationPath = s"s3://${Config.mlplatformS3Bucket}/${Config.inferenceDataS3Path}/calibration_data/v=1/model_version=${recentVersionStr}000000/${date.format(formatter)}000000/"
-    val currentCalibrationPath = s"s3://${Config.mlplatformS3Bucket}/${Config.inferenceDataS3Path}/calibration_data/v=1/model_version=${date.format(formatter)}000000/${date.format(formatter)}000000/"
-    val populationPath = config.getString("overridePopulationPath", s"s3://${Config.mlplatformS3Bucket}/${Config.inferenceDataS3Path}/population_data/v=1/model_version=${date.format(formatter)}000000/${date.format(formatter)}000000/")
+    val previousCalibrationPath = s"s3://${jobConf.mlplatformS3Bucket}/${jobConf.inferenceDataS3Path}/calibration_data/v=1/model_version=${recentVersionStr}000000/${date.format(formatter)}000000/"
+    val currentCalibrationPath = s"s3://${jobConf.mlplatformS3Bucket}/${jobConf.inferenceDataS3Path}/calibration_data/v=1/model_version=${date.format(formatter)}000000/${date.format(formatter)}000000/"
+    val populationPath = config.getString("overridePopulationPath", s"s3://${jobConf.mlplatformS3Bucket}/${jobConf.inferenceDataS3Path}/population_data/v=1/model_version=${date.format(formatter)}000000/${date.format(formatter)}000000/")
 
     val populationInferenceData = spark.read.parquet(populationPath)
     val calibrationCurrentModelInferenceData = spark.read.parquet(currentCalibrationPath)
@@ -123,12 +136,12 @@ object AudienceCalibrationAndMergeJob {
                                             .groupBy('SyntheticId)
                                             .agg(avg('pred).alias("previous_avg_pred"))
 
-    val calibrationMetric = if (dateTime.isAfter(Config.anchorStartDate.atStartOfDay())) {
+    val calibrationMetric = if (dateTime.isAfter(jobConf.anchorStartDate.atStartOfDay())) {
                               currentTmpMixedEmbeddingTable
                                       .join(calibrationCurrentVersionMetric, Seq("SyntheticId"), "left")
                                       .join(calibrationPreviousVersionMetric, Seq("SyntheticId"), "left")
                                       .join(previousEmbeddingTable, Seq("SyntheticId"), "left")
-                                      .withColumn("BlendedAvgScore", (lit(Config.recursiveWeight) * 'previous_avg_pred + (lit(1.0)-lit(Config.recursiveWeight)) * 'BlendedAvgScore))
+                                      .withColumn("BlendedAvgScore", (lit(jobConf.recursiveWeight) * 'previous_avg_pred + (lit(1.0)-lit(jobConf.recursiveWeight)) * 'BlendedAvgScore))
                                       .withColumn("CalibrationFactor", 'current_avg_pred / 'BlendedAvgScore)
                                       .select('SyntheticId, 'CalibrationFactor, 'BlendedAvgScore)
                             } else {
@@ -154,8 +167,8 @@ object AudienceCalibrationAndMergeJob {
                               .withColumn("pred", when('IsSensitive, 'sen_pred).otherwise('pred))
                               .join(minMaxMetric,Seq("SyntheticId"),"left")
                               .withColumn("pred", when('min_pred.isNotNull, least(greatest('pred-'min_pred,lit(0))/('max_pred-'min_pred),lit(1.0) )).otherwise('pred))
-                              .withColumn("r", lit(Config.baselineHitRate))
-                              .withColumn("weights",('r + (lit(1)-'r)*(lit(1)- lit(1)/(lit(1)+exp(-(lit(-Config.smoothFactor)*('pred-lit(Config.locationFactor))))))))
+                              .withColumn("r", lit(jobConf.baselineHitRate))
+                              .withColumn("weights",'r + (lit(1)-'r)*(lit(1)- lit(1)/(lit(1)+exp(-(lit(-jobConf.smoothFactor)*('pred-lit(jobConf.locationFactor)))))))
                               .withColumn("pred", 'pred*'weights)
                               .groupBy("SyntheticId")
                               .agg(
@@ -168,8 +181,8 @@ object AudienceCalibrationAndMergeJob {
     val finalEmbeddingTable = currentTmpMixedEmbeddingTable
                                                   .join(calibrationMetric, Seq("SyntheticId"), "left")
                                                   .join(populationMetric, Seq("SyntheticId"), "left")
-                                                  .withColumn("BaselineHitRate", lit(Config.baselineHitRate))
-                                                  .withColumn("LocationFactor", lit(Config.locationFactor))
+                                                  .withColumn("BaselineHitRate", lit(jobConf.baselineHitRate))
+                                                  .withColumn("LocationFactor", lit(jobConf.locationFactor))
                                                   .withColumn("CalibrationFactor", col("CalibrationFactor").cast(FloatType))
                                                   .withColumn("MinScore", col("MinScore").cast(FloatType))
                                                   .withColumn("MaxScore", col("MaxScore").cast(FloatType))
@@ -178,7 +191,7 @@ object AudienceCalibrationAndMergeJob {
                                                   .withColumn("BaselineHitRate", col("BaselineHitRate").cast(FloatType))
                                                   .withColumn("LocationFactor", col("LocationFactor").cast(FloatType))
     
-    finalEmbeddingTable.distinct().repartition(1).write.option("compression", "gzip").mode(Config.writeMode).parquet(outputEmbeddingPath)
+    finalEmbeddingTable.distinct().repartition(1).write.option("compression", "gzip").mode(jobConf.writeMode).parquet(outputEmbeddingPath)
 
   }
 }
