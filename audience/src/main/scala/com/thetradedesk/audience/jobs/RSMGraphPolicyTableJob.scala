@@ -2,13 +2,12 @@ package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
-import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJob.prometheus
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import com.thetradedesk.audience.utils.{MapDensity, S3Utils, SeedPolicyUtils}
 import com.thetradedesk.spark.datasets.sources.ThirdPartyDataDataSet
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.core.AnnotatedSchemaBuilder
-import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions.{transform => sql_transform, _}
 import org.apache.spark.sql.types.{ArrayType, StringType, StructType}
@@ -17,9 +16,13 @@ import java.time.LocalDate
 import java.sql.Timestamp
 import java.time.format.DateTimeFormatter
 
+private val rsmPrometheus = new PrometheusClient("AudienceModelJob", "RSMGraphPolicyTableJob")
+
 case class RSMJobConfig(date: LocalDate)
 
-object RSMGraphPolicyTableJob extends AudienceGraphPolicyTableGenerator(GoalType.Relevance, Model.RSM, prometheus: PrometheusClient) {
+object RSMGraphPolicyTableJob extends AudienceGraphPolicyTableGenerator(GoalType.Relevance, Model.RSM, rsmPrometheus) {
+
+  val prometheus: PrometheusClient = rsmPrometheus
 
   val rsmSeedProcessCount = prometheus.createCounter("rsm_policy_table_job_seed_process_count", "RSM policy table job seed process record", "seedId", "success")
   private val seedDataSchema = new StructType()
@@ -288,5 +291,14 @@ object RSMGraphPolicyTableJob extends AudienceGraphPolicyTableGenerator(GoalType
 
   def run(spark: SparkSession, config: RSMJobConfig): Unit = {
     generatePolicyTable()
+  }
+
+  def runETLPipeline(): Unit = {
+    run(spark, RSMJobConfig(date))
+  }
+
+  def main(args: Array[String]): Unit = {
+    runETLPipeline()
+    prometheus.pushMetrics()
   }
 }

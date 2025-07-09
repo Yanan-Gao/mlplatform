@@ -3,7 +3,6 @@ package com.thetradedesk.audience.jobs
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.jobs.policytable.AEMPolicyTableGenerator.{retrieveActiveCampaignConversionTrackerTagIds, samplingFunction}
-import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJob.prometheus
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
@@ -14,10 +13,14 @@ import org.apache.spark.sql.functions._
 import java.sql.Timestamp
 import java.time.{LocalDate, LocalDateTime, ZoneOffset}
 
+private val aemPrometheus = new PrometheusClient("AudienceModelJob", "AEMGraphPolicyTableJob")
+
 case class AEMJobConfig(date: LocalDate)
 
 object AEMGraphPolicyTableJob extends AudienceGraphPolicyTableGenerator(
-  GoalType.CPA, Model.AEM, prometheus: PrometheusClient) {
+  GoalType.CPA, Model.AEM, aemPrometheus) {
+
+  val prometheus: PrometheusClient = aemPrometheus
 
   private def retrieveActiveCampaignConversionTrackerTagIds(): DataFrame = {
     // prepare dataset
@@ -136,5 +139,14 @@ object AEMGraphPolicyTableJob extends AudienceGraphPolicyTableGenerator(
 
   def run(spark: SparkSession, config: AEMJobConfig): Unit = {
     generatePolicyTable()
+  }
+
+  def runETLPipeline(): Unit = {
+    run(spark, AEMJobConfig(date))
+  }
+
+  def main(args: Array[String]): Unit = {
+    runETLPipeline()
+    prometheus.pushMetrics()
   }
 }
