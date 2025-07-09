@@ -31,11 +31,8 @@ object S3Utils {
 }
 
 object SeedPolicyUtils {
-  def getRecentVersion(bucket: String, path: String, recentVersion: String): String = {
-    val resolvedVersion = 
-      if (recentVersion != null) recentVersion 
-      else S3Utils.queryCurrentDataVersion(bucket, path)
-    
+  def getRecentVersion(bucket: String, path: String, recentVersion: Option[String]): String = {
+    val resolvedVersion = recentVersion.getOrElse(S3Utils.queryCurrentDataVersion(bucket, path))
     s"s3a://$bucket/$path/$resolvedVersion"
   }
 }

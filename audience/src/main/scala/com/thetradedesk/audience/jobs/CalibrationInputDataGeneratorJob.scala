@@ -1,42 +1,50 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
-import com.thetradedesk.audience.datasets._
-import com.thetradedesk.audience.{audienceResultCoalesce, ttdReadEnv, ttdWriteEnv}
-import com.thetradedesk.audience.utils.Logger.Log
 import com.thetradedesk.audience.utils.S3Utils
-import com.thetradedesk.audience.{shouldConsiderTDID3, _}
-import com.thetradedesk.audience.jobs.CalibrationInputDataGeneratorJob.prometheus
-import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
+import com.thetradedesk.audience._
 import com.thetradedesk.spark.TTDSparkContext.spark
-import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
+import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.commons.lang3.exception.ExceptionUtils
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.{ArrayType, StringType, StructType}
-import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode, SparkSession}
+import org.apache.spark.sql.{DataFrame, SaveMode, SparkSession}
 
 import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
 import java.time.{LocalDate, LocalDateTime}
-import scala.util.Random
-// import java.io.ObjectInputFilter.Config
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 
-object CalibrationInputDataGeneratorJob {
-  val prometheus = new PrometheusClient("AudienceCalibrationDataJob", "RSMCalibrationInputDataGeneratorJob")
+case class CalibrationInputDataGeneratorJobConfig(
+                                                   model: String,
+                                                   tag: String,
+                                                   version: Int,
+                                                   lookBack: Int,
+                                                   runDate: LocalDate,
+                                                   startDate: LocalDate,
+                                                   oosDataS3Bucket: String,
+                                                   oosDataS3Path: String,
+                                                   calibrationOutputDataS3Path: String,
+                                                   subFolderKey: String,
+                                                   subFolderValue: String,
+                                                   oosProdDataS3Path: String,
+                                                   coalesceProdData: Boolean
+                                                 )
 
+object CalibrationInputDataGeneratorJob
+  extends AutoConfigResolvingETLJobBase[CalibrationInputDataGeneratorJobConfig](
+    groupName = "audience",
+    jobName = "CalibrationInputDataGeneratorJob") {
+  override val prometheus: Option[PrometheusClient] =
+    Some(new PrometheusClient("AudienceCalibrationDataJob", "RSMCalibrationInputDataGeneratorJob"))
 
-  def main(args: Array[String]): Unit = {
-    runETLPipeline()
-    prometheus.pushMetrics()
-  }
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
 
-  def runETLPipeline(): Unit = {
-    RSMCalibrationInputDataGenerator.generateMixedOOSData(date)
-
+    val jobConf = conf.copy(
+      oosDataS3Bucket = S3Utils.refinePath(conf.oosDataS3Bucket),
+      oosDataS3Path = S3Utils.refinePath(conf.oosDataS3Path),
+      calibrationOutputDataS3Path = S3Utils.refinePath(conf.calibrationOutputDataS3Path)
+    )
+    RSMCalibrationInputDataGenerator.generateMixedOOSData(conf.runDate, jobConf)
   }
 }
 
@@ -47,31 +55,14 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
   val resultTableSize = prometheus.createGauge(s"audience_calibration_input_data_generation_size", "RSMCalibrationInputDataGenerator table size", "date")
   val sampleUDF = shouldConsiderTDID3(config.getInt("hitRateUserDownSampleHitPopulation", default = 1000000), config.getString("saltToSampleHitRate", default = "0BgGCE"))(_)
 
-
-  object Config {
-    val model = config.getString("model", default = "RSMV2")
-    val tag = config.getString("tag", default = "Seed_None")
-    val version = config.getInt("version", default = 1)
-    val lookBack = config.getInt("lookBack", default = 3)
-    val coalesceProdData = config.getBoolean("coalesceProdData", default = false) // for testing and experiment, when data is missing in ttdReadEnv, use prod data
-    val startDate = config.getDate("startDate",  default = LocalDate.parse("2025-02-13"))
-    val oosDataS3Bucket = S3Utils.refinePath(config.getString("oosDataS3Bucket", "thetradedesk-mlplatform-us-east-1"))
-    val oosDataS3Path = S3Utils.refinePath(config.getString("oosDataS3Path", s"data/${ttdReadEnv}/audience/RSMV2/Seed_None/v=1"))
-    val oosProdDataS3Path = S3Utils.refinePath(config.getString("oosDataS3Path", s"data/prod/audience/RSMV2/Seed_None/v=1"))
-    val calibrationOutputData3Path = S3Utils.refinePath(config.getString("oosDataS3Path", s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None/v=1"))
-    val subFolderKey = config.getString("subFolderKey", default = "mixedForward")
-    val subFolderValue = config.getString("subFolderValue", default = "Calibration")
-  }
-
-
-  def generateMixedOOSData(date: LocalDate): Unit = {
+  def generateMixedOOSData(date: LocalDate, conf: CalibrationInputDataGeneratorJobConfig): Unit = {
 
     val start = System.currentTimeMillis()
 
     val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
-    val basePath = "s3://" + Config.oosDataS3Bucket + "/" + Config.oosDataS3Path
-    val prodBasePath = "s3://" + Config.oosDataS3Bucket + "/" + Config.oosProdDataS3Path
-    val outputBasePath = "s3://" + Config.oosDataS3Bucket + "/" + Config.calibrationOutputData3Path
+    val basePath = "s3://" + conf.oosDataS3Bucket + "/" + conf.oosDataS3Path
+    val prodBasePath = "s3://" + conf.oosDataS3Bucket + "/" + conf.oosProdDataS3Path
+    val outputBasePath = "s3://" + conf.oosDataS3Bucket + "/" + conf.calibrationOutputDataS3Path
 
     val targetPath = constructPath(date, basePath)
 
@@ -79,12 +70,12 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
       throw new Exception(s"Target date path $targetPath does not exist.")
     }
 
-    val candidateDates = (0 to Config.lookBack).map(days => date.minusDays(days)).filter(date => !date.isBefore(Config.startDate))
+    val candidateDates = (0 to conf.lookBack).map(days => date.minusDays(days)).filter(date => !date.isBefore(conf.startDate))
 
     val validPaths = candidateDates.flatMap { date =>
       val pathStr = constructPath(date, basePath)
       val prodPathStr = constructPath(date, prodBasePath)
-      if (pathExists(pathStr)) Some(pathStr) else if (Config.coalesceProdData && pathExists(prodPathStr)) Some(prodPathStr) else None
+      if (pathExists(pathStr)) Some(pathStr) else if (conf.coalesceProdData && pathExists(prodPathStr)) Some(prodPathStr) else None
     }.reverse
 
     if (validPaths.isEmpty) {
@@ -93,7 +84,7 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
 
     val validLookBackDays = validPaths.length - 1
 
-    val weights = List(1-0.1*(validLookBackDays)) ++ List.fill(validLookBackDays)(0.1)
+    val weights = List(1 - 0.1 * (validLookBackDays)) ++ List.fill(validLookBackDays)(0.1)
 
     val pathWeightPairs: Seq[(String, Double)] = validPaths.zip(weights)
 
@@ -119,23 +110,23 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
       addMissingColumns(df, potentiallyMissingColumns)
     }
     }
-  
+
     val result = dfs.reduce(_.unionByName(_))
-    
+
     result.coalesce(audienceResultCoalesce)
-        .write.mode(SaveMode.Overwrite)
-        .format("tfrecord")
-        .option("recordType", "Example")
-        .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
-        .save(s"$outputBasePath/${date.format(formatter)}000000/${Config.subFolderKey}=${Config.subFolderValue}")
+      .write.mode(SaveMode.Overwrite)
+      .format("tfrecord")
+      .option("recordType", "Example")
+      .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
+      .save(s"$outputBasePath/${date.format(formatter)}000000/${conf.subFolderKey}=${conf.subFolderValue}")
 
     resultTableSize.labels(dateTime.toLocalDate.toString).set(result.count())
     jobRunningTime.labels(dateTime.toLocalDate.toString).set(System.currentTimeMillis() - start)
   }
 
-  def pathExists(pathStr: String) (implicit spark: SparkSession): Boolean = {
-      FSUtils.directoryExists(pathStr)(spark)
-    }
+  def pathExists(pathStr: String)(implicit spark: SparkSession): Boolean = {
+    FSUtils.directoryExists(pathStr)(spark)
+  }
 
   def constructPath(date: LocalDate, basePath: String): String = {
     val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
@@ -155,5 +146,5 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
 
 }
 
-object RSMCalibrationInputDataGenerator extends CalibrationInputDataGenerator(prometheus: PrometheusClient) {
+object RSMCalibrationInputDataGenerator extends CalibrationInputDataGenerator(CalibrationInputDataGeneratorJob.prometheus.get) {
 }

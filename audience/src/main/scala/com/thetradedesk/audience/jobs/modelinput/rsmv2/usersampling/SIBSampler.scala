@@ -4,6 +4,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions._
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorJobConfig
 
 import java.util.UUID
 
@@ -145,7 +146,7 @@ object SIBSampler extends Sampler {
   val isDeviceIdSampled = udf(_isDeviceIdSampled _)
   val isDeviceIdSampled1Percent = udf(_isDeviceIdSampled1Percent _)
 
-  override def samplingFunction(symbol: Symbol): Column = {
+  override def samplingFunction(symbol: Symbol, conf: RelevanceModelInputGeneratorJobConfig): Column = {
     isDeviceIdSampled(symbol)
   }
 

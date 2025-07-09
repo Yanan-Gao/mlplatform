@@ -1,15 +1,15 @@
 import java.time.{Clock, LocalDateTime}
 import sbtrelease.Vcs
 
-name := "audience"
+lazy val confetti = RootProject(file("../confetti"))
 
-version := "0.0.0"
-
-scalaVersion := "2.12.15"
-
-// For now, we can define a different spark version by passing -DsparkVersion
 val sparkVersion = sys.props.getOrElse("sparkVersion", "3.2.1")
 val prometheusVersion = "0.9.0"
+
+lazy val audience = (project in file(".")).dependsOn(confetti).settings(
+  name := "audience",
+  version := "0.0.0",
+  scalaVersion := "2.12.15")
 
 resolvers += "bintray-spark-packages" at "https://dl.bintray.com/spark-packages/maven/"
 
@@ -94,3 +94,4 @@ assembly / assemblyShadeRules := Seq(
   ShadeRule.rename("okhttp3.**" -> "shade.okhttp3.@1").inAll,
   ShadeRule.rename("okio.**" -> "shade.okio.@1").inAll
 )
+
