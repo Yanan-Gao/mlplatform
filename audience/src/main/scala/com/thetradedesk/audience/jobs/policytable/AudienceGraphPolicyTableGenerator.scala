@@ -12,6 +12,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorConfig
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 
@@ -21,7 +22,12 @@ import java.time.LocalDate
 IMPORTANT:
 seed here don't represent kokai seed, it represents any pixel(group of tdid) in TTD (including kokai seed, conversion tracker etc.)
 */
-abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Model, prometheus: PrometheusClient) extends AudiencePolicyTableGenerator(model, prometheus) {
+abstract class AudienceGraphPolicyTableGenerator(
+    goalType: GoalType,
+    model: Model,
+    prometheus: PrometheusClient,
+    config: AudiencePolicyTableGeneratorConfig)
+    extends AudiencePolicyTableGenerator(model, prometheus, config) {
   def retrieveSourceMetaData(date: LocalDate): Dataset[SourceMetaRecord]
 
   def retrieveSourceDataWithDifferentGraphType(date: LocalDate, personGraph: DataFrame, householdGraph: DataFrame): SourceDataWithDifferentGraphType

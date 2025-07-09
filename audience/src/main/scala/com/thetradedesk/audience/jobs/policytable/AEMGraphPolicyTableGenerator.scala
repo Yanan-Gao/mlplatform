@@ -3,7 +3,7 @@ package com.thetradedesk.audience.jobs.policytable
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.jobs.policytable.AEMPolicyTableGenerator.{retrieveActiveCampaignConversionTrackerTagIds, samplingFunction}
-import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJob.prometheus
+import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorConfig
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
@@ -14,8 +14,14 @@ import org.apache.spark.sql.functions._
 import java.sql.Timestamp
 import java.time.{LocalDate, LocalDateTime, ZoneOffset}
 
-object AEMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(
-  GoalType.CPA, Model.AEM, prometheus: PrometheusClient) {
+class AEMGraphPolicyTableGenerator(
+    prometheus: PrometheusClient,
+    config: AudiencePolicyTableGeneratorConfig)
+    extends AudienceGraphPolicyTableGenerator(
+      GoalType.CPA,
+      Model.AEM,
+      prometheus,
+      config) {
 
   private def retrieveActiveCampaignConversionTrackerTagIds(): DataFrame = {
     // prepare dataset
