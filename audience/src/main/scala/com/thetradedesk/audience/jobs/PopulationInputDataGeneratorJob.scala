@@ -7,7 +7,7 @@ import com.thetradedesk.audience.utils.Logger.Log
 import com.thetradedesk.audience.utils.S3Utils
 import com.thetradedesk.audience.{shouldConsiderTDID3, _}
 import com.thetradedesk.audience.jobs.PopulationInputDataGeneratorJob.prometheus
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.RSMV2PopulationUserSampleIndex
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorJob
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
