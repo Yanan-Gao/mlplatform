@@ -2,7 +2,7 @@ package com.thetradedesk.audience.jobs.modelinput.rsmv2.feature.userzipsite
 
 import com.thetradedesk.audience.datasets.AggregatedSeedReadableDataset
 import com.thetradedesk.audience.date
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.{overrideMode, saveIntermediateResult}
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorJobConfig
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.writeOrCache
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface.{BidSideDataRecord, OptInSeedRecord, SiteZipDensityRecord, UserSiteZipLevelRecord}
@@ -14,7 +14,9 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 
 object UserZipSiteLevelFeatureGenerator extends UserZipSiteLevelFeatureGetter {
 
-  private def generateSiteZipScore(featureRelatedBidReq: DataFrame, optInSeed: Dataset[OptInSeedRecord]): Dataset[SiteZipDensityRecord] = {
+  private def generateSiteZipScore(featureRelatedBidReq: DataFrame,
+                                   optInSeed: Dataset[OptInSeedRecord],
+                                   conf: RelevanceModelInputGeneratorJobConfig): Dataset[SiteZipDensityRecord] = {
 
     val seedIdToSyntheticId = optInSeed.collect()
       .map(e => (e.SeedId, e.SyntheticId))
@@ -45,10 +47,12 @@ object UserZipSiteLevelFeatureGenerator extends UserZipSiteLevelFeatureGetter {
     val dateStr = RSMV2SharedFunction.getDateStr()
     val writePath = s"s3://thetradedesk-mlplatform-us-east-1/users/yixuan.zheng/allinone/dataset/${dateStr}/features/site_zip_score"
     writeOrCache(Option(writePath),
-      overrideMode, sitezipScore, false).as[SiteZipDensityRecord]
+      conf.overrideMode, sitezipScore, false).as[SiteZipDensityRecord]
   }
 
-  private def generateUserScore(siteZipFeatureStore: Dataset[SiteZipDensityRecord], tdid2feature: DataFrame): Dataset[UserSiteZipLevelRecord] = {
+  private def generateUserScore(siteZipFeatureStore: Dataset[SiteZipDensityRecord],
+                                tdid2feature: DataFrame,
+                                conf: RelevanceModelInputGeneratorJobConfig): Dataset[UserSiteZipLevelRecord] = {
     val szFs = siteZipFeatureStore.filter('score >= 0.8)
     val userFs =
       tdid2feature
@@ -63,15 +67,17 @@ object UserZipSiteLevelFeatureGenerator extends UserZipSiteLevelFeatureGetter {
         )
     val dateStr = RSMV2SharedFunction.getDateStr()
     writeOrCache(Option(s"s3://thetradedesk-mlplatform-us-east-1/users/yixuan.zheng/allinone/dataset/${dateStr}/features/user_sz_score"),
-      overrideMode, userFs).as[UserSiteZipLevelRecord]
+      conf.overrideMode, userFs).as[UserSiteZipLevelRecord]
   }
 
-  override def getFeature(rawBidReq: Dataset[BidSideDataRecord], optInSeed: Dataset[OptInSeedRecord]): Dataset[UserSiteZipLevelRecord] = {
+  override def getFeature(rawBidReq: Dataset[BidSideDataRecord],
+                          optInSeed: Dataset[OptInSeedRecord],
+                          conf: RelevanceModelInputGeneratorJobConfig): Dataset[UserSiteZipLevelRecord] = {
     val featureRelatedBidReq = rawBidReq.select("TDID", "Site", "Zip")
-    val siteZipFeatureStore = generateSiteZipScore(featureRelatedBidReq, optInSeed)
+    val siteZipFeatureStore = generateSiteZipScore(featureRelatedBidReq, optInSeed, conf)
 
     val tdid2feature = rawBidReq.select("TDID", "Site", "Zip").distinct()
 
-    generateUserScore(siteZipFeatureStore, tdid2feature)
+    generateUserScore(siteZipFeatureStore, tdid2feature, conf)
   }
 }

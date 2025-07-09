@@ -9,20 +9,31 @@ import org.apache.spark.sql.functions._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.types.FloatType
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.util.TTDConfig.config
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
 import java.time.format.DateTimeFormatter
 import scala.collection.mutable.ArrayBuffer
+import java.time.{LocalDate, LocalDateTime}
 
-object Imp2BrModelInferenceDataGenerator {
+case class Imp2BrModelInferenceDataGeneratorConfig(
+  feature_path: String,
+  runDate: LocalDate
+)
+
+object Imp2BrModelInferenceDataGenerator
+  extends AutoConfigResolvingETLJobBase[Imp2BrModelInferenceDataGeneratorConfig](
+    groupName = "audience",
+    jobName = "Imp2BrModelInferenceDataGenerator") {
+
+  override val prometheus: Option[PrometheusClient] = None
+
   /***
    * Generate RMSv2 BidRequest model offline prediction input dataset, based on BidImpression,
    * with sampling logic aligned with SIBv3
    */
   val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
-  val modelVersion = s"${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}"
-  val featuresJsonPath= config.getString(
-    "feature_path", s"s3://thetradedesk-mlplatform-us-east-1/models/prod/RSM/full_model/${modelVersion}/features.json")
 
   def getAllUiidsUdfWithSample(sampleFun: String => Boolean) = udf((tdid: String, deviceAdvertisingId: String, uid2: String, euid: String, identityLinkId: String) => {
     val uiids = ArrayBuffer[String]()
@@ -47,7 +58,13 @@ object Imp2BrModelInferenceDataGenerator {
     uiids.toSeq
   })
 
-  def runETLPipeline(): Unit = {
+  override def runETLPipeline(): Map[String, String] = {
+    val conf = getConfig
+    val date = conf.runDate
+    val dateTime = conf.runDate.atStartOfDay()
+
+    val featuresJsonPath = conf.feature_path
+
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack=Some(0), source = Some(GERONIMO_DATA_SOURCE))
       .withColumn("Uiids", getAllUiidsUdfWithSample(_isDeviceIdSampled1Percent)('CookieTDID, 'DeviceAdvertisingId, 'UnifiedId2, 'EUID, 'IdentityLinkId))
       .withColumn("TDID", explode(col("Uiids")))
@@ -125,9 +142,6 @@ object Imp2BrModelInferenceDataGenerator {
         saveMode = SaveMode.Overwrite,
         numPartitions = Some(10000)
       )
+    Map("status" -> "success")
   }
-  def main(args: Array[String]): Unit = {
-    runETLPipeline()
-  }
-
 }
