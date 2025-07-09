@@ -2,7 +2,6 @@ package com.thetradedesk.audience.jobs.policytable
 
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
-import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJob.prometheus
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
@@ -13,7 +12,10 @@ import org.apache.spark.sql.functions._
 import java.sql.Timestamp
 import java.time.{LocalDate, LocalDateTime, ZoneOffset}
 
-object AEMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.AEM, prometheus: PrometheusClient) {
+class AEMPolicyTableGenerator(
+    prometheus: PrometheusClient,
+    config: AudiencePolicyTableGeneratorConfig)
+    extends AudiencePolicyTableGenerator(Model.AEM, prometheus, config) {
 
   override def retrieveSourceData(date: LocalDate): DataFrame = {
     retrieveConversionData(date: LocalDate)

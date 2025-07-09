@@ -21,7 +21,10 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.time.{LocalDate, LocalDateTime}
 
-abstract class AudiencePolicyTableGenerator(model: Model, prometheus: PrometheusClient) {
+abstract class AudiencePolicyTableGenerator(
+    model: Model,
+    prometheus: PrometheusClient,
+    val Config: AudiencePolicyTableGeneratorConfig) {
 
   val userDownSampleHitPopulation = config.getInt(s"userDownSampleHitPopulation${model}", default = 100000)
   val samplingFunction = shouldConsiderTDID3(userDownSampleHitPopulation, config.getStringRequired(s"saltToSampleUser${model}"))(_)
@@ -30,45 +33,6 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
   val policyTableSize = prometheus.createGauge(s"audience_policy_table_size", "AudiencePolicyTableGenerator running time", "model", "date")
 
 
-  object Config {
-    // config to determine which cloud storage source to use
-    val storageCloud = StorageCloud.withName(config.getString("storageCloud", StorageCloud.AWS.toString)).id
-    // detect recent seed metadata path in airflow and pass to spark job
-    val seedMetaDataRecentVersion = config.getString("seedMetaDataRecentVersion", null)
-    val seedMetadataS3Bucket = S3Utils.refinePath(config.getString("seedMetadataS3Bucket", "ttd-datprd-us-east-1"))
-    val countryDensityThreshold = config.getDouble("countryDensityThreshold", 0.8)
-    val seedMetadataS3Path = S3Utils.refinePath(config.getString("seedMetadataS3Path", "prod/data/SeedDetail/v=1/"))
-    val seedRawDataS3Bucket = S3Utils.refinePath(config.getString("seedRawDataS3Bucket", "ttd-datprd-us-east-1"))
-    val seedRawDataS3Path = S3Utils.refinePath(config.getString("seedRawDataS3Path", "prod/data/Seed/v=1"))
-    val seedRawDataRecentVersion = config.getString("seedRawDataRecentVersion", null)
-    val policyTableResetSyntheticId = config.getBoolean("policyTableResetSyntheticId", false)
-    // conversion data look back days
-    val conversionLookBack = config.getInt("conversionLookBack", 5)
-    val expiredDays = config.getInt("expiredDays", default = 7)
-    val policyTableLookBack = config.getInt("policyTableLookBack", default = 3)
-    val policyS3Bucket = S3Utils.refinePath(config.getString("policyS3Bucket", "thetradedesk-mlplatform-us-east-1"))
-    val policyS3Path = S3Utils.refinePath(config.getString("policyS3Path", s"configdata/${ttdEnv}/audience/policyTable/${model}/v=1"))
-    val maxVersionsToKeep = config.getInt("maxVersionsToKeep", 30)
-    val reuseAggregatedSeedIfPossible = config.getBoolean("reuseAggregatedSeedIfPossible", true)
-    val bidImpressionRepartitionNum = config.getInt("bidImpressionRepartitionNum", 4096)
-    val seedRepartitionNum = config.getInt("seedRepartitionNum", 32)
-    val bidImpressionLookBack = config.getInt("bidImpressionLookBack", 1)
-    val graphUniqueCountKeepThreshold = config.getInt("graphUniqueCountKeepThreshold", 20)
-    val graphScoreThreshold = config.getDouble("graphScoreThreshold", 0.01)
-    val seedJobParallel = config.getInt("seedJobParallel", Runtime.getRuntime.availableProcessors())
-    val seedProcessLowerThreshold = config.getLong("seedProcessLowerThreshold", 2000)
-    val seedProcessUpperThreshold = config.getLong("seedProcessUpperThreshold", 100000000)
-    val ttdOwnDataUpperThreshold = config.getLong("ttdOwnDataUpperThreshold", 200000000)
-    val seedExtendGraphUpperThreshold = config.getLong("seedExtendGraphUpperThreshold", 3000000)
-    val activeUserRatio = config.getDouble("activeUserRatio", 0.4)
-    val aemPixelLimit = config.getInt("aemPixelLimit", 5000)
-    var selectedPixelsConfigPath = config.getString("selectedPixelsConfigPath", "s3a://thetradedesk-mlplatform-us-east-1/configdata/prodTest/audience/other/AEM/selectedPixelTrackingTagIds/")
-    var useSelectedPixel = config.getBoolean("useSelectedPixel", false)
-    var campaignFlightStartingBufferInDays = config.getInt("campaignFlightStartingBufferInDays", 14)
-    var allRSMSeed = config.getBoolean("allRSMSeed", false)
-    var activeAdvertiserLookBackDays = config.getInt("activeAdvertiserLookBackDays", 180)
-    var newSeedLookBackDays = config.getInt("newSeedLookBackDays", 7)
-  }
 
   private val policyTableDateFormatter = DateTimeFormatter.ofPattern(audienceVersionDateFormat)
 

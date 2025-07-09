@@ -4,7 +4,9 @@ package com.thetradedesk.audience.jobs
 import com.thetradedesk.audience.datasets.{CrossDeviceVendor, DataSource}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.util.TTDConfig.config
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.SparkContext
 import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.{DataFrame, Row, SaveMode}
@@ -13,8 +15,28 @@ import org.apache.spark.sql.types.{ArrayType, FloatType, IntegerType}
 
 import scala.collection.mutable
 import java.util.UUID
+import java.time.LocalDateTime
 
-object TdidEmbeddingDotProductGenerator {
+case class TdidEmbeddingDotProductGeneratorConfig(
+  out_path: String,
+  avail_path: String,
+  seed_density_path: String,
+  density_split: Int,
+  density_limit: Int,
+  tdid_limit: Int,
+  debug: Boolean,
+  partition: Int,
+  date_time: String
+)
+
+object TdidEmbeddingDotProductGenerator
+  extends AutoConfigResolvingETLJobBase[TdidEmbeddingDotProductGeneratorConfig](
+    env = config.getStringRequired("env"),
+    experimentName = config.getStringOption("experimentName"),
+    groupName = "audience",
+    jobName = "TdidEmbeddingDotProductGenerator") {
+
+  override val prometheus: Option[PrometheusClient] = None
   val salt="TRM"
   //val tdid_emb_path="s3://thetradedesk-mlplatform-us-east-1/users/youjun.yuan/rsmv2/emb/agg_tdid/"
   val tdid_emb_path="s3://thetradedesk-mlplatform-us-east-1/users/youjun.yuan/rsmv2/emb/agg_tdid/date=20250216/"
@@ -24,14 +46,6 @@ object TdidEmbeddingDotProductGenerator {
 //  val seed_list_path="s3://thetradedesk-mlplatform-us-east-1/data/prod/audience/relevanceseedsdataset/v=1/date=20250216/"
   val policy_table_path ="s3://thetradedesk-mlplatform-us-east-1/configdata/prod/audience/policyTable/RSM/v=1/20250216000000/"
   val seed_id_path ="s3://thetradedesk-mlplatform-us-east-1/data/dev/audience/scores/seedids/v=2/date=20250216/"
-  val out_path = config.getString("TdidEmbeddingDotProductGenerator.out_path", "s3://thetradedesk-mlplatform-us-east-1/data/dev/audience/scores/tdid2seedidV2/v=1/date=20250216/") // "s3://thetradedesk-mlplatform-us-east-1/users/youjun.yuan/rsmv2/emb/tdid2seedid/"
-  val avail_path = config.getString("TdidEmbeddingDotProductGenerator.avail_path", "s3://thetradedesk-mlplatform-us-east-1/data/prodTest/audience/RSMV2/Availycp-dup_plus/v=2/20250216000000/")
-  val seed_density_path = config.getString("TdidEmbeddingDotProductGenerator.seed_density_path", "s3://thetradedesk-mlplatform-us-east-1/features/feature_store/prodTest/profiles/source=bidsimpression/index=FeatureKeyValue/job=DailyDensityScoreReIndexingJob/config=SyntheticIdDensityScoreCategorized/date=20250216/")
-  val density_split = config.getInt("TdidEmbeddingDotProductGenerator.density_split", -1)
-  val density_limit = config.getInt("TdidEmbeddingDotProductGenerator.density_limit", -1)
-  val tdid_limit = config.getInt("TdidEmbeddingDotProductGenerator.tdid_limit", -1)
-  val debug = config.getBoolean("TdidEmbeddingDotProductGenerator.debug", false)
-  val partition = config.getInt("TdidEmbeddingDotProductGenerator.partition", -1)
   val EmbeddingSize = 64
 
 //  val extractSubarray = udf { (group: Int, arr: Seq[Double]) =>
@@ -248,7 +262,19 @@ object TdidEmbeddingDotProductGenerator {
   val decodeTdid: UserDefinedFunction = udf(guidToLongs _)
 
   /////
-  def runETLPipeline(): Unit = {
+  override def runETLPipeline(): Map[String, String] = {
+    val conf = getConfig
+    val dt = LocalDateTime.parse(conf.date_time)
+    val date = dt.toLocalDate
+
+    val out_path = conf.out_path
+    val avail_path = conf.avail_path
+    val seed_density_path = conf.seed_density_path
+    val density_split = conf.density_split
+    val density_limit = conf.density_limit
+    val tdid_limit = conf.tdid_limit
+    val debug = conf.debug
+    val partition = conf.partition
 //    val df_seed_list = spark.read.format("parquet").load(seed_list_path)
 //    val seeds = df_seed_list.collect()
 //    val SeedIds: Array[String] = seeds(0).getSeq(0).toArray[String]
@@ -378,11 +404,8 @@ object TdidEmbeddingDotProductGenerator {
         .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
         .mode("overwrite")
         .save(out_path + f"split=${i}/")
-    })
-  }
-
-  def main(args: Array[String]): Unit = {
-    runETLPipeline()
+  })
+    Map("status" -> "success")
   }
 }
 
