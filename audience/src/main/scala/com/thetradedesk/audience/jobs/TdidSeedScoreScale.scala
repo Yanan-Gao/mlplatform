@@ -30,6 +30,7 @@ object TdidSeedScoreScale
   extends AutoConfigResolvingETLJobBase[TdidSeedScoreScaleConfig](
     env = config.getStringRequired("env"),
     experimentName = config.getStringOption("experimentName"),
+    runtimeConfigBasePath = config.getStringRequired("confetti_runtime_config_base_path"),
     groupName = "audience",
     jobName = "TdidSeedScoreScale") {
 

@@ -47,6 +47,7 @@ object PopulationInputDataGeneratorJob
   extends AutoConfigResolvingETLJobBase[PopulationInputDataGeneratorJobConfig](
     env = config.getStringRequired("env"),
     experimentName = config.getStringOption("experimentName"),
+    runtimeConfigBasePath = config.getStringRequired("confetti_runtime_config_base_path"),
     groupName = "audience",
     jobName = "PopulationInputDataGeneratorJob") {
 

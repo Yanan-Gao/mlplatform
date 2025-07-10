@@ -37,6 +37,7 @@ object AudienceCalibrationAndMergeJob
   extends AutoConfigResolvingETLJobBase[AudienceCalibrationAndMergeJobConfig](
     env = config.getStringRequired("env"),
     experimentName = config.getStringOption("experimentName"),
+    runtimeConfigBasePath = config.getStringRequired("confetti_runtime_config_base_path"),
     groupName = "audience",
     jobName = "AudienceCalibrationAndMergeJob") {
   override val prometheus: Option[PrometheusClient] =
