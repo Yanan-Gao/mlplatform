@@ -20,6 +20,7 @@ object AEMGraphPolicyTableJob
   extends AutoConfigResolvingETLJobBase[AudiencePolicyTableJobConfig](
     env = ttdConfig.getStringRequired("env"),
     experimentName = ttdConfig.getStringOption("experimentName"),
+    runtimeConfigBasePath = ttdConfig.getStringRequired("confetti_runtime_config_base_path"),
     groupName = "audience",
     jobName = "AEMGraphPolicyTableJob") {
 

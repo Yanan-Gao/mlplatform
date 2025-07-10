@@ -24,6 +24,7 @@ object RelevanceModelInputGeneratorJob
   extends AutoConfigResolvingETLJobBase[RelevanceModelInputGeneratorJobConfig](
     env = config.getStringRequired("env"),
     experimentName = config.getStringOption("experimentName"),
+    runtimeConfigBasePath = config.getStringRequired("confetti_runtime_config_base_path"),
     groupName = "audience",
     jobName = "RelevanceModelInputGeneratorJob") {
   override val prometheus: Option[PrometheusClient] =
