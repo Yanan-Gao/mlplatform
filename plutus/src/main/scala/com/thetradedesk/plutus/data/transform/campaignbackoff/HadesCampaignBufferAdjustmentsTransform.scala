@@ -2,7 +2,7 @@ package com.thetradedesk.plutus.data.transform.campaignbackoff
 
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
 import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferDataset, MergedCampaignFloorBufferSchema}
-import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.{Campaign, bucketCount, getTestBucketUDF, platformWideBuffer}
+import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.{Campaign, bucketCount, getTestBucketUDF, platformWideBuffer, MinTestBucketIncluded, MaxTestBucketExcluded}
 import com.thetradedesk.plutus.data.schema.{PcResultsMergedDataset, PcResultsMergedSchema, PlutusLogsData, PlutusOptoutBidsDataset}
 import com.thetradedesk.plutus.data.utils.S3NoFilesFoundException
 import com.thetradedesk.plutus.data.{AuctionType, envForRead, envForReadInternal}
@@ -32,9 +32,6 @@ object HadesCampaignBufferAdjustmentsTransform {
   val EPSILON = 0.01
   val MinimumFloorBuffer = 0.01
   val MaximumFloorBuffer = 1
-
-  val MinTestBucketIncluded = 0.0
-  val MaxTestBucketExcluded = 0.9
 
   def cdf(mu: Double, sigma: Double, x: Double): Double = {
     //val a = (math.log(x) - mu) / math.sqrt(2 * math.pow(sigma, 2))
@@ -68,7 +65,7 @@ object HadesCampaignBufferAdjustmentsTransform {
   }
 
   def getUnderdeliveringCampaignBidData(bidData: DataFrame,
-    filteredCampaigns: Dataset[CampaignMetaData]): DataFrame = {
+                                        filteredCampaigns: Dataset[CampaignMetaData]): DataFrame = {
 
     val gss = udf((m: Double, s: Double, b: Double, e: Double) => gssFunc(m, s, b, e))
 
@@ -110,7 +107,7 @@ object HadesCampaignBufferAdjustmentsTransform {
       .filter(col("gen_excess") > 0)
       .withColumn("gen_actual_bufferFloor", col("FloorPrice") * (lit(1) - col("Actual_BBF_FloorBuffer")))
       .withColumn("gen_proposedBid_v3", col("InitialBid") * (
-          col("gen_effectiveDiscrepancy") - (col("gen_excess") * coalesce(col("CampaignPCAdjustment"), lit(1.0)))
+        col("gen_effectiveDiscrepancy") - (col("gen_excess") * coalesce(col("CampaignPCAdjustment"), lit(1.0)))
         ))
       .withColumn("gen_isBidBelowTheFloor", col("gen_proposedBid_v3") < col("gen_actual_bufferFloor"))
       .withColumn("gen_HadesBackoff_FloorBuffer",
@@ -550,7 +547,7 @@ object HadesCampaignBufferAdjustmentsTransform {
       .select("CampaignId").distinct()
 
     val liveCampaigns = CampaignFlightDataset.readLatestDataUpToIncluding(date.plusDays(1))
-      .filter($"IsCurrent" === 1 && $"StartDateInclusiveUTC" <= date && $"EndDateExclusiveUTC" >= date)
+      .filter($"IsCurrent" === 1 && $"StartDateInclusiveUTC" <= date.plusDays(1) && $"EndDateExclusiveUTC" >= date.plusDays(1))
       .join(nonArchivedCampaigns, Seq("CampaignId"), "inner")
       .selectAs[Campaign].distinct()
 

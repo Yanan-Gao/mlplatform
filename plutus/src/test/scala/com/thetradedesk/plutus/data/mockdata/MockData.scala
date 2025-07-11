@@ -797,6 +797,14 @@ object MockData {
     )
   }
 
+  def shortFlightCampaignsMock(campaignId: String,
+                               minimumShortFlightFloorBuffer: Double = 0.35): ShortFlightCampaignsSchema = {
+    ShortFlightCampaignsSchema(
+      CampaignId = campaignId,
+      MinimumShortFlightFloorBuffer = minimumShortFlightFloorBuffer
+    )
+  }
+
   val campaignBBFOptOutRateMock = Seq(
     // Campaign is underdeliverying but doesn't have a high optout %
     HadesCampaignStats("campaignA", CampaignType_NewCampaign, 0.6, Array(1.1, 0.95, 0.8), Some(0.6), 10, 10, 100, 2, 20, 0, 0, 0, 0),

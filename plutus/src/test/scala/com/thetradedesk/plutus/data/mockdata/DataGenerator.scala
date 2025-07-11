@@ -1,7 +1,7 @@
 package com.thetradedesk.plutus.data.mockdata
 
 import MockData._
-import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsPacingSchema, CampaignFlightRecord, CampaignThrottleMetricSchema, HadesAdjustmentSchemaV2, RtbPlatformReportCondensedData, HadesBufferAdjustmentSchema}
+import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsPacingSchema, CampaignFlightRecord, CampaignThrottleMetricSchema, HadesAdjustmentSchemaV2, HadesBufferAdjustmentSchema, RtbPlatformReportCondensedData, ShortFlightCampaignsSchema}
 import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferSchema}
 import com.thetradedesk.spark.datasets.sources.CountryRecord
 import org.apache.spark.sql.Dataset
@@ -248,6 +248,12 @@ object DataGenerator {
       campaignFloorBufferMock(campaignId = "campaign1", bufferFloor = 0.01),
       campaignFloorBufferMock(campaignId = "abc123", bufferFloor = 0.01),
       campaignFloorBufferMock(campaignId = "abc234", bufferFloor = 0.20)
+    ).toDS()
+  }
+
+  def generateShortFlightCampaignsData: Dataset[ShortFlightCampaignsSchema] = {
+    Seq(
+      shortFlightCampaignsMock(campaignId = "short01")
     ).toDS()
   }
 

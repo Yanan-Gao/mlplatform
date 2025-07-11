@@ -1,9 +1,11 @@
 package job.campaignbackoff
 
 import com.thetradedesk.plutus.data.envForReadInternal
-import com.thetradedesk.plutus.data.schema.campaignbackoff.PlutusCampaignAdjustmentsDataset
-import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.MergedCampaignFloorBufferDataset
-import com.thetradedesk.plutus.data.transform.campaignbackoff.{HadesCampaignAdjustmentsTransform, HadesCampaignBufferAdjustmentsTransform, MergeCampaignBackoffAdjustments, PlutusCampaignAdjustmentsTransform}
+import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsPacingSchema, PlutusCampaignAdjustmentsDataset, ShortFlightCampaignsDataset}
+import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferDataset}
+import com.thetradedesk.plutus.data.transform.campaignbackoff.{HadesCampaignAdjustmentsTransform, HadesCampaignBufferAdjustmentsTransform, MergeCampaignBackoffAdjustments, PlutusCampaignAdjustmentsTransform, ShortFlightCampaignSelectionTransform}
+import com.thetradedesk.plutus.data.transform.campaignfloorbuffer.MergeCampaignFloorBufferTransform.readMergedFloorBufferData
+import com.thetradedesk.plutus.data.utils.S3NoFilesFoundException
 import com.thetradedesk.spark.TTDSparkContext
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -25,6 +27,7 @@ object CampaignAdjustmentsJob {
   val hadesCampaignCounts = otelClient.createGauge("campaignadjustments_hades_campaign_count", "Number of identified Hades problem campaigns")
   val hadesMetrics = otelClient.createGauge("campaignadjustments_hades_campaign_types", "Different adjustment types")
   val hadesBackoffV3Metrics = otelClient.createGauge("campaignadjustments_hades_backoffv3_campaign_types", "Different adjustment types")
+  val shortFlightCampaignCounts = otelClient.createGauge("campaignadjustments_shortflight_campaign_count", "Number of identified short flight campaigns and how many applied the short flight adjustment")
 
 
   def main(args: Array[String]): Unit = {
@@ -35,7 +38,8 @@ object CampaignAdjustmentsJob {
 
     val plutusCampaignAdjustmentsDataset = PlutusCampaignAdjustmentsTransform.transform(date, updateAdjustmentsVersion, fileCount)
     val hadesCampaignBufferAdjustmentsDataset  = HadesCampaignBufferAdjustmentsTransform.transform(date, underdeliveryThreshold, fileCount, campaignFloorBufferData, campaignAdjustmentsPacingData)
-    MergeCampaignBackoffAdjustments.transform(plutusCampaignAdjustmentsDataset, campaignFloorBufferData, hadesCampaignBufferAdjustmentsDataset)
+    val shortFlightCampaignsDataset = ShortFlightCampaignSelectionTransform.transform(date, fileCount)
+    MergeCampaignBackoffAdjustments.transform(plutusCampaignAdjustmentsDataset, campaignFloorBufferData, hadesCampaignBufferAdjustmentsDataset, shortFlightCampaignsDataset)
 
     jobDurationGaugeTimer.setDuration()
     otelClient.pushMetrics()
