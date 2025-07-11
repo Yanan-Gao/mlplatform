@@ -280,7 +280,7 @@ object MockData {
     UserFriendlyLabel = None
   )
 
-  def pcResultsLogMock(bidRequestId: String): PlutusLogsData = PlutusLogsData(
+  def pcResultsLogMock(bidRequestId: String, bbfExceptedSource: Int = 0): PlutusLogsData = PlutusLogsData(
     BidRequestId = bidRequestId,
     InitialBid = 10,
     FinalBidPrice = 9,
@@ -296,7 +296,7 @@ object MockData {
     OptOutDueToFloor = false,
     FloorPrice = 1,
     PartnerSample = false,
-    BidBelowFloorExceptedSource = 0,
+    BidBelowFloorExceptedSource = bbfExceptedSource,
     FullPush = false,
     UseUncappedBidForPushdown = true,
     UncappedFirstPriceAdjustment = 1.023,
