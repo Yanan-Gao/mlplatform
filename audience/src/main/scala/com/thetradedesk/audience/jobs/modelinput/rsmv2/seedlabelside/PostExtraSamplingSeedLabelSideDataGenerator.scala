@@ -97,9 +97,9 @@ object PostExtraSamplingSeedLabelSideDataGenerator extends SeedLabelSideDataGene
 
     val seed2SynIdMapping = seedIdToSyntheticIdMapping(seedIdToSyntheticId)
 
-    val bidSideRowCnt = bidSideData.count()
+    val bidSeedRowCnt = bidSeedData.count()
     val totalCnt = sampleIndicator.agg(sum("NegativeCount")).first().getLong(0)
-    val negSizePerRow = (totalCnt.toDouble / bidSideRowCnt)
+    val negSizePerRow = (totalCnt.toDouble / bidSeedRowCnt)
 
     // generate sampling data
     val posWithNeg = bidSeedData
