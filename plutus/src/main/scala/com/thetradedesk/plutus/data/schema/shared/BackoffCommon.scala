@@ -9,6 +9,8 @@ object BackoffCommon {
   //Constants
   val bucketCount = 1000
   val platformWideBuffer = 0.01
+  val MinTestBucketIncluded = 0.0
+  val MaxTestBucketExcluded = 0.9
 
   // Classes
   case class Campaign(CampaignId: String)

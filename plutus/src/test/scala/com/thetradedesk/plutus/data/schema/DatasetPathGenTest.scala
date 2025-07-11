@@ -44,6 +44,11 @@ class DatasetPathGenTest extends AnyFunSuite with Matchers {
     path shouldEqual "s3://thetradedesk-mlplatform-us-east-1/env=prod/data/plutusbackoff/plutusadjustments/v=1/date=20251113"
   }
 
+  test("ShortFlightCampaignsDataset should generate the right path") {
+    val path = ShortFlightCampaignsDataset.genPathForDate(LocalDate.of(2025, 6, 17), "prod")
+    path shouldEqual "s3://thetradedesk-mlplatform-us-east-1/env=prod/data/plutusbackoff/shortflightcampaigns/v=1/date=20250617"
+  }
+
 
   test("PcResultsMergedDataset should generate the right path") {
     var path = PcResultsMergedDataset.genPathForDate(LocalDate.of(2025, 1, 25), "prod")

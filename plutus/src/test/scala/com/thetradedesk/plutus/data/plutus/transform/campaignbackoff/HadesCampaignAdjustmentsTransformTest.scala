@@ -8,7 +8,8 @@ import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.MergedCampaignFlo
 import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.{Campaign, bucketCount, getTestBucketUDF, platformWideBuffer}
 import com.thetradedesk.plutus.data.schema.{PcResultsMergedSchema, PlutusLogsData}
 import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform._
-import com.thetradedesk.plutus.data.transform.campaignbackoff.MergeCampaignBackoffAdjustments.mergeBackoffDatasets
+import com.thetradedesk.plutus.data.transform.campaignbackoff.MergeCampaignBackoffAdjustments.{getShortFlightBuffer, mergeBackoffDatasets}
+import com.thetradedesk.plutus.data.transform.campaignbackoff.ShortFlightCampaignSelectionTransform.MinimumShortFlightFloorBuffer
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.AdGroupRecord
 import org.apache.spark.sql.Row
@@ -179,11 +180,13 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val campaignAdjustmentsData = DataGenerator.generateCampaignAdjustmentsPacingData.limit(3)
     val todaysCampaignFloorBufferData = DataGenerator.generateMergedCampaignFloorBufferData
     val campaignBufferAdjustmentsHadesData = DataGenerator.generateCampaignBufferAdjustmentsHadesData
+    val shortFlightCampaignsData = DataGenerator.generateShortFlightCampaignsData
 
     val finalMergedCampaignAdjustments = mergeBackoffDatasets(
       campaignAdjustmentsData,
       todaysCampaignFloorBufferData,
-      campaignBufferAdjustmentsHadesData
+      campaignBufferAdjustmentsHadesData,
+      shortFlightCampaignsData
     )
 
     val res = finalMergedCampaignAdjustments.select(
@@ -211,6 +214,9 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     // This campaign should have the final adjustment of 1 and it's floor buffer should be same as in the floor buffer snapshot.
     assert(res.contains(Row("abc123", null, null, null, 1, 0.01)))
     assert(res.contains(Row("abc234", null, null, null, 1, 0.20)))
+
+    // Test for campaign that is a Short Flight Hades Backoff test campaign that will start after backoff runs.
+    assert(res.contains(Row("short01", null, null, null, 1, MinimumShortFlightFloorBuffer)))
   }
 
   test("test for mergeTodayWithYesterdaysData") {
@@ -430,4 +436,48 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
   //</editor-fold>
 
+  test("getShortFlightBuffer - New short flight campaigns, keeping current buffer") {
+    val result = getShortFlightBuffer(
+      BBF_FloorBuffer = 0.5,
+      MinimumShortFlightFloorBuffer = 0.35,
+      HadesBackoff_FloorBuffer_Previous = Array.empty,
+      Total_BidCount_Previous = Array.empty)
+    result should be (0.5)
+  }
+
+  test("getShortFlightBuffer - New short flight campaigns, applying more aggressive short flight buffer") {
+    val result = getShortFlightBuffer(
+      BBF_FloorBuffer = 0.2,
+      MinimumShortFlightFloorBuffer = 0.35,
+      HadesBackoff_FloorBuffer_Previous = Array.empty,
+      Total_BidCount_Previous = Array.empty)
+    result should be (0.35)
+  }
+
+  test("getShortFlightBuffer - Existing short flight campaigns with limited history (< 4 days), applying more aggressive short flight buffer") {
+    val result = getShortFlightBuffer(
+      BBF_FloorBuffer = 0.2,
+      MinimumShortFlightFloorBuffer = 0.35,
+      HadesBackoff_FloorBuffer_Previous = Array(0.2, 0.2, 0.2),
+      Total_BidCount_Previous = Array(20, 20, 20))
+    result should be (0.35)
+  }
+
+  test("getShortFlightBuffer - Existing short flight campaigns with history (>= 4 days), so no short flight buffer needed") {
+    val result = getShortFlightBuffer(
+      BBF_FloorBuffer = 0.01,
+      MinimumShortFlightFloorBuffer = 0.35,
+      HadesBackoff_FloorBuffer_Previous = Array(0.2, 0.2, 0.2, 0.2),
+      Total_BidCount_Previous = Array(0, 20, 20, 20))
+    result should be (0.01)
+  }
+
+  test("getShortFlightBuffer - Short flight campaigns with no bid history (>= 4 days), recently restarted with new bids.") {
+    val result = getShortFlightBuffer(
+      BBF_FloorBuffer = 0.01,
+      MinimumShortFlightFloorBuffer = 0.35,
+      HadesBackoff_FloorBuffer_Previous = Array(0.2, 0.2, 0.2, 0.2),
+      Total_BidCount_Previous = Array(0, 0, 0, 0))
+    result should be (0.01)
+  }
 }
