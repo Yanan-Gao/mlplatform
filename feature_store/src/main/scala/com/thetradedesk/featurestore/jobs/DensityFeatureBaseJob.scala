@@ -158,7 +158,7 @@ abstract class DensityFeatureBaseJob {
 
 }
 
-final case class DailySeedDensityScoreEntity( FeatureValueHashed: Long,
-                                              FeatureKey: String,
+final case class DailySeedDensityScoreEntity( FeatureKey: String,
+                                              FeatureValueHashed: Long,
                                               SeedId: String,
                                               DensityScore: Double )
