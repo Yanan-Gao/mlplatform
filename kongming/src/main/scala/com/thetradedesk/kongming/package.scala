@@ -45,6 +45,8 @@ package object kongming {
 
   var writeThroughHdfs = config.getBoolean("writeThroughHdfs", true)
   var EnablePartitionRegister = config.getBoolean("enablePartitionRegister", false)
+  var EnableMetastoreWrite = config.getBoolean("enableMetastoreWrite", false)
+  val MetastoreTempViewName = "tmp_view_for_metastore_write"
 
   var date = config.getDate("date" , LocalDate.now())
   val RoundUpTimeUnit = "minute"

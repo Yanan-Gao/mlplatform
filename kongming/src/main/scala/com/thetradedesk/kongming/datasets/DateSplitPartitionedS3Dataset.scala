@@ -1,7 +1,7 @@
 package com.thetradedesk.kongming.datasets
 
 import com.thetradedesk.MetadataType
-import com.thetradedesk.kongming.{EnablePartitionRegister, JobExperimentName, getExperimentVersion, task, writeThroughHdfs}
+import com.thetradedesk.kongming.{EnableMetastoreWrite, EnablePartitionRegister, JobExperimentName, getExperimentVersion, task, writeThroughHdfs, MetastoreTempViewName}
 import com.thetradedesk.spark.datasets.core._
 import org.apache.spark.sql.{Dataset, SaveMode, SparkSession}
 import org.apache.spark.sql.functions.{lit, max, min, size}
@@ -16,6 +16,7 @@ import com.thetradedesk.spark.datasets.core.PartitionedS3DataSet.buildPath
 import com.thetradedesk.spark.datasets.core.SchemaPolicy.{DefaultUseFirstFileSchema, SchemaPolicyType}
 
 import java.time.LocalDate
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
@@ -61,10 +62,10 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
     }
   }
 
-  protected def shouldRegisterMetastorePartition: Boolean = true
+  protected def supportsMetastorePartition: Boolean = true
 
   protected def registerMetastorePartition(partition1: LocalDate, partition2: String): Unit = {
-    if (!shouldRegisterMetastorePartition || isExperiment) return
+    if (!supportsMetastorePartition || isExperiment) return
 
     val db = getMetastoreDbName
     val table = getMetastoreTableName
@@ -93,14 +94,63 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
     }
   }
 
+  protected def writeToMetastore(dataSet: Dataset[T], partition1: LocalDate, partition2: String, coalesceToNumFiles: Option[Int]): Unit = {
+    val dbName = getMetastoreDbName
+    val tableName = getMetastoreTableName
+
+    val reshapedData = coalesceToNumFiles match {
+      case Some(n) if n > 0 =>
+        val repartitioned = dataSet.repartition(n)
+        println(s"Repartitioned dataset to $n partitions.")
+        repartitioned
+      case _ =>
+        println(s"No coalesce applied.")
+        dataSet
+    }
+
+    reshapedData.createOrReplaceTempView(MetastoreTempViewName)
+
+    spark.sql(
+      s"""
+         |INSERT OVERWRITE TABLE $dbName.$tableName
+         |PARTITION (date='${partition1.format(DateTimeFormatter.BASIC_ISO_DATE)}', split='${partition2}')
+         |SELECT * FROM $MetastoreTempViewName
+         |""".stripMargin)
+
+    println(s"Writing to partition: date='${partition1.format(DateTimeFormatter.BASIC_ISO_DATE)}', split='${partition2}' in table $dbName.$tableName")
+  }
+
   def writePartition(dataSet: Dataset[T], partition1: LocalDate, partition2: String, coalesceToNumFiles: Option[Int]): (String, Long) = {
     // write to and read from test folders for ProdTesting environment to get the correct row count
     val isProdTesting = environment == ProdTesting
     if (isProdTesting) {
       environment = Testing
     }
-    // write partition to S3 folders
-    var count = super.writePartition(dataSet, partition1, partition2, coalesceToNumFiles)
+
+    var count: Long = 0L
+
+    if (EnableMetastoreWrite && supportsMetastorePartition && !isExperiment) {
+      val listener = new WriteListener()
+      spark.sparkContext.addSparkListener(listener)
+
+      writeToMetastore(dataSet, partition1, partition2, coalesceToNumFiles)
+
+      count = listener.rowsWritten
+
+      spark.sparkContext.removeSparkListener(listener)
+    }
+    else {
+      // write partition to S3 folders
+      count = super.writePartition(dataSet, partition1, partition2, coalesceToNumFiles)
+
+      // firstly register the partition
+      if(EnablePartitionRegister) {
+        registerMetastorePartition(partition1, partition2)
+      }
+
+      println(s"[LOG] Partition not written with Metastore")
+    }
+
     // recount the rows in partition if writePartition returns 0 and the partition actually exists
     if (count == 0 && partitionExists(partition1, partition2)) {
       count = readPartition(partition1, partition2).count()
@@ -112,10 +162,6 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
     // save row count as metadata
     val dataSetName = s"${this.getClass.getSimpleName}/${partition2}"
     MetadataDataset(getExperimentVersion).writeRecord(count, partition1, MetadataType.rowCount, dataSetName)
-
-    if(EnablePartitionRegister) {
-      registerMetastorePartition(partition1, partition2)
-    }
 
     (dataSetName, count)
 

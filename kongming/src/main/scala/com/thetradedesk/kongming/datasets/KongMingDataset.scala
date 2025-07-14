@@ -1,13 +1,15 @@
 package com.thetradedesk.kongming.datasets
 
 import com.thetradedesk.MetadataType
-import com.thetradedesk.kongming.{BaseFolderPath, JobExperimentName, MLPlatformS3Root, getExperimentVersion, schemaPolicy, task, writeThroughHdfs, EnablePartitionRegister}
+import com.thetradedesk.kongming.{BaseFolderPath, EnableMetastoreWrite, EnablePartitionRegister, JobExperimentName, MLPlatformS3Root, MetastoreTempViewName, getExperimentVersion, schemaPolicy, task, writeThroughHdfs}
 import com.thetradedesk.spark.datasets.core.PartitionedS3DataSet.buildPath
 import com.thetradedesk.spark.datasets.core._
-import com.thetradedesk.spark.util.{Production, ProdTesting, Testing}
+import com.thetradedesk.spark.listener.WriteListener
+import com.thetradedesk.spark.util.{ProdTesting, Production, Testing}
 import com.thetradedesk.spark.util.TTDConfig.{config, environment}
 import com.thetradedesk.spark.util.io.FSUtils
-import org.apache.spark.sql.Dataset
+import org.apache.spark.sql.{Dataset, SaveMode}
+import org.apache.spark.sql.functions.lit
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -48,7 +50,7 @@ abstract class KongMingDataset[T <: Product : Manifest](dataSetType: DataSetType
   protected def registerMetastorePartition(partition: LocalDate): Unit = {
     val partValue = partition.format(DateTimeFormatter.BASIC_ISO_DATE)
 
-    if (shouldRegisterMetastorePartition && !isExperiment) {
+    if (supportsMetastorePartition && !isExperiment) {
       val db = getMetastoreDbName
       val table = getMetastoreTableName
       try {
@@ -77,7 +79,33 @@ abstract class KongMingDataset[T <: Product : Manifest](dataSetType: DataSetType
     }
   }
 
-  protected def shouldRegisterMetastorePartition: Boolean = true
+  protected def supportsMetastorePartition: Boolean = true
+
+  private def writeToMetastore(dataSet: Dataset[T], partition: LocalDate, coalesceToNumFiles: Option[Int]): Unit = {
+    val dbName = getMetastoreDbName
+    val tableName = getMetastoreTableName
+
+    val reshapedData = coalesceToNumFiles match {
+      case Some(n) if n > 0 =>
+        val repartitioned = dataSet.repartition(n)
+        println(s"Repartitioned dataset to $n partitions.")
+        repartitioned
+      case _ =>
+        println(s"No coalesce applied.")
+        dataSet
+    }
+
+    reshapedData.createOrReplaceTempView(MetastoreTempViewName)
+
+    spark.sql(
+      s"""
+         |INSERT OVERWRITE TABLE $dbName.$tableName
+         |PARTITION (date='${partition.format(DateTimeFormatter.BASIC_ISO_DATE)}')
+         |SELECT * FROM $MetastoreTempViewName
+         |""".stripMargin)
+
+    println(s"Writing to partition: date='${partition.format(DateTimeFormatter.BASIC_ISO_DATE)}' in table $dbName.$tableName")
+  }
 
   def writePartition(dataSet: Dataset[T], partition: LocalDate, coalesceToNumFiles: Option[Int]): (String, Long) = {
     // write to and read from test folders for ProdTesting environment to get the correct row count
@@ -85,10 +113,32 @@ abstract class KongMingDataset[T <: Product : Manifest](dataSetType: DataSetType
     if (isProdTesting) {
       environment = Testing
     }
-    // write partition to S3 folders
-    var count = super.writePartition(dataSet, partition, coalesceToNumFiles)
+
+    var count: Long = 0L
+
+    if (EnableMetastoreWrite && supportsMetastorePartition && !isExperiment) {
+      val listener = new WriteListener()
+      spark.sparkContext.addSparkListener(listener)
+
+      writeToMetastore(dataSet, partition, coalesceToNumFiles)
+
+      count = listener.rowsWritten
+
+      spark.sparkContext.removeSparkListener(listener)
+    }
+    else {
+      // write partition to S3 folders
+      count = super.writePartition(dataSet, partition, coalesceToNumFiles)
+
+      // register the partition
+      if(EnablePartitionRegister) {
+        registerMetastorePartition(partition)
+      }
+
+      println(s"[LOG] Partition not written with Metastore")
+    }
     // recount the rows in partition if writePartition returns 0 and the partition actually exists
-    if(count == 0 && partitionExists(partition)) {
+    if (count == 0 && partitionExists(partition)) {
       count = readPartition(partition).count()
     }
     // set environment back to ProdTesting after getting the dataset count if the environment is actually ProdTesting
@@ -98,10 +148,6 @@ abstract class KongMingDataset[T <: Product : Manifest](dataSetType: DataSetType
     // save row count as metadata
     val dataSetName = this.getClass.getSimpleName
     MetadataDataset(getExperimentVersion).writeRecord(count, partition, MetadataType.rowCount, dataSetName)
-
-    if(EnablePartitionRegister) {
-      registerMetastorePartition(partition)
-    }
 
     (dataSetName, count)
 

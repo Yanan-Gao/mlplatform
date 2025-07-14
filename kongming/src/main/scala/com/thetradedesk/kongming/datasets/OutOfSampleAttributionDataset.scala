@@ -276,7 +276,7 @@ case class OutOfSampleAttributionDatasetDeprecated(delayNDays: Int, experimentOv
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
 ) {
-  override protected def shouldRegisterMetastorePartition: Boolean = false
+  override protected def supportsMetastorePartition: Boolean = false
 }
 
 case class OutOfSampleAttributionDataset(delayNDays: Int, experimentOverride: Option[String] = None)
