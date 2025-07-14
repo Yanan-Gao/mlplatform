@@ -4,13 +4,14 @@ import com.thetradedesk.audience.{date, dateFormatter, ttdEnv}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
+import com.thetradedesk.spark.util.opentelemetry.OtelClient
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 
-import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 object AvailsDealAggregate {
+  val otelClient = new OtelClient("DealScoreJob", "AvailsDealAggregateJob")
   val dateStr = date.format(dateFormatter)
   val dateStrDash = date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
   val deal_sv_path = config.getString("deal_sv_path", s"s3://ttd-deal-quality/env=prod/VerticaExportDealRelevanceSeedMapping/VerticaAws/date=${dateStr}/")
@@ -29,11 +30,14 @@ object AvailsDealAggregate {
   val cap_users = config.getInt("cap_users", 15000)
   val min_users = config.getInt("min_users", 3000)
 
+  val dealCount = otelClient.createGauge(s"audience_deal_score_job_num_deal_svs", "Deal Score number unique DealCode supplyVendorIds")
 
   def runETLPipeline(): Unit = {
 
     val dealSv = spark.read.parquet(deal_sv_path)
     val dealSvSeedDS = dealSv.select("DealCode", "SupplyVendorId", "SeedId").distinct().cache();
+    val dealSvDS = dealSvSeedDS.select("DealCode", "SupplyVendorId").distinct()
+    dealCount.labels(Map("date" -> dateStr, "type" -> "total")).set(dealSvDS.count())
 
     val TdidsByDCSV = spark.read.format("parquet").load(tdids_by_dcsv_path).distinct()
     val user_scores = spark.read.format("parquet").load(users_scores_path)
@@ -73,18 +77,29 @@ object AvailsDealAggregate {
       .save(out_path)
 
     val raw_scores = spark.read.format("parquet").load(out_path)
-    raw_scores.withColumn("Score", explode($"Scores.Score"))
+    val dealSvSeed_avg_scores = raw_scores.withColumn("Score", explode($"Scores.Score"))
       .groupBy("DealCode", "SupplyVendorId", "SeedId")
       .agg(
         count("Score").as("UserCount"),
         avg("Score").as("AverageScore")
-      )
+      ).cache()
+
+    val found_deals = dealSvSeed_avg_scores.groupBy("DealCode", "SupplyVendorId")
+      .agg(avg("UserCount").as("users")).cache()
+
+    dealCount.labels(Map("date" -> dateStr, "type" -> "total")).set(dealSvDS.count())
+    dealCount.labels(Map("date" -> dateStr, "type" -> "found")).set(found_deals.count())
+    dealCount.labels(Map("date" -> dateStr, "type" -> "scored")).set(found_deals.filter(col("users") >= min_users).count())
+
+    dealSvSeed_avg_scores
       .filter(col("UserCount") >= min_users)
       .write
       .format("parquet")
       .mode("overwrite")
       .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
       .save(agg_score_out_path)
+
+    otelClient.pushMetrics()
 
   }
 

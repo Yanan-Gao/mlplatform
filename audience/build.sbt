@@ -25,6 +25,11 @@ val jacksonCore = ExclusionRule("com.fasterxml.jackson.core")
 val guava = ExclusionRule("com.google.guava")
 val awsJavaSdkBundle = ExclusionRule("com.amazonaws", "aws-java-sdk-bundle")
 
+val eldoradoVersion = sparkVersion match {
+  case v if v.startsWith("3.5") => "1.0.330-spark-3.5.0"
+  case v if v.startsWith("3.2") => "1.0.330-spark-3.2.1"
+  case _ => "1.0.330-spark-3.2.1"
+}
 
 val availsVersion = sparkVersion match {
   case v if v.startsWith("3.5") => "3.0.114"
@@ -39,6 +44,7 @@ libraryDependencies ++= Seq(
   "com.typesafe" % "config" % "1.3.0",
   "com.thetradedesk" %% "geronimo" % "0.2.32-SNAPSHOT",
   "com.thetradedesk.segment.client" % "spark_3" % "2.0.9" % "provided",
+  "com.thetradedesk" %% "eldorado-core" % eldoradoVersion,
   "com.thetradedesk" %% "availspipeline.spark-common_no_uniform" % availsVersion,
   "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
 
@@ -70,6 +76,7 @@ assemblyMergeStrategy in assembly := {
       case PathList("org", "apache", "scala", _@_*) => MergeStrategy.discard
       case PathList("org", "apache", "spark", "sql", "execution", _@_*) => MergeStrategy.discard
       case PathList("META-INF", "services", file) if file.startsWith("io.openlineage.client.transports.TransportBuilder") => MergeStrategy.first
+      case PathList("META-INF", "services", file) if file.startsWith("io.opentelemetry.exporter.internal.grpc.GrpcSenderProvider") => MergeStrategy.first
       case PathList("META-INF", "services", _*) if sparkVersion.startsWith("3.5") => MergeStrategy.concat
       case PathList("META-INF", _@_*) => MergeStrategy.discard
 
@@ -82,5 +89,8 @@ testOptions in Test += Tests.Argument(TestFrameworks.ScalaTest, "-oD")
 
 assembly / assemblyShadeRules := Seq(
   ShadeRule.rename("shapeless.**" -> "new_shapeless.@1").inAll,
-  ShadeRule.rename("cats.kernel.**" -> s"new_cats.kernel.@1").inAll
+  ShadeRule.rename("cats.kernel.**" -> s"new_cats.kernel.@1").inAll,
+  ShadeRule.rename("kotlin.**"-> "shade.kotlin.@1").inAll,
+  ShadeRule.rename("okhttp3.**" -> "shade.okhttp3.@1").inAll,
+  ShadeRule.rename("okio.**" -> "shade.okio.@1").inAll
 )
