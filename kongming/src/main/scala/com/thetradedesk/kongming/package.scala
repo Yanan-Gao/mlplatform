@@ -123,6 +123,7 @@ package object kongming {
     var DailyConversion = 2000
     var DailyBidRequest = 5000
     var DailyBidsImpressions = 10000
+    var HourlyBidsImpressions = 500
     var DailyNegativeSampledBidRequest = 1000
     var DailyOfflineScoring = 2000
     var trainSet = 1000

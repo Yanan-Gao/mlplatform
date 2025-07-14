@@ -86,21 +86,19 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
                                                   )
 
   def generateAttributionSet(scoreDate: LocalDate)(implicit prometheus: PrometheusClient): Dataset[UnionOutOfSampleAttributionRecord] = {
-    val adGroupPolicy = AdGroupPolicyDataset().readDate(scoreDate)
     val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(scoreDate)
-    val policy = getMinimalPolicy(adGroupPolicy, adGroupPolicyMapping).cache()
+    val campaignList = adGroupPolicyMapping.select("CampaignId").distinct().cache()
 
     val rawOOS = (1 to Config.ImpressionLookBack).map(i => {
       val ImpDate = scoreDate.plusDays(i)
       // Attr [T-ConvLB, T]
       val AttrDates = (ImpDate.toEpochDay to date.toEpochDay).map(LocalDate.ofEpochDay)
       val dailyImp = OldDailyOfflineScoringDataset().readDate(ImpDate)
-      val impressionsToScore = multiLevelJoinWithPolicy[BidRequestsWithAdGroupId](
-        dailyImp.withColumnRenamed("AdGroupId", "AdGroupIdInt").withColumnRenamed("AdGroupIdStr", "AdGroupId")
-          .withColumnRenamed("CampaignId", "CampaignIdInt").withColumnRenamed("CampaignIdStr", "CampaignId")
-          .withColumnRenamed("AdvertiserId", "AdvertiserIdInt").withColumnRenamed("AdvertiserIdStr", "AdvertiserId"),
-        policy,
-        "inner")
+      val impressionsToScore = dailyImp.withColumnRenamed("AdGroupId", "AdGroupIdInt").withColumnRenamed("AdGroupIdStr", "AdGroupId")
+        .withColumnRenamed("CampaignId", "CampaignIdInt").withColumnRenamed("CampaignIdStr", "CampaignId")
+        .withColumnRenamed("AdvertiserId", "AdvertiserIdInt").withColumnRenamed("AdvertiserIdStr", "AdvertiserId")
+        .join(broadcast(campaignList), Seq("CampaignId"), "inner").selectAs[BidRequestsWithAdGroupId]
+
       val attr = AttrDates.map(dt => {
         DailyAttributionEventsDataset().readPartition(dt, ImpDate.format(DefaultTimeFormatStrings.dateTimeFormatter))
       })

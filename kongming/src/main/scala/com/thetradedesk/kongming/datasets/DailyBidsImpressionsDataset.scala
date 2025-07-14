@@ -1,5 +1,7 @@
 package com.thetradedesk.kongming.datasets
 
+import com.thetradedesk.kongming.{BaseFolderPath, MLPlatformS3Root}
+import com.thetradedesk.spark.datasets.core.{DateHourPartitionedS3DataSet, GeneratedDataSet, Parquet}
 import com.thetradedesk.streaming.records.rtb._
 
 case class BidsImpressionsSchema(
@@ -79,6 +81,17 @@ case class DailyBidsImpressionsDataset(experimentOverride: Option[String] = None
   experimentOverride = experimentOverride
   ) {
   override protected def getMetastoreTableName: String = "dailybidsimpressions"
+}
+
+case class DailyHourlyBidsImpressionsDataset(experimentOverride: Option[String] = None)
+  extends DateSplitPartitionedS3Dataset[BidsImpressionsSchema](
+    GeneratedDataSet, MLPlatformS3Root, s"${BaseFolderPath}/dailyhourlybidsimpressions/v=1",
+    fileFormat = Parquet,
+    experimentOverride = experimentOverride
+  ) {
+  override protected def getMetastoreTableName: String = "dailyhourlybidsimpressions"
+
+  override protected def supportsMetastorePartition: Boolean = false
 }
 
 case class DailyBidsImpressionsFullDataset(experimentOverride: Option[String] = None) extends KongMingDataset[com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema](

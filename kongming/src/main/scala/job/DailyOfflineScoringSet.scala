@@ -8,9 +8,8 @@ import com.thetradedesk.kongming.transform.OfflineScoringSetTransform
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.TTDConfig.config
-import org.apache.spark.sql.functions.{col, unix_timestamp}
+import org.apache.spark.sql.functions.{broadcast, col}
 
-import java.time.format.DateTimeFormatter
 
 object DailyOfflineScoringSet extends KongmingBaseJob {
 
@@ -23,8 +22,8 @@ object DailyOfflineScoringSet extends KongmingBaseJob {
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
     val mapping = AdGroupPolicyMappingDataset().readDate(date)
-    val bidsImpressionFilterByPolicy = DailyBidsImpressionsDataset().readDate(date)
-      .join(mapping, Seq("AdGroupId"), "left_semi")
+    val bidsImpressionFilterByPolicy = DailyHourlyBidsImpressionsDataset().readDate(date)
+      .join(broadcast(mapping), Seq("AdGroupId"), "left_semi")
       .selectAs[BidsImpressionsSchema]
 
     var hashFeatures = modelDimensions ++ modelFeatures

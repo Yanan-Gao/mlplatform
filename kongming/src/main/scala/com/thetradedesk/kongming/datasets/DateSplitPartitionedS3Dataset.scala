@@ -44,6 +44,20 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
 
   def dateTimeFormat: DateTimeFormatter = DefaultTimeFormatStrings.dateTimeFormatter
 
+  @SmartReadEnabled
+  def readDate(date: LocalDate): Dataset[T] =
+    readDate(date.format(dateTimeFormat))
+
+  @SmartReadEnabled
+  def readDate(date: String): Dataset[T] =
+    if (!isSmartReading)
+      read(s"$rootFolderPath/date=$date/")
+    else {
+      val combinedPaths = getPartitionFoldersWithReadRoot(0, startingPrefix = PartitionedS3DataSet.buildPartitionPart("date" -> date))
+      readFromAbsolutePaths(combinedPaths)
+    }
+
+
   override def toStoragePartition1(date: LocalDate): String = date.format(dateTimeFormat)
 
   override def toStoragePartition2(split: String): String = split
