@@ -18,9 +18,8 @@ object DailyFeedbackSignals extends KongmingBaseJob {
   override def jobName: String = "DailyFeedbackSignals"
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
-    val adGroupPolicy = AdGroupPolicyDataset().readDate(date)
     val adGroupPolicyMapping = AdGroupPolicyMappingDataset().readDate(date)
-    val minimalPolicy = getMinimalPolicy(adGroupPolicy, adGroupPolicyMapping)
+    val campaignList = adGroupPolicyMapping.select("CampaignId").distinct().cache()
 
     // daily bids feedbacks
     val bidfeedback = loadParquetData[DailyBidFeedbackRecord](
@@ -28,17 +27,17 @@ object DailyFeedbackSignals extends KongmingBaseJob {
       date = date,
       lookBack = Some(0)
     )
-    val dailybf = multiLevelJoinWithPolicy[DailyBidFeedbackRecord](bidfeedback, minimalPolicy, joinType = "left_semi")
+    val dailybf = bidfeedback.join(broadcast(campaignList), Seq("CampaignId"), "left_semi").selectAs[DailyBidFeedbackRecord]
     val bfRowCount = DailyBidFeedbackDataset().writePartition(dailybf, date, Some(100))
 
     // daily clicks
     val clicks = ClickTrackerDataSetV5(defaultCloudProvider).readDate(date).selectAs[DailyClickRecord]
-    val dailyClicks = multiLevelJoinWithPolicy[DailyClickRecord](clicks, minimalPolicy, joinType = "left_semi")
+    val dailyClicks = clicks.join(broadcast(campaignList), Seq("CampaignId"), "left_semi").selectAs[DailyClickRecord]
     val clickRowCount = DailyClickDataset().writePartition(dailyClicks, date, Some(1))
 
     // daily attributed events and results
     val attributedEvent = AttributedEventDataSet().readDate(date).selectAs[AttributedEventRecord]
-    val filteredAttributedEvent = multiLevelJoinWithPolicy[AttributedEventRecord](attributedEvent, minimalPolicy, joinType = "left_semi")
+    val filteredAttributedEvent = attributedEvent.join(broadcast(campaignList), Seq("CampaignId"), "left_semi").selectAs[AttributedEventRecord]
       .filter($"AttributedEventTypeId".isin(List("1", "2"): _*))
       .withColumn("AttributedEventLogEntryTime", to_timestamp(col("AttributedEventLogEntryTime")).as("AttributedEventLogEntryTime"))
       .selectAs[AttributedEventRecord]
