@@ -73,7 +73,7 @@ object BidImpSideDataGenerator {
       .withColumn("Longitude", ('Longitude + lit(180.0)) / lit(360.0)) //-180 - 180
       .withColumn("Longitude", when('Longitude.isNotNull, 'Longitude).otherwise(0))
       .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(DoubleType)))
-      .withColumn("HasMatchedSegments", when('MatchedSegments.isNull,0).otherwise(1))
+      .withColumn("HasMatchedSegments", when('MatchedSegmentsLength > lit(0), 1).otherwise(0))
       .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(DoubleType)))
       .withColumn("IdTypesBitmap", idTypesBitmap)
 
