@@ -332,7 +332,7 @@ case class OldDailyOfflineScoringDataset(experimentOverride: Option[String] = No
   experimentOverride = experimentOverride,
   fileFormat = TFRecord.Example
 ) {
-  override protected def shouldRegisterMetastorePartition: Boolean = false
+  override protected def supportsMetastorePartition: Boolean = false
 }
 
 final case class ArrayDailyOfflineScoringRecord(
