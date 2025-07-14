@@ -8,7 +8,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.{DataFrame, Row, SaveMode}
-import org.apache.spark.sql.functions.{e, _}
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{ArrayType, FloatType, IntegerType}
 
 import scala.collection.mutable
