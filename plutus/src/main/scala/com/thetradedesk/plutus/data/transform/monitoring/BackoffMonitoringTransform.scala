@@ -85,7 +85,7 @@ object BackoffMonitoringTransform {
     val adGroupData = AdGroupDataSet().readLatestPartitionUpTo(date.plusDays(1), isInclusive = true)
 
     // Step 3: Calculate real optout rate
-    val pcResultsGeronimoData = PcResultsMergedDataset.readDate(date, env = envForRead)
+    val pcResultsGeronimoData = PcResultsMergedDataset.readDate(date, env = envForRead, nullIfColAbsent = true)
 
     val finalBbfOptoutRate = getBbfOptOutRate(
       date=date,
