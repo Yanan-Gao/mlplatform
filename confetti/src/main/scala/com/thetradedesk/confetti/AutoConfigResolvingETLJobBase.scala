@@ -54,7 +54,10 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
     if (runtimeConfigBasePath.endsWith("/")) runtimeConfigBasePath else runtimeConfigBasePath + "/"
 
   private final def execute(): Unit = {
-    val config = readYaml(runtimePathBase + "behavioral_config.yml")
+    val yamlPaths = S3Utils.listYamlFiles(runtimePathBase)
+    val config = yamlPaths
+      .map(readYaml)
+      .foldLeft(Map.empty[String, String])(_ ++ _)
     logger.info(new Yaml().dump(config.asJava))
     jobConfig = Some(new MapConfigReader(config, logger).as[C])
     if (jobConfig.isEmpty) {
