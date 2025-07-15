@@ -198,6 +198,8 @@ case class PcResultsMergedSchema(
 
                                    TemperatureInCelsius: Option[Double],
 
+                                   SyntheticTransactionId: Option[String],
+
                                    // Note: I've removed a bunch of fields from the Geronimo schema since
                                    // these fields dont seem relevant to plutus.
 

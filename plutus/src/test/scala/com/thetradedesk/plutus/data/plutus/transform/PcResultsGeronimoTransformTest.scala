@@ -101,6 +101,7 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
     // Validating idcount propogation
     assert(resultList.get(0).IdCount == 2, "Validating that idcount is propogated")
     assert(resultList.get(0).TemperatureInCelsius == Some(30.0), "Validating that temperature is propogated")
+    assert(resultList.get(0).SyntheticTransactionId == Some("synid"), "Validating that SyntheticTransactionId is propogated")
   }
 
   test("nullIfEmpty test") {

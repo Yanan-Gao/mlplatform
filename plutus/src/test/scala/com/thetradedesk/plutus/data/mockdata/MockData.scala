@@ -193,7 +193,7 @@ object MockData {
       VideoPlaybackType = Option(VideoPlaybackTypeLookupRecord()),
 
       TransactionId = Some(""),
-      SyntheticTransactionId = Some(""),
+      SyntheticTransactionId = Some("synid"),
 
       AdRefresh = Some(1),
       StreamingMediaNetwork = Some(""),
@@ -524,7 +524,8 @@ object MockData {
     QualityScore = Some(0.92),
     SupplyVendorSkippabilityConstraint = None,
     TTDNativeContextTypeId = Some(7),
-    TemperatureInCelsius = Some(22.0)
+    TemperatureInCelsius = Some(22.0),
+    SyntheticTransactionId = Some("FakeId"),
   )
 
   def supplyVendorMock(supplyVendorName: String = "google", openPathEnabled: Boolean = false) = SupplyVendorRecord(
