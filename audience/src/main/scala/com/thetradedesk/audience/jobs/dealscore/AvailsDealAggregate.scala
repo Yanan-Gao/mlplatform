@@ -1,6 +1,7 @@
 package com.thetradedesk.audience.jobs.dealscore
 
 import com.thetradedesk.audience.{date, dateFormatter, ttdEnv}
+import com.thetradedesk.geronimo.shared.parquetDataPaths
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -15,7 +16,7 @@ object AvailsDealAggregate {
   val dateStr = date.format(dateFormatter)
   val dateStrDash = date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
   val deal_sv_path = config.getString("deal_sv_path", s"s3://ttd-deal-quality/env=prod/VerticaExportDealRelevanceSeedMapping/VerticaAws/date=${dateStr}/")
-  val tdids_by_dcsv_path = config.getString("tdids_by_dcsv_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/deal_score_tdids/v=1/date=${dateStr}/")
+  val tdids_by_dcsv_path = config.getString("tdids_by_dcsv_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/deal_score_tdids/v=1")
   val users_scores_path = config.getString("users_scores_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/tdid2seedid/v=1/date=${dateStr}/")
   val seed_id_path = config.getString(
     "seed_id_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/seedids/v=2/date=${dateStr}/")
@@ -29,6 +30,7 @@ object AvailsDealAggregate {
   // Maximum and minimum number of users to output
   val cap_users = config.getInt("cap_users", 15000)
   val min_users = config.getInt("min_users", 3000)
+  val lookback = config.getInt("look_back", 6)
 
   val dealCount = otelClient.createGauge(s"audience_deal_score_job_num_deal_svs", "Deal Score number unique DealCode supplyVendorIds")
 
@@ -39,7 +41,8 @@ object AvailsDealAggregate {
     val dealSvDS = dealSvSeedDS.select("DealCode", "SupplyVendorId").distinct()
     dealCount.labels(Map("date" -> dateStr, "type" -> "total")).set(dealSvDS.count())
 
-    val TdidsByDCSV = spark.read.format("parquet").load(tdids_by_dcsv_path).distinct()
+    val paths = parquetDataPaths(tdids_by_dcsv_path, date, None, Some(lookback))
+    val TdidsByDCSV = spark.read.option("basePath", tdids_by_dcsv_path).parquet(paths: _*).select("TDID", "DealCode", "SupplyVendorId").distinct()
     val user_scores = spark.read.format("parquet").load(users_scores_path)
     val seedIds = spark.read.format("parquet").load(seed_id_path)
 
