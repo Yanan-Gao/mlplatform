@@ -18,10 +18,10 @@ package object audience {
   var dateTime = config.getDateTime("dateTime", date.atStartOfDay())
   var ttdEnv = config.getString("ttd.env", "dev")
   val (defaultTtdReadEnv, defaultTtdWriteEnv) = if (ttdEnv == "prodTest") {
-      ("prod", "test")
-    } else {
-      (ttdEnv, ttdEnv)
-    }
+    ("prod", "test")
+  } else {
+    (ttdEnv, ttdEnv)
+  }
   val ttdReadEnv = config.getString("ttdReadEnv", default = defaultTtdReadEnv)
   val ttdWriteEnv = config.getString("ttdWriteEnv", default = defaultTtdWriteEnv)
   val trainSetDownSampleFactor = config.getInt("trainSetDownSampleFactor", default = 2)
@@ -81,11 +81,17 @@ package object audience {
     column.isNotNullOrEmpty && column =!= doNotTrackTDIDColumn
   }
 
-  def getUiid(uiid: Symbol, uid2: Symbol, euid: Symbol, idType: Symbol): Column = {
+  def shouldNotTrackTDID(column: Column): Column = {
+    column.isNullOrEmpty || column === doNotTrackTDIDColumn
+  }
+
+  def getUiid(uiid: Symbol, uid2: Symbol, euid: Symbol, idLinkId: Symbol, idType: Symbol): Column = {
     when(idType === lit("TDID") || idType === lit("DeviceAdvertisingId"), uiid).otherwise(
       when(idType === lit("UnifiedId2"), uid2).otherwise(
-        when(uiid === lit(null) && euid =!= lit(null), euid).otherwise(
-          uiid
+        when(shouldNotTrackTDID(uiid) && euid =!= lit(null) && euid =!= doNotTrackTDIDColumn, euid).otherwise(
+          when(shouldNotTrackTDID(uiid) && idLinkId =!= lit(null) && idLinkId =!= doNotTrackTDIDColumn, idLinkId).otherwise(
+            coalesce(uiid, doNotTrackTDIDColumn)
+          )
         )
       )
     )

@@ -3,9 +3,10 @@ package com.thetradedesk.featurestore.data.cbuffer
 import com.thetradedesk.featurestore.configs.DataType
 import com.thetradedesk.featurestore.data.cbuffer.CBufferConstants.{ArrayLengthKey, DefaultMaxRecordSize}
 import com.thetradedesk.featurestore.data.generators.CustomBufferDataGenerator
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.util.CaseInsensitiveMap
 import org.apache.spark.sql.functions.col
-import org.apache.spark.sql.types.{ArrayType, BinaryType, BooleanType, ByteType, DoubleType, FloatType, IntegerType, LongType, MetadataBuilder, ShortType, StringType, StructField, StructType, DataType => SparkDataType}
+import org.apache.spark.sql.types.{ArrayType, BinaryType, BooleanType, ByteType, DateType, DoubleType, FloatType, IntegerType, LongType, MetadataBuilder, ShortType, StringType, StructField, StructType, TimestampType, DataType => SparkDataType}
 import org.apache.spark.sql.{Column, DataFrame, DataFrameReader, DataFrameWriter}
 
 object SchemaHelper {
@@ -98,8 +99,7 @@ object SchemaHelper {
         }
         index += prevSize
 
-        // todo optimize var array length == 1 definition
-        prevSize = CustomBufferDataGenerator.byteWidthOfArray(dataType, if (isArray && arrayLength == 0) 1 else arrayLength)
+        prevSize = CustomBufferDataGenerator.byteWidthOfArray(dataType, arrayLength, isArray && arrayLength == 0)
       }
       checkBounds(index, DefaultMaxRecordSize)
     }
@@ -119,7 +119,7 @@ object SchemaHelper {
           nextStep(e._2, e._3, e._4)
           e._2 match {
             case DataType.Bool => CBufferFeature(e._1, if (columnBased) idx else index, offset, DataType.Bool, e._3)
-            case _ => CBufferFeature(e._1, if (columnBased) idx else index, if (e._4 > 1) e._4 else 0, e._2, e._3)
+            case _ => CBufferFeature(e._1, if (columnBased) idx else index, e._4, e._2, e._3)
           }
         }
       }
@@ -174,5 +174,30 @@ object SchemaHelper {
         .format("com.thetradedesk.featurestore.data.cbuffer.CBufferDataSource")
         .load(paths: _*)
     }
+  }
+
+  def internalRowToString(row: InternalRow, schema: StructType): String = {
+    val values = schema.zipWithIndex.map { case (field, index) =>
+      if (row.isNullAt(index)) {
+        "null"
+      } else {
+        field.dataType match {
+          case IntegerType => row.getInt(index).toString
+          case LongType => row.getLong(index).toString
+          case DoubleType => row.getDouble(index).toString
+          case FloatType => row.getFloat(index).toString
+          case BooleanType => row.getBoolean(index).toString
+          case StringType => s""""${row.getUTF8String(index).toString}""""
+          case BinaryType => s"[${row.getBinary(index).map(b => f"0x$b%02x").mkString(", ")}]"
+          case DateType => row.getInt(index).toString + " (days since epoch)"
+          case TimestampType => row.getLong(index).toString + " (microseconds since epoch)"
+          case _ => row.get(index, field.dataType).toString
+        }
+      }
+    }
+
+    val fieldNames = schema.fieldNames
+    val pairs = fieldNames.zip(values).map { case (name, value) => s"$name: $value" }
+    s"InternalRow(${pairs.mkString(", ")})"
   }
 }

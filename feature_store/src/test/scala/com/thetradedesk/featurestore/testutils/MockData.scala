@@ -784,18 +784,18 @@ object MockData {
     DoubleFeat1 = 0.1.toDouble
   )
 
-  def featureSourceSchema(userFeatureMergeDefinition: UserFeatureMergeDefinition, enableBinary: Boolean = true) = StructType(
+  def featureSourceSchema(userFeatureMergeDefinition: UserFeatureMergeDefinition, enableBinary: Boolean = true, cbuffer: Boolean = false) = StructType(
     (userFeatureMergeDefinition
       .featureSourceDefinitions
-      .flatMap(e => e.features.map(featureDefinitionToStructField(e, _, enableBinary)))
+      .flatMap(e => e.features.map(featureDefinitionToStructField(e, _, enableBinary, cbuffer)))
       :+ StructField("TDID", StringType, false))
   )
 
-  private def featureDefinitionToStructField(featureSourceDefinition: FeatureSourceDefinition, featureDefinition: FeatureDefinition, enableBinary: Boolean): StructField = {
+  private def featureDefinitionToStructField(featureSourceDefinition: FeatureSourceDefinition, featureDefinition: FeatureDefinition, enableBinary: Boolean, cbuffer: Boolean): StructField = {
     if (featureDefinition.arrayLength == 0) {
       StructField(s"${featureSourceDefinition.name}_${featureDefinition.name}", dataTypeToSparkType(featureDefinition.dtype), nullable = false)
     } else {
-      val metadata = new MetadataBuilder().putLong(ArrayLengthKey, if (featureDefinition.arrayLength == 1) 0 else featureDefinition.arrayLength).build()
+      val metadata = new MetadataBuilder().putLong(ArrayLengthKey, if (featureDefinition.arrayLength == -1 || (!cbuffer && featureDefinition.arrayLength == 1)) 0 else featureDefinition.arrayLength).build()
       if (featureDefinition.dtype == DataType.Byte && enableBinary) {
         StructField(s"${featureSourceDefinition.name}_${featureDefinition.name}", BinaryType, nullable = false, metadata = metadata)
       } else {
@@ -821,19 +821,19 @@ object MockData {
   var inc = 0
   var rnd = new Random()
 
-  def randomFeatureSourceDataMock(userFeatureMergeDefinition: UserFeatureMergeDefinition): Row = {
+  def randomFeatureSourceDataMock(userFeatureMergeDefinition: UserFeatureMergeDefinition, cbuffer: Boolean = false): Row = {
     inc += 1
 
     Row(userFeatureMergeDefinition
       .featureSourceDefinitions
-      .flatMap(e => e.features.map(featureDefinitionToStructField))
+      .flatMap(e => e.features.map(featureDefinitionToStructField(_, cbuffer)))
       :+ inc.toString: _*)
   }
 
-  private def featureDefinitionToStructField(featureDefinition: FeatureDefinition) = {
+  private def featureDefinitionToStructField(featureDefinition: FeatureDefinition, cbuffer: Boolean) = {
     if (featureDefinition.arrayLength == 0) {
       dataTypeToValue(featureDefinition.dtype)
-    } else if (featureDefinition.arrayLength == 1) {
+    } else if (featureDefinition.arrayLength == -1 || (!cbuffer && featureDefinition.arrayLength == 1)) {
       repeatDataType(featureDefinition.dtype, rnd.nextInt(4))
     } else {
       repeatDataType(featureDefinition.dtype, featureDefinition.arrayLength)

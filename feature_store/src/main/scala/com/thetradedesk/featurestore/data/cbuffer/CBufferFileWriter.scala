@@ -1,6 +1,7 @@
 package com.thetradedesk.featurestore.data.cbuffer
 
 import com.thetradedesk.featurestore.data.cbuffer.CBufferConstants._
+import com.thetradedesk.featurestore.data.cbuffer.SchemaHelper.internalRowToString
 import org.apache.hadoop.fs.Path
 import org.apache.hadoop.mapreduce.TaskAttemptContext
 import org.apache.spark.sql.catalyst.InternalRow
@@ -43,7 +44,11 @@ case class CBufferFileWriter(path: Path, context: TaskAttemptContext, schema: St
   }
 
   def write(value: InternalRow) = {
-    this.chunk.write(value)
+    try {
+      this.chunk.write(value)
+    } catch {
+      case exception: Exception => throw new Exception(s"exception when write ${internalRowToString(value, schema)}", exception)
+    }
     recordCount += 1
     checkChunkSizeReached()
   }

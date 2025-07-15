@@ -42,8 +42,8 @@ case class CBufferColumnBasedFileReader(f: FSDataInputStream, features: Array[CB
     }
 
     // fixed array
-    if (feature.isArray && feature.dataType >= DataType.Byte && feature.dataType <= DataType.Double && feature.offset > 1) {
-      val byteLength = byteWidthOfArray(feature.dataType, feature.offset)
+    if (feature.isArray && feature.dataType >= DataType.Byte && feature.dataType <= DataType.Double && feature.offset != 0) {
+      val byteLength = byteWidthOfArray(feature.dataType, feature.offset, varLength = false)
       val index = columnStart + this.recordOffset * byteLength
       readFixedArrayValue(columnVector, num, feature.dataType, index, byteLength)
       return
