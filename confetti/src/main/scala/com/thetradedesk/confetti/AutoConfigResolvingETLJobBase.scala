@@ -1,10 +1,9 @@
 package com.thetradedesk.confetti
 
-import com.thetradedesk.confetti.utils.{CloudWatchLogger, CloudWatchLoggerFactory, HashUtils, S3Utils, MapConfigReader}
+import com.thetradedesk.confetti.utils.{CloudWatchLogger, CloudWatchLoggerFactory, MapConfigReader, S3Utils}
 import org.yaml.snakeyaml.Yaml
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
-import java.time.LocalDateTime
 import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
@@ -16,18 +15,17 @@ import scala.reflect.runtime.universe._
 
 abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
                                                                     experimentName: Option[String],
+                                                                    runtimeConfigBasePath: String,
                                                                     groupName: String,
                                                                     jobName: String) {
 
   /** Optional Prometheus client for pushing metrics. */
   protected val prometheus: Option[PrometheusClient]
 
-  private val loader = new BehavioralConfigLoader(env, experimentName, groupName, jobName)
   private val logger = CloudWatchLoggerFactory.getLogger(
     s"mlplatform-$env",
     s"${experimentName.filter(_.nonEmpty).map(n => s"$n-").getOrElse("")}$groupName-$jobName"
   )
-  private var configHash: String = _
   private var jobConfig: Option[C] = None
 
   /**
@@ -52,21 +50,26 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](env: String,
   def runETLPipeline(): Map[String, String]
 
   /** Executes the job by loading configuration, running the pipeline and writing the results. */
-  private final def execute(): Unit = {
-    // todo assemble runtime vars.
-    val runtimeVars = Map("date_time" -> LocalDateTime.now().toString)
+  private val runtimePathBase: String =
+    if (runtimeConfigBasePath.endsWith("/")) runtimeConfigBasePath else runtimeConfigBasePath + "/"
 
-    val config = loader.loadRuntimeConfigs(runtimeVars)
+  private final def execute(): Unit = {
+    val config = readYaml(runtimePathBase + "behavioral_config.yml")
     logger.info(new Yaml().dump(config.asJava))
     jobConfig = Some(new MapConfigReader(config, logger).as[C])
     if (jobConfig.isEmpty) {
       throw new IllegalStateException("Config not initialized")
     }
-    configHash = HashUtils.sha256Base64(new Yaml().dump(config.asJava))
-    val runtimePathBase = s"s3://thetradedesk-mlplatform-us-east-1/configdata/confetti/runtime-configs/$env/$groupName/$jobName/$configHash/"
-    writeYaml(config, runtimePathBase + "behavioral_config.yml")
     val result = runETLPipeline()
     writeYaml(result, runtimePathBase + "results.yml")
+  }
+
+  /** Read a YAML file from S3 into a map. */
+  private def readYaml(path: String): Map[String, String] = {
+    val yamlStr = S3Utils.readFromS3(path)
+    val yaml = new Yaml()
+    val javaMap = yaml.load[java.util.Map[String, Any]](yamlStr)
+    javaMap.asScala.map { case (k, v) => k -> v.toString }.toMap
   }
 
   /** Convert the map back to YAML and write it to the runtime config location. */
