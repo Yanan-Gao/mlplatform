@@ -7,7 +7,7 @@ import org.apache.spark.sql.catalyst.util.CaseInsensitiveMap
 case class CBufferOptions(schemaPath: Option[String],
                           maxChunkRecordCount: Int,
                           defaultChunkRecordSize: Int,
-                          defaultReachBatch: Int,
+                          defaultReadBatch: Int,
                           defaultVarColumnScaleRatio: Int,
                           maxFileSize: Long,
                           bigEndian: Boolean,

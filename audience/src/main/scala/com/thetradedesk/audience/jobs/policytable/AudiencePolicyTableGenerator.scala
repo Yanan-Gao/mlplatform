@@ -150,7 +150,7 @@ abstract class AudiencePolicyTableGenerator(model: Model, prometheus: Prometheus
       .distinct()
 
     val uniqueTDIDsOriginal = baseDF
-      .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdType))
+      .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdentityLinkId, 'IdType))
       .filter(samplingFunction(col("TDID")))
       .select("TDID")
       .repartition(Config.bidImpressionRepartitionNum, 'TDID)

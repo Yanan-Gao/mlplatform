@@ -43,6 +43,8 @@ abstract class CBufferChunk(schema: StructType, features: Array[CBufferFeature],
   }
 
   protected def writeFixedLengthArray(name: String, value: InternalRow, arrayLength: Int, ordinal: Int, op: (ArrayData, Int) => Unit): Unit = {
+    assert(!value.isNullAt(ordinal), s"fixed array feature $name can't be empty")
+
     val arr = value.getArray(ordinal)
     assert(arrayLength == arr.numElements(), s"fixed array feature $name length ${arr.numElements()} must be equal as defined $arrayLength")
     for (i <- 0 until arrayLength) {

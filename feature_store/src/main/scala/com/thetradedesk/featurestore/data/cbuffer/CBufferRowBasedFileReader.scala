@@ -46,10 +46,10 @@ case class CBufferRowBasedFileReader(f: FSDataInputStream, features: Array[CBuff
       return
     }
 
-    val start = if (feature.offset > 1) index // fixed length array
+    val start = if (feature.offset >= 1) index // fixed length array
     else rowStart + this.chunkBuffer.getShort(index).intValue() // var length feature
 
-    val length = if (feature.offset > 1) byteWidthOfArray(feature.dataType, feature.offset) // fixed length array
+    val length = if (feature.offset >= 1) byteWidthOfArray(feature.dataType, feature.offset, varLength = false) // fixed length array
     else rowStart + this.chunkBuffer.getShort(index + BytesToKeepAddressInRecord) - start // non-last var length feature
 
     // string

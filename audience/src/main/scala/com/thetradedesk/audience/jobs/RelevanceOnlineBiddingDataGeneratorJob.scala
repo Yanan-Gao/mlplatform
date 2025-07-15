@@ -65,7 +65,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))
       .filter('IsImp)
       .filter(filterOnIdTypesSym(sampler.samplingFunction)) // featurestore should use the same split function to put all idtypes into the same bin
-      .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdType))
+      .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdentityLinkId, 'IdType))
       .withColumn("TDID", when(col("TDID") === "00000000-0000-0000-0000-000000000000", null).otherwise(col("TDID")))
       .filter(col("TDID").isNotNull)
       .select('BidRequestId, // use to connect with bidrequest, to get more features

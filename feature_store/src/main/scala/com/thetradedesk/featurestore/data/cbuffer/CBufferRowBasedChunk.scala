@@ -19,7 +19,7 @@ case class CBufferRowBasedChunk(schema: StructType, features: Array[CBufferFeatu
   private val lastFeature: CBufferFeature = this.features.last
   private val existVarLengthFeature: Boolean = lastFeature.dataType == DataType.String || (lastFeature.isArray && lastFeature.offset == 0)
   private val varLengthFeatureOffset: Int = lastFeature.index + BytesToKeepAddressInRecord + BytesToKeepAddressInRecord
-  private val estimateRecordSize: Int = if (existVarLengthFeature) varLengthFeatureOffset else lastFeature.index + byteWidthOfArray(lastFeature.dataType, lastFeature.offset)
+  private val estimateRecordSize: Int = if (existVarLengthFeature) varLengthFeatureOffset else lastFeature.index + byteWidthOfArray(lastFeature.dataType, lastFeature.offset, varLength = false)
   private val varLengthFeatureStartOffset: Int = this.features.filter(e => e.dataType == DataType.String || (e.isArray && e.offset == 0)).map(_.index).headOption.getOrElse(0)
   private val addressTableBuffer: ByteBuffer = allocateBuffer(options.maxChunkRecordCount * BytesToKeepAddressInChunk, options.useOffHeap, options.bigEndian)
   private var start: Int = _
@@ -41,27 +41,29 @@ case class CBufferRowBasedChunk(schema: StructType, features: Array[CBufferFeatu
 
     ordinals.foreach {
       case (CBufferFeature(_, index, offset, DataType.Bool, false), ordinal, _) =>
-        if (value.getBoolean(ordinal)) {
+        if (!value.isNullAt(ordinal) && value.getBoolean(ordinal)) {
           this.chunkBuffer.put(this.start + index, (this.chunkBuffer.get(this.start + index) | (1 << offset)).toByte)
         }
       case (CBufferFeature(_, _, _, DataType.Byte, false), ordinal, _) =>
-        this.chunkBuffer.put(value.getByte(ordinal))
+        this.chunkBuffer.put(if (value.isNullAt(ordinal)) 0.byteValue() else value.getByte(ordinal))
       case (CBufferFeature(_, _, _, DataType.Short, false), ordinal, _) =>
-        this.chunkBuffer.putShort(value.getShort(ordinal))
+        this.chunkBuffer.putShort(if (value.isNullAt(ordinal)) 0.shortValue() else value.getShort(ordinal))
       case (CBufferFeature(_, _, _, DataType.Int, false), ordinal, _) =>
-        this.chunkBuffer.putInt(value.getInt(ordinal))
+        this.chunkBuffer.putInt(if (value.isNullAt(ordinal)) 0 else value.getInt(ordinal))
       case (CBufferFeature(_, _, _, DataType.Long, false), ordinal, _) =>
-        this.chunkBuffer.putLong(value.getLong(ordinal))
+        this.chunkBuffer.putLong(if (value.isNullAt(ordinal)) 0L else value.getLong(ordinal))
       case (CBufferFeature(_, _, _, DataType.Float, false), ordinal, _) =>
-        this.chunkBuffer.putFloat(value.getFloat(ordinal))
+        this.chunkBuffer.putFloat(if (value.isNullAt(ordinal)) 0F else value.getFloat(ordinal))
       case (CBufferFeature(_, _, _, DataType.Double, false), ordinal, _) =>
-        this.chunkBuffer.putDouble(value.getDouble(ordinal))
+        this.chunkBuffer.putDouble(if (value.isNullAt(ordinal)) 0D else value.getDouble(ordinal))
       case (CBufferFeature(_, _, 0, DataType.Byte, true), ordinal, _) =>
-        updateOffset()
         if (binaryOrdinals.contains(ordinal)) {
-          val bytes = value.getBinary(ordinal)
-          checkBufferBound(this.offStart + bytes.length)
-          this.chunkBuffer.put(bytes)
+          updateOffset()
+          if (!value.isNullAt(ordinal)) {
+            val bytes = value.getBinary(ordinal)
+            checkBufferBound(this.offStart + bytes.length)
+            this.chunkBuffer.put(bytes)
+          }
           resetOffset()
         } else {
           writeVarLengthArray(value, DataType.Byte, ordinal, (arr, i) =>
@@ -83,6 +85,7 @@ case class CBufferRowBasedChunk(schema: StructType, features: Array[CBufferFeatu
         writeVarLengthArray(value, DataType.Double, ordinal, (arr, i) =>
           this.chunkBuffer.putDouble(arr.getDouble(i)))
       case (CBufferFeature(name, _, arrayLength, DataType.Byte, true), ordinal, _) =>
+        assert(!value.isNullAt(ordinal), s"fixed array feature $name can't be empty")
         if (binaryOrdinals.contains(ordinal)) {
           val bytes = value.getBinary(ordinal)
           assert(arrayLength == bytes.length, s"fixed array feature $name length ${bytes.length} must be equal as defined $arrayLength")
@@ -108,9 +111,11 @@ case class CBufferRowBasedChunk(schema: StructType, features: Array[CBufferFeatu
           this.chunkBuffer.putDouble(arr.getDouble(i)))
       case (CBufferFeature(_, _, _, DataType.String, false), ordinal, _) =>
         updateOffset()
-        val bytes = value.getUTF8String(ordinal).getBytes
-        checkBufferBound(this.offStart + bytes.length)
-        this.chunkBuffer.put(bytes)
+        if (!value.isNullAt(ordinal)) {
+          val bytes = value.getUTF8String(ordinal).getBytes
+          checkBufferBound(this.offStart + bytes.length)
+          this.chunkBuffer.put(bytes)
+        }
         resetOffset()
       case _ => throw new UnsupportedOperationException(s"this should not happen")
     }
@@ -151,12 +156,14 @@ case class CBufferRowBasedChunk(schema: StructType, features: Array[CBufferFeatu
 
   private def writeVarLengthArray(value: InternalRow, dataType: DataType, ordinal: Int, op: (ArrayData, Int) => Unit): Unit = {
     updateOffset()
-    val arr = value.getArray(ordinal)
-    val size = if (arr == null) 0 else arr.numElements()
-    if (size != 0) {
-      checkBufferBound(this.offStart + size * byteWidthOfType(dataType))
-      for (i <- 0 until size) {
-        op(arr, i)
+    if (!value.isNullAt(ordinal)) {
+      val arr = value.getArray(ordinal)
+      val size = if (arr == null) 0 else arr.numElements()
+      if (size != 0) {
+        checkBufferBound(this.offStart + size * byteWidthOfType(dataType))
+        for (i <- 0 until size) {
+          op(arr, i)
+        }
       }
     }
     resetOffset()

@@ -72,7 +72,7 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
         }
         index += prevSize
 
-        prevSize = CustomBufferDataGenerator.byteWidthOfArray(dataType, arrayLength)
+        prevSize = CustomBufferDataGenerator.byteWidthOfArray(dataType, arrayLength, arrayLength == 1)
       }
       checkBounds(index, userFeatureMergeDefinition.config)
     }
@@ -209,7 +209,7 @@ class CustomBufferDataGenerator(implicit sparkSession: SparkSession, telemetry: 
   }
 
   private def numericDataToByteArrayUdf[Type](features: Feature*)(implicit ttag: TypeTag[Type]) = {
-    val length = features.map(e => CustomBufferDataGenerator.byteWidthOfArray(e.dataType, e.offset)).sum
+    val length = features.map(e => CustomBufferDataGenerator.byteWidthOfArray(e.dataType, e.offset, e.offset == 1)).sum
     val dataTypes = features.map(_.dataType)
     udf({ (values: Seq[Type]) => {
       assert(dataTypes.length == values.length, "features length is not equal to values length")
@@ -410,7 +410,7 @@ object CustomBufferDataGenerator {
     val start = if (feature.offset > 1) feature.index // fixed length array
     else byteBuffer.getShort(feature.index).intValue() // var length feature
 
-    val length = if (feature.offset > 1) byteWidthOfArray(feature.dataType, feature.offset) // fixed length array
+    val length = if (feature.offset > 1) byteWidthOfArray(feature.dataType, feature.offset, varLength = false) // fixed length array
     else if (feature.isLastFeature) data.length - start // last var length feature
     else byteBuffer.getShort(feature.index + BytesToKeepAddressInRecord) - start // non-last var length feature
 
@@ -455,8 +455,8 @@ object CustomBufferDataGenerator {
     results
   }
 
-  def byteWidthOfArray(dataType: DataType, arrayLength: Int) = {
-    if (arrayLength == 1) {
+  def byteWidthOfArray(dataType: DataType, arrayLength: Int, varLength: Boolean) = {
+    if (varLength) {
       // var length data
       BytesToKeepAddressInRecord
     } else {

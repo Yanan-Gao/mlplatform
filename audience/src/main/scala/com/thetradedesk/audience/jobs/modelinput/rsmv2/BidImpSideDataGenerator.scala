@@ -22,7 +22,7 @@ object BidImpSideDataGenerator {
 
     val bidsImpressionsLongRaw = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))
       .filter(filterOnIdTypesSym(sampler.samplingFunction))
-      .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdType))
+      .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdentityLinkId, 'IdType))
       .select(
           "TDID",
           "Site",

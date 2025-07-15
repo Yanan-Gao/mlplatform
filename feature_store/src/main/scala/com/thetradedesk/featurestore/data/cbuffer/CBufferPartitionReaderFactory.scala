@@ -59,7 +59,7 @@ case class CBufferPartitionReaderFactory(
   }
 
   private def createFileReader(file: PartitionedFile) : CBufferRecordReader = {
-    val recordReader = new CBufferRecordReader(options, readDataSchema, features, options.defaultReachBatch)
+    val recordReader = new CBufferRecordReader(options, readDataSchema, features, options.defaultReadBatch)
 
     val filePath = new Path(new URI(file.filePath))
     val split = new FileSplit(filePath, file.start, file.length, Array.empty[String])

@@ -1,30 +1,28 @@
-package com.thetradedesk.featurestore.data.generators
+package com.thetradedesk.featurestore.data.cbuffer
 
 import com.github.mrpowers.spark.fast.tests.DatasetComparer
 import com.thetradedesk.featurestore.configs.{DataType, FeatureDefinition, FeatureSourceDefinition, UserFeatureMergeDefinition}
 import com.thetradedesk.featurestore.constants.FeatureConstants.UserIDKey
-import com.thetradedesk.featurestore.data.loader.MockFeatureDataLoader
+import com.thetradedesk.featurestore.data.cbuffer.SchemaHelper.{CBufferDataFrameReader, CBufferDataFrameWriter}
 import com.thetradedesk.featurestore.data.metrics.UserFeatureMergeJobTelemetry
 import com.thetradedesk.featurestore.testutils.{MockData, TTDSparkTest}
 import com.thetradedesk.featurestore.utils.DatasetHelper.refineDataFrame
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.functions._
-import upickle.default.read
 
 import java.nio.file.Files
-import java.time.LocalDateTime
 
-class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
+class CBufferTest extends TTDSparkTest with DatasetComparer {
   private implicit val prometheus = new PrometheusClient("FeaturesJobTest", "UserFeatureMergeJobTest")
   private implicit val telemetry = UserFeatureMergeJobTelemetry()
-  private val mockFeatureDataLoader = new MockFeatureDataLoader()
-  private val customBufferDataGenerator = new CustomBufferDataGenerator()(spark, telemetry) {
-    override val featureDataLoader = mockFeatureDataLoader
-  }
 
   private val tempFolder = Files.createTempDirectory("CustomBufferDataGeneratorTest").toUri.getPath
+  private var tempFolderIndex = 0
+
+  private def subTempFolder(): String = {
+    tempFolderIndex += 1
+    s"${tempFolder}${tempFolderIndex}"
+  }
 
   private val userFeatureFolder: String = "user_features"
   private var globalInc: Int = 0
@@ -34,46 +32,52 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
     globalInc
   }
 
-  def testDataGenerationAndValidate(userFeatureMergeDefinition: UserFeatureMergeDefinition) = {
-    val dateTime = LocalDateTime.now()
-    val schema = MockData.featureSourceSchema(userFeatureMergeDefinition)
+  def testDataGenerationAndValidate(userFeatureMergeDefinition: UserFeatureMergeDefinition, enableBinary: Boolean = true) = {
+    val schema = MockData.featureSourceSchema(userFeatureMergeDefinition, enableBinary, cbuffer = true)
 
     val data = Seq(
-      MockData.randomFeatureSourceDataMock(userFeatureMergeDefinition),
-      MockData.randomFeatureSourceDataMock(userFeatureMergeDefinition),
-      MockData.randomFeatureSourceDataMock(userFeatureMergeDefinition),
-      MockData.randomFeatureSourceDataMock(userFeatureMergeDefinition),
-      MockData.randomFeatureSourceDataMock(userFeatureMergeDefinition)
+      MockData.randomFeatureSourceDataMock(userFeatureMergeDefinition, cbuffer = true),
+      MockData.randomFeatureSourceDataMock(userFeatureMergeDefinition, cbuffer = true),
+      MockData.randomFeatureSourceDataMock(userFeatureMergeDefinition, cbuffer = true),
+      MockData.randomFeatureSourceDataMock(userFeatureMergeDefinition, cbuffer = true),
+      MockData.randomFeatureSourceDataMock(userFeatureMergeDefinition, cbuffer = true)
     )
     val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
     df.printSchema()
     df.show(10, false)
 
-    createUserFeatureSourceDataFrame(df, userFeatureMergeDefinition)
+    // validate cbuffer raw-based format
+    val cbufferPath = subTempFolder()
+    println("cbuffer file path: " + cbufferPath)
+    df
+      .write
+      .option("maxChunkRecordCount", "2")
+      .option("defaultChunkRecordSize", "2")
+      .cb(cbufferPath)
 
-    val (result, schemaJson) = customBufferDataGenerator.generate(dateTime, userFeatureMergeDefinition)
+    val df2 = spark
+      .read
+      .option("supportBinary", enableBinary.toString)
+      .cb(cbufferPath)
 
-    val features = read[Seq[Feature]](schemaJson)
+    assertSmallDatasetEquality(refineDataFrame(df2, UserIDKey), refineDataFrame(df, UserIDKey))
 
-    result.show(10, false)
+    // validate cbuffer column-based format
+    val cbufferPath2 = subTempFolder()
+    println("cbuffer file path: " + cbufferPath)
+    df
+      .write
+      .option("maxChunkRecordCount", "2")
+      .option("defaultChunkRecordSize", "2")
+      .option("columnBasedChunk", "true")
+      .cb(cbufferPath2)
 
-    val other = customBufferDataGenerator.readFromDataFrame(result, features, userFeatureMergeDefinition)
-    other.printSchema()
-    other.show(10, false)
+    val df3 = spark
+      .read
+      .option("supportBinary", enableBinary.toString)
+      .cb(cbufferPath2)
 
-    assertSmallDatasetEquality(refineDataFrame(other, UserIDKey), refineDataFrame(df, UserIDKey))
-  }
-
-  private def createUserFeatureSourceDataFrame(df: DataFrame, userFeatureMergeDefinition: UserFeatureMergeDefinition): Unit = {
-    userFeatureMergeDefinition
-      .featureSourceDefinitions
-      .foreach(e =>
-        mockFeatureDataLoader.registerFeatureSource(e,
-          df.select(
-            df.columns
-              .filter(_.startsWith(s"${e.name}_"))
-              .map(c => col(c).alias(c.substring(e.name.length + 1))) :+ col(UserIDKey): _*))
-      )
+    assertSmallDatasetEquality(refineDataFrame(df3, UserIDKey), refineDataFrame(df, UserIDKey))
   }
 
   test("run generate and validate result - boolean") {
@@ -117,6 +121,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
     )
 
     testDataGenerationAndValidate(userFeatureMergeDefinition)
+    testDataGenerationAndValidate(userFeatureMergeDefinition, enableBinary = false)
   }
 
   test("run generate and validate result - short") {
@@ -253,6 +258,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
             FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 30),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
@@ -261,11 +267,13 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
             FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 31),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 1),
             FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 32),
           )))
     )
 
     testDataGenerationAndValidate(userFeatureMergeDefinition)
+    testDataGenerationAndValidate(userFeatureMergeDefinition, enableBinary = false)
   }
 
   test("run generate and validate result - fixed short array") {
@@ -274,6 +282,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
             FeatureDefinition(s"f${nextIndex()}", DataType.Short, 2),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Short, 1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
@@ -282,6 +291,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
             FeatureDefinition(s"f${nextIndex()}", DataType.Short, 7),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Short, 1),
             FeatureDefinition(s"f${nextIndex()}", DataType.Short, 8),
           )))
     )
@@ -299,10 +309,12 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
             FeatureDefinition(s"f${nextIndex()}", DataType.Int, 2),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Int, 1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
             FeatureDefinition(s"f${nextIndex()}", DataType.Int, 3),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Int, 1),
             FeatureDefinition(s"f${nextIndex()}", DataType.Int, 8),
           )))
     )
@@ -315,6 +327,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
       "ufmd1", userFeatureFolder, Array(
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
+            FeatureDefinition(s"f${nextIndex()}", DataType.Long, 1),
             FeatureDefinition(s"f${nextIndex()}", DataType.Long, 2),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
@@ -324,6 +337,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
             FeatureDefinition(s"f${nextIndex()}", DataType.Long, 7),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Long, 1),
             FeatureDefinition(s"f${nextIndex()}", DataType.Long, 9),
           )))
     )
@@ -337,6 +351,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
             FeatureDefinition(s"f${nextIndex()}", DataType.Float, 3),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Float, 1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
@@ -346,6 +361,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
           Array(
             FeatureDefinition(s"f${nextIndex()}", DataType.Float, 7),
             FeatureDefinition(s"f${nextIndex()}", DataType.Float, 9),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Float, 1),
           )))
     )
 
@@ -358,6 +374,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
             FeatureDefinition(s"f${nextIndex()}", DataType.Double, 3),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Double, 1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
@@ -366,6 +383,7 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
             FeatureDefinition(s"f${nextIndex()}", DataType.Double, 7),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Double, 1),
             FeatureDefinition(s"f${nextIndex()}", DataType.Double, 9),
           )))
     )
@@ -378,20 +396,21 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
       "ufmd1", userFeatureFolder, Array(
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, -1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, -1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 1),
-            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, -1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, -1),
           )))
     )
 
     testDataGenerationAndValidate(userFeatureMergeDefinition)
+    testDataGenerationAndValidate(userFeatureMergeDefinition, enableBinary = false)
   }
 
   test("run generate and validate result - dynamic short array") {
@@ -399,16 +418,16 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
       "ufmd1", userFeatureFolder, Array(
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Short, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Short, -1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Short, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Short, -1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Short, 1),
-            FeatureDefinition(s"f${nextIndex()}", DataType.Short, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Short, -1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Short, -1),
           )))
     )
 
@@ -420,16 +439,16 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
       "ufmd1", userFeatureFolder, Array(
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Int, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Int, -1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Int, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Int, -1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Int, 1),
-            FeatureDefinition(s"f${nextIndex()}", DataType.Int, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Int, -1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Int, -1),
           )))
     )
 
@@ -441,16 +460,16 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
       "ufmd1", userFeatureFolder, Array(
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Long, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Long, -1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Long, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Long, -1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Long, 1),
-            FeatureDefinition(s"f${nextIndex()}", DataType.Long, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Long, -1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Long, -1),
           )))
     )
 
@@ -462,16 +481,16 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
       "ufmd1", userFeatureFolder, Array(
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Float, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Float, -1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Float, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Float, -1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Float, 1),
-            FeatureDefinition(s"f${nextIndex()}", DataType.Float, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Float, -1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Float, -1),
           )))
     )
 
@@ -483,16 +502,16 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
       "ufmd1", userFeatureFolder, Array(
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Double, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Double, -1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Double, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Double, -1),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
           Array(
-            FeatureDefinition(s"f${nextIndex()}", DataType.Double, 1),
-            FeatureDefinition(s"f${nextIndex()}", DataType.Double, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Double, -1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Double, -1),
           )))
     )
 
@@ -511,8 +530,9 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
             FeatureDefinition(s"f${nextIndex()}", DataType.Float),
             FeatureDefinition(s"f${nextIndex()}", DataType.Double),
             FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 3),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Short, -1),
             FeatureDefinition(s"f${nextIndex()}", DataType.Short, 1),
-            FeatureDefinition(s"f${nextIndex()}", DataType.Double, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Double, -1),
             FeatureDefinition(s"f${nextIndex()}", DataType.String),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
@@ -526,7 +546,8 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
             FeatureDefinition(s"f${nextIndex()}", DataType.Short, 5),
             FeatureDefinition(s"f${nextIndex()}", DataType.Int, 7),
             FeatureDefinition(s"f${nextIndex()}", DataType.Int, 1),
-            FeatureDefinition(s"f${nextIndex()}", DataType.Float, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Int, -1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Float, -1),
             FeatureDefinition(s"f${nextIndex()}", DataType.Float, 3),
             FeatureDefinition(s"f${nextIndex()}", DataType.String),
           )),
@@ -540,16 +561,19 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
             FeatureDefinition(s"f${nextIndex()}", DataType.Double),
             FeatureDefinition(s"f${nextIndex()}", DataType.Long, 3),
             FeatureDefinition(s"f${nextIndex()}", DataType.Short, 3),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Short, 1),
             FeatureDefinition(s"f${nextIndex()}", DataType.Long, 9),
             FeatureDefinition(s"f${nextIndex()}", DataType.Float, 11),
             FeatureDefinition(s"f${nextIndex()}", DataType.Double, 2),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Double, 1),
             FeatureDefinition(s"f${nextIndex()}", DataType.Double, 13),
-            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 1),
-            FeatureDefinition(s"f${nextIndex()}", DataType.Long, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, -1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Long, -1),
           )))
     )
 
     testDataGenerationAndValidate(userFeatureMergeDefinition)
+    testDataGenerationAndValidate(userFeatureMergeDefinition, enableBinary = false)
   }
 
   test("run generate and validate result - edge case one boolean feature only") {
@@ -562,8 +586,9 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
             FeatureDefinition(s"f${nextIndex()}", DataType.Float),
             FeatureDefinition(s"f${nextIndex()}", DataType.Double),
             FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 3),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Short, -1),
             FeatureDefinition(s"f${nextIndex()}", DataType.Short, 1),
-            FeatureDefinition(s"f${nextIndex()}", DataType.Double, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Double, -1),
             FeatureDefinition(s"f${nextIndex()}", DataType.String),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
@@ -577,8 +602,10 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
             FeatureDefinition(s"f${nextIndex()}", DataType.Short, 5),
             FeatureDefinition(s"f${nextIndex()}", DataType.Int, 7),
             FeatureDefinition(s"f${nextIndex()}", DataType.Int, 1),
-            FeatureDefinition(s"f${nextIndex()}", DataType.Float, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Int, -1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Float, -1),
             FeatureDefinition(s"f${nextIndex()}", DataType.Float, 3),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Float, 1),
             FeatureDefinition(s"f${nextIndex()}", DataType.String),
           )),
         FeatureSourceDefinition(s"s${nextIndex()}", s"p${nextIndex()}", userFeatureFolder,
@@ -589,16 +616,20 @@ class CustomBufferDataGeneratorTest extends TTDSparkTest with DatasetComparer {
             FeatureDefinition(s"f${nextIndex()}", DataType.Double),
             FeatureDefinition(s"f${nextIndex()}", DataType.Long, 3),
             FeatureDefinition(s"f${nextIndex()}", DataType.Short, 3),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Short, 1),
             FeatureDefinition(s"f${nextIndex()}", DataType.Long, 9),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Long, 1),
             FeatureDefinition(s"f${nextIndex()}", DataType.Float, 11),
             FeatureDefinition(s"f${nextIndex()}", DataType.Double, 2),
             FeatureDefinition(s"f${nextIndex()}", DataType.Double, 13),
-            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, 1),
-            FeatureDefinition(s"f${nextIndex()}", DataType.Long, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Double, 1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Byte, -1),
+            FeatureDefinition(s"f${nextIndex()}", DataType.Long, -1),
           )))
     )
 
     testDataGenerationAndValidate(userFeatureMergeDefinition)
+    testDataGenerationAndValidate(userFeatureMergeDefinition, enableBinary = false)
   }
 
   override def afterAll(): Unit = {
