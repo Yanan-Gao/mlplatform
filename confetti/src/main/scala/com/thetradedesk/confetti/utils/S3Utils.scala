@@ -2,6 +2,9 @@ package com.thetradedesk.confetti.utils
 
 import com.amazonaws.regions.Regions
 import com.amazonaws.services.s3.{AmazonS3, AmazonS3ClientBuilder, AmazonS3URI}
+import com.amazonaws.services.s3.model.ListObjectsV2Request
+
+import scala.collection.JavaConverters._
 
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
@@ -20,6 +23,20 @@ object S3Utils {
     val bytes = data.getBytes(StandardCharsets.UTF_8)
     val is = new ByteArrayInputStream(bytes)
     s3Client.putObject(uri.getBucket, uri.getKey, is, null)
+  }
+
+  /** List YAML files under the given S3 folder path. */
+  def listYamlFiles(folderPath: String): Seq[String] = {
+    val uri = new AmazonS3URI(folderPath)
+    val bucket = uri.getBucket
+    val prefix = Option(uri.getKey).map(k => if (k.endsWith("/")) k else k + "/").getOrElse("")
+    val req = new ListObjectsV2Request().withBucketName(bucket).withPrefix(prefix)
+    val result = s3Client.listObjectsV2(req)
+    result.getObjectSummaries.asScala
+      .map(_.getKey)
+      .filter(k => k.toLowerCase.endsWith(".yml") || k.toLowerCase.endsWith(".yaml"))
+      .map(k => s"s3://$bucket/$k")
+      .toSeq
   }
 
 }
