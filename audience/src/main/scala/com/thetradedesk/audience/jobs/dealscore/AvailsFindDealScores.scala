@@ -20,6 +20,7 @@ object AvailsFindDealScores {
 
   val num_workers = config.getInt("num_workers", 200 )
   val cpu_per_worker = config.getInt("cpu_per_worker", 32 )
+  val findDealsCoalesce = config.getInt("findDealsCoalesce", 4096)
 
   val samplingRate = config.getInt("sampling_rate", 3)
   val min_hour = config.getInt("min_hour", 0)
@@ -89,6 +90,8 @@ object AvailsFindDealScores {
       .withColumn("row_num", row_number().over(windowSpec))
       .filter(col("row_num") <= limit_users)
       .drop("row_num")
+      .drop("rand")
+      .coalesce(findDealsCoalesce)
       .write
       .format("parquet")
       .mode("overwrite")
