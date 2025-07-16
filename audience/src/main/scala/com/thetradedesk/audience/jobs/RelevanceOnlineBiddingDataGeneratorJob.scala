@@ -8,7 +8,7 @@ import com.thetradedesk.audience.utils.Logger.Log
 import com.thetradedesk.audience.{date, dateTime, _}
 import com.thetradedesk.geronimo.shared.readModelFeatures
 import com.thetradedesk.audience.jobs.HitRateReportingTableGeneratorJob.prometheus
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.RSMV2UserSampleSalt
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.{RSMV2UserSampleSalt}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -142,7 +142,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
         when('Longitude.isNotNull, ('Longitude + lit(180.0)) / lit(360.0)).otherwise(0)
       )
       .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(DoubleType)))
-      .withColumn("HasMatchedSegments", when('MatchedSegments.isNull,0).otherwise(1))
+      .withColumn("HasMatchedSegments", when('MatchedSegmentsLength > lit(0), 1).otherwise(0))
       .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(DoubleType)))
       .withColumn("IdTypesBitmap", idTypesBitmap)
       .cache()
@@ -278,7 +278,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
     // get the full features back for each bidrequest
     val bidsImpressionExtendLabeled = generateContextualFeatureTier1(joinedImpressionsWithCampaign.join(bidsImpressionExtendAgg, Seq("BidRequestId"), "inner")
                                       .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(DoubleType)))
-                                      .withColumn("HasMatchedSegments", when('MatchedSegments.isNull,0).otherwise(1))
+                                      .withColumn("HasMatchedSegments", when('MatchedSegmentsLength > lit(0), 1).otherwise(0))
                                       .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(DoubleType)))
                                       .join(devicetype, devicetype("DeviceTypeId") === joinedImpressionsWithCampaign("DeviceType"), "left")
                                       .withColumn("DeviceTypeName", when(col("DeviceTypeName").isNotNull, 'DeviceTypeName)

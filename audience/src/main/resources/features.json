@@ -393,8 +393,8 @@
          },
          {
             "Name": "HasMatchedSegments",
-            "Cardinality": 2,
-            "Encoding": "string",
+            "Cardinality": 3,
+            "Encoding": "int",
             "TFType": "int",
             "PreprocessingMethod":"simple",
             "DefaultValue":0,
