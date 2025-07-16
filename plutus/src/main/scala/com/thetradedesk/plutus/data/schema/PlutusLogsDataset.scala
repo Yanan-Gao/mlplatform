@@ -58,7 +58,8 @@ case class PlutusLogsData(
                            Strategy: Int,
 
                            Country: String,
-                           Channel: String
+                           Channel: String,
+                           DealFloorMultiplierCap: Double,
                          )
 
 case object PlutusLogsData {
@@ -120,7 +121,8 @@ case object PlutusLogsData {
           MaxBidCpmInBucks = i.getMaxBidCPMInBucks,
 
           Channel = i.getChannel,
-          Country = i.getCountry
+          Country = i.getCountry,
+          DealFloorMultiplierCap = i.getDealFloorMultiplierCap,
         )
       ).toDS()
       .where(

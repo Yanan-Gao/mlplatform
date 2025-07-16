@@ -313,7 +313,8 @@ object MockData {
     FloorBuffer = 0.2,
     MaxBidCpmInBucks = 9,
     Channel = "CTV",
-    Country = "USA"
+    Country = "USA",
+    DealFloorMultiplierCap = 2.0
   )
 
   val mbtwDataMock = MinimumBidToWinData(
@@ -526,6 +527,7 @@ object MockData {
     TTDNativeContextTypeId = Some(7),
     TemperatureInCelsius = Some(22.0),
     SyntheticTransactionId = Some("FakeId"),
+    DealFloorMultiplierCap = 0
   )
 
   def supplyVendorMock(supplyVendorName: String = "google", openPathEnabled: Boolean = false) = SupplyVendorRecord(
