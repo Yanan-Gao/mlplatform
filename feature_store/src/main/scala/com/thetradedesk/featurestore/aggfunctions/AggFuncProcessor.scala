@@ -1,50 +1,56 @@
 package com.thetradedesk.featurestore.aggfunctions
 
+import com.thetradedesk.featurestore.aggfunctions.AggFunctions.AggFuncV2
 import com.thetradedesk.featurestore.configs.FieldAggSpec
-import com.thetradedesk.featurestore.features.Features.AggFunc.AggFunc
+import com.thetradedesk.featurestore.rsm.CommonEnums.Grain
 import com.thetradedesk.featurestore.rsm.CommonEnums.Grain.Grain
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.functions.col
-import com.thetradedesk.featurestore.rsm.CommonEnums.Grain
 
 trait AggFuncProcessor {
 
-  val aggFunc: AggFunc
+  // aggregate raw data and return a mergeable column
+  def aggCol(): Column
 
-  def canProcess(dataType: String, func: AggFunc): Boolean
+  // merge mergeable
+  def merge(): Column
 
-  def aggCol(fieldAggSpec: FieldAggSpec): Column
+  def export(window: Int = 0, grain: Option[Grain]): Array[Column]
+}
 
-  def merge(fieldAggSpec: FieldAggSpec): Column
+abstract class AbstractAggFuncProcessor(aggFunc: AggFuncV2, fieldAggSpec: FieldAggSpec) extends AggFuncProcessor with Serializable {
 
-  def export(fieldAggSpec: FieldAggSpec, window: Int = 0, grain: Option[Grain]): Column = 
-    col(s"${fieldAggSpec.field}_${aggFunc}").alias(getExportColName(fieldAggSpec, window, grain))
+  override def export(window: Int = 0, grain: Option[Grain]): Array[Column] =
+    Array(col(getMergeableColName).alias(getExportColName(window, grain)))
 
-  def initialAggFuncs: Set[AggFunc] = Set(aggFunc)
+  def getExportColName(window: Int = 0, grain: Option[Grain], func: AggFuncV2 = aggFunc): String = {
+    val windowSuffix = getWindowSuffix(window, grain)
+    s"${fieldAggSpec.field}_${func}_${windowSuffix}"
+  }
 
-  def getExportColName(fieldAggSpec: FieldAggSpec, window: Int = 0, grain: Option[Grain]): String = {
-    val windowSuffix = grain match {
+  def getMergeableColName: String = {
+    AggFuncProcessorUtils.getColNameByFunc(aggFunc, fieldAggSpec)
+  }
+
+  def getMergeableColName(func: AggFuncV2): String = {
+    AggFuncProcessorUtils.getColNameByFunc(func, fieldAggSpec)
+  }
+
+  def getWindowSuffix(window: Int, grain: Option[Grain]): String = {
+    val grainSuffix = grain match {
       case Some(Grain.Daily) => "D"
       case Some(Grain.Hourly) => "H"
       case _ => ""
     }
-    s"${fieldAggSpec.field}_${aggFunc}_Last${window}${windowSuffix}"
+    s"Last${window}${grainSuffix}"
   }
 }
 
-trait ScalarAggFuncProcessor extends AggFuncProcessor {
-  override def canProcess(dataType: String, func: AggFunc): Boolean = 
-    func == aggFunc && dataType != "vector" && !dataType.contains("array")
-}
+object AggFuncProcessorUtils {
 
-trait ArrayAggFuncProcessor extends AggFuncProcessor {
-  override def canProcess(dataType: String, func: AggFunc): Boolean = 
-    func == aggFunc && dataType.startsWith("array")
-}
-
-trait VectorAggFuncProcessor extends AggFuncProcessor {
-  override def canProcess(dataType: String, func: AggFunc): Boolean = 
-    func == aggFunc && dataType == "vector"
+  def getColNameByFunc(func: AggFuncV2, fieldAggSpec: FieldAggSpec): String = {
+    s"${fieldAggSpec.field}_${func}"
+  }
 }
 
 /**
@@ -52,46 +58,42 @@ trait VectorAggFuncProcessor extends AggFuncProcessor {
  */
 object AggFuncProcessorFactory {
 
-  private val processors: Seq[AggFuncProcessor] = Seq(
-    // Frequency function processors
-    new FrequencyProcessor,
-    new ArrayFrequencyProcessor,
-    new TopNProcessor,
-    new ArrayTopNProcessor, 
-
-    // Count function processors
-    new CountFuncProcessor,
-    new NonZeroCountFuncProcessor,
-    new ArrayNonZeroCountFuncProcessor,
-    new ArrayCountFuncProcessor,
-    new VectorCountFuncProcessor,
-
-    // Sum function processors
-    new SumFuncProcessor,
-    new ArraySumFuncProcessor,
-    new VectorSumFuncProcessor,
-
-    // Min function processors
-    new MinFuncProcessor,
-    new ArrayMinFuncProcessor,
-    new VectorMinFuncProcessor,
-
-    // Max function processors
-    new MaxFuncProcessor,
-    new ArrayMaxFuncProcessor,
-    new VectorMaxFuncProcessor,
-
-    // Mean function processors
-    new MeanFuncProcessor,
-    new ArrayMeanFuncProcessor,
-    new VectorMeanFuncProcessor
-  )
-
   /**
    * Gets the appropriate processor for the given data type and function
    */
-  def getProcessor(dataType: String, func: AggFunc): AggFuncProcessor = {
-    processors.find(_.canProcess(dataType, func))
-      .getOrElse(throw new RuntimeException(s"No processor found for dataType: $dataType, func: $func, or it's not registered in AggFuncProcessorFactory"))
+  def getProcessor(func: AggFuncV2, fieldAggSpec: FieldAggSpec): AggFuncProcessor = {
+    if (fieldAggSpec.dataType.startsWith("array")) {
+      func match {
+        case AggFuncV2.Frequency(_) => new ArrayFrequencyProcessor(func.asInstanceOf[AggFuncV2.Frequency], fieldAggSpec)
+        case AggFuncV2.Count => new ArrayCountFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.NonZeroCount => new ArrayNonZeroCountFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.Sum => new ArraySumFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.Min => new ArrayMinFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.Max => new ArrayMaxFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.Mean => new ArrayMeanFuncProcessor(func, fieldAggSpec)
+      }
+    } else if (fieldAggSpec.dataType == "vector") {
+      func match {
+        case AggFuncV2.Frequency(_) => throw new UnsupportedOperationException("Frequency is not supported for vector data type")
+        case AggFuncV2.Count => new VectorCountFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.Sum => new VectorSumFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.Min => new VectorMinFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.Max => new VectorMaxFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.Mean => new VectorMeanFuncProcessor(func, fieldAggSpec)
+      }
+    } else {
+      func match {
+        case AggFuncV2.Frequency(_) => new ScalarFrequencyProcessor(func.asInstanceOf[AggFuncV2.Frequency], fieldAggSpec)
+        case AggFuncV2.Count => new CountFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.Sum => new SumFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.Min => new MinFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.Max => new MaxFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.Mean => new MeanFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.NonZeroCount => new NonZeroCountFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.NonZeroMean => new NonZeroMeanFuncProcessor(func, fieldAggSpec)
+        case AggFuncV2.Percentile(_) => new PercentileFuncProcessor(func.asInstanceOf[AggFuncV2.Percentile], fieldAggSpec)
+        case AggFuncV2.QuantileSummary => new QuantileSummaryFuncProcessor(func, fieldAggSpec)
+      }
+    }
   }
 }

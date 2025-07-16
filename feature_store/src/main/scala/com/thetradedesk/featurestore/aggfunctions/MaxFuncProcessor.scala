@@ -1,49 +1,43 @@
 package com.thetradedesk.featurestore.aggfunctions
 
+import com.thetradedesk.featurestore.aggfunctions.AggFunctions.AggFuncV2
 import com.thetradedesk.featurestore.configs.FieldAggSpec
-import com.thetradedesk.featurestore.features.Features.AggFunc
-import com.thetradedesk.featurestore.features.Features.AggFunc.AggFunc
+import com.thetradedesk.featurestore.transform.DescriptionAgg.VectorMaxAggregator
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.DoubleType
-import com.thetradedesk.featurestore.transform.DescriptionAgg.VectorMaxAggregator
 
-class MaxFuncProcessor extends ScalarAggFuncProcessor {
-  override val aggFunc: AggFunc = AggFunc.Max
-  override def aggCol(fieldAggSpec: FieldAggSpec): Column = {
+class MaxFuncProcessor(func: AggFuncV2, fieldAggSpec: FieldAggSpec) extends AbstractAggFuncProcessor(func, fieldAggSpec) {
+  override def aggCol(): Column = {
     max(col(fieldAggSpec.field)).cast(DoubleType)
   }
 
-  override def merge(fieldAggSpec: FieldAggSpec): Column = {
-    max(col(s"${fieldAggSpec.field}_Max")).cast(DoubleType)
+  override def merge(): Column = {
+    max(col(getMergeableColName)).cast(DoubleType)
   }
 }
 
-class ArrayMaxFuncProcessor extends ArrayAggFuncProcessor {
-  override val aggFunc: AggFunc = AggFunc.Max
-
-  override def aggCol(fieldAggSpec: FieldAggSpec): Column = {
+class ArrayMaxFuncProcessor(func: AggFuncV2, fieldAggSpec: FieldAggSpec) extends AbstractAggFuncProcessor(func, fieldAggSpec) {
+  override def aggCol(): Column = {
     val input = col(fieldAggSpec.field)
     max(when(input.isNotNull, array_max(input)).otherwise(null))
   }
 
-  override def merge(fieldAggSpec: FieldAggSpec): Column = {
-    max(col(s"${fieldAggSpec.field}_Max")).cast(DoubleType)
+  override def merge(): Column = {
+    max(col(getMergeableColName)).cast(DoubleType)
   }
 }
 
-class VectorMaxFuncProcessor extends VectorAggFuncProcessor {
-  override val aggFunc: AggFunc = AggFunc.Max
-
-  override def aggCol(fieldAggSpec: FieldAggSpec): Column = {
+class VectorMaxFuncProcessor(func: AggFuncV2, fieldAggSpec: FieldAggSpec) extends AbstractAggFuncProcessor(func, fieldAggSpec) {
+  override def aggCol(): Column = {
     val input = col(fieldAggSpec.field)
     val doubleArray = transform(input, num => num.cast(DoubleType))
     val descUdaf = udaf(new VectorMaxAggregator())
     descUdaf(doubleArray)
   }
 
-  override def merge(fieldAggSpec: FieldAggSpec): Column = {
-    val input = col(s"${fieldAggSpec.field}_Max")
+  override def merge(): Column = {
+    val input = col(getMergeableColName)
     val doubleArray = transform(input, num => num.cast(DoubleType))
     val descUdaf = udaf(new VectorMaxAggregator())
     descUdaf(doubleArray)

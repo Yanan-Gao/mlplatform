@@ -2,6 +2,7 @@ package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore._
 import com.thetradedesk.featurestore.aggfunctions.AggFuncProcessorFactory
+import com.thetradedesk.featurestore.aggfunctions.AggFunctions.AggFuncV2.getExportFuncs
 import com.thetradedesk.featurestore.configs.{AggDefinition, AggLevelConfig}
 import com.thetradedesk.featurestore.constants.FeatureConstants.{ColFeatureKey, ColFeatureKeyCount}
 import com.thetradedesk.featurestore.datasets.ProfileDataset
@@ -187,9 +188,10 @@ object RollupAggJob extends FeatureStoreAggBaseJob {
 
     // Generate all aggregation columns in a single pass
     val aggColumns = windowAggregations.flatMap { fieldAggSpec =>
-      fieldAggSpec.aggFuncs.map { func =>
-        val processor = AggFuncProcessorFactory.getProcessor(fieldAggSpec.dataType, func)
-        processor.export(fieldAggSpec, window, aggDef.rollupAggConfig.windowGrain)
+      val exportFunctions = getExportFuncs(fieldAggSpec.aggFuncs)
+      exportFunctions.flatMap { func =>
+        val processor = AggFuncProcessorFactory.getProcessor(func, fieldAggSpec)
+        processor.export(window, aggDef.rollupAggConfig.windowGrain)
       }
     }
 

@@ -1,92 +1,75 @@
 package com.thetradedesk.featurestore.aggfunctions
 
+import com.thetradedesk.featurestore.aggfunctions.AggFunctions.AggFuncV2
 import com.thetradedesk.featurestore.configs.FieldAggSpec
-import com.thetradedesk.featurestore.features.Features.AggFunc
-import com.thetradedesk.featurestore.features.Features.AggFunc.AggFunc
-import com.thetradedesk.featurestore.rsm.CommonEnums.Grain
+import com.thetradedesk.featurestore.features.Features.hashFeature
 import com.thetradedesk.featurestore.rsm.CommonEnums.Grain.Grain
 import com.thetradedesk.featurestore.transform.FrequencyAgg.{ArrayFrequencyAggregator, FrequencyAggregator, FrequencyMergeAggregator}
+import com.thetradedesk.geronimo.shared.ARRAY_STRING_FEATURE_TYPE
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.StringType
 
+abstract class FrequencyFuncBaseProcessor(aggFunc: AggFuncV2.Frequency, fieldAggSpec: FieldAggSpec) extends AbstractAggFuncProcessor(aggFunc, fieldAggSpec) {
 
-trait ScalarFrequencyBaseProcessor extends ScalarAggFuncProcessor {
-  override val aggFunc: AggFunc = AggFunc.Frequency
-  override def aggCol(fieldAggSpec: FieldAggSpec): Column = {
-    val strCol = col(fieldAggSpec.field).cast(StringType)
-    val aggUdaf = udaf(new FrequencyAggregator(fieldAggSpec.topN))
-    aggUdaf(strCol)
+  override def merge(): Column = {
+    val aggUdaf = udaf(new FrequencyMergeAggregator(aggFunc.topNs(0)))
+    aggUdaf(col(getMergeableColName))
   }
 
-  override def merge(fieldAggSpec: FieldAggSpec): Column = {
-    val aggUdaf = udaf(new FrequencyMergeAggregator(fieldAggSpec.topN))
-    aggUdaf(col(s"${fieldAggSpec.field}_${aggFunc}"))
-  }
+  override def export(window: Int, grain: Option[Grain]): Array[Column] = {
+    val sourceColumn = col(getMergeableColName)
+    // Get all requested topNs, filter out invalids, and sort descending for convenience
+    val topNs = aggFunc.topNs.distinct.filter(x => x > 0).sorted
 
-}
-
-trait ArrayFrequencyBaseProcessor extends ArrayAggFuncProcessor {
-  override val aggFunc: AggFunc = AggFunc.Frequency
-  override def aggCol(fieldAggSpec: FieldAggSpec): Column = {
-    val strCol = transform(col(fieldAggSpec.field), num => num.cast("string"))
-    val aggUdaf = udaf(new ArrayFrequencyAggregator(fieldAggSpec.topN))
-    aggUdaf(strCol)
-  }
-
-  override def merge(fieldAggSpec: FieldAggSpec): Column = {
-    val aggUdaf = udaf(new FrequencyMergeAggregator(fieldAggSpec.topN))
-    aggUdaf(col(s"${fieldAggSpec.field}_${aggFunc}"))
-  }
-
-}
-
-// process column with scalar type
-class FrequencyProcessor extends ScalarFrequencyBaseProcessor
-
-class ArrayFrequencyProcessor extends ArrayFrequencyBaseProcessor 
-
-class TopNProcessor extends ScalarFrequencyBaseProcessor {
-  override val aggFunc: AggFunc = AggFunc.TopN
-
-  override def initialAggFuncs: Set[AggFunc] = Set(AggFunc.Frequency)
-
-  override def export(fieldAggSpec: FieldAggSpec, window: Int, grain: Option[Grain]): Column = {
-    val sourceColumn = col(s"${fieldAggSpec.field}_${AggFunc.Frequency}")
-    TopNExport.export(fieldAggSpec, sourceColumn, window, grain)
-  }
-}
-
-class ArrayTopNProcessor extends ArrayFrequencyBaseProcessor {
-  override val aggFunc: AggFunc = AggFunc.TopN
-
-  override def initialAggFuncs: Set[AggFunc] = Set(AggFunc.Frequency)
-
-  override def export(fieldAggSpec: FieldAggSpec, window: Int, grain: Option[Grain]): Column = {
-    val sourceColumn = col(s"${fieldAggSpec.field}_${AggFunc.Frequency}")
-    TopNExport.export(fieldAggSpec, sourceColumn, window, grain)
-  }
-}
-
-object TopNExport {
-  def export(fieldAggSpec: FieldAggSpec, sourceColumn: Column, window: Int, grain: Option[Grain]): Column = {
-    val suffix = grain.get match {
-      case Grain.Daily => "D"
-      case Grain.Hourly => "H"
-      case _ => throw new IllegalArgumentException(s"Unsupported window unit: $grain")
-    }
-        val topNUdf = udf[Option[Seq[String]], Map[String, Int]]((map: Map[String, Int]) => {
-      if (map == null || map.isEmpty) {
+    // UDF returns a Map from n to the top-n keys
+    val topNMultiUdf = udf { map: Map[String, Int] =>
+      if (map == null || map.isEmpty || topNs.isEmpty) {
         None
       } else {
-        Some(map.toSeq
-          .sortBy(-_._2) // Sort by count in descending order
-          .take(fieldAggSpec.topN)
-          .map(_._1)) // Extract only the keys
+        val sortedKeys = map.toSeq.sortBy(-_._2).map(_._1)
+        // For each n, take the top n keys
+        Some(topNs.map(n => n -> sortedKeys.take(n)).toMap)
       }
-    })
-    
-    val exportColumnName = s"${fieldAggSpec.field}_Top${fieldAggSpec.topN}_$suffix"
-    topNUdf(sourceColumn).alias(exportColumnName)
+    }
+
+    // The UDF returns Option[Map[Int, Seq[String]]], one entry for each n in topNs
+    val baseCol = topNMultiUdf(sourceColumn)
+
+    // For each n, extract the corresponding top-n list and alias appropriately
+    val suffix = getWindowSuffix(window, grain)
+    val topNCols = topNs.map { n =>
+      if (fieldAggSpec.cardinality.isEmpty) {
+        baseCol.getItem(n).alias(s"${fieldAggSpec.field}_Top${n}_$suffix")
+      } else {
+        hashFeature(baseCol.getItem(n), ARRAY_STRING_FEATURE_TYPE, fieldAggSpec.cardinality.get).alias(s"${fieldAggSpec.field}_Top${n}_${suffix}_Hash")
+      }
+    }
+
+    if (aggFunc.topNs.contains(-1)) {
+      topNCols :+ sourceColumn.alias(s"${fieldAggSpec.field}_Frequency_$suffix")
+    } else {
+      topNCols
+    }
+  }
+
+}
+
+class ScalarFrequencyProcessor(aggFunc: AggFuncV2.Frequency, fieldAggSpec: FieldAggSpec) extends FrequencyFuncBaseProcessor(aggFunc, fieldAggSpec) {
+
+  override def aggCol(): Column = {
+    val strCol = col(fieldAggSpec.field).cast(StringType)
+    val topN = aggFunc.topNs(0)
+    val aggUdaf = udaf(new FrequencyAggregator(topN))
+    aggUdaf(strCol)
+  }
+}
+
+class ArrayFrequencyProcessor(aggFunc: AggFuncV2.Frequency, fieldAggSpec: FieldAggSpec) extends FrequencyFuncBaseProcessor(aggFunc, fieldAggSpec) {
+  override def aggCol(): Column = {
+    val strCol = transform(col(fieldAggSpec.field), num => num.cast("string"))
+    val topN = aggFunc.topNs(0)
+    val aggUdaf = udaf(new ArrayFrequencyAggregator(topN))
+    aggUdaf(strCol)
   }
 }

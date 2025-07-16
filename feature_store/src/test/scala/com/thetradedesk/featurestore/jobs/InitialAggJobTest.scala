@@ -1,18 +1,23 @@
 package com.thetradedesk.featurestore.jobs
 
+import com.tdunning.math.stats.MergingDigest
+import com.thetradedesk.featurestore.aggfunctions.AggFunctions.AggFuncV2
 import com.thetradedesk.featurestore.configs._
-import com.thetradedesk.featurestore.features.Features.AggFunc
 import com.thetradedesk.featurestore.jobs.AggDefinitionHelper.createTestAggDefinition
 import com.thetradedesk.featurestore.rsm.CommonEnums.Grain
 import com.thetradedesk.featurestore.testutils.TTDSparkTest
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.{Dataset, Row}
-import org.scalatest.matchers.must.Matchers.contain
+import org.scalactic.Tolerance.convertNumericToPlusOrMinusWrapper
+import org.scalatest.matchers.must.Matchers.{be, contain}
 import org.scalatest.matchers.should.Matchers.convertToAnyShouldWrapper
+
+import java.nio.ByteBuffer
 
 object AggDefinitionHelper {
 
   val defaultAggLevel = AggLevelConfig("user_id", 4, initAggGrains = Array(Grain.Hourly), initWritePartitions = Some(1), enableFeatureKeyCount = false)
+
   // Helper methods
   def createTestAggDefinition(spec: FieldAggSpec*): AggDefinition = {
     AggDefinition(
@@ -67,7 +72,7 @@ class InitialAggJobTest extends TTDSparkTest {
       field = "valueA",
       dataType = "double",
       aggWindows = Seq(1),
-      aggFuncs = Seq(AggFunc.Count, AggFunc.Sum, AggFunc.Min, AggFunc.Max, AggFunc.NonZeroCount)
+      aggFuncs = Seq(AggFuncV2.Count, AggFuncV2.Sum, AggFuncV2.Min, AggFuncV2.Max, AggFuncV2.NonZeroCount)
     ))
 
     val result = runAggregation(testData, aggDef) // agg with random salt first then merge result
@@ -83,7 +88,7 @@ class InitialAggJobTest extends TTDSparkTest {
       field = "valueA",
       dataType = "double",
       aggWindows = Seq(1),
-      aggFuncs = Seq(AggFunc.Count, AggFunc.Sum, AggFunc.Min, AggFunc.Max, AggFunc.NonZeroCount)
+      aggFuncs = Seq(AggFuncV2.Count, AggFuncV2.Sum, AggFuncV2.Min, AggFuncV2.Max, AggFuncV2.NonZeroCount)
     ))
 
     val result = runAggregation(testData, aggDef, -1) // direct agg
@@ -99,7 +104,7 @@ class InitialAggJobTest extends TTDSparkTest {
       field = "cat_1",
       dataType = "string",
       aggWindows = Seq(1),
-      aggFuncs = Seq(AggFunc.Frequency)
+      aggFuncs = Seq(AggFuncV2.Frequency())
     ))
 
     val result = runAggregation(testData, aggDef, 4)
@@ -115,14 +120,13 @@ class InitialAggJobTest extends TTDSparkTest {
       field = "cat_2",
       dataType = "string",
       aggWindows = Seq(1),
-      topN = 1,
-      aggFuncs = Seq(AggFunc.TopN)
+      aggFuncs = Seq(AggFuncV2.Frequency(Array(1)))
     ))
 
-    val result = runAggregation(testData, aggDef, 1)
+    val result = runAggregation(testData, aggDef.extractInitialAggDefinition(), 1)
 
     result should contain theSameElementsAs Seq(
-      Row("user1", Map("cat1" -> 3)),
+      Row("user1", Map("cat1" -> 3, "cat2" -> 1)), // since we applied the multiplier, so result should contains all cateA values
       Row("user2", Map("cat2" -> 2))
     )
   }
@@ -132,7 +136,7 @@ class InitialAggJobTest extends TTDSparkTest {
       field = "values",
       dataType = "array_int",
       aggWindows = Seq(1),
-      aggFuncs = Seq(AggFunc.Count, AggFunc.NonZeroCount, AggFunc.Sum, AggFunc.Min, AggFunc.Max)
+      aggFuncs = Seq(AggFuncV2.Count, AggFuncV2.NonZeroCount, AggFuncV2.Sum, AggFuncV2.Min, AggFuncV2.Max)
     ))
 
     val result = runAggregation(testData, aggDef)
@@ -149,13 +153,13 @@ class InitialAggJobTest extends TTDSparkTest {
         field = "valueA",
         dataType = "double",
         aggWindows = Seq(1),
-        aggFuncs = Seq(AggFunc.Count, AggFunc.NonZeroCount, AggFunc.Sum, AggFunc.Min, AggFunc.Max)
+        aggFuncs = Seq(AggFuncV2.Count, AggFuncV2.NonZeroCount, AggFuncV2.Sum, AggFuncV2.Min, AggFuncV2.Max)
       ),
       FieldAggSpec(
         field = "values",
         dataType = "array_int",
         aggWindows = Seq(1),
-        aggFuncs = Seq(AggFunc.Count, AggFunc.NonZeroCount, AggFunc.Sum, AggFunc.Min, AggFunc.Max)
+        aggFuncs = Seq(AggFuncV2.Count, AggFuncV2.NonZeroCount, AggFuncV2.Sum, AggFuncV2.Min, AggFuncV2.Max)
       )
     )
 
@@ -183,7 +187,7 @@ class InitialAggJobTest extends TTDSparkTest {
       dataType = "vector",
       arraySize = 2,
       aggWindows = Seq(1),
-      aggFuncs = Seq(AggFunc.Count, AggFunc.Sum, AggFunc.Min, AggFunc.Max)
+      aggFuncs = Seq(AggFuncV2.Count, AggFuncV2.Sum, AggFuncV2.Min, AggFuncV2.Max)
     ))
 
     val result = runAggregation(testDataVector, aggDef)
@@ -208,7 +212,7 @@ class InitialAggJobTest extends TTDSparkTest {
       dataType = "vector",
       arraySize = 2,
       aggWindows = Seq(1),
-      aggFuncs = Seq(AggFunc.Count, AggFunc.Sum, AggFunc.Min, AggFunc.Max)
+      aggFuncs = Seq(AggFuncV2.Count, AggFuncV2.Sum, AggFuncV2.Min, AggFuncV2.Max)
     ))
 
     val result = runAggregation(testDataVector, aggDef)
@@ -218,5 +222,25 @@ class InitialAggJobTest extends TTDSparkTest {
       Row("user2", 0, null, null, null),
       Row("user3", 0, null, null, null)
     )
+  }
+
+  test("correctly aggregate quantile summary") {
+    val testData = (1 to 1000).map(i => ("user1", i.toDouble)).toDF("user_id", "value")
+
+    val aggDef = createTestAggDefinition(FieldAggSpec(
+      field = "value",
+      dataType = "double",
+      aggWindows = Seq(1),
+      aggFuncs = Seq(AggFuncV2.QuantileSummary)
+    ))
+
+    val result = runAggregation(testData, aggDef)
+    val quantileSummaryCol = result.head.asInstanceOf[Row].getAs[Array[Byte]]("value_QuantileSummary")
+    val digest = MergingDigest.fromBytes(ByteBuffer.wrap(quantileSummaryCol))
+    digest.quantile(0.5) should be(500.0 +- 10)
+    digest.quantile(0.25) should be(250.0 +- 10)
+    digest.quantile(0.75) should be(750.0 +- 10)
+    digest.quantile(0.0) should be(1.0 +- 10)
+    digest.quantile(1.0) should be(1000.0 +- 10)
   }
 }

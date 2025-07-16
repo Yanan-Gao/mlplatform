@@ -51,6 +51,7 @@ libraryDependencies ++= Seq(
   "com.aerospike" % "aerospike-client-jdk8" % "8.1.0",
   "org.yaml" % "snakeyaml" % "2.2",
   "com.amazonaws" % "aws-java-sdk-glue" % "1.12.654",
+  "com.tdunning" % "t-digest" % "3.3"
 )
 
 assembly / assemblyOption := (assembly / assemblyOption).value.copy(includeScala = false)

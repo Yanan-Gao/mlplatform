@@ -74,23 +74,33 @@ abstract class FeatureStoreAggBaseJob extends FeatureStoreBaseJob {
 
   protected def loadDataSource(aggDef: AggDefinition, overridesMap: Map[String, String], filteredLevels: Seq[AggLevelConfig]): DataFrame = {
     val dataSourcePrefix = StringUtils.applyNamedFormat(PathUtils.concatPath(aggDef.dataSource.rootPath, aggDef.dataSource.prefix), overridesMap)
-    if (FSUtils.directoryExists(dataSourcePrefix)(TTDSparkContext.spark)) {
-      // Get the list of level columns we need
-      val levelColumns = filteredLevels.map(_.level).distinct
-      val fieldColumns = aggDef.aggregations.map(_.field).distinct
 
-      // Read the data and rename UIID to TDID
-      val df = spark.read
-        .option("basePath", dataSourcePrefix)
-        .parquet(dataSourcePrefix)
-        .withColumnRenamed("UIID", "TDID")
-        .select((levelColumns ++ fieldColumns).map(col): _*)
+    // if loadQuery is defined, we need to load the data from the query
+    if (FSUtils.directoryExists(dataSourcePrefix)(TTDSparkContext.spark) || aggDef.dataSource.loadQuery.isDefined) {
+      println(s"Loading data from source; $dataSourcePrefix")
+      if (aggDef.dataSource.loadQuery.isDefined) {
+        val raw = spark.read.option("basePath", dataSourcePrefix).parquet(dataSourcePrefix)
+        raw.createOrReplaceTempView("dataSource")
+        spark.sql(aggDef.dataSource.loadQuery.get)
+      } else {
+        // otherwise, we need to load the data from the path and select the columns we need
+        // Get the list of level columns we need
+        val levelColumns = filteredLevels.map(_.level).distinct
+        val fieldColumns = aggDef.aggregations.map(_.field).distinct
 
-      // Filter out rows where all level columns are null
-      val notAllNullFilter = fieldColumns.map(c => col(c).isNotNull).reduce(_ || _)
-      df.filter(notAllNullFilter)
+        // Read the data and rename UIID to TDID
+        val df = spark.read
+          .option("basePath", dataSourcePrefix)
+          .parquet(dataSourcePrefix)
+          .withColumnRenamed("UIID", "TDID")
+          .select((levelColumns ++ fieldColumns).map(col): _*)
+
+        // Filter out rows where all level columns are null
+        val notAllNullFilter = fieldColumns.map(c => col(c).isNotNull).reduce(_ || _)
+        df.filter(notAllNullFilter)
+      }
     } else {
-      spark.emptyDataFrame
+      throw new IllegalArgumentException(s"Input data is empty in path: $dataSourcePrefix")
     }
   }
 
@@ -101,8 +111,8 @@ abstract class FeatureStoreAggBaseJob extends FeatureStoreBaseJob {
       if (fieldAggSpec.aggFuncs.isEmpty) Array.empty[Column]
       else {
         fieldAggSpec.aggFuncs.map { func =>
-          val processor = AggFuncProcessorFactory.getProcessor(fieldAggSpec.dataType, func)
-          val column = processor.merge(fieldAggSpec)
+          val processor = AggFuncProcessorFactory.getProcessor(func, fieldAggSpec)
+          val column = processor.merge()
           column.alias(s"${fieldAggSpec.field}_${func}")
         }
       }
