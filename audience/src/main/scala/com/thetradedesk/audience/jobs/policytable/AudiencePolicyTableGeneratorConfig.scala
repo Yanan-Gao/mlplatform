@@ -1,5 +1,7 @@
 package com.thetradedesk.audience.jobs.policytable
 
+import java.time.LocalDate
+
 case class AudiencePolicyTableGeneratorConfig(
   storageCloud: Int,
   seedMetaDataRecentVersion: String,
@@ -35,5 +37,5 @@ case class AudiencePolicyTableGeneratorConfig(
   allRSMSeed: Boolean,
   activeAdvertiserLookBackDays: Int,
   newSeedLookBackDays: Int,
-  date_time: String
+  runDate: LocalDate
 )

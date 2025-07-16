@@ -79,7 +79,7 @@ abstract class AudienceGraphPolicyTableGenerator(
           ('ExtendedActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ExtendedActiveSize"),
           'CrossDeviceVendorId, 'SourceId, 'Count.alias("Size"), 'TargetingDataId, 'Source, 'topCountryByDensity, 'PermissionTag)
         .withColumn("GoalType", lit(goalType.id))
-        .withColumn("StorageCloud", lit(Config.storageCloud))
+        .withColumn("StorageCloud", lit(conf.storageCloud))
         .cache()
 
     policyTable
@@ -87,7 +87,7 @@ abstract class AudienceGraphPolicyTableGenerator(
 
   override def retrieveSourceData(date: LocalDate): DataFrame = {
     val successFile = getAggregatedSeedReadableDataset().DatePartitionedPath(Some(date)) + "/_SUCCESS"
-    if (Config.reuseAggregatedSeedIfPossible && FSUtils.fileExists(successFile)(spark)) {
+    if (conf.reuseAggregatedSeedIfPossible && FSUtils.fileExists(successFile)(spark)) {
       val sourceMeta = retrieveSourceMetaData(date)
       // step 5. generate policy table
       return generateRawPolicyTable(sourceMeta, date)
@@ -103,7 +103,7 @@ abstract class AudienceGraphPolicyTableGenerator(
       .select('TDID, 'groupId)
       .where(samplingFunction('TDID))
       .withColumnRenamed("groupId", "personId")
-      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .repartition(conf.bidImpressionRepartitionNum, 'TDID)
 
     val householdGraph = readGraphData(date, CrossDeviceVendor.IAV2Household)(spark).cache()
 
@@ -111,7 +111,7 @@ abstract class AudienceGraphPolicyTableGenerator(
       .select('TDID, 'groupId)
       .where(samplingFunction('TDID))
       .withColumnRenamed("groupId", "householdId")
-      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .repartition(conf.bidImpressionRepartitionNum, 'TDID)
 
     val sampledGraph = sampledPersonGraph
       .join(sampledHouseholdGraph, Seq("TDID"), "outer")

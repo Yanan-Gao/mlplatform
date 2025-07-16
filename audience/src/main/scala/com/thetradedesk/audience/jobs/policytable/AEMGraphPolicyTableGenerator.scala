@@ -55,7 +55,7 @@ class AEMGraphPolicyTableGenerator(
 
   override def retrieveSourceDataWithDifferentGraphType(date: LocalDate, personGraph: DataFrame, householdGraph: DataFrame): SourceDataWithDifferentGraphType = {
     var conversionDataset = ConversionDataset(defaultCloudProvider)
-      .readRange(date.minusDays(Config.conversionLookBack).atStartOfDay(), date.plusDays(1).atStartOfDay())
+      .readRange(date.minusDays(conf.conversionLookBack).atStartOfDay(), date.plusDays(1).atStartOfDay())
       .select('TDID, 'TrackingTagId)
       .filter(samplingFunction('TDID))
 
@@ -67,8 +67,8 @@ class AEMGraphPolicyTableGenerator(
 
     val activeConversionTrackerTagId = retrieveActiveCampaignConversionTrackerTagIds()
 
-    if (Config.useSelectedPixel) {
-      val selectedTrackingTagIds = spark.read.parquet(Config.selectedPixelsConfigPath)
+    if (conf.useSelectedPixel) {
+      val selectedTrackingTagIds = spark.read.parquet(conf.selectedPixelsConfigPath)
         .join(trackingTagDataset, "TargetingDataId").select("TrackingTagId")
 
       conversionDataset =
@@ -91,7 +91,7 @@ class AEMGraphPolicyTableGenerator(
       .as[SourceMetaRecord]
 
     val TDID2ConversionPixel = conversionDataset
-      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .repartition(conf.bidImpressionRepartitionNum, 'TDID)
       .groupBy('TDID)
       .agg(collect_set('TrackingTagId).alias("SeedIds"))
       .as[AggregatedGraphTypeRecord]

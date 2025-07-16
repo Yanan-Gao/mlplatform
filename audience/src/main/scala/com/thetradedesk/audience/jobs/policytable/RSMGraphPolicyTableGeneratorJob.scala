@@ -16,9 +16,6 @@ object RSMGraphPolicyTableGeneratorJob
 
   override def runETLPipeline(): Map[String, String] = {
     val conf = getConfig
-    val dt = LocalDateTime.parse(conf.date_time)
-    date = dt.toLocalDate
-    dateTime = dt
     val generator = new RSMGraphPolicyTableGenerator(prometheus.get, conf)
     generator.generatePolicyTable()
     Map("status" -> "success")
