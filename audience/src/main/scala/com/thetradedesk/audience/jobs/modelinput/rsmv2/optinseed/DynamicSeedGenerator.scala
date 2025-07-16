@@ -13,7 +13,7 @@ class DynamicSeedGenerator(private val filterExpr: String = "true")
   override def generate(): Dataset[OptInSeedRecord] = {
     AudienceModelPolicyReadableDataset(Model.RSM).readSinglePartition(dateTime)
       .filter('CrossDeviceVendorId === CrossDeviceVendor.None.id && 'IsActive)
-      .filter('ActiveSize * RSMV2UserSampleRatio >= lowerLimitPosCntPerSeed * 10)
+      .filter('ExtendedActiveSize * RSMV2UserSampleRatio >= lowerLimitPosCntPerSeed * 10)
       .filter(filterExpr)
       .withColumnRenamed("SourceId", "SeedId")
       .select("SeedId", "SyntheticId")

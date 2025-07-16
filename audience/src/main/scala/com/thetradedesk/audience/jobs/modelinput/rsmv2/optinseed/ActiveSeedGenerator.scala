@@ -14,7 +14,7 @@ object ActiveSeedGenerator extends OptInSeedGenerator {
   override def generate(): Dataset[OptInSeedRecord] = {
     val seedId2SyntheticId = AudienceModelPolicyReadableDataset(Model.RSM).readSinglePartition(dateTime)
       .filter('CrossDeviceVendorId === CrossDeviceVendor.None.id && 'IsActive)
-      .filter('ActiveSize * RSMV2UserSampleRatio >= lowerLimitPosCntPerSeed * 10)
+      .filter('ExtendedActiveSize * RSMV2UserSampleRatio >= lowerLimitPosCntPerSeed * 10)
       .withColumnRenamed("SourceId", "SeedId")
       .select("SeedId", "SyntheticId")
     val startDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.plusDays(2))
