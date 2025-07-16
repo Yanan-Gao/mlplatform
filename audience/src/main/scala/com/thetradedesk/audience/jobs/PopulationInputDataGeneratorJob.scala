@@ -84,7 +84,7 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
     val policyTable = AudienceModelPolicyReadableDataset(AudienceModelInputGeneratorConfig.model)
       .readSinglePartition(dateTime)(spark)
       .filter((col("CrossDeviceVendorId") === 0) && (col("IsActive") === true))
-      .select("SourceId", "SyntheticId", "ActiveSize")
+      .select("SourceId", "SyntheticId", "ExtendedActiveSize")
       .withColumnRenamed("SourceId", "SeedId")
 
     val syntheticidsCandidates = policyTable.select('SyntheticId).as[Integer].collect()
