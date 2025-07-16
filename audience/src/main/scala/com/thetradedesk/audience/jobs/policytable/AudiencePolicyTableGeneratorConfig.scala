@@ -3,7 +3,7 @@ package com.thetradedesk.audience.jobs.policytable
 import java.time.LocalDate
 
 case class AudiencePolicyTableGeneratorConfig(
-  storageCloud: Int,
+  storageCloud: String,
   seedMetaDataRecentVersion: String,
   seedMetadataS3Bucket: String,
   countryDensityThreshold: Double,
