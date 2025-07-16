@@ -16,9 +16,8 @@ object AEMGraphPolicyTableGeneratorJob
 
   override def runETLPipeline(): Map[String, String] = {
     val conf = getConfig
-    val dt = LocalDateTime.parse(conf.date_time)
-    date = dt.toLocalDate
-    dateTime = dt
+    date = conf.runDate
+    dateTime = conf.runDate.atStartOfDay()
     val generator = new AEMGraphPolicyTableGenerator(prometheus.get, conf)
     generator.generatePolicyTable()
     Map("status" -> "success")
