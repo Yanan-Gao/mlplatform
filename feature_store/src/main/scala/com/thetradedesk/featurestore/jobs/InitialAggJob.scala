@@ -1,7 +1,7 @@
 package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore._
-import com.thetradedesk.featurestore.aggfunctions.AggFuncProcessorFactory
+import com.thetradedesk.featurestore.aggfunctions.{AggFuncProcessorFactory, AggFuncProcessorUtils}
 import com.thetradedesk.featurestore.configs.{AggDefinition, AggLevelConfig}
 import com.thetradedesk.featurestore.constants.FeatureConstants.ColFeatureKey
 import com.thetradedesk.featurestore.datasets.ProfileDataset
@@ -33,7 +33,10 @@ object InitialAggJob extends FeatureStoreAggBaseJob {
       "jobName" -> jobName,
       "dateStr" -> getDateStr(date),
       "ttdEnv" -> ttdEnv,
-      "grain" -> grainEnum.toString
+      "grain" -> grainEnum.toString,
+      "year" -> date.getYear().toString,
+      "monthMM" -> f"${date.getMonthValue()}%02d",
+      "dayDD" -> f"${date.getDayOfMonth()}%02d",
     )
 
     // load raw and process all levels in a batch for each hour
@@ -158,14 +161,18 @@ object InitialAggJob extends FeatureStoreAggBaseJob {
         overrides = overridesMap + ("indexPartition" -> aLevel.level)
       )
       println(
-        s"Start Processing Agg Level ${aLevel.level}, Grain: ${grainEnum}, outputPath: ${outputDataSet.datasetPath}"
+        s"Start Processing Agg Level ${aLevel.level}, Grain: ${grainEnum}, outputPath: ${outputDataSet.datasetPath}, at ${java.time.Instant.now().toString}"
       )
+      // we don't need aggregate on empty data
       val aggInputDf = inputDf.filter(shouldTrackTDID(col(aLevel.level)))
 
       val result = aggByDefinition(aggInputDf, initialAggDef, aLevel)
       outputDataSet.writeWithRowCountLog(result, aLevel.initWritePartitions)
       aggInputDf.unpersist()
       result.unpersist()
+      println(
+        s"End Processing Agg Level ${aLevel.level}, Grain: ${grainEnum}, outputPath: ${outputDataSet.datasetPath}, at ${java.time.Instant.now().toString}"
+      )
     }
   }
 
@@ -175,10 +182,14 @@ object InitialAggJob extends FeatureStoreAggBaseJob {
                        aggDef: AggDefinition,
                        aLevel: AggLevelConfig
                      ): Dataset[_] = {
-    val aggCols =
+    val aggCols = genAggCols(aggDef)
+    if (aggCols.isEmpty) throw new IllegalArgumentException(s"No aggregation functions found for level ${aLevel.level}")
+
+    val allAggCols =
       if (aLevel.enableFeatureKeyCount)
-        genKeyCountCol(aLevel.level) ++ genAggCols(aggDef)
-      else genAggCols(aggDef)
+        genKeyCountCol(aLevel.level) ++ aggCols
+      else aggCols
+
     val mergeCols =
       if (aLevel.enableFeatureKeyCount)
         genKeyCountMergeCol() ++ genMergeCols(aggDef)
@@ -188,14 +199,14 @@ object InitialAggJob extends FeatureStoreAggBaseJob {
       inputDf
         .withColumn("random", (rand() * aLevel.saltSize).cast("int"))
         .groupBy(col(aLevel.level), col("random"))
-        .agg(aggCols.head, aggCols.tail: _*)
+        .agg(allAggCols.head, allAggCols.tail: _*)
         .groupBy(col(aLevel.level))
         .agg(mergeCols.head, mergeCols.tail: _*)
         .withColumnRenamed(aLevel.level, "FeatureKey")
     } else {
       inputDf
         .groupBy(col(aLevel.level))
-        .agg(aggCols.head, aggCols.tail: _*)
+        .agg(allAggCols.head, allAggCols.tail: _*)
         .withColumnRenamed(aLevel.level, "FeatureKey")
     }
   }
@@ -208,8 +219,8 @@ object InitialAggJob extends FeatureStoreAggBaseJob {
         if (fieldAggSpec.aggFuncs.isEmpty) return Array.empty[Column]
 
         fieldAggSpec.aggFuncs.map { func =>
-          val processor = AggFuncProcessorFactory.getProcessor(fieldAggSpec.dataType, func)
-          processor.aggCol(fieldAggSpec).alias(s"${fieldAggSpec.field}_${func}")
+          val processor = AggFuncProcessorFactory.getProcessor(func, fieldAggSpec)
+          processor.aggCol().alias(AggFuncProcessorUtils.getColNameByFunc(func, fieldAggSpec))
         }
       })
       .toArray

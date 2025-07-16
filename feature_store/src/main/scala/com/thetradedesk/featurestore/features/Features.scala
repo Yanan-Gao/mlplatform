@@ -110,4 +110,11 @@ object Features {
       case _ => throw new UnsupportedOperationException(s"Unsupported data type ${dType} with feature ${inputColName}")
     }
   }
+
+  def hashFeature(inputCol: Column, dType: String, cardinality: Int): Column = {
+    dType match {
+      case ARRAY_STRING_FEATURE_TYPE => when(inputCol.isNotNull, shiftModArrayUdf(transform(inputCol, value => xxhash64(value)), lit(cardinality))).otherwise(lit(array()))
+      case _ => throw new UnsupportedOperationException(s"Unsupported data type ${dType} with feature ${inputCol}")
+    }
+  }
 }

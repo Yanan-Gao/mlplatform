@@ -1,9 +1,7 @@
 package com.thetradedesk.featurestore.configs
 
-import com.thetradedesk.featurestore.aggfunctions.AggFuncProcessorFactory
+import com.thetradedesk.featurestore.aggfunctions.AggFunctions.AggFuncV2
 import com.thetradedesk.featurestore.constants.FeatureConstants.SingleUnitWindow
-import com.thetradedesk.featurestore.features.Features.AggFunc
-import com.thetradedesk.featurestore.features.Features.AggFunc.AggFunc
 import com.thetradedesk.featurestore.rsm.CommonEnums.DataIntegrity.DataIntegrity
 import com.thetradedesk.featurestore.rsm.CommonEnums.Grain.Grain
 import com.thetradedesk.featurestore.rsm.CommonEnums.{DataIntegrity, Grain}
@@ -11,7 +9,6 @@ import com.thetradedesk.featurestore.ttdEnv
 import org.yaml.snakeyaml.Yaml
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable
 import scala.io.Source
 import scala.util.{Failure, Success, Try}
 
@@ -19,15 +16,16 @@ case class DataSourceConfig(
                              name: String,
                              rootPath: String,
                              prefix: String,
-                             format: String = "parquet"
+                             format: String = "parquet",
+                             loadQuery: Option[String] = None
                            )
 
 case class AggTaskConfig(
-                            outputRootPath: String,
-                            outputPrefix: String,
-                            windowGrain: Option[Grain] = None, // only applied for rollup config
-                            dataIntegrity: DataIntegrity = DataIntegrity.AllExist
-                          )
+                          outputRootPath: String,
+                          outputPrefix: String,
+                          windowGrain: Option[Grain] = None, // only applied for rollup config
+                          dataIntegrity: DataIntegrity = DataIntegrity.AllExist
+                        )
 
 case class AggLevelConfig(
                            level: String,
@@ -50,8 +48,8 @@ case class FieldAggSpec(
                          dataType: String,
                          arraySize: Int = -1,
                          aggWindows: Seq[Int],
-                         topN: Int = -1,
-                         aggFuncs: Seq[AggFunc]
+                         cardinality: Option[Int] = None,
+                         aggFuncs: Seq[AggFuncV2]
                        ) {
 
   /** Extracts initial aggregation specification for the given time unit
@@ -59,22 +57,12 @@ case class FieldAggSpec(
    * @return FieldAggSpec with initial aggregation functions
    */
   def extractFieldAggSpec: FieldAggSpec = {
-    val initialAggFunctions = new mutable.HashSet[AggFunc]()
-    var initialTopN = -1
 
-    aggFuncs.foreach(x => {
-      val initFuncs = AggFuncProcessorFactory.getProcessor(dataType, x).initialAggFuncs
-      initialAggFunctions ++= initFuncs
-      // TopN is a special case, multiply by 100 to get the more accurate topN value later in rollup aggregation
-      if (x == AggFunc.TopN) {
-        initialTopN = topN * 100
-      }
-    })
+    val mergeableFunc = AggFuncV2.getMergeableFuncs(aggFuncs)
 
     copy(
       aggWindows = SingleUnitWindow,
-      topN = initialTopN,
-      aggFuncs = initialAggFunctions.toSeq
+      aggFuncs = mergeableFunc
     )
   }
 }
@@ -118,15 +106,7 @@ object AggDefinition {
   }
 
   private def validateConfig(config: AggDefinition): Unit = {
-    config.aggregations.foreach { agg =>
-      agg.aggFuncs.foreach { func =>
-        if (func == AggFunc.TopN && agg.topN < 1) {
-          throw new IllegalArgumentException(
-            s"TopN is not specified for field ${agg.field}"
-          )
-        }
-      }
-    }
+
     val initAggDef = config.extractInitialAggDefinition()
     val allFields = initAggDef.aggregations.map(_.field).toSet
     val allAggFields = initAggDef.aggregations.flatMap(agg => agg.aggFuncs.map(func => (s"${agg.field}_${func}"))).toSet
@@ -155,7 +135,8 @@ object AggDefinition {
           name = dataSourceMap("name").toString,
           rootPath = dataSourceMap("rootPath").toString,
           prefix = dataSourceMap("prefix").toString,
-          format = dataSourceMap.getOrElse("format", "parquet").toString
+          format = dataSourceMap.getOrElse("format", "parquet").toString,
+          loadQuery = dataSourceMap.get("loadQuery").map(_.toString)
         ),
         aggLevels = parseAggLevels(yamlMap),
         initAggConfig = AggTaskConfig(
@@ -216,25 +197,17 @@ object AggDefinition {
           dataType = scalaAgg("dataType").toString,
           arraySize = scalaAgg.getOrElse("arraySize", -1).asInstanceOf[Int],
           aggWindows = scalaAgg("aggWindows").asInstanceOf[java.util.List[Int]].asScala,
-          topN = scalaAgg.getOrElse("topN", -1).asInstanceOf[Int],
+          cardinality = scalaAgg.get("cardinality").map(_.asInstanceOf[Int]),
           aggFuncs = parseAggFunctions(scalaAgg, aggField)
         )
       }
   }
 
-  private def parseAggFunctions(scalaAgg: Map[String, Any], aggField: String): Seq[AggFunc] = {
-    scalaAgg("aggFunc")
+  private def parseAggFunctions(scalaAgg: Map[String, Any], aggField: String): Seq[AggFuncV2] = {
+    val strList = scalaAgg("aggFunc")
       .asInstanceOf[java.util.List[String]]
       .asScala
-      .map { str =>
-        AggFunc
-          .fromString(str)
-          .getOrElse(
-            throw new IllegalArgumentException(
-              s"Unable to parse aggregation function: $str, for field $aggField"
-            )
-          )
-      }
+    AggFuncV2.parseAggFuncs(strList, aggField)
   }
 
   private def loadByFilePath(filePath: String): String = {

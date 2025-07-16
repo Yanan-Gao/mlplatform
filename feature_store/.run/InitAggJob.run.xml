@@ -2,7 +2,7 @@
   <configuration default="false" name="InitAggJob" type="Application" factoryName="Application">
     <option name="MAIN_CLASS_NAME" value="com.thetradedesk.featurestore.jobs.InitialAggJob" />
     <module name="feature_store" />
-    <option name="VM_PARAMETERS" value="-DaggDataSource=BidContextual -Dttd.env=local -Ddate=2025-06-23 -Dhour=20 -Dgrain=hour" />
+    <option name="VM_PARAMETERS" value="-DaggDataSource=Impressions -Dttd.env=local -Ddate=2025-07-08 -Dhour=5 -Dgrain=hour" />
     <extension name="coverage">
       <pattern>
         <option name="PATTERN" value="com.thetradedesk.featurestore.jobs.*" />
