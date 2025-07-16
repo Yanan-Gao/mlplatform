@@ -23,7 +23,7 @@ case class PopulationInputDataGeneratorJobConfig(
                                                   inputDataS3Bucket: String,
                                                   inputDataS3Path: String,
                                                   populationOutputData3Path: String,
-                                                  customInputDataPath: String,
+                                                  customInputDataPath: Option[String],
                                                   subFolderKey: String,
                                                   subFolderValue: String,
                                                   syntheticIdLength: Int,

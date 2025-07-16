@@ -24,7 +24,7 @@ import java.time.{LocalDate, LocalDateTime}
 abstract class AudiencePolicyTableGenerator(
     model: Model,
     prometheus: PrometheusClient,
-    val Config: AudiencePolicyTableGeneratorConfig) {
+    val conf: AudiencePolicyTableGeneratorConfig) {
 
   val userDownSampleHitPopulation = config.getInt(s"userDownSampleHitPopulation${model}", default = 100000)
   val samplingFunction = shouldConsiderTDID3(userDownSampleHitPopulation, config.getStringRequired(s"saltToSampleUser${model}"))(_)
@@ -32,12 +32,10 @@ abstract class AudiencePolicyTableGenerator(
   val jobRunningTime = prometheus.createGauge(s"audience_policy_table_job_running_time", "AudiencePolicyTableGenerator running time", "model", "date")
   val policyTableSize = prometheus.createGauge(s"audience_policy_table_size", "AudiencePolicyTableGenerator running time", "model", "date")
 
-
-
   private val policyTableDateFormatter = DateTimeFormatter.ofPattern(audienceVersionDateFormat)
 
   private val availablePolicyTableVersions = S3Utils
-    .queryCurrentDataVersions(Config.policyS3Bucket, Config.policyS3Path)
+    .queryCurrentDataVersions(conf.policyS3Bucket, conf.policyS3Path)
     .map(LocalDateTime.parse(_, policyTableDateFormatter))
     .toSeq
     .sortWith(_.isAfter(_))
@@ -46,13 +44,16 @@ abstract class AudiencePolicyTableGenerator(
 
     validateConfig()
 
+    val date = conf.runDate
+    val dateTime = conf.runDate.atStartOfDay()
+
     val start = System.currentTimeMillis()
 
     // read the seeddetail data again to join the advertiserid back to here
     val seedDataFullPath = SeedPolicyUtils.getRecentVersion(
-      Config.seedMetadataS3Bucket,
-      Config.seedMetadataS3Path,
-      Config.seedMetaDataRecentVersion
+      conf.seedMetadataS3Bucket,
+      conf.seedMetadataS3Path,
+      conf.seedMetaDataRecentVersion
     )
     val seedAdvertiserMetaDataset = spark.read.parquet(seedDataFullPath)
         .select('SeedId.alias("SourceId"), 'AdvertiserId)
@@ -87,7 +88,7 @@ abstract class AudiencePolicyTableGenerator(
   }
 
   private def validateConfig(): Unit = {
-    if (ttdEnv == "prod" && Config.policyTableResetSyntheticId == true) {
+    if (ttdEnv == "prod" && conf.policyTableResetSyntheticId == true) {
       throw new IllegalArgumentException("Cannot reset synthetic id for prod env")
     }
   }
@@ -98,7 +99,7 @@ abstract class AudiencePolicyTableGenerator(
     val baseDF = loadParquetData[BidsImpressionsSchema](
       bidImpressionsS3Path,
       date,
-      lookBack = Some(Config.bidImpressionLookBack),
+      lookBack = Some(conf.bidImpressionLookBack),
       source = Some(GERONIMO_DATA_SOURCE)
     ).select('UIID, 'DeviceAdvertisingId, 'CookieTDID, 'IdentityLinkId, 'DATId, 'UnifiedId2, 'EUID, 'IdType)
       .cache()
@@ -107,7 +108,7 @@ abstract class AudiencePolicyTableGenerator(
       .filter(filterOnIdTypes(samplingFunction))
       .select(allIdWithType.alias("x"))
       .select(col("x._1").as("TDID"), col("x._2").as("idType"))
-      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .repartition(conf.bidImpressionRepartitionNum, 'TDID)
       .withColumn("rn", row_number().over(Window.partitionBy("TDID").orderBy("idType")))
       .filter(col("rn") === 1) // Keep one idType per TDID following enum ordinal
       .drop("rn")
@@ -117,7 +118,7 @@ abstract class AudiencePolicyTableGenerator(
       .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdType))
       .filter(samplingFunction(col("TDID")))
       .select("TDID")
-      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .repartition(conf.bidImpressionRepartitionNum, 'TDID)
       .distinct()
       .withColumn("IsOriginal", lit(1))
 
@@ -132,12 +133,12 @@ abstract class AudiencePolicyTableGenerator(
       if (crossDeviceVendor == CrossDeviceVendor.IAV2Person) {
         CrossDeviceGraphUtil
           .readGraphData(date, LightCrossDeviceGraphDataset())
-          .where(shouldTrackTDID('uiid) && 'score > lit(Config.graphScoreThreshold))
+          .where(shouldTrackTDID('uiid) && 'score > lit(conf.graphScoreThreshold))
           .select('uiid.alias("TDID"), 'personId.alias("groupId"))
       } else if (crossDeviceVendor == CrossDeviceVendor.IAV2Household) {
         CrossDeviceGraphUtil
           .readGraphData(date, LightCrossDeviceHouseholdGraphDataset())
-          .where(shouldTrackTDID('uiid) && 'score > lit(Config.graphScoreThreshold))
+          .where(shouldTrackTDID('uiid) && 'score > lit(conf.graphScoreThreshold))
           .select('uiid.alias("TDID"), 'householdID.alias("groupId"))
       } else {
         throw new UnsupportedOperationException(s"crossDeviceVendor ${crossDeviceVendor} is not supported")
@@ -153,10 +154,10 @@ abstract class AudiencePolicyTableGenerator(
 
   def generateGraphMapping(sourceGraph: DataFrame): DataFrame = {
     val graph = sourceGraph
-      .where(shouldTrackTDID('uiid) && 'score > lit(Config.graphScoreThreshold))
+      .where(shouldTrackTDID('uiid) && 'score > lit(conf.graphScoreThreshold))
       .groupBy('groupId)
       .agg(collect_set('uiid).alias("TDID"))
-      .where(size('TDID) > lit(1) && size('TDID) <= lit(Config.graphUniqueCountKeepThreshold)) // remove persons with too many individuals or only one TDID
+      .where(size('TDID) > lit(1) && size('TDID) <= lit(conf.graphUniqueCountKeepThreshold)) // remove persons with too many individuals or only one TDID
       .cache()
 
     val sampledGraph = graph
@@ -184,21 +185,21 @@ abstract class AudiencePolicyTableGenerator(
     // get retired sourceId
     val policyTableDayChange = ChronoUnit.DAYS.between(previousPolicyTableDate, date).toInt
 
-    val inActiveIds = previousPolicyTable.filter('StorageCloud === Config.storageCloud)
+    val inActiveIds = previousPolicyTable.filter('StorageCloud === conf.storageCloud)
       .join(activeIds, Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "left_anti")
       .withColumn("ExpiredDays", 'ExpiredDays + lit(policyTableDayChange))
 
-    val releasedIds = inActiveIds.filter('ExpiredDays > Config.expiredDays)
+    val releasedIds = inActiveIds.filter('ExpiredDays > conf.expiredDays)
 
     val continueIds = previousPolicyTable.join(releasedIds, Seq("SyntheticId"), "left_anti")
 
-    val retentionIds = inActiveIds.filter('ExpiredDays <= Config.expiredDays)
+    val retentionIds = inActiveIds.filter('ExpiredDays <= conf.expiredDays)
       .withColumn("IsActive", lit(false))
       .withColumn("Tag", lit(Tag.Retention.id))
       .withColumn("SampleWeight", lit(1.0))
 
     // get new sourceId
-    val newIds = activeIds.join(previousPolicyTable.filter('StorageCloud === Config.storageCloud)
+    val newIds = activeIds.join(previousPolicyTable.filter('StorageCloud === conf.storageCloud)
       .select('SourceId, 'Source, 'CrossDeviceVendorId, 'StorageCloud), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "left_anti")
     val newIdsCount = newIds.count().toInt
     val releasedIdsCount = releasedIds.count().toInt
@@ -206,13 +207,13 @@ abstract class AudiencePolicyTableGenerator(
     val maxId = math.max(previousPolicyTable.agg(max('SyntheticId)).collect()(0)(0).asInstanceOf[Int], previousPolicyTable.count().toInt + newIdsCount - releasedIdsCount)
 
     val currentActiveIds = policyTable
-      .join(previousPolicyTable.filter('StorageCloud === Config.storageCloud).select('SourceId, 'Source, 'CrossDeviceVendorId, 'SyntheticId, 'IsActive, 'StorageCloud, 'MappingId), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "inner")
+      .join(previousPolicyTable.filter('StorageCloud === conf.storageCloud).select('SourceId, 'Source, 'CrossDeviceVendorId, 'SyntheticId, 'IsActive, 'StorageCloud, 'MappingId), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "inner")
       .withColumn("ExpiredDays", lit(0))
       .withColumn("Tag", when('IsActive, lit(Tag.Existing.id)).otherwise(lit(Tag.Recall.id)))
       .withColumn("IsActive", lit(true))
       .withColumn("SampleWeight", lit(1.0)) // todo optimize this with performance/monitoring
 
-    val otherSourcePreviousPolicyTable = previousPolicyTable.filter('StorageCloud =!= Config.storageCloud).toDF()
+    val otherSourcePreviousPolicyTable = previousPolicyTable.filter('StorageCloud =!= conf.storageCloud).toDF()
 
     val updatedPolicyTable =
       if (newIdsCount > 0) {
@@ -284,10 +285,14 @@ abstract class AudiencePolicyTableGenerator(
   def retrieveSourceData(date: LocalDate): DataFrame
 
   private def allocateSyntheticId(dateTime: LocalDateTime, policyTable: DataFrame): DataFrame = {
-    val recentVersionOption = if (Config.seedMetaDataRecentVersion != null) Some(LocalDateTime.parse(Config.seedMetaDataRecentVersion.split("=")(1), DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSS")).toLocalDate.atStartOfDay())
-    else availablePolicyTableVersions.find(_.isBefore(dateTime))
+    val recentVersionOption = conf.seedMetaDataRecentVersion
+      .map(v => LocalDateTime
+        .parse(v.split("=")(1), DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSS"))
+        .toLocalDate
+        .atStartOfDay())
+      .orElse(availablePolicyTableVersions.find(_.isBefore(dateTime)))
 
-    if (!(recentVersionOption.isDefined) || Config.policyTableResetSyntheticId) {
+    if (recentVersionOption.isEmpty || conf.policyTableResetSyntheticId) {
       val updatedPolicyTable = policyTable
         .withColumn("SyntheticId", row_number().over(Window.orderBy(rand())))
         .withColumn("SampleWeight", lit(1.0))
@@ -305,11 +310,15 @@ abstract class AudiencePolicyTableGenerator(
   }
 
   protected def activeUserRatio(dateTime: LocalDateTime): Double = {
-    val recentVersionOption = if (Config.seedMetaDataRecentVersion != null) Some(LocalDateTime.parse(Config.seedMetaDataRecentVersion.split("=")(1), DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSS")).toLocalDate.atStartOfDay())
-    else availablePolicyTableVersions.find(_.isBefore(dateTime))
+    val recentVersionOption = conf.seedMetaDataRecentVersion
+      .map(v => LocalDateTime
+        .parse(v.split("=")(1), DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSS"))
+        .toLocalDate
+        .atStartOfDay())
+      .orElse(availablePolicyTableVersions.find(_.isBefore(dateTime)))
 
-    if (recentVersionOption.isEmpty || Config.policyTableResetSyntheticId) {
-      Config.activeUserRatio
+    if (recentVersionOption.isEmpty || conf.policyTableResetSyntheticId) {
+      conf.activeUserRatio
     } else {
       val previousPolicyTable = AudienceModelPolicyReadableDataset(model)
         .readSinglePartition(recentVersionOption.get)(spark).cache()

@@ -23,7 +23,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](groupName: S
   protected val prometheus: Option[PrometheusClient]
 
   private val logger = CloudWatchLoggerFactory.getLogger(
-    s"mlplatform-$confettiEnv",
+    s"Confetti-$confettiEnv",
     s"${experimentName.filter(_.nonEmpty).map(n => s"$n-").getOrElse("")}$groupName-$jobName"
   )
   private var jobConfig: Option[C] = None

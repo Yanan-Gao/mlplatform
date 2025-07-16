@@ -57,7 +57,7 @@ class AEMPolicyTableGenerator(
     val activeConversionTrackerTagId = retrieveActiveCampaignConversionTrackerTagIds();
 
     var conversionDataset = ConversionDataset(defaultCloudProvider)
-      .readRange(date.minusDays(Config.conversionLookBack).atStartOfDay(), date.plusDays(1).atStartOfDay())
+      .readRange(date.minusDays(conf.conversionLookBack).atStartOfDay(), date.plusDays(1).atStartOfDay())
       .select('TDID, 'TrackingTagId)
       .filter(samplingFunction('TDID))
 
@@ -67,8 +67,8 @@ class AEMPolicyTableGenerator(
       .select("TrackingTagId", "TargetingDataId")
       .distinct()
 
-    if (Config.useSelectedPixel) {
-      val selectedTrackingTagIds = spark.read.parquet(Config.selectedPixelsConfigPath)
+    if (conf.useSelectedPixel) {
+      val selectedTrackingTagIds = spark.read.parquet(conf.selectedPixelsConfigPath)
         .join(trackingTagDataset, "TargetingDataId").select("TrackingTagId")
 
       conversionDataset =
@@ -95,7 +95,7 @@ class AEMPolicyTableGenerator(
 
     var conversionFinal: DataFrame = null
 
-    if (Config.useSelectedPixel) {
+    if (conf.useSelectedPixel) {
       conversionFinal = conversionSize
         .join(trackingTagDataset, "TrackingTagId")
         .join(conversionActiveSize, "TrackingTagId")
@@ -104,7 +104,7 @@ class AEMPolicyTableGenerator(
         .join(conversionActiveSize, "TrackingTagId")
         .join(trackingTagDataset, "TrackingTagId")
         .orderBy(desc("ActiveSize"))
-        .limit(Config.aemPixelLimit)
+        .limit(conf.aemPixelLimit)
     }
 
     val policyTable = conversionFinal

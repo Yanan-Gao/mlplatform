@@ -30,7 +30,7 @@ case class AudienceCalibrationAndMergeJobConfig(
   baselineHitRate: Double,
   recursiveWeight: Double,
   writeMode: String,
-  date_time: String
+  runDate: LocalDate
 )
 
 object AudienceCalibrationAndMergeJob
@@ -42,8 +42,8 @@ object AudienceCalibrationAndMergeJob
 
   override def runETLPipeline(): Map[String, String] = {
     val conf = getConfig
-    val dt = LocalDateTime.parse(conf.date_time)
-    date = dt.toLocalDate
+    val date = conf.runDate
+    val dateTime = conf.runDate.atStartOfDay()
 
     val jobConf = conf.copy(
       mlplatformS3Bucket = S3Utils.refinePath(conf.mlplatformS3Bucket),
@@ -54,7 +54,6 @@ object AudienceCalibrationAndMergeJob
     )
 
     val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
-    val dateTime = date.atStartOfDay()
 
     val embeddingTableDateFormatter = DateTimeFormatter.ofPattern(audienceVersionDateFormat)
     val availableEmbeddingVersions = S3Utils
