@@ -17,8 +17,8 @@ class BackoffMonitoringTransformTest extends TTDSparkTest {
     val pcOptOutData = Seq(pcResultsLogMock(bidRequestId = "abcd", bbfExceptedSource = 2)).toDS().as[PlutusLogsData]
     val adgroupData = Seq(adGroupMockData(campaignId = campaignId, adGroupId = "asdasd")).toDS()
     val pcResultsGeronimoData = Seq(pcResultsMergedMock(campaignId = Some(campaignId))).toDS().as[PcResultsMergedSchema]
-    val hadesBufferBackoffData  = Seq((campaignId, 10, 15, 50, 0.07, 0.58, 1))
-      .toDF("CampaignId", "hdv3_BBF_PMP_BidCount", "hdv3_BBF_OM_BidCount", "hdv3_Total_BidCount", "hdv3_UnderdeliveryFraction", "CampaignBbfFloorBuffer", "pc_CampaignPCAdjustment")
+    val hadesBufferBackoffData  = Seq((campaignId, 10, 15, 50, 0.07, 1.2, 0.58, 1))
+      .toDF("CampaignId", "hdv3_BBF_PMP_BidCount", "hdv3_BBF_OM_BidCount", "hdv3_Total_BidCount", "hdv3_UnderdeliveryFraction", "hdv3_MaxBidMultiplierCap", "CampaignBbfFloorBuffer", "pc_CampaignPCAdjustment")
 
     // Test buffer backoff metrics
     val hadesBufferBackoffMetrics = getHadesBufferBackoffMetrics(
@@ -48,5 +48,6 @@ class BackoffMonitoringTransformTest extends TTDSparkTest {
     val test2 = finalMetricsDataset.filter($"CampaignId" === "campaign1").collect().head
     assert(test2.CampaignPCAdjustment == 1)
     assert(test2.CampaignBbfFloorBuffer == 0.58)
+    assert(test2.MaxBidMultiplierCap == 1.2)
   }
 }

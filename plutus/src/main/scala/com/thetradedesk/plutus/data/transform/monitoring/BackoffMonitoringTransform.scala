@@ -23,7 +23,8 @@ object BackoffMonitoringTransform {
       .withColumn("Sim_BBF_PMP_OptOut_Rate", $"hdv3_BBF_PMP_BidCount"/$"hdv3_Total_BidCount")
       .withColumnRenamed("hdv3_UnderdeliveryFraction", "Sim_UnderdeliveryFraction")
       .withColumnRenamed("pc_CampaignPCAdjustment", "CampaignPCAdjustment")
-      .select("CampaignId", "Sim_BBF_OptOut_Rate", "Sim_BBF_PMP_OptOut_Rate", "Sim_UnderdeliveryFraction", "CampaignBbfFloorBuffer", "CampaignPCAdjustment")
+      .withColumnRenamed("hdv3_MaxBidMultiplierCap", "MaxBidMultiplierCap")
+      .select("CampaignId", "Sim_BBF_OptOut_Rate", "Sim_BBF_PMP_OptOut_Rate", "Sim_UnderdeliveryFraction", "CampaignBbfFloorBuffer", "CampaignPCAdjustment", "MaxBidMultiplierCap")
   }
 
   def getBbfOptOutRate(
