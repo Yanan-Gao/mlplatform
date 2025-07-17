@@ -4,13 +4,13 @@ import java.time.LocalDate
 
 case class AudiencePolicyTableGeneratorConfig(
   storageCloud: String,
-  seedMetaDataRecentVersion: String,
+  seedMetaDataRecentVersion: Option[String],
   seedMetadataS3Bucket: String,
   countryDensityThreshold: Double,
   seedMetadataS3Path: String,
   seedRawDataS3Bucket: String,
   seedRawDataS3Path: String,
-  seedRawDataRecentVersion: String,
+  seedRawDataRecentVersion: Option[String],
   policyTableResetSyntheticId: Boolean,
   conversionLookBack: Int,
   expiredDays: Int,
