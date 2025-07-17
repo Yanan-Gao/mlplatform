@@ -1,7 +1,7 @@
 package com.thetradedesk.plutus.data.transform
 
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.plutus.data.transform.SharedTransforms.{AddChannel, AddMarketType}
+import com.thetradedesk.plutus.data.transform.SharedTransforms.{AddChannelUsingAdFormat, AddMarketType}
 import com.thetradedesk.plutus.data.{IMPLICIT_DATA_SOURCE, loadParquetDataHourly}
 import com.thetradedesk.spark.datasets.sources.{AdFormatDataSet, AdFormatRecord, PrivateContractDataSet, PrivateContractRecord}
 import com.thetradedesk.spark.util.LocalParquet
@@ -115,7 +115,7 @@ object ModelPromotionTransform {
         sum("spend").as("totalSpend"),
       )
 
-    res = AddChannel(res, adFormatData)
+    res = AddChannelUsingAdFormat(res, adFormatData)
     res = AddMarketType(res, privateContractsData)
     res.groupBy("PlutusTfModel", "Channel", "SupplyVendor", "DetailedMarketType")
       .agg(

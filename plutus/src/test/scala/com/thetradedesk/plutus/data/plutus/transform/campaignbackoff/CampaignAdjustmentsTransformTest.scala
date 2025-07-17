@@ -2,13 +2,12 @@ package com.thetradedesk.plutus.data.plutus.transform.campaignbackoff
 
 import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.plutus.data.mockdata.DataGenerator
-import com.thetradedesk.plutus.data.mockdata.MockData.{adFormatMock, pcResultsMergedMock, platformWideStatsMock}
+import com.thetradedesk.plutus.data.mockdata.MockData.{pcResultsMergedMock, platformWideStatsMock}
 import com.thetradedesk.plutus.data.schema.PcResultsMergedSchema
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
 import com.thetradedesk.plutus.data.transform.campaignbackoff.PlutusCampaignAdjustmentsTransform._
 import com.thetradedesk.plutus.data.generateDataPathsDaily
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.datasets.sources.AdFormatRecord
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import org.apache.spark.sql.functions.{col, to_date}
 import org.apache.spark.sql.types.DecimalType
@@ -55,7 +54,6 @@ class CampaignAdjustmentsTransformTest extends TTDSparkTest {
     // use for campaign and platform-wide stats comparison
     val platformReportData = DataGenerator.generatePlatformReportData // campaign comparison
     val countryData = DataGenerator.generateCountryData // join to get region
-    val adFormatData = Seq(adFormatMock.copy()).toDS().as[AdFormatRecord] // join to get channel
     val platformWideStatsData = Seq(platformWideStatsMock.copy()).toDS().as[PlatformWideStatsSchema]
 
     // use for pc and discrepancy comparison --> create separate pcresultsmerged data for all 5 new campaigns that are underdelivering
@@ -82,7 +80,7 @@ class CampaignAdjustmentsTransformTest extends TTDSparkTest {
       .union(pcResultsMergedDataold4)
       .union(pcResultsMergedDataold5)
 
-    val pc_underdeliveringCampaigns = getUnderdeliveringDueToPlutus(underdeliveringCampaigns, platformReportData, countryData, adFormatData, platformWideStatsData, pcResultsMergedData)
+    val pc_underdeliveringCampaigns = getUnderdeliveringDueToPlutus(underdeliveringCampaigns, platformReportData, countryData, platformWideStatsData, pcResultsMergedData)
 
     val res_pcUnderdeliveringCampaigns = pc_underdeliveringCampaigns.collectAsList()
 
@@ -213,7 +211,6 @@ class CampaignAdjustmentsTransformTest extends TTDSparkTest {
     // use for campaign and platform-wide stats comparison
     val platformReportData = DataGenerator.generatePlatformReportData // campaign comparison
     val countryData = DataGenerator.generateCountryData // join to get region
-    val adFormatData = Seq(adFormatMock.copy()).toDS().as[AdFormatRecord] // join to get channel
     val platformWideStatsData = Seq(platformWideStatsMock.copy()).toDS().as[PlatformWideStatsSchema]
 
     // use for pc and discrepancy comparison --> create separate pcresultsmerged data for all 5 new campaigns that are underdelivering
@@ -228,7 +225,7 @@ class CampaignAdjustmentsTransformTest extends TTDSparkTest {
       .union(pcResultsMergedData4)
       .union(pcResultsMergedData5)
 
-    val pc_underdeliveringCampaigns = getUnderdeliveringDueToPlutus(underdeliveringCampaigns, platformReportData, countryData, adFormatData, platformWideStatsData, pcResultsMergedData)
+    val pc_underdeliveringCampaigns = getUnderdeliveringDueToPlutus(underdeliveringCampaigns, platformReportData, countryData, platformWideStatsData, pcResultsMergedData)
 
     /*
      *

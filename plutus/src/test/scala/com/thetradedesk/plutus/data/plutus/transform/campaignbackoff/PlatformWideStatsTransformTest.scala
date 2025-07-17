@@ -12,9 +12,8 @@ class PlatformWideStatsTransformTest extends TTDSparkTest {
   test("PlatformWideStats transform test for schema/column correctness") {
     val platformReportData = DataGenerator.generatePlatformReportData // campaign comparison
     val countryData = DataGenerator.generateCountryData // join to get region
-    val adFormatData = Seq(adFormatMock.copy()).toDS().as[AdFormatRecord] // join to get channel
 
-    val platformwide_agg = getPlatformWideRegionChannelStats(platformReportData, countryData, adFormatData)
+    val platformwide_agg = getPlatformWideRegionChannelStats(platformReportData, countryData)
 
     val res_platformwide_agg = platformwide_agg.collectAsList()
     assert(res_platformwide_agg.size() == 2, "Validating grouping")

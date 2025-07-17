@@ -2,11 +2,11 @@ package com.thetradedesk.plutus.data.transform.campaignbackoff
 
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
-import com.thetradedesk.plutus.data.transform.SharedTransforms.AddChannel
+import com.thetradedesk.plutus.data.transform.SharedTransforms.{AddChannel, AddDeviceTypeIdAndRenderingContextId}
 import com.thetradedesk.plutus.data.envForWrite
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.vertica.UnifiedRtbPlatformReportDataSet
-import com.thetradedesk.spark.datasets.sources.{AdFormatDataSet, AdFormatRecord, CountryDataSet, CountryRecord}
+import com.thetradedesk.spark.datasets.sources.{CountryDataSet, CountryRecord}
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.IntegerType
@@ -17,30 +17,25 @@ import java.time.LocalDate
 object PlatformWideStatsTransform extends Logger {
 
   def getPlatformWideRegionChannelStats(platformReportData: Dataset[RtbPlatformReportCondensedData],
-                                        countryData: Dataset[CountryRecord],
-                                        adFormatData: Dataset[AdFormatRecord]
+                                        countryData: Dataset[CountryRecord]
                                        ): Dataset[PlatformWideStatsSchema] = {
 
-    val rtb = joinPlatformReportData(platformReportData, countryData, adFormatData)
+    val rtb = joinPlatformReportData(platformReportData, countryData)
     val rtb_agg_cp = aggregateCampaignMetrics(rtb)
     val rtb_agg = aggregatePlatWideMetrics(rtb_agg_cp)
 
     rtb_agg.selectAs[PlatformWideStatsSchema]
   }
 
-  def joinPlatformReportData(platformReportData: Dataset[RtbPlatformReportCondensedData], countryData: Dataset[CountryRecord], adFormatData: Dataset[AdFormatRecord]): DataFrame = {
-    val rtb = platformReportData
+  def joinPlatformReportData(platformReportData: Dataset[RtbPlatformReportCondensedData], countryData: Dataset[CountryRecord]): DataFrame = {
+    val rtbWithRegion = platformReportData
       .withColumn("FirstPriceAdjustment", lit(1) - (col("PredictiveClearingSavingsInUSD") / col("BidAmountInUSD")))
-      .withColumn("DeviceType", col("DeviceType").cast(IntegerType))
-      .withColumn("RenderingContext", col("RenderingContext").cast(IntegerType))
+      // Join to Country to get Region
+      .join(broadcast(countryData.select(col("LongName").as("Country"), col("ContinentalRegionId"))), Seq("Country"), "left")
 
-    // Join to country to get region
-    val rtbWithRegion = rtb.alias("r")
-      .join(broadcast(countryData).alias("c"), col("r.Country") === col("c.LongName"), "left")
-      .select(col("r.*"), col("c.ContinentalRegionId"))
-
-    // Get ChannelSimple
-    AddChannel(rtbWithRegion, adFormatData, renderingContextCol = "RenderingContext", deviceTypeCol = "DeviceType")
+    // Get ChannelSimple - requires translating the strings to their numeric ids
+    val addRenderingContextAndDeviceTypeId = AddDeviceTypeIdAndRenderingContextId(rtbWithRegion, renderingContextCol = "RenderingContext", deviceTypeCol = "DeviceType")
+    AddChannel(addRenderingContextAndDeviceTypeId, renderingContextCol = "RenderingContextId", deviceTypeCol = "DeviceTypeId")
   }
 
   def aggregateCampaignMetrics(rtb: DataFrame): DataFrame = {
@@ -53,8 +48,9 @@ object PlatformWideStatsTransform extends Logger {
         sum(col("PredictiveClearingSavingsInUSD")).as("TotalPredictiveClearingSavings"),
         mean(col("FirstPriceAdjustment")).as("Avg_FirstPriceAdjustment")
       )
-      .withColumn("WinRate", (col("ImpressionCount") / col("BidCount")))
-      .filter(col("Avg_FirstPriceAdjustment").isNotNull) // Filter out campaigns with null pc pushdowns
+      .withColumn("WinRate", col("ImpressionCount") / col("BidCount"))
+      // Filter out campaigns with null pc pushdowns
+      .filter(col("Avg_FirstPriceAdjustment").isNotNull)
   }
 
   def aggregatePlatWideMetrics(rtb: DataFrame): DataFrame = {
@@ -78,9 +74,8 @@ object PlatformWideStatsTransform extends Logger {
       .selectAs[RtbPlatformReportCondensedData]
 
     val countryData = CountryDataSet().readLatestPartitionUpTo(date)
-    val adFormatData = AdFormatDataSet().readLatestPartitionUpTo(date)
 
-    val platformwide_agg = getPlatformWideRegionChannelStats(platformReportData, countryData, adFormatData)
+    val platformwide_agg = getPlatformWideRegionChannelStats(platformReportData, countryData)
 
     PlatformWideStatsDataset.writeData(date, platformwide_agg, fileCount)
   }

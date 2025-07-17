@@ -3,13 +3,13 @@ package com.thetradedesk.plutus.data.transform.campaignbackoff
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
 import com.thetradedesk.plutus.data.schema.{PcResultsMergedDataset, PcResultsMergedSchema}
-import com.thetradedesk.plutus.data.transform.SharedTransforms.AddChannel
+import com.thetradedesk.plutus.data.transform.SharedTransforms.{AddChannel, AddDeviceTypeIdAndRenderingContextId}
 import com.thetradedesk.plutus.data.utils.S3NoFilesFoundException
-import com.thetradedesk.plutus.data.{envForRead, envForReadInternal}
+import com.thetradedesk.plutus.data.{envForRead, envForReadInternal, envForWrite}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.vertica.UnifiedRtbPlatformReportDataSet
-import com.thetradedesk.spark.datasets.sources.{AdFormatDataSet, AdFormatRecord, CountryDataSet, CountryRecord}
+import com.thetradedesk.spark.datasets.sources.{CountryDataSet, CountryRecord}
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import job.campaignbackoff.CampaignAdjustmentsJob.campaignCounts
 import org.apache.spark.sql.expressions.{UserDefinedFunction, Window}
@@ -65,12 +65,11 @@ object PlutusCampaignAdjustmentsTransform extends Logger {
   def getUnderdeliveringDueToPlutus(underdeliveringCampaigns: DataFrame,
                                     platformReportData: Dataset[RtbPlatformReportCondensedData],
                                     countryData: Dataset[CountryRecord],
-                                    adFormatData: Dataset[AdFormatRecord],
                                     platformWideStatsData: Dataset[PlatformWideStatsSchema],
                                     pcResultsMergedData: Dataset[PcResultsMergedSchema]
                                    ): DataFrame = {
 
-    val rtb_agg = joinCampaignsToPlatformReportAndAggregate(underdeliveringCampaigns, platformReportData, countryData, adFormatData)
+    val rtb_agg = joinCampaignsToPlatformReportAndAggregate(underdeliveringCampaigns, platformReportData, countryData)
 
     val compareStats = joinToPlatformWideStatsAndCompareRelativeStats(rtb_agg, platformWideStatsData)
 
@@ -199,31 +198,29 @@ object PlutusCampaignAdjustmentsTransform extends Logger {
     underdeliveringDaysCt.select("CampaignId").distinct()
   }
 
-  def joinCampaignsToPlatformReportAndAggregate(distinct_udcp: DataFrame, platformReportData: Dataset[RtbPlatformReportCondensedData], countryData: Dataset[CountryRecord], adFormatData: Dataset[AdFormatRecord]): DataFrame = {
+  def joinCampaignsToPlatformReportAndAggregate(distinct_udcp: DataFrame, platformReportData: Dataset[RtbPlatformReportCondensedData], countryData: Dataset[CountryRecord]): DataFrame = {
     // Get rtb data for new underdelivering campaigns
-    val rtb = platformReportData.join(broadcast(distinct_udcp), "CampaignId")
+    val rtbWithRegion = platformReportData
+      .join(broadcast(distinct_udcp), "CampaignId")
       .withColumn("FirstPriceAdjustment", lit(1) - (col("PredictiveClearingSavingsInUSD") / col("BidAmountInUSD")))
-      .withColumn("DeviceType", col("DeviceType").cast(IntegerType))
-      .withColumn("RenderingContext", col("RenderingContext").cast(IntegerType))
+      // Join to Country to get Region
+      .join(broadcast(countryData.select(col("LongName").as("Country"), col("ContinentalRegionId"))), Seq("Country"), "left")
 
-    // Join to country to get region
-    val rtbWithRegion = rtb.alias("r")
-      .join(broadcast(countryData.alias("c")), col("r.Country") === col("c.LongName"), "left")
-      .select(col("r.*"), col("c.ContinentalRegionId"))
-
-    // Get ChannelSimple
-    val rtbwithChannel = AddChannel(rtbWithRegion, adFormatData, renderingContextCol = "RenderingContext", deviceTypeCol = "DeviceType")
+    // Get ChannelSimple - requires translating the strings to their numeric ids
+    val addRenderingContextAndDeviceTypeId = AddDeviceTypeIdAndRenderingContextId(rtbWithRegion, renderingContextCol = "RenderingContext", deviceTypeCol = "DeviceType")
+    val rtbWithChannelAndRegion = AddChannel(addRenderingContextAndDeviceTypeId, renderingContextCol = "RenderingContextId", deviceTypeCol = "DeviceTypeId")
 
     // Aggregate metrics by campaign, region & channel
-    rtbwithChannel
+    rtbWithChannelAndRegion
       .groupBy("CampaignId", "ContinentalRegionId", "ChannelSimple")
       .agg(
         sum(col("BidCount")).as("BidCount"),
         sum(col("ImpressionCount")).as("ImpressionCount"),
         mean(col("FirstPriceAdjustment")).as("Avg_FirstPriceAdjustment")
       )
-      .withColumn("WinRate", (col("ImpressionCount") / col("BidCount")))
-      .filter(col("Avg_FirstPriceAdjustment").isNotNull) // Filter out campaigns with null pc pushdowns
+      .withColumn("WinRate", col("ImpressionCount") / col("BidCount"))
+      // Filter out campaigns with null pc pushdowns
+      .filter(col("Avg_FirstPriceAdjustment").isNotNull)
   }
 
   def joinToPlatformWideStatsAndCompareRelativeStats(rtb_agg: DataFrame, platformWideStatsData: Dataset[PlatformWideStatsSchema]): DataFrame = {
@@ -562,12 +559,11 @@ object PlutusCampaignAdjustmentsTransform extends Logger {
       .selectAs[RtbPlatformReportCondensedData]
 
     val countryData = CountryDataSet().readLatestPartitionUpTo(date)
-    val adFormatData = AdFormatDataSet().readLatestPartitionUpTo(date)
 
     // Get Campaign Backoff PC Adjustments
     val (campaignInfo, underdeliveringCampaigns) = getUnderdelivery(campaignUnderdeliveryData, campaignFlightData, date)
 
-    val pc_underdeliveringCampaigns = getUnderdeliveringDueToPlutus(underdeliveringCampaigns, platformReportData, countryData, adFormatData, platformWideStatsData, pcResultsMergedData)
+    val pc_underdeliveringCampaigns = getUnderdeliveringDueToPlutus(underdeliveringCampaigns, platformReportData, countryData, platformWideStatsData, pcResultsMergedData)
 
     val campaignAdjustmentPacingTestSplit = Some(1.0) // We want all campaigns to be in test since this is not in testing phase
     val campaignAdjustmentsPacingDataset = updateAdjustments(campaignInfo, date, pc_underdeliveringCampaigns, campaignAdjustmentsPacingData, campaignAdjustmentPacingTestSplit, updateAdjustmentsVersion)

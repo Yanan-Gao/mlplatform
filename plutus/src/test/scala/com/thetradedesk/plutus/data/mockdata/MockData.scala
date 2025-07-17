@@ -339,7 +339,7 @@ object MockData {
     IsMargin = false
   )
 
-  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), adgroupId: Option[String] = Some("mno012"), supplyVendor: Option[String] = Some("google"), pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0, auctionType: Int = 1, uncappedBidPrice: Double = 0, snapbackMaxBid: Double = 0, maxBidMultiplierCap: Double = 0, maxBidCpmInBucks: Double = 9.0) = PcResultsMergedSchema(
+  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), adgroupId: Option[String] = Some("mno012"), supplyVendor: Option[String] = Some("google"), renderingContext: Int = 1, deviceType: Int = 1, pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0, auctionType: Int = 1, uncappedBidPrice: Double = 0, snapbackMaxBid: Double = 0, maxBidMultiplierCap: Double = 0, maxBidCpmInBucks: Double = 9.0) = PcResultsMergedSchema(
     BidRequestId = "1",
     DealId = dealId,
 
@@ -367,7 +367,7 @@ object MockData {
 
     MatchedCategoryList = Some(List("")),
     MatchedFoldPosition = 1,
-    RenderingContext = 1,
+    RenderingContext = renderingContext,
     ReferrerCategories = Seq(""),
 
     VolumeControlPriority = Some(1),
@@ -384,7 +384,7 @@ object MockData {
     City = Some(""),
     Zip = Some(""),
 
-    DeviceType = 1,
+    DeviceType = deviceType,
     DeviceMake = Some(""),
     DeviceModel = Some(""),
     OperatingSystem = 1,
@@ -658,12 +658,13 @@ object MockData {
     )).toDS()
   }
 
-  def platformReportMock(country: Option[String] = Some("Canada"), campaignId: Option[String] = Some("newcampaign1"), imps: Option[Long] = Some(120000), pcsavings: Option[BigDecimal] = Some(5.0), privateContractId: Option[String] = Some("PrivateContractId")): Dataset[RtbPlatformReportCondensedData] = {
+  def platformReportMock(country: Option[String] = Some("Canada"), renderingContext: Option[String] = Some("InApp"), deviceType: Option[String] = Some("Display"), campaignId: Option[String] = Some("newcampaign1"), imps: Option[Long] = Some(120000), pcsavings: Option[BigDecimal] = Some(5.0), privateContractId: Option[String] = Some("PrivateContractId")): Dataset[RtbPlatformReportCondensedData] = {
     Seq(RtbPlatformReportCondensedData(
       ReportHourUtc = Timestamp.from(Instant.parse("2025-04-24T10:00:00Z")),
       Country = country,
-      RenderingContext = Some("1"),
-      DeviceType = Some("4"),
+      RenderingContext = renderingContext,
+      DeviceType = deviceType,
+      MediaTypeId = Some(1),
       AdFormat = Some("250x250"),
       CampaignId = campaignId,
       SupplyVendor = Some("supplyvendor"),

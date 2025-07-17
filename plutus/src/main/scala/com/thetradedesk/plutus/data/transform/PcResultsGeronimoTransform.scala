@@ -4,7 +4,7 @@ import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImp
 import com.thetradedesk.logging.Logger
 import com.thetradedesk.plutus.data._
 import com.thetradedesk.plutus.data.schema._
-import com.thetradedesk.plutus.data.transform.SharedTransforms.{AddChannel, AddMarketType}
+import com.thetradedesk.plutus.data.transform.SharedTransforms.{AddChannelUsingAdFormat, AddMarketType}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.{AdFormatDataSet, AdFormatRecord, PrivateContractDataSet, PrivateContractRecord}
@@ -38,7 +38,7 @@ object PcResultsGeronimoTransform extends Logger {
       .join(mbtw, joinCols, "left")
       .withColumn("AdFormat", concat($"AdWidthInPixels", lit("x"), $"AdHeightInPixels"))
 
-    res = AddChannel(res, adFormatData)
+    res = AddChannelUsingAdFormat(res, adFormatData)
     res = AddMarketType(res, privateContractsData)
 
     // Converting values from BigDecimal to double to avoid the cost & complexity of BigDecimal
