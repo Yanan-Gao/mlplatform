@@ -80,7 +80,7 @@ class DataQualityGenerator(val dataType: String, val dataSplitType: String) {
     
     val policyTable = AudienceModelPolicyReadableDataset(AudienceModelInputGeneratorConfig.model)
           .readSinglePartition(dateTime)(spark)
-          .select("SyntheticId", "ActiveSize")
+          .select("SyntheticId", "ActiveSize", "ExtendedActiveSize")
 
     val baseAgg = data
       .groupBy('SyntheticId)
@@ -101,7 +101,7 @@ class DataQualityGenerator(val dataType: String, val dataSplitType: String) {
 
     val dataSyntheticId = baseAgg
       .join(policyTable, Seq("SyntheticId"), "inner")
-      .withColumn("weightedPosRatio", 'ActiveSize * 'posRatio)
+      .withColumn("weightedPosRatio", 'ExtendedActiveSize * 'posRatio)
       .join(posRatiosByLevel, Seq("SyntheticId"), "left")
       .withColumn("DataType", lit(dataType + "=" + dataSplitType))
 
