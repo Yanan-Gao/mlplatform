@@ -15,6 +15,7 @@ case class BackoffMonitoringSchema(
                                     CampaignBbfFloorBuffer:Double,
                                     CampaignPCAdjustment:Double,
                                     Actual_BBF_OptOut_Rate:Double,
+                                    MaxBidMultiplierCap: Double,
                                     TestBucket:Short,
                                     BucketGroup:String
                                  )

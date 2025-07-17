@@ -121,7 +121,8 @@ case class HadesBufferAdjustmentSchema(
                                     BBF_OM_BidAmount_Previous: Array[Double] = Array(),
 
                                     BBF_FloorBuffer: Option[Double],
-                                    Actual_BBF_FloorBuffer: Option[Double]
+                                    Actual_BBF_FloorBuffer: Option[Double],
+                                    MaxBidMultiplierCap: Option[Double],
                                   )
 
 case class HadesV3CampaignStats(
@@ -144,5 +145,6 @@ case class HadesV3CampaignStats(
                                Total_OM_BidCount: Long,
                                Total_OM_BidAmount: Double,
                                BBF_OM_BidCount: Double,
-                               BBF_OM_BidAmount: Double
+                               BBF_OM_BidAmount: Double,
+                               MaxBidMultiplierCap: Double
                              )

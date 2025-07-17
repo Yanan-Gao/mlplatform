@@ -167,6 +167,7 @@ object HadesCampaignBufferAdjustmentsTransform {
         sum(
           when(col("BBF_OM_Bid"),lit(1)).otherwise(lit(0))
         ).as("BBF_OM_BidCount"),
+        first("MaxBidMultiplierCap").as("MaxBidMultiplierCap"),
         // This is a workaround we cannot use AdjustmentQuantile here
         // because spark doesn't support column values in this function
         // Also, AdjustmentQuantile is calculated later.

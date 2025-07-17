@@ -897,6 +897,7 @@ object MockData {
       AdjustmentQuantile = 50,
       BBF_FloorBuffer = bbfBuffer,
       Actual_BBF_FloorBuffer = bbfBuffer,
+      MaxBidMultiplierCap = Some(1.0),
     )
   }
 
