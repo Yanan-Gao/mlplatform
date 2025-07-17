@@ -2,13 +2,13 @@ package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.datasets.{CrossDeviceVendor, DataSource}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.isDeviceIdSampled1Percent
-import com.thetradedesk.audience.{date, dateFormatter, shouldTrackTDID, ttdEnv}
+import com.thetradedesk.audience.shouldTrackTDID
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.{DataFrame, Row, SaveMode}
-import org.apache.spark.sql.functions.{e, _}
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{ArrayType, FloatType, IntegerType}
 
 import scala.collection.mutable
@@ -16,32 +16,33 @@ import java.util.UUID
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 
-object TdidEmbeddingDotProductGeneratorOOS {
-  val prometheus = new PrometheusClient("AudienceModelJob", "TdidEmbeddingDotProductGeneratorOOS")
+case class TdidEmbeddingDotProductGeneratorOOSConfig(
+  tdid_emb_path: String,
+  seed_emb_path: String,
+  density_feature_path: String,
+  policy_table_path: String,
+  seed_id_path: String,
+  out_path: String,
+  density_split: Int,
+  density_limit: Int,
+  tdid_limit: Int,
+  debug: Boolean,
+  partition: Int,
+  sensitiveModel: Boolean,
+  minMaxSeedEmb: Double,
+  r: Double,
+  loc_factor: Double
+)
 
-  val salt="TRM"
-  val dateStr = date.format(dateFormatter)
-  val tdid_emb_path= config.getString(
-  "tdid_emb_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/RSMV2/emb/agg/v=1/date=${dateStr}/")
-  val seed_emb_path= config.getString(
-  "seed_emb_path", s"s3://thetradedesk-mlplatform-us-east-1/configdata/test/audience/embedding/RSMV2/RSMv2SensitiveDensityTest/v=1/${dateStr}000000/")
-  val density_feature_path= config.getString(
-  "density_feature_path", s"s3://thetradedesk-mlplatform-us-east-1/features/feature_store/prod/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/date=${dateStr}/")
-  val policy_table_path = config.getString(
-  "policy_table_path", s"s3://thetradedesk-mlplatform-us-east-1/configdata/prod/audience/policyTable/RSM/v=1/${dateStr}000000/")
-  val seed_id_path = config.getString(
-  "seed_id_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/seedids/v=2/date=${dateStr}/")
-  val out_path = config.getString("out_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/tdid2seedid_raw/v=1/date=${dateStr}/") // "s3://thetradedesk-mlplatform-us-east-1/users/youjun.yuan/rsmv2/emb/tdid2seedid/"
-  val density_split = config.getInt("density_split", -1)
-  val density_limit = config.getInt("density_limit", -1)
-  val tdid_limit = config.getInt("tdid_limit", -1)
-  val debug = config.getBoolean("debug", false)
-  val partition = config.getInt("partition", -1)
+object TdidEmbeddingDotProductGeneratorOOS
+  extends AutoConfigResolvingETLJobBase[TdidEmbeddingDotProductGeneratorOOSConfig](
+    groupName = "audience",
+    jobName = "TdidEmbeddingDotProductGeneratorOOS") {
+
+  override val prometheus: Option[PrometheusClient] =
+    Some(new PrometheusClient("AudienceModelJob", "TdidEmbeddingDotProductGeneratorOOS"))
+
   val EmbeddingSize = 64
-  val sensitiveModel = config.getBoolean("sensitiveModel", true)
-  val minMaxSeedEmb = config.getDouble("minMaxSeedEmb", 1e-6)
-  val r = config.getDouble("r", 1e-8f).toFloat
-  val loc_factor = config.getDouble("loc_factor", 0.8f).toFloat
 
   val sigmoid = (x: Float) => (1.0f / (1.0f + math.exp(-x))).toFloat
 
@@ -74,7 +75,25 @@ object TdidEmbeddingDotProductGeneratorOOS {
   val convertUID2ToGUIDUDF = udf(convertUID2ToGUID _)
 
   /////
-  def runETLPipeline(): Unit = {
+  override def runETLPipeline(): Map[String, String] = {
+    val conf = getConfig
+
+    val tdid_emb_path = conf.tdid_emb_path
+    val seed_emb_path = conf.seed_emb_path
+    val density_feature_path = conf.density_feature_path
+    val policy_table_path = conf.policy_table_path
+    val seed_id_path = conf.seed_id_path
+    val out_path = conf.out_path
+    val density_split = conf.density_split
+    val density_limit = conf.density_limit
+    val tdid_limit = conf.tdid_limit
+    val debug = conf.debug
+    val partition = conf.partition
+    val sensitiveModel = conf.sensitiveModel
+    val minMaxSeedEmb = conf.minMaxSeedEmb
+    val r = conf.r.toFloat
+    val loc_factor = conf.loc_factor.toFloat
+
     val df_seed_emb = spark.read.format("parquet").load(seed_emb_path)
       .withColumn("maxEmbedding", array_max('Embedding))
       .filter('maxEmbedding > lit(minMaxSeedEmb))
@@ -183,11 +202,7 @@ object TdidEmbeddingDotProductGeneratorOOS {
         .mode("overwrite")
         .save(out_path + f"split=${i}/")
     })
-  }
-
-  def main(args: Array[String]): Unit = {
-    runETLPipeline()
-    prometheus.pushMetrics()
+    Map("status" -> "success")
   }
 }
 
