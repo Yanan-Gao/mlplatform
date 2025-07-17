@@ -47,13 +47,9 @@ object IDTransform {
     buffer.toArray
   })
 
-  val allIdType = explode(
-    allIdsUDF(
-      col("DeviceAdvertisingId"),
-      col("CookieTDID"),
-      col("UnifiedId2"),
-      col("EUID"),
-      col("IdentityLinkId")))
+  val allIdTypes = Seq("DeviceAdvertisingId", "CookieTDID", "UnifiedId2", "EUID", "IdentityLinkId")
+
+  val allIdType = explode(allIdsUDF(allIdTypes.map(col):_*))
 
   def joinOnIdType(df1: DataFrame, df2: DataFrame, idType: IDType, joinType: String = "inner"): DataFrame = {
     df1

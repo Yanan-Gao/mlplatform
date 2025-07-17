@@ -25,7 +25,7 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
   val readSeedDetailMode = config.getBoolean("readSeedDetailMode", false)
   val MLPlatformS3Root: String = "s3a://thetradedesk-mlplatform-us-east-1/features/feature_store"
   val densityFeatureScoreNewSeedPrefix = config.getString("densityFeatureScoreNewSeedPath",
-    s"$MLPlatformS3Root/prod/profiles/source=bidsimpression/index=SeedId/metadata/v=1/")
+    s"$MLPlatformS3Root/prod/profiles/source=bidsimpression/index=SeedId/metadata/newSeed/v=1/")
 
   private val seedDataSchema = new StructType()
     .add("TDID", StringType)
