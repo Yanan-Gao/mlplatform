@@ -2,6 +2,8 @@ package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore.datasets.metadata.DaRestrictedAdvertiserDataset
 import com.thetradedesk.featurestore.rsm.CommonEnums.DataSource
+import com.thetradedesk.featurestore.transform.IDTransform
+import com.thetradedesk.featurestore.transform.IDTransform.allIdType
 import com.thetradedesk.featurestore.utils.{S3Utils, SeedPolicyUtils}
 import com.thetradedesk.featurestore.{MLPlatformS3Root, date, ttdEnv}
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -25,7 +27,6 @@ object DailyNewSeedFeaturePairDensityScore extends DensityFeatureBaseJob {
   override val jobName: String = "DailyNewSeedFeaturePairDensityScore"
   val jobConfigName: String = "DailyNewSeedDensityScore"
   val doNotTrackTDID: String = "00000000-0000-0000-0000-000000000000"
-  val seedDetailsTimestampFormat = "yyyy-MM-dd'T'HH:mm:ss.SSSSSS"
 
   val seedProcessLowerThreshold = config.getLong("seedProcessLowerThreshold", 2000)
   val seedProcessUpperThreshold = config.getLong("seedProcessUpperThreshold", 100000000)
@@ -36,7 +37,6 @@ object DailyNewSeedFeaturePairDensityScore extends DensityFeatureBaseJob {
   val seedMetaDataRecentVersion = config.getString("seedMetaDataRecentVersion", null)
 
   val seedGroupFeatureKeys = config.getString("seedGroupFeatureKeys", "Site,Zip").split(",").toSeq
-  val supportIdTypeCols = config.getString("supportIdTypeCols", "UIID").split(",").toSeq // CookieTDID,DeviceAdvertisingId,UnifiedId2,EUID
   val isSensitive = config.getBoolean("IsSensitive", false)
   val readSeedDetailMode = config.getBoolean("readSeedDetailMode", false)
   val newSeedRecencyDays = config.getInt("newSeedRecencyDays", 3)
@@ -45,7 +45,7 @@ object DailyNewSeedFeaturePairDensityScore extends DensityFeatureBaseJob {
   val densityFeatureScoreNewSeedPrefix = config.getString("densityFeatureScoreNewSeedPath",
     s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/config=$jobConfigName${seedGroupFeatureKeys.mkString("")}/v=1")
   val densityFeatureScoreNewSeedMetadataPrefix = config.getString("densityFeatureScoreNewSeedPath",
-    s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/metadata/newSeed${seedGroupFeatureKeys.mkString("")}/v=1")
+    s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/metadata/newSeed/v=1")
 
   val activeAdvertiserLookBackDays = config.getInt("activeAdvertiserLookBackDays", 180)
   var newSeedLookBackDays = config.getInt("newSeedLookBackDays", 7)
@@ -111,7 +111,7 @@ object DailyNewSeedFeaturePairDensityScore extends DensityFeatureBaseJob {
       .cache()
   }
 
-  def loadInputData(date: LocalDate) = {
+  def loadBidImpression(date: LocalDate) = {
     val dateStr = getDateStr(date)
     val yyyy = dateStr.substring(0, 4)
     val mm = dateStr.substring(4, 6)
@@ -121,18 +121,12 @@ object DailyNewSeedFeaturePairDensityScore extends DensityFeatureBaseJob {
       .map(c => col(c).isNotNull)
       .reduce(_ && _)
 
-    val supportIdCondition = supportIdTypeCols
-      .map(c => col(c).isNotNull && col(c) =!= doNotTrackTDID)
-      .reduce(_ || _)
-
-    val df = spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/features/data/koav4/v=1/prod/bidsimpressions/year=$yyyy/month=$mm/day=$dd/")
-      .select((supportIdTypeCols ++ seedGroupFeatureKeys :+ "BidRequestId").map(col): _*)
+    spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/features/data/koav4/v=1/prod/bidsimpressions/year=$yyyy/month=$mm/day=$dd/")
+      .select((IDTransform.allIdTypes ++ seedGroupFeatureKeys :+ "BidRequestId").map(col): _*)
       .filter(seedGroupFeatureCondition)
-      .filter(supportIdCondition)
-
-    val hashedColumn = xxhash64(concat(concat_ws("", seedGroupFeatureKeys.map(col): _*), lit(salt))).cast("long")
-
-    df.withColumn("FeatureValueHashed", hashedColumn)
+      .withColumn("TDID", allIdType)
+      .withColumn("FeatureValueHashed", xxhash64(concat(concat_ws("", seedGroupFeatureKeys.map(col): _*), lit(salt))).cast("long"))
+      .select("TDID", "FeatureValueHashed", "BidRequestId")
   }
 
   def readSeedDetailPath(seedDetailFilePath: String) = {
@@ -169,7 +163,6 @@ object DailyNewSeedFeaturePairDensityScore extends DensityFeatureBaseJob {
     }
   }
 
-
   override def runTransform(args: Array[String]): Unit = {
     val dateStr = getDateStr(date)
     val siteZipScoreNewSeedPath = s"${densityFeatureScoreNewSeedPrefix}/date=${dateStr}"
@@ -180,30 +173,24 @@ object DailyNewSeedFeaturePairDensityScore extends DensityFeatureBaseJob {
 
     if (!readSeedDetailMode) {
       FSUtils.writeStringToFile(s"$siteZipScoreNewSeedMetadataPath/_SEED_DETAIL_PATH", seedDetailPath)(spark)
-      //if already exit throw error
     }
 
     val newSeedIds = findNewSeed(seedDetailPath)
     val newSeedCount = newSeedIds.count()
 
-    if (newSeedCount == 0) {
+    val newSeedDensityScores = if (newSeedCount == 0) {
       FSUtils.writeStringToFile(s"$siteZipScoreNewSeedMetadataPath/_EMPTY", "")(spark)
+      spark.emptyDataset[DailyNewSeedFeaturePairDensityScoreRecord]
     } else if (newSeedCount > maxNewSeedCountThreshold) {
       FSUtils.writeStringToFile(s"$siteZipScoreNewSeedMetadataPath/_OVER_MAX", "")(spark)
+      spark.emptyDataset[DailyNewSeedFeaturePairDensityScoreRecord]
     }
     else {
       val aggregatedNewSeed = aggregateNewSeed(newSeedIds, seedDetailPath)
-      val bidreq = loadInputData(date)
-
-      // same as
-      // bidreq("DeviceAdvertisingId") === aggregatedNewSeed("TDID") ||
-      // bidreq("CookieTDID") === aggregatedNewSeed("TDID") || ...
-      val joinCondition = supportIdTypeCols
-        .map(c => bidreq(c) === aggregatedNewSeed("TDID"))
-        .reduce(_ || _)
+      val bidreq = loadBidImpression(date)
 
       val seedDensity =
-        bidreq.join(aggregatedNewSeed, joinCondition)
+        bidreq.join(aggregatedNewSeed, Seq("TDID"))
           .groupBy('BidRequestId, 'FeatureValueHashed)
           .agg(
             array_distinct(flatten(collect_list(col("SeedIds")))).as("SeedIds")
@@ -217,16 +204,21 @@ object DailyNewSeedFeaturePairDensityScore extends DensityFeatureBaseJob {
       val generalPopulationFrequencyMap = bidreq.groupBy("FeatureValueHashed").count()
       val totalCnt = generalPopulationFrequencyMap.agg(sum("count")).first().getLong(0)
 
-      val featureKeyScoreSeedId = generalPopulationFrequencyMap
+      generalPopulationFrequencyMap
         .withColumnRenamed("Count", "PopCount")
         .join(seedDensity, "FeatureValueHashed")
         .withColumn("OutDensity", ('PopCount - 'SeedCount) / (lit(totalCnt) - 'SeedTotalCount))
         .withColumn("DensityScore", 'InDensity / ('InDensity + 'OutDensity))
         .select("FeatureValueHashed", "SeedId", "DensityScore")
-
-      featureKeyScoreSeedId.write.mode(SaveMode.Overwrite).parquet(siteZipScoreNewSeedPath)
+        .as[DailyNewSeedFeaturePairDensityScoreRecord]
     }
 
-    FSUtils.writeStringToFile(s"$siteZipScoreNewSeedMetadataPath/_SUCCESS", "")(spark)
+    newSeedDensityScores.write.mode(SaveMode.Overwrite).parquet(siteZipScoreNewSeedPath)
   }
 }
+
+case class DailyNewSeedFeaturePairDensityScoreRecord(
+                                                      FeatureValueHashed: Long,
+                                                      SeedId: String,
+                                                      DensityScore: Double
+                                                    )
