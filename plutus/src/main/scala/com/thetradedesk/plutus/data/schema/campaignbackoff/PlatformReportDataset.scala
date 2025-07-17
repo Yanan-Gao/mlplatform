@@ -8,6 +8,7 @@ case class RtbPlatformReportCondensedData(
                                       Country: Option[String],
                                       RenderingContext: Option[String],
                                       DeviceType: Option[String],
+                                      MediaTypeId: Option[Long],
                                       AdFormat: Option[String],
                                       CampaignId: Option[String],
                                       SupplyVendor: Option[String],

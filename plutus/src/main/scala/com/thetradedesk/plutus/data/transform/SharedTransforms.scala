@@ -14,9 +14,9 @@ object SharedTransforms {
       .select($"df.*", $"MediaTypeId")
   }
 
-  // Define the function get Channel
-  def AddChannel(df: DataFrame, adFormatData: Dataset[AdFormatRecord], mediaTypeCol: String = "MediaTypeId", renderingContextCol: String = "RenderingContext.value", deviceTypeCol: String = "DeviceType.value"): DataFrame = {
-    AddMediaTypeFromAdFormat(df, adFormatData)
+  // Define the function get Channel from Ids
+  def AddChannel(df: DataFrame, mediaTypeCol: String = "MediaTypeId", renderingContextCol: String = "RenderingContext.value", deviceTypeCol: String = "DeviceType.value"): DataFrame = {
+    df
       .withColumn("Channel",
         when(col(mediaTypeCol) === lit(MediaTypeId.Audio), ChannelType.Audio)
           .when(col(mediaTypeCol) === lit(MediaTypeId.Native), ChannelType.Native)
@@ -51,6 +51,12 @@ object SharedTransforms {
           .otherwise($"Channel"))
   }
 
+  // If dataset only has AdFormat, you need to get the MediaTypeId from AdFormat before applying AddChannel
+  def AddChannelUsingAdFormat(df: DataFrame, adFormatData: Dataset[AdFormatRecord], mediaTypeCol: String = "MediaTypeId", renderingContextCol: String = "RenderingContext.value", deviceTypeCol: String = "DeviceType.value"): DataFrame = {
+    val getMediaTypeId = AddMediaTypeFromAdFormat(df, adFormatData)
+    AddChannel(getMediaTypeId, mediaTypeCol, renderingContextCol, deviceTypeCol)
+  }
+
   def AddMarketType(df: DataFrame, privateContractsData: Dataset[PrivateContractRecord]): DataFrame = {
     df.alias("df")
       .join(broadcast(privateContractsData).alias("pc"), $"df.PrivateContractId" === $"pc.PrivateContractId", "left")
@@ -73,4 +79,23 @@ object SharedTransforms {
           .otherwise(MarketType.OpenMarket))
       .select($"df.*", $"DetailedMarketType")
   }
+
+  def AddDeviceTypeIdAndRenderingContextId(df: DataFrame, renderingContextCol: String = "RenderingContext.value", deviceTypeCol: String = "DeviceType.value"): DataFrame = {
+    df
+      .withColumn("RenderingContextId",
+        when(col(renderingContextCol) === "Other", RenderingContext.Other)
+          .when(col(renderingContextCol) === "InApp", RenderingContext.InApp)
+          .when(col(renderingContextCol) === "MobileOptimizedWeb", RenderingContext.MobileOptimizedWeb)
+      )
+      .withColumn("DeviceTypeId",
+        when(col(deviceTypeCol) === "Other", DeviceTypeId.Other)
+          .when(col(deviceTypeCol) === "PC", DeviceTypeId.PC)
+          .when(col(deviceTypeCol) === "Tablet", DeviceTypeId.Tablet)
+          .when(col(deviceTypeCol) === "Mobile", DeviceTypeId.Mobile)
+          .when(col(deviceTypeCol) === "Roku", DeviceTypeId.Roku)
+          .when(col(deviceTypeCol) === "ConnectedTV", DeviceTypeId.ConnectedTV)
+          .when(col(deviceTypeCol) === "OutOfHome", DeviceTypeId.OutOfHome)
+      )
+  }
+
 }
