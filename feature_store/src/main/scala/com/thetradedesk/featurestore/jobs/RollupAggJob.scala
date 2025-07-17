@@ -129,7 +129,7 @@ object RollupAggJob extends FeatureStoreAggBaseJob {
           rawAggResultByWindow(window) = maxAggregatedResult
           selectByDefinition(maxAggregatedResult, aggDef, window, aLevel)
         } else {
-          val rawAggResult = aggByDefinition(maxAggregatedResult.union(restDaysDf), aggDef, aLevel)
+          val rawAggResult = aggByDefinition(maxAggregatedResult.unionByName(restDaysDf, allowMissingColumns = true), aggDef, aLevel)
           rawAggResultByWindow(window) = rawAggResult
           selectByDefinition(rawAggResult, aggDef, window, aLevel)
         }
