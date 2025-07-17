@@ -1,0 +1,47 @@
+dataSource:
+  name: BidsImpressions
+  rootPath: /Users/sven.zhang/Documents/local_test
+  prefix: /source=impressions/raw/year={year}/month={monthMM}/day={dayDD}/hourPart={hourInt}/
+  format: parquet
+  loadQuery: |
+    SELECT
+    UIID as TDID,
+    CampaignId,
+    AdvertiserId,
+    CAST(IsImp AS INT) as WinRate
+    FROM datasource
+
+# aggregation levels configuration
+aggLevels:
+  - level: AdvertiserId
+    saltSize: 100
+    initAggGrains: [ hour ]
+    initWritePartitions: 10
+    enableFeatureKeyCount: true
+  - level: CampaignId
+    saltSize: 100
+    initAggGrains: [ hour ]
+    initWritePartitions: 10
+    enableFeatureKeyCount: true
+  - level: TDID
+    saltSize: -1
+    initAggGrains: [ hour ]
+    initWritePartitions: 1500
+    rollupWritePartitions: 10000
+    enableFeatureKeyCount: true
+
+initAggConfig:
+  outputRootPath: /Users/sven.zhang/Documents/local_test
+  outputPrefix: /source=bidsimpression/index={indexPartition}/job={grain}InitialAggJob
+  dataIntegrity: AT_LEAST_ONE
+
+rollupAggConfig:
+  outputRootPath: "s3a://thetradedesk-mlplatform-us-east-1"
+  outputPrefix: /source=bidsimpression/index={indexPartition}/job=RollupAggJob/date={dateStr}
+  windowGrain: day
+
+aggregations:
+  - field: WinRate
+    dataType: int
+    aggWindows: [ 1, 3, 7 ]
+    aggFunc: [ Mean ]
