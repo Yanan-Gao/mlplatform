@@ -285,8 +285,12 @@ abstract class AudiencePolicyTableGenerator(
   def retrieveSourceData(date: LocalDate): DataFrame
 
   private def allocateSyntheticId(dateTime: LocalDateTime, policyTable: DataFrame): DataFrame = {
-    val recentVersionOption = if (conf.seedMetaDataRecentVersion != null) Some(LocalDateTime.parse(conf.seedMetaDataRecentVersion.split("=")(1), DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSS")).toLocalDate.atStartOfDay())
-    else availablePolicyTableVersions.find(_.isBefore(dateTime))
+    val recentVersionOption = conf.seedMetaDataRecentVersion
+      .map(v => LocalDateTime
+        .parse(v.split("=")(1), DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSS"))
+        .toLocalDate
+        .atStartOfDay())
+      .orElse(availablePolicyTableVersions.find(_.isBefore(dateTime)))
 
     if (!(recentVersionOption.isDefined) || conf.policyTableResetSyntheticId) {
       val updatedPolicyTable = policyTable
@@ -306,8 +310,12 @@ abstract class AudiencePolicyTableGenerator(
   }
 
   protected def activeUserRatio(dateTime: LocalDateTime): Double = {
-    val recentVersionOption = if (conf.seedMetaDataRecentVersion != null) Some(LocalDateTime.parse(conf.seedMetaDataRecentVersion.split("=")(1), DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSS")).toLocalDate.atStartOfDay())
-    else availablePolicyTableVersions.find(_.isBefore(dateTime))
+    val recentVersionOption = conf.seedMetaDataRecentVersion
+      .map(v => LocalDateTime
+        .parse(v.split("=")(1), DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSS"))
+        .toLocalDate
+        .atStartOfDay())
+      .orElse(availablePolicyTableVersions.find(_.isBefore(dateTime)))
 
     if (recentVersionOption.isEmpty || conf.policyTableResetSyntheticId) {
       conf.activeUserRatio

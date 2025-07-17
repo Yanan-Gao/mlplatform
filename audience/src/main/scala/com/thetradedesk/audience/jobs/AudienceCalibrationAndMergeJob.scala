@@ -23,7 +23,7 @@ case class AudienceCalibrationAndMergeJobConfig(
   tmpSenEmbeddingDataS3Path: String,
   embeddingDataS3Path: String,
   inferenceDataS3Path: String,
-  embeddingRecentVersion: String,
+  embeddingRecentVersion: Option[String],
   anchorStartDate: LocalDate,
   smoothFactor: Double,
   locationFactor: Double,
@@ -62,10 +62,9 @@ object AudienceCalibrationAndMergeJob
     .toSeq
     .sortWith(_.isAfter(_))
 
-    val recentVersionOption =
-      if (jobConf.embeddingRecentVersion != null)
-        Some(LocalDateTime.parse(jobConf.embeddingRecentVersion, embeddingTableDateFormatter))
-      else availableEmbeddingVersions.find(_.isBefore(dateTime))
+    val recentVersionOption = jobConf.embeddingRecentVersion
+      .map(LocalDateTime.parse(_, embeddingTableDateFormatter))
+      .orElse(availableEmbeddingVersions.find(_.isBefore(dateTime)))
 
     val recentVersionStr = recentVersionOption.get.asInstanceOf[java.time.LocalDateTime].toLocalDate.format(formatter)
 
