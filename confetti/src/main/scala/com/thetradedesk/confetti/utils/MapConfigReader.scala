@@ -14,6 +14,38 @@ import scala.util.Try
 class MapConfigReader(map: Map[String, String], logger: CloudWatchLogger) {
   private val errors = ListBuffer.empty[String]
 
+  private def getSeqOpt[T](
+      key: String,
+      parse: String => T,
+      typeName: String): Option[Seq[T]] =
+    map.get(key) match {
+      case Some(v) =>
+        Try(v.split(",").filter(_.nonEmpty).map(s => parse(s.trim)).toSeq).toOption match {
+          case Some(seq) => Some(seq)
+          case None =>
+            errors += s"$key cannot be parsed as Seq[$typeName]"
+            None
+        }
+      case None => None
+    }
+
+  private def getSeq[T](
+      key: String,
+      parse: String => T,
+      typeName: String): Option[Seq[T]] =
+    map.get(key) match {
+      case Some(v) =>
+        Try(v.split(",").filter(_.nonEmpty).map(s => parse(s.trim)).toSeq).toOption match {
+          case Some(seq) => Some(seq)
+          case None =>
+            errors += s"$key cannot be parsed as Seq[$typeName]"
+            None
+        }
+      case None =>
+        errors += s"$key does not exist"
+        None
+    }
+
   def getString(key: String): Option[String] = map.get(key) match {
     case Some(v) => Some(v)
     case None =>
@@ -78,6 +110,21 @@ class MapConfigReader(map: Map[String, String], logger: CloudWatchLogger) {
       }
     case None => None
   }
+
+  def getStringSeqOpt(key: String): Option[Seq[String]] =
+    getSeqOpt(key, identity, "String")
+
+  def getIntSeqOpt(key: String): Option[Seq[Int]] =
+    getSeqOpt(key, _.toInt, "Int")
+
+  def getLongSeqOpt(key: String): Option[Seq[Long]] =
+    getSeqOpt(key, _.toLong, "Long")
+
+  def getDoubleSeqOpt(key: String): Option[Seq[Double]] =
+    getSeqOpt(key, _.toDouble, "Double")
+
+  def getDateSeqOpt(key: String): Option[Seq[LocalDate]] =
+    getSeqOpt(key, LocalDate.parse, "LocalDate")
 
   def getInt(key: String): Option[Int] = map.get(key) match {
     case Some(v) =>
@@ -144,6 +191,21 @@ class MapConfigReader(map: Map[String, String], logger: CloudWatchLogger) {
       None
   }
 
+  def getStringSeq(key: String): Option[Seq[String]] =
+    getSeq(key, identity, "String")
+
+  def getIntSeq(key: String): Option[Seq[Int]] =
+    getSeq(key, _.toInt, "Int")
+
+  def getLongSeq(key: String): Option[Seq[Long]] =
+    getSeq(key, _.toLong, "Long")
+
+  def getDoubleSeq(key: String): Option[Seq[Double]] =
+    getSeq(key, _.toDouble, "Double")
+
+  def getDateSeq(key: String): Option[Seq[LocalDate]] =
+    getSeq(key, LocalDate.parse, "LocalDate")
+
   /** Print any collected errors and throw IllegalArgumentException if present. */
   private def assertValid(): Unit = {
     if (errors.nonEmpty) {
@@ -156,7 +218,8 @@ class MapConfigReader(map: Map[String, String], logger: CloudWatchLogger) {
   /**
    * Construct an instance of the given case class using reflection. Field names
    * must match configuration keys exactly and supported types are String,
-   * Int, Long, Double, Boolean and java.time.LocalDate. Fields wrapped in
+   * Int, Long, Double, Boolean, java.time.LocalDate and various Seq types.
+   * Fields wrapped in
    * `Option` are treated as optional.
    */
   def as[T: TypeTag : ClassTag]: T = {
@@ -181,6 +244,11 @@ class MapConfigReader(map: Map[String, String], logger: CloudWatchLogger) {
             else if (inner =:= typeOf[Long]) getLongOpt(name)
             else if (inner =:= typeOf[Boolean]) getBooleanOpt(name)
             else if (inner =:= typeOf[LocalDate]) getDateOpt(name)
+            else if (inner =:= typeOf[Seq[String]]) getStringSeqOpt(name)
+            else if (inner =:= typeOf[Seq[Int]]) getIntSeqOpt(name)
+            else if (inner =:= typeOf[Seq[Long]]) getLongSeqOpt(name)
+            else if (inner =:= typeOf[Seq[Double]]) getDoubleSeqOpt(name)
+            else if (inner =:= typeOf[Seq[LocalDate]]) getDateSeqOpt(name)
             else {
               errors += s"$name has unsupported type $t"
               None
@@ -192,6 +260,11 @@ class MapConfigReader(map: Map[String, String], logger: CloudWatchLogger) {
         else if (t =:= typeOf[Long]) getLong(name)
         else if (t =:= typeOf[Boolean]) getBoolean(name)
         else if (t =:= typeOf[LocalDate]) getDate(name)
+        else if (t =:= typeOf[Seq[String]]) getStringSeq(name)
+        else if (t =:= typeOf[Seq[Int]]) getIntSeq(name)
+        else if (t =:= typeOf[Seq[Long]]) getLongSeq(name)
+        else if (t =:= typeOf[Seq[Double]]) getDoubleSeq(name)
+        else if (t =:= typeOf[Seq[LocalDate]]) getDateSeq(name)
         else {
           errors += s"$name has unsupported type $t"
           None
