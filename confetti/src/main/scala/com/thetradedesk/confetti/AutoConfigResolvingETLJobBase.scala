@@ -47,7 +47,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](groupName: S
   /**
    * Run the ETL pipeline using the loaded config, exposure for user's implementation.
    */
-  def runETLPipeline(): Map[String, String]
+  def runETLPipeline(): Unit
 
   /** Executes the job by loading configuration, running the pipeline and writing the results. */
   private val runtimePathBase: String =
@@ -63,10 +63,9 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](groupName: S
     if (jobConfig.isEmpty) {
       throw new IllegalStateException("Config not initialized")
     }
-    val result = runETLPipeline()
-    writeYaml(result, runtimePathBase + "results.yml")
-    // Write a _SUCCESS file to signal job completion
-    S3Utils.writeToS3(runtimePathBase + "_SUCCESS", "")
+    runETLPipeline()
+    // Write a _SUCCESS file to signal job completion with experiment name
+    S3Utils.writeToS3(runtimePathBase + "_SUCCESS", experimentName.getOrElse(""))
   }
 
   /** Read a YAML file from S3 into a map. */

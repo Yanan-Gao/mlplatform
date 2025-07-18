@@ -33,7 +33,7 @@ object TdidSeedScoreScale
   override val prometheus: Option[PrometheusClient] = None
 
   /////
-  override def runETLPipeline(): Map[String, String] = {
+  override def runETLPipeline(): Unit = {
     val conf = getConfig
     date = conf.runDate
     val dateStr = date.format(dateFormatter)
@@ -124,10 +124,9 @@ object TdidSeedScoreScale
       .select("SeedId", "PopulationSeedScore", "ActiveSize", "PopulationSeedScoreRaw", "p25", "p50", "p75") // keep the raw population score, in case need it for debug
       .coalesce(1)
       .write
-      .format("parquet")
-      .mode("overwrite")
-      .save(population_score_path)
+        .format("parquet")
+        .mode("overwrite")
+        .save(population_score_path)
 
-    Map("status" -> "success")
   }
 }

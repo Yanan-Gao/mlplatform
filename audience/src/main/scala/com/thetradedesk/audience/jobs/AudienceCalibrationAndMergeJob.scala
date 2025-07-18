@@ -41,7 +41,7 @@ object AudienceCalibrationAndMergeJob
   override val prometheus: Option[PrometheusClient] =
     Some(new PrometheusClient("AudienceModelJob", "AudienceCalibrationAndMergeJob"))
 
-  override def runETLPipeline(): Map[String, String] = {
+  override def runETLPipeline(): Unit = {
     val conf = getConfig
     val date = conf.runDate
     val dateTime = conf.runDate.atStartOfDay()
@@ -192,7 +192,6 @@ object AudienceCalibrationAndMergeJob
                                                   .withColumn("LocationFactor", col("LocationFactor").cast(FloatType))
     
     finalEmbeddingTable.distinct().repartition(1).write.option("compression", "gzip").mode(jobConf.writeMode).parquet(outputEmbeddingPath)
-    Map("status" -> "success")
 
   }
 }

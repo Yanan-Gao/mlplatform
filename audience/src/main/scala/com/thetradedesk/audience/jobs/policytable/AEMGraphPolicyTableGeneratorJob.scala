@@ -14,12 +14,11 @@ object AEMGraphPolicyTableGeneratorJob
   override val prometheus: Option[PrometheusClient] =
     Some(new PrometheusClient("AudienceModelJob", "AEMGraphPolicyTableGeneratorJob"))
 
-  override def runETLPipeline(): Map[String, String] = {
+  override def runETLPipeline(): Unit = {
     val conf = getConfig
     date = conf.runDate
     dateTime = conf.runDate.atStartOfDay()
     val generator = new AEMGraphPolicyTableGenerator(prometheus.get, conf)
     generator.generatePolicyTable()
-    Map("status" -> "success")
   }
 }

@@ -129,7 +129,7 @@ object RelevanceModelInputGeneratorJob
     )
   }
 
-  override def runETLPipeline(): Map[String, String] = {
+  override def runETLPipeline(): Unit = {
     jobConfig = getConfig
     dateTime = jobConfig.runDate.atStartOfDay()
 
@@ -155,6 +155,5 @@ object RelevanceModelInputGeneratorJob
     }
 
     jobRunningTime.labels(jobConfig.modelName.toLowerCase, dateTime.toLocalDate.toString).set(System.currentTimeMillis() - start)
-    Map("status" -> "success")
   }
 }

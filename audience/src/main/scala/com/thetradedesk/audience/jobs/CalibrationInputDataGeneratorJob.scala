@@ -34,7 +34,7 @@ object CalibrationInputDataGeneratorJob
   override val prometheus: Option[PrometheusClient] =
     Some(new PrometheusClient("AudienceCalibrationDataJob", "RSMCalibrationInputDataGeneratorJob"))
 
-  override def runETLPipeline(): Map[String, String] = {
+  override def runETLPipeline(): Unit = {
     val conf = getConfig
 
     val jobConf = conf.copy(
@@ -43,7 +43,6 @@ object CalibrationInputDataGeneratorJob
       calibrationOutputDataS3Path = S3Utils.refinePath(conf.calibrationOutputDataS3Path)
     )
     RSMCalibrationInputDataGenerator.generateMixedOOSData(conf.runDate, jobConf)
-    Map("status" -> "success")
   }
 }
 

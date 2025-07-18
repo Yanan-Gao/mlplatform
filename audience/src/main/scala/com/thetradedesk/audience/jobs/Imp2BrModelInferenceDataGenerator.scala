@@ -58,7 +58,7 @@ object Imp2BrModelInferenceDataGenerator
     uiids.toSeq
   })
 
-  override def runETLPipeline(): Map[String, String] = {
+  override def runETLPipeline(): Unit = {
     val conf = getConfig
     val date = conf.runDate
     val dateTime = conf.runDate.atStartOfDay()
@@ -67,7 +67,6 @@ object Imp2BrModelInferenceDataGenerator
 
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack=Some(0), source = Some(GERONIMO_DATA_SOURCE))
       .withColumn("Uiids", getAllUiidsUdfWithSample(_isDeviceIdSampled1Percent)('CookieTDID, 'DeviceAdvertisingId, 'UnifiedId2, 'EUID, 'IdentityLinkId))
-      .withColumn("TDID", explode(col("Uiids")))
       .drop("Uiids")
       .filter("SUBSTRING(TDID, 9, 1) = '-'")
       .select('BidRequestId, // use to connect with bidrequest, to get more features
@@ -142,6 +141,5 @@ object Imp2BrModelInferenceDataGenerator
         saveMode = SaveMode.Overwrite,
         numPartitions = Some(10000)
       )
-    Map("status" -> "success")
   }
 }
