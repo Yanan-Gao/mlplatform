@@ -75,7 +75,7 @@ object TdidEmbeddingDotProductGeneratorOOS
   val convertUID2ToGUIDUDF = udf(convertUID2ToGUID _)
 
   /////
-  override def runETLPipeline(): Map[String, String] = {
+  override def runETLPipeline(): Unit = {
     val conf = getConfig
 
     val tdid_emb_path = conf.tdid_emb_path
@@ -202,7 +202,6 @@ object TdidEmbeddingDotProductGeneratorOOS
         .mode("overwrite")
         .save(out_path + f"split=${i}/")
     })
-    Map("status" -> "success")
   }
 }
 

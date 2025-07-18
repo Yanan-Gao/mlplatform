@@ -260,7 +260,7 @@ object TdidEmbeddingDotProductGenerator
   val decodeTdid: UserDefinedFunction = udf(guidToLongs _)
 
   /////
-  override def runETLPipeline(): Map[String, String] = {
+  override def runETLPipeline(): Unit = {
     val conf = getConfig
     val dt = LocalDateTime.parse(conf.date_time)
     val date = dt.toLocalDate
@@ -403,7 +403,6 @@ object TdidEmbeddingDotProductGenerator
         .mode("overwrite")
         .save(out_path + f"split=${i}/")
   })
-    Map("status" -> "success")
   }
 }
 

@@ -14,10 +14,9 @@ object RSMGraphPolicyTableGeneratorJob
   override val prometheus: Option[PrometheusClient] =
     Some(new PrometheusClient("AudienceModelJob", "RSMGraphPolicyTableGeneratorJob"))
 
-  override def runETLPipeline(): Map[String, String] = {
+  override def runETLPipeline(): Unit = {
     val conf = getConfig
     val generator = new RSMGraphPolicyTableGenerator(prometheus.get, conf)
     generator.generatePolicyTable()
-    Map("status" -> "success")
   }
 }

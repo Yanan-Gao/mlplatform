@@ -38,12 +38,11 @@ object PopulationInputDataGeneratorJob
   override val prometheus: Option[PrometheusClient] =
     Some(new PrometheusClient("AudiencePopulationDataJob", "PopulationInputDataGeneratorJob"))
 
-  override def runETLPipeline(): Map[String, String] = {
+  override def runETLPipeline(): Unit = {
     val conf = getConfig
     val date = conf.runDate
 
     RSMPopulationInputDataGenerator.generatePopulationData(date, conf)
-    Map("status" -> "success")
   }
 }
 
