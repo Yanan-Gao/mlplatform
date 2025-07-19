@@ -104,7 +104,8 @@ object TdidSeedScoreScale {
       .selectExpr("pos", "d.SeedId", "d.ExtendedActiveSize", "d.PopulationRelevance as PopulationSeedScoreRaw")
       .join(tiles, Seq("pos"), "left")
       .withColumn("PopulationSeedScore", lit(1.0))
-      .select("SeedId", "PopulationSeedScore", "ExtendedActiveSize", "PopulationSeedScoreRaw", "p25", "p50", "p75") // keep the raw population score, in case need it for debug
+      .withColumn("ActiveSize", col("ExtendedActiveSize"))
+      .select("SeedId", "PopulationSeedScore", "ActiveSize", "ExtendedActiveSize", "PopulationSeedScoreRaw", "p25", "p50", "p75") // keep the raw population score, in case need it for debug
       .coalesce(1)
       .write
       .format("parquet")
