@@ -1,6 +1,6 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.datasets.PredictiveClearingMetricsDataset.{PC_BACKOFF_NO_ADJUSTMENT, PC_PLATFORM_BBF_BUFFER}
+import com.thetradedesk.audience.datasets.FloorAgnosticBiddingMetricsDataset.{MAXBID_MULTIPLIER_DEFAULT, PC_BACKOFF_NO_ADJUSTMENT, PC_BACKOFF_NO_OPTOUT, PC_PLATFORM_BBF_BUFFER}
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.dateTime
 import com.thetradedesk.geronimo.shared.loadParquetData
@@ -30,8 +30,7 @@ object DiagnosisDataGenerator {
       .select("CurrencyCodeId", "FromUSD")
 
     // FAB (Floor Agnostic Bidding) metrics
-    // TODO: Once all FAB related metrics are generated in the new monitoring job, write them in a single dataset and use that instead
-    val fabMetrics = loadParquetData[PredictiveClearingMetricsRecord](s3path = PredictiveClearingMetricsDataset.PCMetricsS3, date = date, lookBack = Some(3), getLatestDateOnly = Some(true))
+    val fabMetrics = loadParquetData[FloorAgnosticBiddingMetricsRecord](s3path = FloorAgnosticBiddingMetricsDataset.PCMetricsS3, date = date, lookBack = Some(3), getLatestDateOnly = Some(true))
 
     val adgroups = AdGroupDataSet().readLatestPartitionUpTo(date, true)
     .join(advertisers, Seq("AdvertiserId"), "left")
@@ -121,6 +120,8 @@ object DiagnosisDataGenerator {
       .join(fabMetrics, Seq("CampaignId"), "left")
       .withColumn("CampaignPCBackoffAdjustment", coalesce(col("CampaignPCAdjustment"), lit(PC_BACKOFF_NO_ADJUSTMENT)))
       .withColumn("CampaignFabFloorBuffer", coalesce(col("CampaignBbfFloorBuffer"), lit(PC_PLATFORM_BBF_BUFFER)))
+      .withColumn("CampaignFabOptOutRate", coalesce(col("Actual_BBF_OptOut_Rate"), lit(PC_BACKOFF_NO_OPTOUT)))
+      .withColumn("MaxBidMultiplierCap", coalesce(col("MaxBidMultiplierCap"), lit(MAXBID_MULTIPLIER_DEFAULT)))
       .select(
         col("CampaignId"),
         col("AdGroupId"),
@@ -199,6 +200,8 @@ object DiagnosisDataGenerator {
           col("CorrRxSystemAuto"),
           col("CampaignPCBackoffAdjustment"),
           col("CampaignFabFloorBuffer"),
+          col("CampaignFabOptOutRate"),
+          col("MaxBidMultiplierCap")
         )).as("CountMetrics")
       )
       .as[DiagnosisRecord]
