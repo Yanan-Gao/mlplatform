@@ -8,6 +8,7 @@ import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, readModelFeatures}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import com.thetradedesk.confetti.utils.CloudWatchLogger
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.FloatType
@@ -20,19 +21,9 @@ case class Imp2BrModelInferenceDataGeneratorConfig(
   runDate: LocalDate
 )
 
-object Imp2BrModelInferenceDataGenerator
-  extends AutoConfigResolvingETLJobBase[Imp2BrModelInferenceDataGeneratorConfig](
-    groupName = "audience",
-    jobName = "Imp2BrModelInferenceDataGenerator") {
+class Imp2BrModelInferenceDataGenerator(prometheus: PrometheusClient) {
 
-//  override val prometheus: Option[PrometheusClient] = None
-  override val prometheus: Option[PrometheusClient] = Some(new PrometheusClient("audience", "Imp2BrModelInferenceDataGenerator"))
-
-  /***
-   * Generate RMSv2 BidRequest model offline prediction input dataset, based on BidImpression,
-   * with sampling logic aligned with SIBv3
-   */
-  val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
+  val bidImpressionsS3Path: String = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
   def getAllUiidsUdfWithSample(sampleFun: String => Boolean) = udf((tdid: String, deviceAdvertisingId: String, uid2: String, euid: String, identityLinkId: String) => {
     val uiids = ArrayBuffer[String]()
@@ -57,13 +48,12 @@ object Imp2BrModelInferenceDataGenerator
     uiids.toSeq
   })
 
-  override def runETLPipeline(): Unit = {
-    val conf = getConfig
+  def run(conf: Imp2BrModelInferenceDataGeneratorConfig, logger: CloudWatchLogger): Unit = {
     val date = conf.runDate
     val dateTime = conf.runDate.atStartOfDay()
-    getLogger.info("I'm here. ")
+    logger.info("I'm here. ")
 
-    val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack=Some(0), source = Some(GERONIMO_DATA_SOURCE))
+    val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))
       .withColumn("Uiids", getAllUiidsUdfWithSample(_isDeviceIdSampled1Percent)('CookieTDID, 'DeviceAdvertisingId, 'UnifiedId2, 'EUID, 'IdentityLinkId))
       .withColumn("TDID", explode(col("Uiids")))
       .drop("Uiids")
@@ -131,10 +121,10 @@ object Imp2BrModelInferenceDataGenerator
       .withColumn("AdvertiserId", lit(0))
       .withColumn("SupplyVendorPublisherId", lit(0))
 
-    getLogger.info("Loaded bid impression parquet dataset.")
+    logger.info("Loaded bid impression parquet dataset.")
 
     val dataset = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](bidsImpressions, readModelFeatures(conf.feature_path))
-    getLogger.info("Constructed a feature dataset.")
+    logger.info("Constructed a feature dataset.")
 
     try {
       AudienceModelInputDataset(Model.RSMV2.toString, tag = "Imp_Seed_None", version = 1)
@@ -146,13 +136,24 @@ object Imp2BrModelInferenceDataGenerator
           numPartitions = Some(10000)
         )
     } catch {
-      case e: Exception => {
-        getLogger.info("error when writing: " + e.getMessage)
+      case e: Exception =>
+        logger.info("error when writing: " + e.getMessage)
         throw e
-      }
     }
 
-    getLogger.info("Finished writing feature dataset.")
+    logger.info("Finished writing feature dataset.")
+  }
+}
 
+object Imp2BrModelInferenceDataGenerator
+  extends AutoConfigResolvingETLJobBase[Imp2BrModelInferenceDataGeneratorConfig](
+    groupName = "audience",
+    jobName = "Imp2BrModelInferenceDataGenerator") {
+
+  override val prometheus: Option[PrometheusClient] = Some(new PrometheusClient("audience", "Imp2BrModelInferenceDataGenerator"))
+
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
+    new Imp2BrModelInferenceDataGenerator(prometheus.get).run(conf, getLogger)
   }
 }

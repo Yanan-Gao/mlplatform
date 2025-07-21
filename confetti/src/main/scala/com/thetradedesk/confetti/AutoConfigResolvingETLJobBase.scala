@@ -14,15 +14,15 @@ import scala.reflect.runtime.universe._
  * before running the user defined ETL pipeline and writes its result to S3.
  */
 
-abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](groupName: String, jobName: String) {
-  val confettiEnv = config.getStringRequired("confettiEnv")
-  val experimentName = config.getStringOption("experimentName")
-  val runtimeConfigBasePath = config.getStringRequired("confettiRuntimeConfigBasePath")
+abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](groupName: String, jobName: String) extends Serializable {
+  @transient lazy val confettiEnv = config.getStringRequired("confettiEnv")
+  @transient lazy val experimentName = config.getStringOption("experimentName")
+  @transient lazy val runtimeConfigBasePath = config.getStringRequired("confettiRuntimeConfigBasePath")
 
   /** Optional Prometheus client for pushing metrics. */
   protected val prometheus: Option[PrometheusClient]
 
-  private val logger = CloudWatchLoggerFactory.getLogger(
+  @transient lazy val logger = CloudWatchLoggerFactory.getLogger(
     s"Confetti-$confettiEnv",
     s"${experimentName.filter(_.nonEmpty).map(n => s"$n-").getOrElse("")}$groupName-$jobName"
   )
