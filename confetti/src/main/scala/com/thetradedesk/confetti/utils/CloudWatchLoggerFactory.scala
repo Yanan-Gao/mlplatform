@@ -17,15 +17,21 @@ object CloudWatchLoggerFactory {
    * Obtain a CloudWatchLogger for the provided log group and stream.
    * A new logger instance is created on every call.
    */
-  def getLogger(logGroup: String, logStream: String): CloudWatchLogger = {
-    val client = AWSLogsClientBuilder.standard()
-      .withRegion(Regions.US_EAST_1)
-      .build()
+  def getLogger(logGroup: String, logStream: String): ConfettiLogger = {
+    try {
+      val client = AWSLogsClientBuilder.standard()
+        .withRegion(Regions.US_EAST_1)
+        .build()
 
-    ensureLogGroup(client, logGroup)
-    ensureLogStream(client, logGroup, logStream)
+      ensureLogGroup(client, logGroup)
+      ensureLogStream(client, logGroup, logStream)
 
-    new CloudWatchLogger(client, logGroup, logStream)
+      new CloudWatchLogger(client, logGroup, logStream)
+    } catch {
+      case e: Exception =>
+        System.err.println(s"Failed to initialize CloudWatch logger: ${e.getMessage}. Falling back to console logger.")
+        new ConsoleLogger
+    }
   }
 
   private def ensureLogGroup(client: AWSLogs, group: String): Unit = {

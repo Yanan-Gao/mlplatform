@@ -1,6 +1,8 @@
 package com.thetradedesk.audience.jobs
 import com.thetradedesk.audience.datasets.{AudienceModelInputDataset, AudienceModelInputRecord, Model}
-import com.thetradedesk.audience.{audienceVersionDateFormat, date, dateTime, doNotTrackTDID, ttdEnv}
+// Avoid importing the audience package object here because it eagerly reads
+// configuration when loaded, which fails on Spark executors during
+// deserialization. Only the "DoNotTrackTDID" constant is required.
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler._isDeviceIdSampled1Percent
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
@@ -10,12 +12,10 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.types.FloatType
 import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
-import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
-import java.time.format.DateTimeFormatter
 import scala.collection.mutable.ArrayBuffer
-import java.time.{LocalDate, LocalDateTime}
+import java.time.LocalDate
 
 case class Imp2BrModelInferenceDataGeneratorConfig(
   feature_path: String,
@@ -29,6 +29,10 @@ object Imp2BrModelInferenceDataGenerator
 
   override val prometheus: Option[PrometheusClient] = None
 
+  // Constant representing the anonymized TDID value. Declared here to avoid
+  // forcing initialization of the `audience` package object on executors.
+  private val DoNotTrackTDID = "00000000-0000-0000-0000-000000000000"
+
   /***
    * Generate RMSv2 BidRequest model offline prediction input dataset, based on BidImpression,
    * with sampling logic aligned with SIBv3
@@ -40,19 +44,19 @@ object Imp2BrModelInferenceDataGenerator
 
     // when CookieTDID == DeviceAdvertisingId, keep the latter
     // we don't expect clash among other id types
-    if (tdid != null && tdid != doNotTrackTDID && sampleFun(tdid) && tdid != deviceAdvertisingId) {
+    if (tdid != null && tdid != DoNotTrackTDID && sampleFun(tdid) && tdid != deviceAdvertisingId) {
       uiids += tdid
     }
-    if (deviceAdvertisingId != null && deviceAdvertisingId != doNotTrackTDID && sampleFun(deviceAdvertisingId)) {
+    if (deviceAdvertisingId != null && deviceAdvertisingId != DoNotTrackTDID && sampleFun(deviceAdvertisingId)) {
       uiids += deviceAdvertisingId
     }
-    if (uid2 != null && uid2 != doNotTrackTDID && sampleFun(uid2)) {
+    if (uid2 != null && uid2 != DoNotTrackTDID && sampleFun(uid2)) {
       uiids += uid2
     }
-    if (euid != null && euid != doNotTrackTDID && sampleFun(euid)) {
+    if (euid != null && euid != DoNotTrackTDID && sampleFun(euid)) {
       uiids += euid
     }
-    if (identityLinkId != null && identityLinkId != doNotTrackTDID && sampleFun(identityLinkId)) {
+    if (identityLinkId != null && identityLinkId != DoNotTrackTDID && sampleFun(identityLinkId)) {
       uiids += identityLinkId
     }
     uiids.toSeq

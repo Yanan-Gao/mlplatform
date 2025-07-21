@@ -1,6 +1,6 @@
 package com.thetradedesk.confetti
 
-import com.thetradedesk.confetti.utils.{CloudWatchLogger, CloudWatchLoggerFactory, MapConfigReader, S3Utils}
+import com.thetradedesk.confetti.utils.{ConfettiLogger, CloudWatchLoggerFactory, MapConfigReader, S3Utils}
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.yaml.snakeyaml.Yaml
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -15,14 +15,20 @@ import scala.reflect.runtime.universe._
  */
 
 abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](groupName: String, jobName: String) {
-  val confettiEnv = config.getStringRequired("confettiEnv")
-  val experimentName = config.getStringOption("experimentName")
-  val runtimeConfigBasePath = config.getStringRequired("confettiRuntimeConfigBasePath")
+  /**
+   * Configuration settings are loaded lazily so that this object can be safely
+   * deserialized on Spark executors without immediately requiring access to the
+   * runtime configuration. The values will only be read when `main` is invoked
+   * on the driver.
+   */
+  lazy val confettiEnv: String = config.getStringRequired("confettiEnv")
+  lazy val experimentName: Option[String] = config.getStringOption("experimentName")
+  lazy val runtimeConfigBasePath: String = config.getStringRequired("confettiRuntimeConfigBasePath")
 
   /** Optional Prometheus client for pushing metrics. */
   protected val prometheus: Option[PrometheusClient]
 
-  private val logger = CloudWatchLoggerFactory.getLogger(
+  private lazy val logger: ConfettiLogger = CloudWatchLoggerFactory.getLogger(
     s"Confetti-$confettiEnv",
     s"${experimentName.filter(_.nonEmpty).map(n => s"$n-").getOrElse("")}$groupName-$jobName"
   )
@@ -35,7 +41,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](groupName: S
   protected final def getConfig: C =
     jobConfig.getOrElse(throw new IllegalStateException("Config not initialized"))
 
-  protected final def getLogger: CloudWatchLogger = logger
+  protected final def getLogger: ConfettiLogger = logger
 
   /** Entry point for jobs extending this base. Executes the pipeline and pushes metrics. */
   final def main(args: Array[String]): Unit = {
@@ -50,7 +56,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](groupName: S
   def runETLPipeline(): Unit
 
   /** Executes the job by loading configuration, running the pipeline and writing the results. */
-  private val runtimePathBase: String =
+  private lazy val runtimePathBase: String =
     if (runtimeConfigBasePath.endsWith("/")) runtimeConfigBasePath else runtimeConfigBasePath + "/"
 
   private final def execute(): Unit = {

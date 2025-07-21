@@ -1,6 +1,8 @@
 package com.thetradedesk.confetti.utils
 
 import java.time.LocalDate
+
+import com.thetradedesk.confetti.utils.ConfettiLogger
 import scala.collection.mutable.ListBuffer
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
@@ -11,7 +13,7 @@ import scala.util.Try
  * report all issues at once. Fields typed as `Option[T]` are treated
  * as optional; other fields are required.
  */
-class MapConfigReader(map: Map[String, String], logger: CloudWatchLogger) {
+class MapConfigReader(map: Map[String, String], logger: ConfettiLogger) {
   private val errors = ListBuffer.empty[String]
 
   private def getSeqOpt[T](
