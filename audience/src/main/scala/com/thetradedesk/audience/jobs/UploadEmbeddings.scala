@@ -1,29 +1,29 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.{date, dateFormatter, ttdEnv}
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.types.FloatType
 
-object UploadEmbeddings {
+object UploadEmbeddings
+  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
+    groupName = "audience",
+    jobName   = "UploadEmbeddings") {
+
+  override val prometheus = None
 // destination setup from hpc team.  https://gitlab.adsrvr.org/thetradedesk/adplatform/-/merge_requests/83817
   // and https://thetradedesk.atlassian.net/wiki/x/_OQlAQ
 
-  val dateStr = date.format(dateFormatter)
-  val emb_bucket_dest = ttdEnv match {
-    case "prod" => config.getString("emb_bucket_dest", "s3://ttd-user-embeddings/dataexport/")
-    case _ => "s3://thetradedesk-mlplatform-us-east-1/data/prodTest/audience/emb/dataexport/"
-  }
-  val tdid_emb_path = config.getString(
-    "tdid_emb_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/RSMV2/emb/agg/v=1/date=${dateStr}/")  //from TdidEmbeddingAggregate job.
-  val nonsensitive_emb_enum = config.getInt("nonsensitive_emb_enum", 301)
-  val sensitive_emb_enum = config.getInt("sensitive_emb_enum", 302)
-  val base_hour = config.getInt("base_hour", 0)
-  val batch_id = config.getInt("batch_id", 1)
-
-
-  def main(args: Array[String]): Unit = {
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
+    val dateStr = date.format(dateFormatter)
+    val emb_bucket_dest = conf.emb_bucket_dest
+    val tdid_emb_path = conf.tdid_emb_path
+    val nonsensitive_emb_enum = conf.nonsensitive_emb_enum
+    val sensitive_emb_enum = conf.sensitive_emb_enum
+    val base_hour = conf.base_hour
+    val batch_id = conf.batch_id
 
     val embedding = spark.read.parquet(tdid_emb_path).withColumnRenamed("TDID", "UIID").cache
     val totalAdgroupCount = embedding.count;

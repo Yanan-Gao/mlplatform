@@ -1,9 +1,9 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.{date, dateFormatter, ttdEnv}
+import com.thetradedesk.audience.{date, dateFormatter}
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.expressions.Aggregator
@@ -14,14 +14,12 @@ import java.nio.charset.StandardCharsets
 
 
 
-object TdidEmbeddingAggregate {
-  val salt = config.getString("salt", "TRM")
-  val dateStr = date.format(dateFormatter)
-  val br_emb_path= config.getString(
-  "br_emb_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/RSMV2/emb/raw/v=1/date=${dateStr}/")
-  val tdid_emb_path= config.getString(
-    "tdid_emb_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/RSMV2/emb/agg/v=1/date=${dateStr}/")
-  val decode_tdid = config.getBoolean("decode_tdid", true) // convert binary tdid format into string
+object TdidEmbeddingAggregate
+  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
+    groupName = "audience",
+    jobName   = "TdidEmbeddingAggregate") {
+
+  override val prometheus = None
 
   case class Buffer(sums: Array[Double], var count: Long)
 
@@ -73,7 +71,13 @@ object TdidEmbeddingAggregate {
   val emb_avg = udaf(RelevanceScoresAggregator)
   val utf8ToStringUdf = udf((bytes: Array[Byte]) => new String(bytes, StandardCharsets.UTF_8))
 
-  def runETLPipeline(): Unit = {
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
+    val salt = conf.salt
+    val br_emb_path = conf.br_emb_path
+    val tdid_emb_path = conf.tdid_emb_path
+    val decode_tdid = conf.decode_tdid
+
     val rawEmb = spark.read.format("parquet").load(br_emb_path)
     val aggedEmb = rawEmb.groupBy("TDID")
       .agg(
@@ -92,10 +96,5 @@ object TdidEmbeddingAggregate {
       .mode("overwrite")
       .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
       .save(tdid_emb_path)
-
-  }
-
-  def main(args: Array[String]): Unit = {
-    runETLPipeline()
   }
 }

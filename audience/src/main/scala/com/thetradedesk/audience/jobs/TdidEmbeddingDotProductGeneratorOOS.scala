@@ -16,26 +16,8 @@ import java.util.UUID
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 
-case class TdidEmbeddingDotProductGeneratorOOSConfig(
-  tdid_emb_path: String,
-  seed_emb_path: String,
-  density_feature_path: String,
-  policy_table_path: String,
-  seed_id_path: String,
-  out_path: String,
-  density_split: Int,
-  density_limit: Int,
-  tdid_limit: Int,
-  debug: Boolean,
-  partition: Int,
-  sensitiveModel: Boolean,
-  minMaxSeedEmb: Double,
-  r: Double,
-  loc_factor: Double
-)
-
 object TdidEmbeddingDotProductGeneratorOOS
-  extends AutoConfigResolvingETLJobBase[TdidEmbeddingDotProductGeneratorOOSConfig](
+  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
     groupName = "audience",
     jobName = "TdidEmbeddingDotProductGeneratorOOS") {
 
@@ -83,7 +65,7 @@ object TdidEmbeddingDotProductGeneratorOOS
     val density_feature_path = conf.density_feature_path
     val policy_table_path = conf.policy_table_path
     val seed_id_path = conf.seed_id_path
-    val out_path = conf.out_path
+    val out_path = conf.dot_product_out_path
     val density_split = conf.density_split
     val density_limit = conf.density_limit
     val tdid_limit = conf.tdid_limit
