@@ -16,13 +16,7 @@ import java.util.UUID
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 
-object TdidEmbeddingDotProductGeneratorOOS
-  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
-    groupName = "audience",
-    jobName = "TdidEmbeddingDotProductGeneratorOOS") {
-
-  override val prometheus: Option[PrometheusClient] =
-    Some(new PrometheusClient("AudienceModelJob", "TdidEmbeddingDotProductGeneratorOOS"))
+class TdidEmbeddingDotProductGeneratorOOS {
 
   val EmbeddingSize = 64
 
@@ -56,9 +50,7 @@ object TdidEmbeddingDotProductGeneratorOOS
   }
   val convertUID2ToGUIDUDF = udf(convertUID2ToGUID _)
 
-  /////
-  override def runETLPipeline(): Unit = {
-    val conf = getConfig
+  def run(conf: RelevanceModelOfflineScoringPart2Config): Unit = {
 
     val tdid_emb_path = conf.tdid_emb_path
     val seed_emb_path = conf.seed_emb_path
@@ -184,6 +176,20 @@ object TdidEmbeddingDotProductGeneratorOOS
         .mode("overwrite")
         .save(out_path + f"split=${i}/")
     })
+  }
+}
+
+object TdidEmbeddingDotProductGeneratorOOS
+  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
+    groupName = "audience",
+    jobName = "TdidEmbeddingDotProductGeneratorOOS") {
+
+  override val prometheus: Option[PrometheusClient] =
+    Some(new PrometheusClient("AudienceModelJob", "TdidEmbeddingDotProductGeneratorOOS"))
+
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
+    new TdidEmbeddingDotProductGeneratorOOS().run(conf)
   }
 }
 

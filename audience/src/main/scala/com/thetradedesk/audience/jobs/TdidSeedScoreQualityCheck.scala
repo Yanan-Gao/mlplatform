@@ -11,17 +11,11 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.functions._
 
 
-object TdidSeedScoreQualityCheck
-  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
-    groupName = "audience",
-    jobName   = "TdidSeedScoreQualityCheck") {
-
-  val prometheus = new PrometheusClient("AudienceModelJob", "TdidSeedScoreQualityCheck")
-  override val prometheus: Option[PrometheusClient] = Some(prometheus)
+class TdidSeedScoreQualityCheck(prometheus: PrometheusClient) {
   val numberOfOutliner = prometheus.createGauge(s"number_of_outliner_seed", "number of seeds that has obvious difference in p25 p50 or p75", "date")
   val percentOfOutliner = prometheus.createGauge(s"percent_of_outliner_seed", "percent of seeds that has obvious difference in p25 p50 or p75", "date")
 
-  def pathExists(pathStr: String) (implicit spark: SparkSession): Boolean = {
+  def pathExists(pathStr: String)(implicit spark: SparkSession): Boolean = {
     FSUtils.directoryExists(pathStr)(spark)
   }
 
@@ -29,9 +23,8 @@ object TdidSeedScoreQualityCheck
     val s3uri = new AmazonS3URI(population_score_path)
     s3Client.putObject(s3uri.getBucket, s3uri.getKey + "_SUCCESS", content)
   }
-  /////
-  override def runETLPipeline(): Unit = {
-    val conf = getConfig
+
+  def run(conf: RelevanceModelOfflineScoringPart2Config): Unit = {
     val daysLookback = conf.daysLookback
     val percentileDiffThreshold = conf.percentileDiffThreshold
     val seedOutlinerPercentThreshold = conf.seedOutlinerPercentThreshold
@@ -78,6 +71,17 @@ object TdidSeedScoreQualityCheck
     numberOfOutliner.labels(dateStr).set(outliners)
     percentOfOutliner.labels(dateStr).set(if (totalRows > 0) outliners * 1.0 / totalRows else 0.0)
   }
+}
 
-  // main method provided by AutoConfigResolvingETLJobBase
+object TdidSeedScoreQualityCheck
+  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
+    groupName   = "audience",
+    jobName   = "TdidSeedScoreQualityCheck") {
+
+  override val prometheus: Option[PrometheusClient] = Some(new PrometheusClient("AudienceModelJob", "TdidSeedScoreQualityCheck"))
+
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
+    new TdidSeedScoreQualityCheck(prometheus.get).run(conf)
+  }
 }

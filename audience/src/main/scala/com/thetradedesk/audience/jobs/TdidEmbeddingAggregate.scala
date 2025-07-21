@@ -14,12 +14,7 @@ import java.nio.charset.StandardCharsets
 
 
 
-object TdidEmbeddingAggregate
-  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
-    groupName = "audience",
-    jobName   = "TdidEmbeddingAggregate") {
-
-  override val prometheus = None
+class TdidEmbeddingAggregate {
 
   case class Buffer(sums: Array[Double], var count: Long)
 
@@ -71,8 +66,7 @@ object TdidEmbeddingAggregate
   val emb_avg = udaf(RelevanceScoresAggregator)
   val utf8ToStringUdf = udf((bytes: Array[Byte]) => new String(bytes, StandardCharsets.UTF_8))
 
-  override def runETLPipeline(): Unit = {
-    val conf = getConfig
+  def run(conf: RelevanceModelOfflineScoringPart2Config): Unit = {
     val salt = conf.salt
     val br_emb_path = conf.br_emb_path
     val tdid_emb_path = conf.tdid_emb_path
@@ -96,5 +90,17 @@ object TdidEmbeddingAggregate
       .mode("overwrite")
       .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
       .save(tdid_emb_path)
+  }
+}
+
+object TdidEmbeddingAggregate
+  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
+    groupName = "audience",
+    jobName   = "TdidEmbeddingAggregate") {
+
+  override val prometheus = None
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
+    new TdidEmbeddingAggregate().run(conf)
   }
 }

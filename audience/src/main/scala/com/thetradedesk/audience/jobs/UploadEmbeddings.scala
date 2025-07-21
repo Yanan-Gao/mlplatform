@@ -6,17 +6,8 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.types.FloatType
 
-object UploadEmbeddings
-  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
-    groupName = "audience",
-    jobName   = "UploadEmbeddings") {
-
-  override val prometheus = None
-// destination setup from hpc team.  https://gitlab.adsrvr.org/thetradedesk/adplatform/-/merge_requests/83817
-  // and https://thetradedesk.atlassian.net/wiki/x/_OQlAQ
-
-  override def runETLPipeline(): Unit = {
-    val conf = getConfig
+class UploadEmbeddings {
+  def run(conf: RelevanceModelOfflineScoringPart2Config): Unit = {
     val dateStr = date.format(dateFormatter)
     val emb_bucket_dest = conf.emb_bucket_dest
     val tdid_emb_path = conf.tdid_emb_path
@@ -51,5 +42,20 @@ object UploadEmbeddings
       .repartition(totalPartitions)
       .write.format("parquet").mode("overwrite")
       .save(emb_bucket_dest + "type=" + sensitive_emb_enum + "/date=" + dateStr + "/hour=" + "%02d".format(base_hour) + "/batch=" + "%02d".format(batch_id));
+  }
+}
+
+object UploadEmbeddings
+  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
+    groupName = "audience",
+    jobName   = "UploadEmbeddings") {
+
+  override val prometheus = None
+// destination setup from hpc team.  https://gitlab.adsrvr.org/thetradedesk/adplatform/-/merge_requests/83817
+  // and https://thetradedesk.atlassian.net/wiki/x/_OQlAQ
+
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
+    new UploadEmbeddings().run(conf)
   }
 }

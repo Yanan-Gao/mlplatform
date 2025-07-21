@@ -9,16 +9,8 @@ import org.apache.spark.sql.functions._
 
 import java.time.{LocalDate, LocalDateTime}
 
-object TdidSeedScoreScale
-  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
-    groupName = "audience",
-    jobName = "TdidSeedScoreScale") {
-
-  override val prometheus: Option[PrometheusClient] = None
-
-  /////
-  override def runETLPipeline(): Unit = {
-    val conf = getConfig
+class TdidSeedScoreScale {
+  def run(conf: RelevanceModelOfflineScoringPart2Config): Unit = {
     date = conf.runDate
     val dateStr = date.format(dateFormatter)
     val salt = conf.salt
@@ -112,5 +104,18 @@ object TdidSeedScoreScale
         .mode("overwrite")
         .save(population_score_path)
 
+  }
+}
+
+object TdidSeedScoreScale
+  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
+    groupName = "audience",
+    jobName = "TdidSeedScoreScale") {
+
+  override val prometheus: Option[PrometheusClient] = None
+
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
+    new TdidSeedScoreScale().run(conf)
   }
 }
