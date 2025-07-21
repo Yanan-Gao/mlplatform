@@ -1,32 +1,16 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.{date, dateFormatter, ttdEnv}
+import com.thetradedesk.audience.{date, dateFormatter}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
-import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.functions._
 
 import java.time.{LocalDate, LocalDateTime}
 
-case class TdidSeedScoreScaleConfig(
-  salt: String,
-  raw_score_path: String,
-  seed_id_path: String,
-  policy_table_path: String,
-  out_path: String,
-  population_score_path: String,
-  smooth_factor: Double,
-  userLevelUpperCap: Double,
-  accuracy: Int,
-  sampleRateForPercentile: Double,
-  skipPercentile: Boolean,
-  runDate: LocalDate
-)
-
 object TdidSeedScoreScale
-  extends AutoConfigResolvingETLJobBase[TdidSeedScoreScaleConfig](
+  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
     groupName = "audience",
     jobName = "TdidSeedScoreScale") {
 
@@ -41,7 +25,7 @@ object TdidSeedScoreScale
     val raw_score_path = conf.raw_score_path
     val seed_id_path = conf.seed_id_path
     val policy_table_path = conf.policy_table_path
-    val out_path = conf.out_path
+    val out_path = conf.score_scale_out_path
     val population_score_path = conf.population_score_path
     val smooth_factor = conf.smooth_factor.toFloat
     val userLevelUpperCap = conf.userLevelUpperCap.toFloat
