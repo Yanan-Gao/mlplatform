@@ -30,7 +30,7 @@ object DiagnosisDataGenerator {
       .select("CurrencyCodeId", "FromUSD")
 
     // FAB (Floor Agnostic Bidding) metrics
-    val fabMetrics = loadParquetData[FloorAgnosticBiddingMetricsRecord](s3path = FloorAgnosticBiddingMetricsDataset.PCMetricsS3, date = date, lookBack = Some(3), getLatestDateOnly = Some(true))
+    val fabMetrics = loadParquetData[FloorAgnosticBiddingMetricsRecord](s3path = FloorAgnosticBiddingMetricsDataset.PCMetricsS3, date = date, lookBack = Some(5), getLatestDateOnly = Some(true))
 
     val adgroups = AdGroupDataSet().readLatestPartitionUpTo(date, true)
     .join(advertisers, Seq("AdvertiserId"), "left")
