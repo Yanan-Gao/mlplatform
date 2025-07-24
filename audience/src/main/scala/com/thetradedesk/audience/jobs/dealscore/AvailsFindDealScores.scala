@@ -44,15 +44,17 @@ object AvailsFindDealScores {
   //        CrossDevice = 8, // !!Important!! This value is deliberately not in dbo.IdentitySource in the database.
   //        // This is a fake value used when updating the adfrequency source used (see the function GetLoggedBitmapFromIdentitySources for example).
   //        DATId = 9,
-  private def processUserIdentifiers(userIdentifiers: Seq[UserIdentifier]): Seq[String] = {
-    val priorityOrder = Seq(1, 2, 3, 4, 5)
-    userIdentifiers
-      .filter(ui => priorityOrder.contains(ui.identitySource))
-      .filter(ui => _isDeviceIdSampledNPercent(ui.guidString, samplingRate))
-      .filter(ui => ui.guidString.length > 8 && ui.guidString.charAt(8) == '-')
-      .map(_.guidString)
+  private def makeProcessUserIdentifiersUDF(samplingRate: Int): UserDefinedFunction = {
+    val f = (userIdentifiers: Seq[UserIdentifier]) => {
+      val priorityOrder = Seq(1, 2, 3, 4, 5)
+      userIdentifiers
+        .filter(ui => priorityOrder.contains(ui.identitySource))
+        .filter(ui => _isDeviceIdSampledNPercent(ui.guidString, samplingRate))
+        .filter(ui => ui.guidString.length > 8 && ui.guidString.charAt(8) == '-')
+        .map(_.guidString)
+    }
+    udf(f)
   }
-  private val processUserIdentifiersUDF: UserDefinedFunction = udf(processUserIdentifiers _)
 
   def runETLPipeline(): Unit = {
 
@@ -68,6 +70,7 @@ object AvailsFindDealScores {
         expr("exists(UserIdentifiers, x -> x.identitySource IN (1,2,3,4,5))")
     ).select("UserIdentifiers", "DealCodes", "SupplyVendorId")
 
+    val processUserIdentifiersUDF = makeProcessUserIdentifiersUDF(samplingRate)
     val availsProcessed = availsFiltered.withColumn("Identifiers", processUserIdentifiersUDF(col("UserIdentifiers")))
       .filter(size(col("Identifiers")) > 0)
       .select("Identifiers", "DealCodes", "SupplyVendorId")
