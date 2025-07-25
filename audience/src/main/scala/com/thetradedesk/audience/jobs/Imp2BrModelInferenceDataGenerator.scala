@@ -2,7 +2,6 @@ package com.thetradedesk.audience.jobs
 import com.thetradedesk.audience.datasets.{AudienceModelInputDataset, AudienceModelInputRecord, Model}
 import com.thetradedesk.audience.doNotTrackTDID
 import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
-import com.thetradedesk.audience.{audienceVersionDateFormat, date, dateTime, doNotTrackTDID, ttdEnv}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.{_isDeviceIdSampled1Percent, _isDeviceIdSampledNPercent}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
@@ -34,7 +33,6 @@ class Imp2BrModelInferenceDataGenerator(prometheus: PrometheusClient) {
        }
   }
 
-
   def getAllUiidsUdfWithSample(sampleFun: String => Boolean) = udf((tdid: String, deviceAdvertisingId: String, uid2: String, euid: String, identityLinkId: String) => {
     val uiids = ArrayBuffer[String]()
 
@@ -58,7 +56,7 @@ class Imp2BrModelInferenceDataGenerator(prometheus: PrometheusClient) {
     uiids.toSeq
   })
 
-  def runETLPipeline(conf: Imp2BrModelInferenceDataGeneratorConfig, logger: CloudWatchLogger): Unit = {
+  def run(conf: Imp2BrModelInferenceDataGeneratorConfig, logger: CloudWatchLogger): Unit = {
     val date = conf.runDate
     val dateTime = conf.runDate.atStartOfDay()
 

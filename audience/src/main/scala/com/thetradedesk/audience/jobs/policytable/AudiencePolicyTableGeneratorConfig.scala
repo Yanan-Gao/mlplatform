@@ -37,5 +37,7 @@ case class AudiencePolicyTableGeneratorConfig(
   allRSMSeed: Boolean,
   activeAdvertiserLookBackDays: Int,
   newSeedLookBackDays: Int,
+  densityFeatureScoreNewSeedPrefix: String,
+  readSeedDetailMode: Boolean,
   runDate: LocalDate
 )

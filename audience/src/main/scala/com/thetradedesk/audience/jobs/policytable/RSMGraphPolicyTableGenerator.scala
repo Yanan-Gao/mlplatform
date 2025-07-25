@@ -35,9 +35,9 @@ class RSMGraphPolicyTableGenerator(
   }
   private def retrieveSeedMeta(date: LocalDate): DataFrame = {
     val dateStr = getDateStr(date)
-    val siteZipScoreNewSeedMetadataPath = s"${densityFeatureScoreNewSeedPrefix}/date=${dateStr}/_SEED_DETAIL_PATH"
+    val siteZipScoreNewSeedMetadataPath = s"${conf.densityFeatureScoreNewSeedPrefix}/date=${dateStr}/_SEED_DETAIL_PATH"
 
-    val seedDataFullPath = if (readSeedDetailMode) {
+    val seedDataFullPath = if (conf.readSeedDetailMode) {
       FSUtils.readStringFromFile(siteZipScoreNewSeedMetadataPath)(spark)
     } else {
       SeedPolicyUtils.getRecentVersion(

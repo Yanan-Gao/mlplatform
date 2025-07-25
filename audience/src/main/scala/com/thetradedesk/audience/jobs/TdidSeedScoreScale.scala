@@ -25,11 +25,7 @@ class TdidSeedScoreScale {
     val accuracy = conf.accuracy
     val sampleRateForPercentile = conf.sampleRateForPercentile
     val skipPercentile = conf.skipPercentile
-
-
-//    val samplingRate = config.getInt("sampling_rate", 3)
-//  val full_out_path = config.getString("full_out_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/tdid2seedid_all/v=1/date=${dateStr}/")
-
+    val full_out_path = conf.full_out_path
 
     val df_seed_list = spark.read.format("parquet").load(seed_id_path)
     val seed_info = df_seed_list.collect()

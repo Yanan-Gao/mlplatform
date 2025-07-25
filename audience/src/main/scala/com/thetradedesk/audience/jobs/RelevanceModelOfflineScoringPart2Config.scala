@@ -29,10 +29,12 @@ case class RelevanceModelOfflineScoringPart2Config(
   minMaxSeedEmb: Double,
   r: Double,
   loc_factor: Double,
+  samplingRate: Int,
   // TdidSeedScoreScale
   raw_score_path: String,
   score_scale_out_path: String,
   population_score_path: String,
+  full_out_path: String,
   smooth_factor: Double,
   userLevelUpperCap: Double,
   accuracy: Int,

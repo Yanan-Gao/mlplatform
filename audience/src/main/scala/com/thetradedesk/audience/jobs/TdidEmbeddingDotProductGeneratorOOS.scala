@@ -71,12 +71,6 @@ class TdidEmbeddingDotProductGeneratorOOS {
     val minMaxSeedEmb = conf.minMaxSeedEmb
     val r = conf.r.toFloat
     val loc_factor = conf.loc_factor.toFloat
-    //  val sensitiveModel = config.getBoolean("sensitiveModel", true)
-    //  val minMaxSeedEmb = config.getDouble("minMaxSeedEmb", 1e-6)
-    //  val r = config.getDouble("r", 1e-8f).toFloat
-    //  val loc_factor = config.getDouble("loc_factor", 0.8f).toFloat
-    //  val samplingRate = config.getInt("sampling_rate", 3)
-
 
     val df_seed_emb = spark.read.format("parquet").load(seed_emb_path)
       .withColumn("maxEmbedding", array_max('Embedding))
@@ -162,7 +156,7 @@ class TdidEmbeddingDotProductGeneratorOOS {
     )
 
 
-    val isIdSampled = makeSampleUdf(samplingRate)
+    val isIdSampled = makeSampleUdf(conf.samplingRate)
     (0 to 9).filter(density_split < 0 || _ == density_split).foreach(i => {
       //val i = 1
       print(f"Process split ${i}")

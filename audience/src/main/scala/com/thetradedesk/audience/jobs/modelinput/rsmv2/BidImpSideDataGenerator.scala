@@ -3,7 +3,6 @@ package com.thetradedesk.audience.jobs.modelinput.rsmv2
 import com.thetradedesk.audience.{date, getUiid}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface.{BidResult, BidSideDataRecord}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
-import com.thetradedesk.audience.transform.IDTransform
 import com.thetradedesk.audience.transform.IDTransform.{allIdWithType, filterOnIdTypes, filterOnIdTypesSym, idTypesBitmap}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
@@ -20,7 +19,7 @@ object BidImpSideDataGenerator {
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
     val bidsImpressionsLongRaw = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))
-      .filter(filterOnIdTypesSym(sampler.samplingFunction(('TDID, conf))))
+      .filter(filterOnIdTypesSym(sampler.samplingFunction('TDID, conf)))
       .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdentityLinkId, 'IdType))
       .select(
           "TDID",
@@ -60,7 +59,7 @@ object BidImpSideDataGenerator {
           "UserSegmentCount"
       )
       .withColumn("SplitRemainderUserId", coalesce('DeviceAdvertisingId, 'CookieTDID, 'UnifiedId2, 'EUID, 'IdentityLinkId))
-      .withColumn("SplitRemainder", (abs(xxhash64(concat('SplitRemainderUserId, lit(splitRemainderHashSalt)))) % trainValHoldoutTotalSplits).cast("int"))
+      .withColumn("SplitRemainder", (abs(xxhash64(concat('SplitRemainderUserId, lit(conf.splitRemainderHashSalt)))) % conf.trainValHoldoutTotalSplits).cast("int"))
       .withColumn("OperatingSystemFamily", 'OperatingSystemFamily("value"))
       .withColumn("Browser", 'Browser("value"))
       .withColumn("RenderingContext", 'RenderingContext("value"))
