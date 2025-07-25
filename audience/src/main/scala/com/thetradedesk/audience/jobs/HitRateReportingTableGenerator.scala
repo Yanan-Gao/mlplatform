@@ -1,7 +1,7 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
-import com.thetradedesk.audience.datasets.{AggregatedSeedReadableDataset, CampaignSeedDataset, HitRateRecord, HitRateWritableDataset}
+import com.thetradedesk.audience.datasets.{AggregatedSeedReadableDataset, CampaignFlightDataSet, CampaignSeedDataset, HitRateRecord, HitRateWritableDataset}
 import com.thetradedesk.audience.jobs.HitRateReportingTableGeneratorJob.prometheus
 import com.thetradedesk.audience.transform.IDTransform.{IDType, filterOnIdTypes, joinOnIdType}
 import com.thetradedesk.audience._
@@ -44,10 +44,33 @@ abstract class HitRateTableGenerator(prometheus: PrometheusClient) {
       Option(arr).exists(_.contains(str))
     })
 
-    val campaignSeed = CampaignSeedDataset().readPartition(dateTime.toLocalDate)
+    val activeCampaignSeed = CampaignSeedDataset()
+      .readPartition(dateTime.toLocalDate)
+      .join(CampaignFlightDataSet.activeCampaigns(date, startShift = 2, endShift = -1), Seq("CampaignId"))
+      .cache()
+
+    val activeSeedIdsValue = spark.sparkContext.broadcast(activeCampaignSeed
+      .select('SeedId)
+      .distinct()
+      .as[String]
+      .collect()
+      .toSet
+    )
+
+    val activeSeedIdFilterUDF = udf(
+      (seedIds: Seq[String]) => {
+        val activeSeedIds = activeSeedIdsValue.value
+        seedIds.filter(activeSeedIds.contains)
+      }
+    )
 
     val seedData = AggregatedSeedReadableDataset()
       .readPartition(date)(spark)
+      .select('TDID
+        , 'idType
+        , activeSeedIdFilterUDF('SeedIds).as("SeedIds")
+        , activeSeedIdFilterUDF('PersonGraphSeedIds).as("PersonGraphSeedIds")
+        , activeSeedIdFilterUDF('HouseholdGraphSeedIds).as("HouseholdGraphSeedIds"))
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .cache()
 
@@ -86,7 +109,7 @@ abstract class HitRateTableGenerator(prometheus: PrometheusClient) {
       .agg(flatten(collect_list('SeedIds)).as("SeedIds"),
         flatten(collect_list('PersonGraphSeedIds)).as("PersonGraphSeedIds"),
           flatten(collect_list('HouseholdGraphSeedIds)).as("HouseholdGraphSeedIds"))
-      .join(broadcast(campaignSeed.select('CampaignId, 'SeedId)), Seq("CampaignId"), "left")
+      .join(broadcast(activeCampaignSeed.select('CampaignId, 'SeedId)), Seq("CampaignId"), "left")
       .withColumn("hit", array_contains($"SeedIds", $"SeedId"))
       .withColumn("personGraphHit", ('hit || array_contains($"PersonGraphSeedIds", $"SeedId")).cast("integer"))
       .withColumn("HHGraphHit", ('hit || array_contains($"HouseholdGraphSeedIds", $"SeedId")).cast("integer"))
