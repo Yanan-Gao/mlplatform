@@ -54,24 +54,13 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
       .map(row => (row.getString(0), row.getString(1)))
       .toMap
 
-    val campaignFlights = CampaignFlightDataSet()
-      .readPartition(date)
-
     val campaigns = CampaignDataSet()
       .readPartition(date)
       .select('CampaignId, 'AdvertiserId)
 
     val seedMeta =
       if (!Config.allRSMSeed) {
-        val startDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.plusDays(Config.campaignFlightStartingBufferInDays))
-        val endDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date)
-
-        val activeCampaigns = campaignFlights
-          .where('IsDeleted === false
-            && 'StartDateInclusiveUTC.leq(startDateTimeStr)
-            && ('EndDateExclusiveUTC.isNull || 'EndDateExclusiveUTC.gt(endDateTimeStr)))
-          .select('CampaignId)
-          .distinct()
+        val activeCampaigns = CampaignFlightDataSet.activeCampaigns(date, startShift = Config.campaignFlightStartingBufferInDays)
 
         val campaignSeed = CampaignSeedDataset()
           .readPartition(date)
@@ -88,10 +77,7 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
           .ofPattern("yyyy-MM-dd 00:00:00")
           .format(date.minusDays(Config.activeAdvertiserLookBackDays))
 
-        val activeAdvertisers = campaignFlights
-          .filter('EndDateExclusiveUTC.isNull || 'EndDateExclusiveUTC.gt(activeAdvertiserStartingDateStr))
-          .select('CampaignId)
-          .distinct()
+        val activeAdvertisers = CampaignFlightDataSet.activeCampaigns(date, startShift = Config.activeAdvertiserLookBackDays, endShift = -1 * Config.activeAdvertiserLookBackDays, containsDeleted = true)
           .join(campaigns, Seq("CampaignId"))
           .select('AdvertiserId)
           .distinct()

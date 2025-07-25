@@ -1,8 +1,14 @@
 package com.thetradedesk.audience.datasets
 
 import com.thetradedesk.spark.datasets.core.ProvisioningS3DataSet
+import org.apache.spark.sql.{DataFrame, Dataset}
 
 import java.sql.Timestamp
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import com.thetradedesk.spark.TTDSparkContext.spark
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import org.apache.spark.sql.functions.lit
 
 /**
  * A provisioning dataset of {@link CampaignFlightRecord}
@@ -32,3 +38,20 @@ case class CampaignFlightRecord(CampaignFlightId: BigInt,
                                 BudgetInImpressions: BigInt,
                                 DailyTargetInAdvertiserCurrency: BigDecimal,
                                 DailyTargetInImpressions: BigInt)
+
+object CampaignFlightDataSet {
+  def activeCampaigns(date: LocalDate, startShift: Int = 1, endShift: Int = 0, containsDeleted: Boolean= false): DataFrame = {
+    val startDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.plusDays(startShift))
+    val endDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.plusDays(endShift))
+
+    val activeCampaigns = CampaignFlightDataSet()
+      .readPartition(date)
+      .where((if (containsDeleted) lit(true) else 'IsDeleted === false)
+        && 'StartDateInclusiveUTC.leq(startDateTimeStr)
+        && ('EndDateExclusiveUTC.isNull || 'EndDateExclusiveUTC.gt(endDateTimeStr)))
+      .select('CampaignId)
+      .distinct()
+
+    activeCampaigns
+  }
+}

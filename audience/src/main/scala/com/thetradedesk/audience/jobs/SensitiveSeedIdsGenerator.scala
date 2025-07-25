@@ -32,16 +32,7 @@ object SensitiveSeedIdsGenerator {
       .distinct()
 
     // Get active seed ids
-    val startDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.plusDays(campaignFlightStartingBufferInDays))
-    val endDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date)
-
-    val campaignFlight = CampaignFlightDataSet()
-      .readPartition(date)
-      .where('IsDeleted === false
-        && 'StartDateInclusiveUTC.leq(startDateTimeStr)
-        && ('EndDateExclusiveUTC.isNull || 'EndDateExclusiveUTC.gt(endDateTimeStr)))
-      .select('CampaignId)
-      .distinct()
+    val campaignFlight = CampaignFlightDataSet.activeCampaigns(date, startShift = campaignFlightStartingBufferInDays)
 
     val campaignSeed = CampaignSeedDataset()
       .readPartition(date)
