@@ -15,11 +15,11 @@ import org.apache.spark.sql.types._
 object BidImpSideDataGenerator {
 
   def readBidImpressionWithNecessary(conf: RelevanceModelInputGeneratorJobConfig): Dataset[BidSideDataRecord] = {
-    val sampler = SamplerFactory.fromString(conf.samplerName)
+    val sampler = SamplerFactory.fromString(conf.samplerName, conf)
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
     val bidsImpressionsLongRaw = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))
-      .filter(filterOnIdTypesSym(sampler.samplingFunction('TDID, conf)))
+      .filter(filterOnIdTypesSym(sampler.samplingFunction))
       .withColumn("TDID", getUiid('UIID, 'UnifiedId2, 'EUID, 'IdentityLinkId, 'IdType))
       .select(
           "TDID",

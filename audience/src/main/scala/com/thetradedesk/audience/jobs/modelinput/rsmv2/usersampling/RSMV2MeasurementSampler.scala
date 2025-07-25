@@ -6,9 +6,9 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.functions._
 
-object RSMV2MeasurementSampler extends Sampler {
+case class RSMV2MeasurementSampler(conf: RelevanceModelInputGeneratorJobConfig) extends Sampler {
 
-  override def samplingFunction(symbol: Symbol, conf: RelevanceModelInputGeneratorJobConfig): Column = {
+  override def samplingFunction(symbol: Symbol): Column = {
     val hashedValue = abs(xxhash64(concat(symbol, lit(conf.RSMV2UserSampleSalt)))) % lit(10)
 
     shouldTrackTDID(symbol) &&

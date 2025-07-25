@@ -44,7 +44,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
 
   val jobRunningTime = prometheus.createGauge(s"relevance_online_bidding_generation_job_running_time", "RelevanceOnlineBiddingDataGenerator running time", "date")
   val onlineRelevanceBiddingTableSize = prometheus.createGauge(s"online_relevance_bidding_table_size", "OnlineRelevanceBiddingTableGenerator table size", "date")
-  val sampler = SamplerFactory.fromString("RSMV2Measurement")
+  val sampler = SamplerFactory.fromString("RSMV2Measurement", RelevanceModelInputGeneratorJob.jobConfig)
 
   def generate(date: LocalDate): Unit = {
     // todo
@@ -56,7 +56,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
 
     val aggSeed = AggregatedSeedReadableDataset()
       .readPartition(date)(spark)
-      .filter(sampler.samplingFunction('TDID, RelevanceModelInputGeneratorJob.jobConfig))
+      .filter(sampler.samplingFunction('TDID))
       .cache()
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
 
