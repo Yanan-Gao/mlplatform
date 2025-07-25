@@ -2,13 +2,11 @@ package com.thetradedesk.audience.jobs.policytable
 
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
-import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJob.prometheus
 import com.thetradedesk.audience.utils.{MapDensity, S3Utils, SeedPolicyUtils}
 import com.thetradedesk.spark.datasets.sources.ThirdPartyDataDataSet
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.core.AnnotatedSchemaBuilder
-import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql._
@@ -19,13 +17,12 @@ import java.sql.Timestamp
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(GoalType.Relevance, Model.RSM, prometheus: PrometheusClient) {
+class RSMGraphPolicyTableGenerator(
+    prometheus: PrometheusClient,
+    conf: AudiencePolicyTableGeneratorConfig)
+    extends AudienceGraphPolicyTableGenerator(GoalType.Relevance, Model.RSM, prometheus, conf) {
 
   val rsmSeedProcessCount = prometheus.createCounter("rsm_policy_table_job_seed_process_count", "RSM policy table job seed process record", "seedId", "success")
-  val readSeedDetailMode = config.getBoolean("readSeedDetailMode", false)
-  val MLPlatformS3Root: String = "s3a://thetradedesk-mlplatform-us-east-1/features/feature_store"
-  val densityFeatureScoreNewSeedPrefix = config.getString("densityFeatureScoreNewSeedPath",
-    s"$MLPlatformS3Root/prod/profiles/source=bidsimpression/index=SeedId/metadata/newSeed/v=1/")
 
   private val seedDataSchema = new StructType()
     .add("TDID", StringType)
@@ -37,15 +34,15 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
   }
   private def retrieveSeedMeta(date: LocalDate): DataFrame = {
     val dateStr = getDateStr(date)
-    val siteZipScoreNewSeedMetadataPath = s"${densityFeatureScoreNewSeedPrefix}/date=${dateStr}/_SEED_DETAIL_PATH"
+    val siteZipScoreNewSeedMetadataPath = s"${conf.densityFeatureScoreNewSeedPrefix}/date=${dateStr}/_SEED_DETAIL_PATH"
 
-    val seedDataFullPath = if (readSeedDetailMode) {
+    val seedDataFullPath = if (conf.readSeedDetailMode) {
       FSUtils.readStringFromFile(siteZipScoreNewSeedMetadataPath)(spark)
     } else {
       SeedPolicyUtils.getRecentVersion(
-        Config.seedMetadataS3Bucket,
-        Config.seedMetadataS3Path,
-        Config.seedMetaDataRecentVersion
+        conf.seedMetadataS3Bucket,
+        conf.seedMetadataS3Path,
+        conf.seedMetaDataRecentVersion
       )
     }
 
@@ -59,8 +56,8 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
       .select('CampaignId, 'AdvertiserId)
 
     val seedMeta =
-      if (!Config.allRSMSeed) {
-        val activeCampaigns = CampaignFlightDataSet.activeCampaigns(date, startShift = Config.campaignFlightStartingBufferInDays)
+      if (!conf.allRSMSeed) {
+        val activeCampaigns = CampaignFlightDataSet.activeCampaigns(date, startShift = conf.campaignFlightStartingBufferInDays)
 
         val campaignSeed = CampaignSeedDataset()
           .readPartition(date)
@@ -75,14 +72,14 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
       } else {
         val activeAdvertiserStartingDateStr = DateTimeFormatter
           .ofPattern("yyyy-MM-dd 00:00:00")
-          .format(date.minusDays(Config.activeAdvertiserLookBackDays))
+          .format(date.minusDays(conf.activeAdvertiserLookBackDays))
 
-        val activeAdvertisers = CampaignFlightDataSet.activeCampaigns(date, startShift = Config.activeAdvertiserLookBackDays, endShift = -1 * Config.activeAdvertiserLookBackDays, containsDeleted = true)
+        val activeAdvertisers = CampaignFlightDataSet.activeCampaigns(date, startShift = conf.activeAdvertiserLookBackDays, endShift = -1 * conf.activeAdvertiserLookBackDays, containsDeleted = true)
           .join(campaigns, Seq("CampaignId"))
           .select('AdvertiserId)
           .distinct()
 
-        val newSeedTimestamp = Timestamp.valueOf(date.atStartOfDay().minusDays(Config.newSeedLookBackDays))
+        val newSeedTimestamp = Timestamp.valueOf(date.atStartOfDay().minusDays(conf.newSeedLookBackDays))
 
         spark.read.parquet(seedDataFullPath)
           .join(activeAdvertisers.as("a"), Seq("AdvertiserId"), "left")
@@ -90,7 +87,7 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
       }
 
     seedMeta
-      .withColumn("topCountryByDensity", coalesce(MapDensity.getTopDensityFeatures(Config.countryDensityThreshold)('CountByCountry), array()))
+      .withColumn("topCountryByDensity", coalesce(MapDensity.getTopDensityFeatures(conf.countryDensityThreshold)('CountByCountry), array()))
       .withColumn("topCountryByDensity", sql_transform(
         col("topCountryByDensity"),
         code => coalesce(
@@ -109,7 +106,7 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
 
   override def retrieveSourceMetaData(date: LocalDate): Dataset[SourceMetaRecord] = {
     val ttdRawDataMeta = retrieveTTDRawDataMeta(date)
-    val seedDataMeta = retrieveSeedDataMeta(date).where('Count >= lit(Config.seedProcessLowerThreshold) && 'Count <= lit(Config.seedProcessUpperThreshold))
+    val seedDataMeta = retrieveSeedDataMeta(date).where('Count >= lit(conf.seedProcessLowerThreshold) && 'Count <= lit(conf.seedProcessUpperThreshold))
     ttdRawDataMeta.union(seedDataMeta)
   }
 
@@ -127,8 +124,8 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
       .where('ThirdPartyDataHierarchyString.startsWith("/2537086/242456787/")) // means TTD own segments
       .select('TargetingDataId)
       .join(segmentsSummary, Seq("TargetingDataId"), "inner")
-      .where('RecordCount >= lit(Config.seedProcessLowerThreshold) &&
-        'RecordCount <= lit(Config.ttdOwnDataUpperThreshold))
+      .where('RecordCount >= lit(conf.seedProcessLowerThreshold) &&
+        'RecordCount <= lit(conf.ttdOwnDataUpperThreshold))
       .select('TargetingDataId.cast(StringType).alias("SourceId"), 'RecordCount.alias("Count"), 'TargetingDataId, array(lit("")).alias("topCountryByDensity"))
     metaTable
       .withColumn("Source", lit(DataSource.TTDOwnData.id))
@@ -159,14 +156,14 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
         "ttdOwnDataUpperThreshold",
         when(
           not(col("ThirdPartyDataHierarchyString").like("/2537086/242456787/%/%/%")),
-          lit(Config.ttdOwnDataUpperThreshold)
+          lit(conf.ttdOwnDataUpperThreshold)
         ).otherwise(
-          lit(Config.seedProcessUpperThreshold)
+          lit(conf.seedProcessUpperThreshold)
         )
       )
       .select('TargetingDataId, 'ttdOwnDataUpperThreshold)
       .join(segmentsSummary, Seq("TargetingDataId"), "inner")
-      .where('RecordCount >= lit(Config.seedProcessLowerThreshold) &&
+      .where('RecordCount >= lit(conf.seedProcessLowerThreshold) &&
         'RecordCount <= 'ttdOwnDataUpperThreshold)
       .select('TargetingDataId, 'RecordCount.alias("Count"), 'TargetingDataId.alias("SourceId"))
 
@@ -191,12 +188,12 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
     // TODO support seed data cache
 
     policyMetaTable
-      .filter(e => e.Count < Config.seedProcessLowerThreshold || e.Count > Config.seedProcessUpperThreshold)
+      .filter(e => e.Count < conf.seedProcessLowerThreshold || e.Count > conf.seedProcessUpperThreshold)
       .foreach(e => rsmSeedProcessCount.labels(e.SeedId, "Cutoff").inc())
 
-    val largeSeedData = handleLargeSeedData(policyMetaTable.filter(e => e.Count > Config.seedExtendGraphUpperThreshold && e.Count <= Config.seedProcessUpperThreshold).map(i => i.Path))
+    val largeSeedData = handleLargeSeedData(policyMetaTable.filter(e => e.Count > conf.seedExtendGraphUpperThreshold && e.Count <= conf.seedProcessUpperThreshold).map(i => i.Path))
 
-    val smallSeedData = handleSmallSeedData(personGraph, householdGraph, policyMetaTable.filter(e => e.Count >= Config.seedProcessLowerThreshold && e.Count <= Config.seedExtendGraphUpperThreshold).map(i => i.Path))
+    val smallSeedData = handleSmallSeedData(personGraph, householdGraph, policyMetaTable.filter(e => e.Count >= conf.seedProcessLowerThreshold && e.Count <= conf.seedExtendGraphUpperThreshold).map(i => i.Path))
 
     SourceDataWithDifferentGraphType(
       largeSeedData.union(smallSeedData._1),
@@ -212,7 +209,7 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
   override def getAggregatedSeedReadableDataset(): LightReadableDataset[AggregatedSeedRecord] = AggregatedSeedReadableDataset()
 
   private def retrieveSeedData(paths: Array[String], isSample: Boolean): (DataFrame, DataFrame) = {
-    val basePath = "s3://" + Config.seedRawDataS3Bucket + "/" + Config.seedRawDataS3Path
+    val basePath = "s3://" + conf.seedRawDataS3Bucket + "/" + conf.seedRawDataS3Path
     val seedDataSet =
       if (isSample) {
         spark.read.option("basePath", basePath)
@@ -227,7 +224,7 @@ object RSMGraphPolicyTableGenerator extends AudienceGraphPolicyTableGenerator(Go
           .select('UserId.alias("TDID"), 'SeedId)
       }
     val TDID2Seeds = seedDataSet
-      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .repartition(conf.bidImpressionRepartitionNum, 'TDID)
       .groupBy('TDID)
       .agg(collect_set('SeedId).alias("SeedIds"))
 

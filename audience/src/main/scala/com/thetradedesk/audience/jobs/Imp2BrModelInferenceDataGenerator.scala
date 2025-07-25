@@ -1,30 +1,30 @@
 package com.thetradedesk.audience.jobs
 import com.thetradedesk.audience.datasets.{AudienceModelInputDataset, AudienceModelInputRecord, Model}
-import com.thetradedesk.audience.{audienceVersionDateFormat, date, dateTime, doNotTrackTDID, ttdEnv}
+import com.thetradedesk.audience.doNotTrackTDID
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.{_isDeviceIdSampled1Percent, _isDeviceIdSampledNPercent}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, readModelFeatures}
-import org.apache.spark.sql.functions._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import com.thetradedesk.confetti.utils.CloudWatchLogger
 import org.apache.spark.sql.SaveMode
+import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.FloatType
-import com.thetradedesk.spark.util.TTDConfig.config
 
-import java.time.format.DateTimeFormatter
+import java.time.LocalDate
 import scala.collection.mutable.ArrayBuffer
 
-object Imp2BrModelInferenceDataGenerator {
-  /***
-   * Generate RMSv2 BidRequest model offline prediction input dataset, based on BidImpression,
-   * with sampling logic aligned with SIBv3
-   */
-  val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
-  val modelVersion = s"${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}"
-  val featuresJsonPath= config.getString(
-    "feature_path", s"s3://thetradedesk-mlplatform-us-east-1/models/prod/RSM/full_model/${modelVersion}/features.json")
+case class Imp2BrModelInferenceDataGeneratorConfig(
+  feature_path: String,
+  runDate: LocalDate,
+  samplingRate: Int
+)
 
-  val samplingRate = config.getInt("sampling_rate", 3)
+class Imp2BrModelInferenceDataGenerator(prometheus: PrometheusClient) {
+
+  val bidImpressionsS3Path: String = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
   private def makeSampleFun(n: Int): String => Boolean = {
      (id: String) => {
@@ -32,7 +32,6 @@ object Imp2BrModelInferenceDataGenerator {
        else _isDeviceIdSampledNPercent(id, n)
        }
   }
-
 
   def getAllUiidsUdfWithSample(sampleFun: String => Boolean) = udf((tdid: String, deviceAdvertisingId: String, uid2: String, euid: String, identityLinkId: String) => {
     val uiids = ArrayBuffer[String]()
@@ -57,9 +56,12 @@ object Imp2BrModelInferenceDataGenerator {
     uiids.toSeq
   })
 
-  def runETLPipeline(): Unit = {
+  def run(conf: Imp2BrModelInferenceDataGeneratorConfig, logger: CloudWatchLogger): Unit = {
+    val date = conf.runDate
+    val dateTime = conf.runDate.atStartOfDay()
+
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack=Some(0), source = Some(GERONIMO_DATA_SOURCE))
-      .withColumn("Uiids", getAllUiidsUdfWithSample(makeSampleFun( samplingRate ))('CookieTDID, 'DeviceAdvertisingId, 'UnifiedId2, 'EUID, 'IdentityLinkId))
+      .withColumn("Uiids", getAllUiidsUdfWithSample(makeSampleFun( conf.samplingRate ))('CookieTDID, 'DeviceAdvertisingId, 'UnifiedId2, 'EUID, 'IdentityLinkId))
       .withColumn("TDID", explode(col("Uiids")))
       .drop("Uiids")
       .filter("SUBSTRING(TDID, 9, 1) = '-'")
@@ -126,18 +128,36 @@ object Imp2BrModelInferenceDataGenerator {
       .withColumn("AdvertiserId", lit(0))
       .withColumn("SupplyVendorPublisherId", lit(0))
 
-    val dataset = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](bidsImpressions, readModelFeatures(featuresJsonPath))
-    AudienceModelInputDataset(Model.RSMV2.toString,tag = "Imp_Seed_None", version = 1)
-      .writePartition(
-        dataset = dataset.as[AudienceModelInputRecord],
-        partition = dateTime,
-        format = Some("tfrecord"),
-        saveMode = SaveMode.Overwrite,
-        numPartitions = Some(10000)
-      )
-  }
-  def main(args: Array[String]): Unit = {
-    runETLPipeline()
-  }
+    val dataset = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](bidsImpressions, readModelFeatures(conf.feature_path))
 
+    try {
+      AudienceModelInputDataset(Model.RSMV2.toString, tag = "Imp_Seed_None", version = 1)
+        .writePartition(
+          dataset = dataset.as[AudienceModelInputRecord],
+          partition = dateTime,
+          format = Some("tfrecord"),
+          saveMode = SaveMode.Overwrite,
+          numPartitions = Some(10000)
+        )
+    } catch {
+      case e: Exception =>
+        logger.info("error when writing: " + e.getMessage)
+        throw e
+    }
+
+    logger.info("Finished writing feature dataset.")
+  }
+}
+
+object Imp2BrModelInferenceDataGenerator
+  extends AutoConfigResolvingETLJobBase[Imp2BrModelInferenceDataGeneratorConfig](
+    groupName = "audience",
+    jobName = "Imp2BrModelInferenceDataGenerator") {
+
+  override val prometheus: Option[PrometheusClient] = Some(new PrometheusClient("audience", "Imp2BrModelInferenceDataGenerator"))
+
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
+    new Imp2BrModelInferenceDataGenerator(prometheus.get).run(conf, getLogger)
+  }
 }

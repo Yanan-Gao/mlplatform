@@ -2,7 +2,6 @@ package com.thetradedesk.audience.jobs.policytable
 
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets.CrossDeviceVendor.{CrossDeviceVendor, IAV2Person}
-import com.thetradedesk.audience.datasets.DataSource.DataSource
 import com.thetradedesk.audience.datasets.GoalType.GoalType
 import com.thetradedesk.audience.datasets.StorageCloud
 import com.thetradedesk.audience.datasets.Model.Model
@@ -21,7 +20,12 @@ import java.time.LocalDate
 IMPORTANT:
 seed here don't represent kokai seed, it represents any pixel(group of tdid) in TTD (including kokai seed, conversion tracker etc.)
 */
-abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Model, prometheus: PrometheusClient) extends AudiencePolicyTableGenerator(model, prometheus) {
+abstract class AudienceGraphPolicyTableGenerator(
+    goalType: GoalType,
+    model: Model,
+    prometheus: PrometheusClient,
+    conf: AudiencePolicyTableGeneratorConfig)
+    extends AudiencePolicyTableGenerator(model, prometheus, conf) {
   def retrieveSourceMetaData(date: LocalDate): Dataset[SourceMetaRecord]
 
   def retrieveSourceDataWithDifferentGraphType(date: LocalDate, personGraph: DataFrame, householdGraph: DataFrame): SourceDataWithDifferentGraphType
@@ -74,7 +78,7 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
           ('ExtendedActiveSize * (userDownSampleBasePopulation / userDownSampleHitPopulation)).alias("ExtendedActiveSize"),
           'CrossDeviceVendorId, 'SourceId, 'Count.alias("Size"), 'TargetingDataId, 'Source, 'topCountryByDensity, 'PermissionTag)
         .withColumn("GoalType", lit(goalType.id))
-        .withColumn("StorageCloud", lit(Config.storageCloud))
+        .withColumn("StorageCloud", lit(StorageCloud.withName(conf.storageCloud).id))
         .cache()
 
     policyTable
@@ -82,7 +86,7 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
 
   override def retrieveSourceData(date: LocalDate): DataFrame = {
     val successFile = getAggregatedSeedReadableDataset().DatePartitionedPath(Some(date)) + "/_SUCCESS"
-    if (Config.reuseAggregatedSeedIfPossible && FSUtils.fileExists(successFile)(spark)) {
+    if (conf.reuseAggregatedSeedIfPossible && FSUtils.fileExists(successFile)(spark)) {
       val sourceMeta = retrieveSourceMetaData(date)
       // step 5. generate policy table
       return generateRawPolicyTable(sourceMeta, date)
@@ -98,7 +102,7 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
       .select('TDID, 'groupId)
       .where(samplingFunction('TDID))
       .withColumnRenamed("groupId", "personId")
-      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .repartition(conf.bidImpressionRepartitionNum, 'TDID)
 
     val householdGraph = readGraphData(date, CrossDeviceVendor.IAV2Household)(spark).cache()
 
@@ -106,7 +110,7 @@ abstract class AudienceGraphPolicyTableGenerator(goalType: GoalType, model: Mode
       .select('TDID, 'groupId)
       .where(samplingFunction('TDID))
       .withColumnRenamed("groupId", "householdId")
-      .repartition(Config.bidImpressionRepartitionNum, 'TDID)
+      .repartition(conf.bidImpressionRepartitionNum, 'TDID)
 
     val sampledGraph = sampledPersonGraph
       .join(sampledHouseholdGraph, Seq("TDID"), "outer")

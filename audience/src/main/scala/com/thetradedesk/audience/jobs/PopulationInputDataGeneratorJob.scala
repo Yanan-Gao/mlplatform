@@ -2,45 +2,47 @@ package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
 import com.thetradedesk.audience.datasets._
-import com.thetradedesk.audience.{audienceResultCoalesce, ttdReadEnv, ttdWriteEnv}
-import com.thetradedesk.audience.utils.Logger.Log
-import com.thetradedesk.audience.utils.S3Utils
-import com.thetradedesk.audience.{shouldConsiderTDID3, _}
 import com.thetradedesk.audience.jobs.PopulationInputDataGeneratorJob.prometheus
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.RSMV2PopulationUserSampleIndex
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
-import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
+import com.thetradedesk.audience._
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
-import com.thetradedesk.spark.util.io.FSUtils
+import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.commons.lang3.exception.ExceptionUtils
+import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.{ArrayType, StringType, StructType}
-import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode, SparkSession}
 
+import java.time.format.DateTimeFormatter
+import java.time.{LocalDate, LocalDateTime}
 import java.util.concurrent.ThreadLocalRandom
 import scala.collection.mutable
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
-import java.time.{LocalDate, LocalDateTime}
-import scala.util.Random
-// import java.io.ObjectInputFilter.Config
 
-object PopulationInputDataGeneratorJob {
-  val prometheus = new PrometheusClient("AudiencePopulationDataJob", "RSMPopulationInputDataGeneratorJob")
+case class PopulationInputDataGeneratorJobConfig(
+                                                  model: String,
+                                                  inputDataS3Bucket: String,
+                                                  inputDataS3Path: String,
+                                                  customInputDataPath: Option[String],
+                                                  subFolderKey: String,
+                                                  subFolderValue: String,
+                                                  syntheticIdLength: Int,
+                                                  populationOutputData3Path: String,
+                                                  runDate: LocalDate
+                                                )
 
-  def main(args: Array[String]): Unit = {
-    runETLPipeline()
-    prometheus.pushMetrics()
-  }
+object PopulationInputDataGeneratorJob
+  extends AutoConfigResolvingETLJobBase[PopulationInputDataGeneratorJobConfig](
+    groupName = "audience",
+    jobName = "PopulationInputDataGeneratorJob") {
 
-  def runETLPipeline(): Unit = {
-    RSMPopulationInputDataGenerator.generatePopulationData(date)
+  override val prometheus: Option[PrometheusClient] =
+    Some(new PrometheusClient("AudiencePopulationDataJob", "PopulationInputDataGeneratorJob"))
 
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
+    val date = conf.runDate
+
+    RSMPopulationInputDataGenerator.generatePopulationData(date, conf)
   }
 }
 
@@ -51,27 +53,13 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
   val resultTableSize = prometheus.createGauge(s"audience_Population_input_data_generation_size", "RSMPopulationInputDataGenerator table size", "date")
   val sampleUDF = shouldConsiderTDID3(config.getInt("hitRateUserDownSampleHitPopulation", default = 1000000), config.getString("saltToSampleHitRate", default = "0BgGCE"))(_)
 
-
-  object Config {
-    val model = config.getString("model", default = "RSMV2")
-    val inputDataS3Bucket = S3Utils.refinePath(config.getString("inputDataS3Bucket", "thetradedesk-mlplatform-us-east-1"))
-    val inputDataS3Path = S3Utils.refinePath(config.getString("inputDataS3Path", s"data/${ttdReadEnv}/audience/RSMV2/Imp_Seed_None/v=1"))
-    val populationOutputData3Path = S3Utils.refinePath(config.getString("populationOutputData3Path", s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None/v=1"))
-    val customInputDataPath = config.getString("customInputDataPath", default = null)
-    val subFolderKey = config.getString("subFolderKey", default = "split")
-    val subFolderValue = config.getString("subFolderValue", default = "Population")
-    val syntheticIdLength = config.getInt("syntheticIdLength", default = 500)
-  }
-
-
-  def generatePopulationData(date: LocalDate): Unit = {
+  def generatePopulationData(date: LocalDate, conf: PopulationInputDataGeneratorJobConfig): Unit = {
 
     val start = System.currentTimeMillis()
 
     val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
     val dateTime = date.atStartOfDay()
-    val basePath = "s3://" + Config.inputDataS3Bucket + "/" + Config.inputDataS3Path
-    val outputBasePath = "s3://" + Config.inputDataS3Bucket + "/" + Config.populationOutputData3Path
+    val basePath = "s3://" + conf.inputDataS3Bucket + "/" + conf.inputDataS3Path
 
     val windowSpec = Window.partitionBy("TDID").orderBy(rand())
     val impData = spark.read.format("tfrecord").load(s"$basePath/${date.format(formatter)}000000").drop("Targets", "SyntheticIds")
@@ -127,7 +115,7 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .cache()
     
-    val syntheticIdMaxLength = Config.syntheticIdLength 
+    val syntheticIdMaxLength = conf.syntheticIdLength
 
 //    val densityFeatureAndSample = udf(
 //      (SyntheticIdsLevel1: Array[Int], SyntheticIdsLevel2: Array[Int], SeedSyntheticIdsLevel1: Array[Int], SeedSyntheticIdsLevel2: Array[Int]) => {
@@ -274,12 +262,12 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
         .format("tfrecord")
         .option("recordType", "Example")
         .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
-        .save(s"$outputBasePath/${date.format(formatter)}000000/${Config.subFolderKey}=${Config.subFolderValue}")
+        .save(conf.populationOutputData3Path)
 
     resultTableSize.labels(dateTime.toLocalDate.toString).set(result.count())
     jobRunningTime.labels(dateTime.toLocalDate.toString).set(System.currentTimeMillis() - start)
   }
 }
 
-object RSMPopulationInputDataGenerator extends PopulationInputDataGenerator(prometheus: PrometheusClient) {
+object RSMPopulationInputDataGenerator extends PopulationInputDataGenerator(prometheus.get) {
 }

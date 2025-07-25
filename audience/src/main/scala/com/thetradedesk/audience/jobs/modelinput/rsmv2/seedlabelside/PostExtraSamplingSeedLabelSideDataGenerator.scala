@@ -2,7 +2,7 @@ package com.thetradedesk.audience.jobs.modelinput.rsmv2.seedlabelside
 
 import com.thetradedesk.audience.datasets.AggregatedSeedReadableDataset
 import com.thetradedesk.audience.date
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig._
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorJobConfig
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.{getDateStr, seedIdToSyntheticIdMapping, writeOrCache}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface._
 import com.thetradedesk.audience.transform.IDTransform.joinOnIdTypes
@@ -21,15 +21,17 @@ object PostExtraSamplingSeedLabelSideDataGenerator extends SeedLabelSideDataGene
 
   case class BidSeedDataRecord(BidRequestId: String, SplitRemainder: Int, SeedIds: Seq[String], TDIDs: Seq[String])
 
-  override def prepareSeedSideFeatureAndLabel(optInSeed: Dataset[OptInSeedRecord], bidSideData: Dataset[BidSideDataRecord],
-                                              userFs: Dataset[UserSiteZipLevelRecord]): Dataset[SeedLabelSideDataRecord] = {
+  override def prepareSeedSideFeatureAndLabel(optInSeed: Dataset[OptInSeedRecord],
+                                              bidSideData: Dataset[BidSideDataRecord],
+                                              userFs: Dataset[UserSiteZipLevelRecord],
+                                              conf: RelevanceModelInputGeneratorJobConfig): Dataset[SeedLabelSideDataRecord] = {
     val aggregatedSeed = AggregatedSeedReadableDataset().readPartition(date)
       .select("TDID", "idType", "SeedIds")
       .as[RSMV2AggregatedSeedRecord]
 
     val bidSeedData = getBidSeedData(bidSideData, aggregatedSeed, optInSeed.select('SeedId).as[String].collect()).cache()
 
-    val sampleIndicator = generateSampleIndicator(bidSeedData, optInSeed)
+    val sampleIndicator = generateSampleIndicator(bidSeedData, optInSeed, conf)
 
     val optInSeedIds = optInSeed.select("SeedId")
     // prepare negative sampling region
@@ -109,7 +111,7 @@ object PostExtraSamplingSeedLabelSideDataGenerator extends SeedLabelSideDataGene
       .select("BidRequestId", "TDIDs", "SplitRemainder", "PositiveSyntheticIds", "NegativeSyntheticIds")
       .as[UserPosNegSynIds]
 
-    joinWithDensityFeature(posWithNeg, userFs)
+    joinWithDensityFeature(posWithNeg, userFs, conf)
   }
 
   def getBidSeedData(bidSideData: Dataset[BidSideDataRecord], aggregatedSeed: Dataset[RSMV2AggregatedSeedRecord], optInSeeds: Array[String]): Dataset[BidSeedDataRecord] = {
@@ -130,14 +132,17 @@ object PostExtraSamplingSeedLabelSideDataGenerator extends SeedLabelSideDataGene
       .count()
   }
 
-  def generateSampleIndicator(bidSeedData: Dataset[BidSeedDataRecord], optInSeed: Dataset[OptInSeedRecord]): Dataset[SampleIndicatorRecord] = {
+  def generateSampleIndicator(bidSeedData: Dataset[BidSeedDataRecord],
+                              optInSeed: Dataset[OptInSeedRecord],
+                              conf: RelevanceModelInputGeneratorJobConfig): Dataset[SampleIndicatorRecord] = {
+
     val positiveCntPerSeed = getPositiveCntPerSeed(bidSeedData)
 
     // prepare pos randIndicator
     val indicator = positiveCntPerSeed
       .join(broadcast(optInSeed), "SeedId")
-      .withColumn("PositiveRandIndicator", least(lit(upLimitPosCntPerSeed), col("count")) / col("count"))
-      .withColumn("NegativeCount", least(lit(upLimitPosCntPerSeed), col("count")) * posNegRatio)
+      .withColumn("PositiveRandIndicator", least(lit(conf.upLimitPosCntPerSeed), col("count")) / col("count"))
+      .withColumn("NegativeCount", least(lit(conf.upLimitPosCntPerSeed), col("count")) * conf.posNegRatio)
 
 
     val totalNegCnt = indicator.agg(sum("NegativeCount")).first().getLong(0)
@@ -155,11 +160,11 @@ object PostExtraSamplingSeedLabelSideDataGenerator extends SeedLabelSideDataGene
 
     val dateStr = getDateStr()
     var writePath: String = null
-    if (saveIntermediateResult) {
-      writePath = s"s3://${intermediateResultBasePathEndWithoutSlash}/${dateStr}/sample_indicator_final"
+    if (conf.saveIntermediateResult) {
+      writePath = s"s3://${conf.intermediateResultBasePathEndWithoutSlash}/${dateStr}/sample_indicator_final"
     }
     writeOrCache(Option(writePath),
-      overrideMode, sampleIndicatorFinal).as[SampleIndicatorRecord]
+      conf.overrideMode, sampleIndicatorFinal).as[SampleIndicatorRecord]
   }
 
   def getBidRequestDensityFeature(posWithNeg: Dataset[UserPosNegSynIds], userFs: Dataset[UserSiteZipLevelRecord]): DataFrame = {
@@ -182,7 +187,9 @@ object PostExtraSamplingSeedLabelSideDataGenerator extends SeedLabelSideDataGene
       .join(bidRequestDensityFeatures, Seq("BidRequestId"), "left")
   }
 
-  def joinWithDensityFeature(posWithNeg: Dataset[UserPosNegSynIds], userFs: Dataset[UserSiteZipLevelRecord]): Dataset[SeedLabelSideDataRecord] = {
+  def joinWithDensityFeature(posWithNeg: Dataset[UserPosNegSynIds],
+                             userFs: Dataset[UserSiteZipLevelRecord],
+                             conf: RelevanceModelInputGeneratorJobConfig): Dataset[SeedLabelSideDataRecord] = {
     // extra sampling
     val processPosUDF = udf((posIds: Seq[Int], bestIds: Set[Int], normalIds: Set[Int], splitReminder: Int) => {
       val results = posIds.flatMap { id =>
@@ -191,7 +198,7 @@ object PostExtraSamplingSeedLabelSideDataGenerator extends SeedLabelSideDataGene
         } else if (normalIds != null && normalIds.contains(id)) {
           Some((id, 1))
         } else {
-          if (Random.nextFloat() < extraSamplingThreshold || splitReminder < 2) Some((id, 0)) else None
+          if (Random.nextFloat() < conf.extraSamplingThreshold || splitReminder < 2) Some((id, 0)) else None
         }
       }
       results.unzip
@@ -200,7 +207,7 @@ object PostExtraSamplingSeedLabelSideDataGenerator extends SeedLabelSideDataGene
     val processNegUDF = udf((negIds: Seq[Int], bestIds: Set[Int], normalIds: Set[Int], splitReminder: Int) => {
       val results = negIds.distinct.flatMap { id =>
         if (bestIds != null && bestIds.contains(id)) {
-          if (Random.nextFloat() < extraSamplingThreshold || splitReminder < 2) Some((id, 2)) else None
+          if (Random.nextFloat() < conf.extraSamplingThreshold || splitReminder < 2) Some((id, 2)) else None
         } else if (normalIds != null && normalIds.contains(id)) {
           Some((id, 1))
         } else {
@@ -232,7 +239,7 @@ object PostExtraSamplingSeedLabelSideDataGenerator extends SeedLabelSideDataGene
       .withColumn("SyntheticIds", concat(col("PositiveSyntheticIds"), col("NegativeSyntheticIds")))
       .withColumn("Targets", concat(col("PosTarget"), col("NegTarget")))
       .withColumn("ZipSiteLevels", concat(col("PositiveZipSiteLevel"), col("NegativeZipSiteLevel")))
-      .withColumn("ZippedTargets", zipAndGroupUDFGenerator(maxLabelLengthPerRow)('SyntheticIds, 'Targets, 'ZipSiteLevels))
+      .withColumn("ZippedTargets", zipAndGroupUDFGenerator(conf.maxLabelLengthPerRow)('SyntheticIds, 'Targets, 'ZipSiteLevels))
       .select(col("BidRequestId"), explode(col("ZippedTargets")).as("ZippedTargets"))
       .select(col("BidRequestId"), col("ZippedTargets").getField("_1").as("SyntheticIds"), col("ZippedTargets").getField("_2").as("Targets"), col("ZippedTargets").getField("_3").as("ZipSiteLevel_Seed"))
 
