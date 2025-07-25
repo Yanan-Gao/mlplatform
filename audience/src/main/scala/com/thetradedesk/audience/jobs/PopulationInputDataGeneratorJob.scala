@@ -33,7 +33,6 @@ import scala.util.Random
 object PopulationInputDataGeneratorJob {
   val prometheus = new PrometheusClient("AudiencePopulationDataJob", "RSMPopulationInputDataGeneratorJob")
 
-
   def main(args: Array[String]): Unit = {
     runETLPipeline()
     prometheus.pushMetrics()
