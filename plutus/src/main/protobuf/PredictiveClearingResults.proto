@@ -34,6 +34,7 @@ message PcResultLog {
   optional double MaxBidCPMInBucks=28;
   optional string Country=29;
   optional string Channel=30;
+  optional double DealFloorMultiplierCap=31;
 }
 
 message PlutusLog {
