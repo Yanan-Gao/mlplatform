@@ -7,17 +7,33 @@ import java.time.LocalDate
 case class BackoffMonitoringSchema(
                                     Date: Date,
                                     CampaignId:String,
-                                    Bids:Long,
-                                    Actual_BBF_OptOut_Bids:Long,
-                                    Sim_BBF_OptOut_Rate:Double,
-                                    Sim_BBF_PMP_OptOut_Rate:Double,
-                                    Sim_UnderdeliveryFraction:Double,
-                                    CampaignBbfFloorBuffer:Double,
-                                    CampaignPCAdjustment:Double,
-                                    Actual_BBF_OptOut_Rate:Double,
-                                    MaxBidMultiplierCap: Double,
+                                    IsValuePacing: Boolean,
                                     TestBucket:Short,
-                                    BucketGroup:String
+                                    BucketGroup:String,
+                                    CampaignBbfFloorBuffer:Option[Double],
+                                    CampaignPCAdjustment:Option[Double],
+                                    MaxBidMultiplierCap: Option[Double],
+                                    UnderdeliveryFraction:Option[Double],
+
+                                    // HadesBackoff Simulated OptOut Rates
+                                    Sim_BBF_OptOut_Rate:Option[Double],
+                                    Sim_BBF_PMP_OptOut_Rate:Option[Double],
+                                    Sim_BBF_OM_OptOut_Rate:Option[Double],
+
+                                    // Calculated OptOut Rates
+                                    BBF_OptOut_Rate:Option[Double],
+                                    BBF_PMP_OptOut_Rate: Option[Double],
+                                    BBF_OM_OptOut_Rate: Option[Double],
+                                    NonBBF_OptOut_Rate:Option[Double],
+
+                                    // Bid Counts
+                                    Bids:Option[Long],
+                                    PMP_Bids:Option[Long],
+                                    OM_Bids:Option[Long],
+                                    BBF_OptOut_Bids:Option[Long],
+                                    BBF_PMP_OptOut_Bids:Option[Long],
+                                    BBF_OM_OptOut_Bids:Option[Long],
+                                    NonBBF_OptOut_Bids: Option[Long]
                                  )
 
 object BackoffMonitoringDataset extends S3DailyParquetDataset[BackoffMonitoringSchema] {
