@@ -280,7 +280,7 @@ object MockData {
     UserFriendlyLabel = None
   )
 
-  def pcResultsLogMock(bidRequestId: String, bbfExceptedSource: Int = 0): PlutusLogsData = PlutusLogsData(
+  def pcResultsLogMock(bidRequestId: String, bbfExceptedSource: Int = 0, adGroupId: String = "asdasd"): PlutusLogsData = PlutusLogsData(
     BidRequestId = bidRequestId,
     InitialBid = 10,
     FinalBidPrice = 9,
@@ -305,7 +305,7 @@ object MockData {
     AuctionType = 1,
     DealId = null,
     SupplyVendor = "ads",
-    AdgroupId = "asdasd",
+    AdgroupId = adGroupId,
     UncappedBidPrice = 2.0,
     SnapbackMaxBid = 3.0,
     MaxBidMultiplierCap = 1.2,
@@ -761,11 +761,11 @@ object MockData {
     )
   }
 
-  def campaignUnderdeliveryForHadesMock(campaignId : String = "jkl789") = CampaignThrottleMetricSchema(
+  def campaignUnderdeliveryForHadesMock(campaignId : String = "jkl789", isValuePacing: Boolean = true) = CampaignThrottleMetricSchema(
     Date = Timestamp.valueOf(LocalDateTime.of(2024, 12, 1, 14, 30)),
     CampaignId = campaignId,
     CampaignFlightId = 12345,
-    IsValuePacing = true,
+    IsValuePacing = isValuePacing,
     MinCalculatedCampaignCapInUSD = 5,
     MaxCalculatedCampaignCapInUSD = 10,
     OverdeliveryInUSD = 0,
