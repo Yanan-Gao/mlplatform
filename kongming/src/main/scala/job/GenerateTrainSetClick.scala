@@ -34,7 +34,7 @@ object GenerateTrainSetClick extends KongmingBaseJob {
     val lookback = if (incTrain) 0 else clickLookback
 
     val startDate = date.minusDays(lookback)
-    val win = Window.partitionBy($"CampaignIdEncoded", $"AdGroupIdEncoded")
+    val win = Window.partitionBy($"CampaignIdEncoded", $"AdGroupIdEncoded", $"ImpDayIndex")
 
     // exclude partners that don't share click data, and MedHealth data
     val advertiserToExclude = ClickPartnerExcludeList.readAdvertiserList()
@@ -43,13 +43,14 @@ object GenerateTrainSetClick extends KongmingBaseJob {
           .filter(($"CategoryPolicy" === lit("Health")) && ($"IsRestricted" === lit(1)))
           .selectAs[AdvertiserExcludeRecord]
       ).withColumnRenamed("AdvertiserId", "AdvertiserIdStr")
+      .cache()
 
     // Imp [T-ConvLB, T]
     val sampledImpressions = (0 to lookback).map(i => {
       val ImpDate = startDate.plusDays(i)
       // Attr [T-ConvLB, T]
       val dailyImp = OldDailyOfflineScoringDataset().readDate(ImpDate)
-        .join(advertiserToExclude, Seq("AdvertiserIdStr"), "left_anti")
+        .join(broadcast(advertiserToExclude), Seq("AdvertiserIdStr"), "left_anti")
         .withColumn("sin_hour_week", $"sin_hour_week".cast("float"))
         .withColumn("cos_hour_week", $"cos_hour_week".cast("float"))
         .withColumn("sin_hour_day", $"sin_hour_day".cast("float"))
@@ -66,32 +67,33 @@ object GenerateTrainSetClick extends KongmingBaseJob {
       val impWithAttr = dailyImp.join(
         dailyClick.withColumnRenamed("BidRequestId", "BidRequestIdStr")
         .select("BidRequestIdStr", "ClickRedirectId"), Seq("BidRequestIdStr"), "left")
-        .withColumn("Target", when(col("ClickRedirectId").isNotNull, 1).otherwise(0)).cache()
+        .withColumn("Target", when(col("ClickRedirectId").isNotNull, 1).otherwise(0))
         .withColumn("AdGroupIdEncoded", encodeStringIdUdf('AdGroupIdStr))
         .withColumn("CampaignIdEncoded", encodeStringIdUdf('CampaignIdStr))
         .withColumn("AdvertiserIdEncoded", encodeStringIdUdf('AdvertiserIdStr))
-        .withColumn("PosCount", sum(when($"Target" === lit(1), 1).otherwise(0)).over(win))
-        .withColumn("NegCount", sum(when($"Target" === lit(0), 1).otherwise(0)).over(win))
-        .withColumn("NegRatio", $"PosCount" * lit(desiredNegOverPos) / $"NegCount")
         .withColumn("Revenue", lit(0.0f))
+        .withColumn("ImpDayIndex", lit(i))
 
-      impWithAttr.filter($"Target" === lit(1)).union(
-          impWithAttr.filter($"Target" ===lit(0))
-          .withColumn("rand", rand(seed = samplingSeed))
-          .filter($"rand" < $"NegRatio").drop("rand")
-        ).withColumn("Weight", lit(1.0f))
-        .drop("PosCount","NegCount","NegRatio")
+        impWithAttr
     }).reduce(_.union(_))
       .withColumn("UserDataOptIn",lit(2))
       .withColumn("Target", $"Target".cast("float"))
-      .cache()
+
+    val sampledImpressionsFiltered = sampledImpressions.
+      withColumn("PosCount", sum(when($"Target" === lit(1), 1).otherwise(0)).over(win))
+      .withColumn("NegCount", sum(when($"Target" === lit(0), 1).otherwise(0)).over(win))
+      .withColumn("NegRatio", $"PosCount" * lit(desiredNegOverPos) / $"NegCount")
+      .withColumn("rand", rand(seed = samplingSeed))
+      .filter("Target = 1 OR rand < NegRatio")
+      .withColumn("Weight", lit(1.0f))
+      .drop("PosCount","NegCount","NegRatio", "rand")
     // userdataoptin hashmod 1 ->2
 
-    sampledImpressions.selectAs[UserDataValidationDataForModelTrainingRecord](nullIfAbsent = true)
+    sampledImpressionsFiltered.selectAs[UserDataValidationDataForModelTrainingRecord](nullIfAbsent = true)
   }
 
   override def runTransform(args: Array[String]): Array[(String, Long)] = {
-    val trainDataWithFeature = generateTrainSetClick()(getPrometheus)
+    val trainDataWithFeature = generateTrainSetClick()(getPrometheus).cache()
 
     val trainDataWithSplit = trainDataWithFeature
       .withColumn("IsInTrainSet", when(abs(hash($"BidRequestIdStr") % 100) <= trainRatio * 100, lit(true)).otherwise(false))
