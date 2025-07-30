@@ -171,7 +171,7 @@ object BackoffMonitoringTransform {
 
     // Calculate real optout metrics:
     // Step 1 : Read PC Optout data
-    val pcOptOutData = PlutusOptoutBidsDataset.readDate(date, env = envForRead)
+    val pcOptOutData = PlutusOptoutBidsDataset.readDate(date, env = envForRead, nullIfColAbsent = true)
 
     // Step 2: Read adgroup dataset
     // day 1's adgroup data is exported at the end of day 0
