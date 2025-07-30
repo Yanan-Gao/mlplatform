@@ -2,28 +2,6 @@
   "name": "userFeatureMergeDef",
   "featureSourceDefinitions": [
     {
-      "name": "bidimp",
-      "dataSetPath": "features/feature_store/prod/user_bid_impression_feature/v=1",
-      "features": [
-        {
-          "name": "seenCount1D",
-          "dtype": 4
-        },
-        {
-          "name": "avgCost1D",
-          "dtype": 6
-        },
-        {
-          "name": "totalCost1D",
-          "dtype": 6
-        },
-        {
-          "name": "maxFloorPrice",
-          "dtype": 6
-        }
-      ]
-    },
-    {
       "name": "iddensity",
       "dataSetPath": "features/feature_store/prod/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/",
       "features": [
