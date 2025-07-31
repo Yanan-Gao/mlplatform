@@ -3,7 +3,7 @@ package com.thetradedesk.audience.datasets
 final case class FloorAgnosticBiddingMetricsRecord(CampaignId: String,
                                                    CampaignPCAdjustment: Double,
                                                    CampaignBbfFloorBuffer: Double,
-                                                   Actual_BBF_OptOut_Rate: Double,
+                                                   BBF_OptOut_Rate: Double,
                                                    MaxBidMultiplierCap: Double
                                                 )
 

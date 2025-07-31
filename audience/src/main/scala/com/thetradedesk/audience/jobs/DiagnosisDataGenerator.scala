@@ -30,7 +30,7 @@ object DiagnosisDataGenerator {
       .select("CurrencyCodeId", "FromUSD")
 
     // FAB (Floor Agnostic Bidding) metrics
-    val fabMetrics = loadParquetData[FloorAgnosticBiddingMetricsRecord](s3path = FloorAgnosticBiddingMetricsDataset.PCMetricsS3, date = date, lookBack = Some(5), getLatestDateOnly = Some(true))
+    val fabMetrics = loadParquetData[FloorAgnosticBiddingMetricsRecord](s3path = FloorAgnosticBiddingMetricsDataset.PCMetricsS3, date = date, lookBack = Some(5), getLatestDateOnly = Some(true)).filter(col("IsValuePacing"))
 
     val adgroups = AdGroupDataSet().readLatestPartitionUpTo(date, true)
     .join(advertisers, Seq("AdvertiserId"), "left")
@@ -120,7 +120,7 @@ object DiagnosisDataGenerator {
       .join(fabMetrics, Seq("CampaignId"), "left")
       .withColumn("CampaignPCBackoffAdjustment", coalesce(col("CampaignPCAdjustment"), lit(PC_BACKOFF_NO_ADJUSTMENT)))
       .withColumn("CampaignFabFloorBuffer", coalesce(col("CampaignBbfFloorBuffer"), lit(PC_PLATFORM_BBF_BUFFER)))
-      .withColumn("CampaignFabOptOutRate", coalesce(col("Actual_BBF_OptOut_Rate"), lit(PC_BACKOFF_NO_OPTOUT)))
+      .withColumn("CampaignFabOptOutRate", coalesce(col("BBF_OptOut_Rate"), lit(PC_BACKOFF_NO_OPTOUT)))
       .withColumn("MaxBidMultiplierCap", coalesce(col("MaxBidMultiplierCap"), lit(MAXBID_MULTIPLIER_DEFAULT)))
       .select(
         col("CampaignId"),
