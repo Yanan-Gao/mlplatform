@@ -44,3 +44,11 @@ aggregations:
     dataType: int
     aggWindows: [ 1, 3, 7 ]
     aggFunc: [ Mean ]
+  - field: AdjustedBidCPMInUSD
+    dataType: double
+    aggWindows: [ 1, 3, 7 ]
+    aggFunc: [ Mean, Sum ]
+  - field: FloorPriceInUSD
+    dataType: double
+    aggWindows: [ 1, 3, 7 ]
+    aggFunc: [ Max ]
