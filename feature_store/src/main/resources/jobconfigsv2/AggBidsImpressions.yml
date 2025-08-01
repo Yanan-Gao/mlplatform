@@ -8,7 +8,9 @@ dataSource:
     UIID as TDID,
     CampaignId,
     AdvertiserId,
-    CAST(IsImp AS INT) as WinRate
+    CAST(IsImp AS INT) as WinRate,
+    AdjustedBidCPMInUSD,
+    FloorPriceInUSD
     FROM datasource
 
 # aggregation levels configuration
