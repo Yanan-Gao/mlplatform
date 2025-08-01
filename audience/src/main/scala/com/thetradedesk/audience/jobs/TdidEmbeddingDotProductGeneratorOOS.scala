@@ -93,7 +93,7 @@ object TdidEmbeddingDotProductGeneratorOOS {
     }
 
     val df_sensitive_synthetic_ids = spark.read.parquet(policy_table_path)
-      .where('Source === lit(DataSource.Seed.id) && 'CrossDeviceVendorId === lit(CrossDeviceVendor.None.id) && 'Tag === lit(4) && 'ExtendedActiveSize >= lit(2000))
+      .where('Source === lit(DataSource.Seed.id) && 'CrossDeviceVendorId === lit(CrossDeviceVendor.None.id) && 'Tag.isin(2, 4) && 'ExtendedActiveSize >= lit(2000))
       .select('SourceId.as("SeedId"), 'SyntheticId.cast(IntegerType).as("SyntheticId"), 'IsSensitive, 'ExtendedActiveSize)
 
     val seedEmb = df_seed_emb.drop("IsSensitive").withColumn("SyntheticId", 'SyntheticId.cast(IntegerType)).join(df_sensitive_synthetic_ids, Seq("SyntheticId"), "inner")
