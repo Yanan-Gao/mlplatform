@@ -16,7 +16,7 @@ import java.nio.ByteBuffer
 
 object AggDefinitionHelper {
 
-  val defaultAggLevel = AggLevelConfig("user_id", 4, initAggGrains = Array(Grain.Hourly), initWritePartitions = Some(1), enableFeatureKeyCount = false)
+  val defaultAggLevel = AggLevelConfig(level = "user_id", saltSize = 4, initAggGrains = Array(Grain.Hourly), initWritePartitions = Some(1), enableFeatureKeyCount = false)
 
   // Helper methods
   def createTestAggDefinition(spec: FieldAggSpec*): AggDefinition = {
@@ -63,7 +63,7 @@ class InitialAggJobTest extends TTDSparkTest {
   ).toDF("user_id", "cat_1", "cat_2", "valueA", "values")
 
   private def runAggregation(df: Dataset[_], aggDef: AggDefinition, saltSize: Int = 2) = {
-    InitialAggJob.aggByDefinition(df, aggDef, AggLevelConfig("user_id", saltSize, Array(Grain.Hourly), enableFeatureKeyCount = false)).collect().toList
+    InitialAggJob.aggByDefinition(df, aggDef, AggLevelConfig(level = "user_id", saltSize = saltSize, initAggGrains = Array(Grain.Hourly), enableFeatureKeyCount = false)).collect().toList
   }
 
   // Test cases

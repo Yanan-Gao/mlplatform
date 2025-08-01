@@ -1,7 +1,7 @@
 dataSource:
   name: BidsImpressions
   rootPath: /Users/sven.zhang/Documents/local_test
-  prefix: /source=impressions/raw/year={year}/month={monthMM}/day={dayDD}/hourPart={hourInt}/
+  prefix: raw/source=impressions/year={year}/month={monthMM}/day={dayDD}/hourPart={hourInt}/
   format: parquet
   loadQuery: |
     SELECT
@@ -30,6 +30,16 @@ aggLevels:
     initAggGrains: [ hour ]
     initWritePartitions: 1500
     rollupWritePartitions: 10000
+    enableFeatureKeyCount: true
+  - level: SeedId
+    dependency: TDID
+    transform: [ TDID_To_SeedId ]
+    transformContext:
+      aggSeedDataSource: /Users/sven.zhang/Documents/local_test/aggregatedSeed/date={dateStr}
+    saltSize: -1
+    initAggGrains: [ hour ]
+    initWritePartitions: 1500
+    rollupWritePartitions: 3000
     enableFeatureKeyCount: true
 
 initAggConfig:

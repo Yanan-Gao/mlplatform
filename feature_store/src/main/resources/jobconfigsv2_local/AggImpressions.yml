@@ -63,6 +63,16 @@ aggLevels:
     initWritePartitions: 600
     rollupWritePartitions: 20000
     enableFeatureKeyCount: true
+  - level: SeedId
+    dependency: TDID
+    transform: [ TDID_To_SeedId ]
+    transformContext:
+      aggSeedDataSource: s3a://thetradedesk-mlplatform-us-east-1/data/prod/audience/aggregatedSeed/v=1/date={dateStr}
+    saltSize: -1
+    initAggGrains: [ hour ]
+    initWritePartitions: 1500
+    rollupWritePartitions: 10000
+    enableFeatureKeyCount: true
 
 initAggConfig:
   outputRootPath: /Users/sven.zhang/Documents/local_test

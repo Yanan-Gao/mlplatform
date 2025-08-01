@@ -9,8 +9,12 @@ import com.thetradedesk.featurestore.jobs.AggAttributions.sourcePartition
 import com.thetradedesk.featurestore.rsm.CommonEnums
 import com.thetradedesk.featurestore.rsm.CommonEnums.Grain.Hourly
 import com.thetradedesk.featurestore.transform.DescriptionAgg.genKeyCountCol
+import com.thetradedesk.featurestore.transform.TransformFactory
+import com.thetradedesk.spark.TTDSparkContext.spark
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{Column, DataFrame, Dataset}
+
+import scala.collection.mutable
 
 // This job can be run hourly/daily, do the base agg from datasource configuration
 object InitialAggJob extends FeatureStoreAggBaseJob {
@@ -34,9 +38,9 @@ object InitialAggJob extends FeatureStoreAggBaseJob {
       "dateStr" -> getDateStr(date),
       "ttdEnv" -> ttdEnv,
       "grain" -> grainEnum.toString,
-      "year" -> date.getYear().toString,
-      "monthMM" -> f"${date.getMonthValue()}%02d",
-      "dayDD" -> f"${date.getDayOfMonth()}%02d",
+      "year" -> date.getYear.toString,
+      "monthMM" -> f"${date.getMonthValue}%02d",
+      "dayDD" -> f"${date.getDayOfMonth}%02d",
     )
 
     // load raw and process all levels in a batch for each hour
@@ -54,7 +58,7 @@ object InitialAggJob extends FeatureStoreAggBaseJob {
         )
       }
     } else {
-      // do merge if exists hourly level
+      // do merge if there is merge result from previous grain
       initialAggDef.aggLevels
         .filter(x => x.initAggGrains.contains(grainEnum) && x.initAggGrains.exists(level => level < grainEnum))
         .foreach(x => {
@@ -121,60 +125,181 @@ object InitialAggJob extends FeatureStoreAggBaseJob {
       .agg(mergeCols.head, mergeCols.tail: _*)
   }
 
-  // load raw data source once and process all levels in a batch
+  /**
+   * @param initialAggDef
+   * @param overridesMap
+   * @param aggLevelsToProcess
+   *
+   * 1. Group aggregation at each level: {mainAggLevel: [derivations]}. For example, since SeedId is derived from TDID, first aggregate by TDID, then use that result to generate data at the SeedId level.
+   * 2. Filter the mainAggLevel and derivations that has been processed
+   * 3. Load datasource once only if at least one mainAggLevel required
+   * 4. Directly read mainAggLevel agg result if it's processed to avoid duplicate agg flow
+   */
   private def loadAndProcess(
                               initialAggDef: AggDefinition,
                               overridesMap: Map[String, String],
-                              aggLevelsToProcess: Seq[AggLevelConfig]
+                              aggLevelCandidates: Seq[AggLevelConfig]
                             ): Unit = {
-    if (aggLevelsToProcess.isEmpty) {
-      return
-    }
-    val filteredLevels = aggLevelsToProcess.filter(x => {
+    if (aggLevelCandidates.isEmpty) return
 
-      val overrides = overridesMap + ("indexPartition" -> x.level)
-      // validate output
-      val outputDataSet = ProfileDataset(
+    val profileDataSetByLevel = createProfileDatasets(initialAggDef, overridesMap, aggLevelCandidates)
+    val aggJobGraph = buildAggJobGraph(aggLevelCandidates, profileDataSetByLevel)
+    val dataSource = loadDataSourceIfNeeded(initialAggDef, overridesMap, aggLevelCandidates, aggJobGraph, profileDataSetByLevel)
+
+    processAggregations(initialAggDef, overridesMap, aggLevelCandidates, aggJobGraph, profileDataSetByLevel, dataSource)
+  }
+
+  private def createProfileDatasets(
+                                     initialAggDef: AggDefinition,
+                                     overridesMap: Map[String, String],
+                                     aggLevelCandidates: Seq[AggLevelConfig]
+                                   ): Map[String, ProfileDataset] = {
+    aggLevelCandidates.map { candidate =>
+      val overrides = overridesMap + ("indexPartition" -> candidate.level)
+      candidate.level -> ProfileDataset(
         rootPath = initialAggDef.initAggConfig.outputRootPath,
         prefix = initialAggDef.initAggConfig.outputPrefix,
         grain = Some(grainEnum),
         overrides = overrides
       )
+    }.toMap
+  }
 
-      overrideOutput || !outputDataSet.isProcessed
-    })
+  private def buildAggJobGraph(
+                                aggLevelCandidates: Seq[AggLevelConfig],
+                                profileDataSetByLevel: Map[String, ProfileDataset]
+                              ): Map[String, Set[String]] = {
+    val rawAggJobGraph = mutable.Map.empty[String, mutable.Set[String]]
 
-    if (filteredLevels.isEmpty) {
-      println(
-        s"All Agg levels for source ${aggDataSource} are already processed, overridesMap: $overridesMap"
-      )
-      return
+    aggLevelCandidates.foreach { levelInfo =>
+      levelInfo.dependency match {
+        case None =>
+          rawAggJobGraph.getOrElseUpdate(levelInfo.level, mutable.Set.empty)
+
+        case Some(_) if shouldProcessLevel(levelInfo, profileDataSetByLevel) =>
+          val derivations = rawAggJobGraph.getOrElseUpdate(levelInfo.dependency.get, mutable.Set.empty)
+          derivations += levelInfo.level
+
+        case _ =>
+          println(s"Skipping Derived Agg Level ${levelInfo.level}, already processed at: ${profileDataSetByLevel(levelInfo.level).datasetPath}")
+      }
     }
-    // load raw data source once
-    val inputDf = loadDataSource(initialAggDef, overridesMap, filteredLevels)
 
-    filteredLevels.foreach { aLevel =>
-      val outputDataSet = ProfileDataset(
-        rootPath = initialAggDef.initAggConfig.outputRootPath,
-        prefix = initialAggDef.initAggConfig.outputPrefix,
-        grain = Some(grainEnum),
-        overrides = overridesMap + ("indexPartition" -> aLevel.level)
-      )
-      println(
-        s"Start Processing Agg Level ${aLevel.level}, Grain: ${grainEnum}, outputPath: ${outputDataSet.datasetPath}, at ${java.time.Instant.now().toString}"
-      )
-      // we don't need aggregate on empty data
-      val aggInputDf = inputDf.filter(shouldTrackTDID(col(aLevel.level)))
+    rawAggJobGraph
+      .filter { case (upLevelKey, derivations) =>
+        val needProcess = shouldProcessTopLevel(upLevelKey, derivations, profileDataSetByLevel)
+        if (!needProcess) {
+          println(s"Skipping Top Agg Level $upLevelKey, Grain: $grainEnum, Dataset existed in outputPath: ${profileDataSetByLevel(upLevelKey).datasetPath}")
+        }
+        needProcess
+      }
+      .map { case (k, v) => k -> v.toSet }
+      .toMap
+  }
 
-      val result = aggByDefinition(aggInputDf, initialAggDef, aLevel)
-      outputDataSet.writeWithRowCountLog(result, aLevel.initWritePartitions)
-      aggInputDf.unpersist()
-      result.unpersist()
-      println(
-        s"End Processing Agg Level ${aLevel.level}, Grain: ${grainEnum}, outputPath: ${outputDataSet.datasetPath}, at ${java.time.Instant.now().toString}"
-      )
+  private def shouldProcessLevel(levelInfo: AggLevelConfig, profileDataSetByLevel: Map[String, ProfileDataset]): Boolean =
+    overrideOutput || !profileDataSetByLevel(levelInfo.level).isProcessed
+
+  private def shouldProcessTopLevel(upLevelKey: String, derivations: mutable.Set[String], profileDataSetByLevel: Map[String, ProfileDataset]): Boolean =
+    overrideOutput || !profileDataSetByLevel(upLevelKey).isProcessed || derivations.nonEmpty
+
+  private def loadDataSourceIfNeeded(
+                                      initialAggDef: AggDefinition,
+                                      overridesMap: Map[String, String],
+                                      aggLevelCandidates: Seq[AggLevelConfig],
+                                      aggJobGraph: Map[String, Set[String]],
+                                      profileDataSetByLevel: Map[String, ProfileDataset]
+                                    ): DataFrame = {
+    if (aggJobGraph.keys.exists(key => !profileDataSetByLevel(key).isProcessed) || overrideOutput) {
+      val levelsToProcess = aggLevelCandidates.filter(candidate => aggJobGraph.contains(candidate.level))
+      loadDataSource(initialAggDef, overridesMap, levelsToProcess)
+    } else {
+      spark.emptyDataFrame
     }
   }
+
+  private def processAggregations(
+                                   initialAggDef: AggDefinition,
+                                   overridesMap: Map[String, String],
+                                   aggLevelCandidates: Seq[AggLevelConfig],
+                                   aggJobGraph: Map[String, Set[String]],
+                                   profileDataSetByLevel: Map[String, ProfileDataset],
+                                   dataSource: DataFrame
+                                 ): Unit = {
+    aggJobGraph.foreach { case (topLevel, derivations) =>
+      val topLevelConfig = findLevelConfig(aggLevelCandidates, topLevel)
+      val upLevelAggResult = processTopLevelAgg(initialAggDef, topLevelConfig, profileDataSetByLevel(topLevel), dataSource)
+
+      processDerivedLevels(initialAggDef, overridesMap, aggLevelCandidates, derivations, profileDataSetByLevel, upLevelAggResult)
+
+      upLevelAggResult.unpersist()
+    }
+  }
+
+  private def findLevelConfig(aggLevelCandidates: Seq[AggLevelConfig], level: String): AggLevelConfig =
+    aggLevelCandidates.find(_.level == level).get
+
+  private def processTopLevelAgg(
+                                  initialAggDef: AggDefinition,
+                                  topLevelConfig: AggLevelConfig,
+                                  profileDataset: ProfileDataset,
+                                  dataSource: DataFrame
+                                ): DataFrame = {
+    if (overrideOutput || !profileDataset.isProcessed) {
+      logProcessingStart(topLevelConfig.level, profileDataset.datasetPath)
+      val filteredDf = dataSource.filter(shouldTrackTDID(col(topLevelConfig.level)))
+      val result = aggByDefinition(filteredDf, initialAggDef, topLevelConfig).toDF()
+      profileDataset.writeWithRowCountLog(result, topLevelConfig.initWritePartitions)
+      logProcessingComplete(topLevelConfig.level, profileDataset.datasetPath)
+      result
+    } else {
+      println(s"Start Reading Agg Level ${topLevelConfig.level} to process derivations, Grain: $grainEnum, outputPath: ${profileDataset.datasetPath}")
+      profileDataset.readDataSet()
+    }
+  }
+
+  private def processDerivedLevels(
+                                    initialAggDef: AggDefinition,
+                                    overridesMap: Map[String, String],
+                                    aggLevelCandidates: Seq[AggLevelConfig],
+                                    derivations: Set[String],
+                                    profileDataSetByLevel: Map[String, ProfileDataset],
+                                    upLevelAggResult: DataFrame
+                                  ): Unit = {
+    derivations.foreach { dLevel =>
+      val derivedLevel = findLevelConfig(aggLevelCandidates, dLevel)
+      val profileDataset = profileDataSetByLevel(dLevel)
+
+      logProcessingStart(dLevel, profileDataset.datasetPath)
+
+      val transformedResult = applyTransformations(derivedLevel, overridesMap, upLevelAggResult)
+      val derivedResult = mergeByDefinition(transformedResult.toDF(), initialAggDef, derivedLevel)
+
+      profileDataset.writeWithRowCountLog(derivedResult, derivedLevel.initWritePartitions)
+      transformedResult.unpersist()
+      derivedResult.unpersist()
+
+      logProcessingComplete(dLevel, profileDataset.datasetPath)
+    }
+  }
+
+  private def applyTransformations(
+                                    derivedLevel: AggLevelConfig,
+                                    overridesMap: Map[String, String],
+                                    upLevelAggResult: DataFrame
+                                  ): DataFrame = {
+    derivedLevel.transform.fold(upLevelAggResult) { transform =>
+      val transformers = TransformFactory.getTransformers(transform, derivedLevel.transformContext ++ overridesMap)
+      val result = transformers.foldLeft(upLevelAggResult)((df, transformer) => transformer.transform(df.toDF()))
+      result.persist()
+    }
+  }
+
+  private def logProcessingStart(level: String, datasetPath: String): Unit =
+    println(s"Start Processing Agg Level $level, Grain: $grainEnum, outputPath: $datasetPath, at ${java.time.Instant.now()}")
+
+  private def logProcessingComplete(level: String, datasetPath: String): Unit =
+    println(s"Completed Processing Agg Level $level, Grain: $grainEnum, outputPath: $datasetPath, at ${java.time.Instant.now()}")
 
   // aggregate from raw data source base on definition
   def aggByDefinition(

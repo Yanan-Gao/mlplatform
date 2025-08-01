@@ -3,8 +3,10 @@ package com.thetradedesk.featurestore.datasets
 import com.thetradedesk.featurestore._
 import com.thetradedesk.featurestore.rsm.CommonEnums.Grain.{Daily, Grain, Hourly}
 import com.thetradedesk.featurestore.utils.{PathUtils, StringUtils}
+import com.thetradedesk.spark.TTDSparkContext
+import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.io.FSUtils
-import org.apache.spark.sql.{Dataset, SaveMode}
+import org.apache.spark.sql.{DataFrame, Dataset, SaveMode}
 
 
 case class ProfileDataset(rootPath: String = MLPlatformS3Root,
@@ -26,6 +28,13 @@ case class ProfileDataset(rootPath: String = MLPlatformS3Root,
   def isProcessed: Boolean = {
     val successFile = s"${datasetPath}/_SUCCESS"
     FSUtils.fileExists(successFile)
+  }
+
+  def readDataSet(): DataFrame = {
+    if (!FSUtils.directoryExists(datasetPath)(TTDSparkContext.spark)) {
+      throw new IllegalStateException(s"Path doesn't exist: ${datasetPath}")
+    }
+    spark.read.parquet(datasetPath).drop("date", "hour")
   }
 }
 
