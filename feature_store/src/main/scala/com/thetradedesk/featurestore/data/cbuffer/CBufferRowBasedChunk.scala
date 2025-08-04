@@ -128,6 +128,9 @@ case class CBufferRowBasedChunk(schema: StructType, features: Array[CBufferFeatu
 
   private def updateOffset(): Unit = {
     this.chunkBuffer.position(this.refPosition)
+    if ((this.offStart - this.start) > 65535) {
+      throw new UnsupportedOperationException(s"current record size ${(this.offStart - this.start)} bytes is larger than per record size 64 KB limitation")
+    }
     this.chunkBuffer.putShort((this.offStart - this.start).toShort)
     this.chunkBuffer.position(this.offStart)
   }
@@ -142,6 +145,9 @@ case class CBufferRowBasedChunk(schema: StructType, features: Array[CBufferFeatu
     if (offset > this.chunkBuffer.capacity()) {
       if (options.fixedChunkBuffer) {
         throw new UnsupportedOperationException(s"current chunk size is out of capacity ${this.chunkBuffer.capacity()}")
+      }
+      if (offset > Int.MaxValue) {
+        throw new UnsupportedOperationException(s"current chunk size $offset is out of 1<<31")
       }
       println(s"chunk buffer extended original size ${this.chunkBuffer.capacity()} expectation ${offset}")
       val newChunkBuffer = allocateBuffer(nextAllocateSize(offset), this.options.useOffHeap, this.options.bigEndian)
