@@ -5,7 +5,6 @@ import com.thetradedesk.featurestore.configs.FieldAggSpec
 import com.thetradedesk.featurestore.features.Features.hashFeature
 import com.thetradedesk.featurestore.rsm.CommonEnums.Grain.Grain
 import com.thetradedesk.featurestore.transform.FrequencyAgg.{ArrayFrequencyAggregator, FrequencyAggregator, FrequencyMergeAggregator}
-import com.thetradedesk.geronimo.shared.ARRAY_STRING_FEATURE_TYPE
 import org.apache.spark.sql.Column
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.StringType
@@ -42,7 +41,8 @@ abstract class FrequencyFuncBaseProcessor(aggFunc: AggFuncV2.Frequency, fieldAgg
       if (fieldAggSpec.cardinality.isEmpty) {
         baseCol.getItem(n).alias(s"${fieldAggSpec.field}_Top${n}_$suffix")
       } else {
-        hashFeature(baseCol.getItem(n), ARRAY_STRING_FEATURE_TYPE, fieldAggSpec.cardinality.get).alias(s"${fieldAggSpec.field}_Top${n}_${suffix}_Hash")
+        val dType = if (fieldAggSpec.dataType.startsWith("array")) fieldAggSpec.dataType else s"array_${fieldAggSpec.dataType}"
+        hashFeature(baseCol.getItem(n), dType, fieldAggSpec.cardinality.get).alias(s"${fieldAggSpec.field}_Top${n}_${suffix}_Hash")
       }
     }
 

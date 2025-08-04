@@ -113,7 +113,11 @@ object Features {
 
   def hashFeature(inputCol: Column, dType: String, cardinality: Int): Column = {
     dType match {
+      case STRING_FEATURE_TYPE => when(inputCol.isNotNullOrEmpty, shiftModUdf(xxhash64(inputCol), lit(cardinality))).otherwise(0)
+      case INT_FEATURE_TYPE | LONG_FEATURE_TYPE => when(inputCol.isNotNull, shiftModUdf(inputCol, lit(cardinality))).otherwise(0)
       case ARRAY_STRING_FEATURE_TYPE => when(inputCol.isNotNull, shiftModArrayUdf(transform(inputCol, value => xxhash64(value)), lit(cardinality))).otherwise(lit(array()))
+      case ARRAY_INT_FEATURE_TYPE | ARRAY_LONG_FEATURE_TYPE => transform(inputCol, value => when(value.isNotNull, shiftModUdf(value, lit(cardinality))).otherwise(0))
+      case FLOAT_FEATURE_TYPE => inputCol
       case _ => throw new UnsupportedOperationException(s"Unsupported data type ${dType} with feature ${inputCol}")
     }
   }

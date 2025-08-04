@@ -84,17 +84,14 @@ aggregations:
     dataType: int
     aggWindows: [ 1, 3, 7 ]
     aggFunc: [ Top15 ]
-    cardinality: 25
   - field: DayOfWeek
     dataType: int
     aggWindows: [ 7 ]
     aggFunc: [ Top7 ]
-    cardinality: 8
   - field: DeviceType
     dataType: int
     aggWindows: [ 1, 3, 7 ]
     aggFunc: [ Top9 ]
-    cardinality: 10
   - field: DeviceMake
     dataType: string
     aggWindows: [ 1, 3, 7 ]
@@ -119,27 +116,22 @@ aggregations:
     dataType: int
     aggWindows: [ 1, 3, 7 ]
     aggFunc: [ Top15 ]
-    cardinality: 25
   - field: RenderingContext
     dataType: int
     aggWindows: [ 1, 3, 7 ]
     aggFunc: [ Top6 ]
-    cardinality: 7
   - field: InternetConnectionType
     dataType: int
     aggWindows: [ 1, 3, 7 ]
     aggFunc: [ Top10 ]
-    cardinality: 11
   - field: OperatingSystemFamily
     dataType: int
     aggWindows: [ 1, 3, 7 ]
     aggFunc: [ Top7 ]
-    cardinality: 8
   - field: OperatingSystem
     dataType: int
     aggWindows: [ 1, 3, 7 ]
     aggFunc: [ Top15 ]
-    cardinality: 72
   - field: ContextualCategories
     dataType: array_long
     aggWindows: [ 1, 3, 7 ]
