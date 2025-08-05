@@ -11,7 +11,7 @@ import scala.collection.JavaConverters._
  * @param logGroup  name of the CloudWatch log group
  * @param logStream name of the CloudWatch log stream
  */
-class CloudWatchLogger(client: AWSLogs, logGroup: String, logStream: String) {
+class CloudWatchLogger(client: AWSLogs, logGroup: String, logStream: String) extends Logger {
   // Cache the next sequence token so we don't have to fetch it from CloudWatch
   // for every log entry. It is refreshed after each putLogEvents call.
   private var sequenceToken: Option[String] = fetchSequenceToken()
@@ -22,13 +22,13 @@ class CloudWatchLogger(client: AWSLogs, logGroup: String, logStream: String) {
     streams.headOption.flatMap(s => Option(s.getUploadSequenceToken))
   }
 
-  def debug(message: String): Unit = log("DEBUG", message)
+  override def debug(message: String): Unit = log("DEBUG", message)
 
-  def info(message: String): Unit = log("INFO", message)
+  override def info(message: String): Unit = log("INFO", message)
 
-  def warn(message: String): Unit = log("WARN", message)
+  override def warn(message: String): Unit = log("WARN", message)
 
-  def error(message: String): Unit = log("ERROR", message)
+  override def error(message: String): Unit = log("ERROR", message)
 
   def log(level: String, message: String): Unit = {
     val event = new InputLogEvent()

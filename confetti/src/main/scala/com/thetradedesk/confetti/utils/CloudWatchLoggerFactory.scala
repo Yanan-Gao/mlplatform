@@ -12,12 +12,12 @@ import scala.collection.JavaConverters._
  * The factory ensures the log group and stream exist before
  * returning the logger.
  */
-object CloudWatchLoggerFactory {
+object CloudWatchLoggerFactory extends LoggerFactory {
   /**
    * Obtain a CloudWatchLogger for the provided log group and stream.
    * A new logger instance is created on every call.
    */
-  def getLogger(logGroup: String, logStream: String): CloudWatchLogger = {
+  override def getLogger(logGroup: String, logStream: String): Logger = {
     val client = AWSLogsClientBuilder.standard()
       .withRegion(Regions.US_EAST_1)
       .build()

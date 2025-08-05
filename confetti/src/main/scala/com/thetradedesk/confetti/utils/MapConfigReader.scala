@@ -11,7 +11,7 @@ import scala.util.Try
  * report all issues at once. Fields typed as `Option[T]` are treated
  * as optional; other fields are required.
  */
-class MapConfigReader(map: Map[String, String], logger: CloudWatchLogger) {
+class MapConfigReader(map: Map[String, String], logger: Logger) {
   private val errors = ListBuffer.empty[String]
 
   private def getSeqOpt[T](
