@@ -14,8 +14,11 @@ import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.storage.StorageLevel
+import org.apache.spark.sql.types._
+import org.apache.spark.sql.Row
 
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 object HadesCampaignAdjustmentsTransform {
 
@@ -474,12 +477,33 @@ object HadesCampaignAdjustmentsTransform {
                 campaignFloorBufferData: Dataset[MergedCampaignFloorBufferSchema]
                ): Dataset[HadesAdjustmentSchemaV2] = {
 
+    /*temporary. we are performing a reset on adhoc data this needs to be formalized*/
+    val formatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
+    val formattedDate: String = date.format(formatter)
+
+    val resetData = try {
+        spark.read.option("header", "true").csv(f"s3://ttd-adhoc-datperf-useast/env=dev/users/nik/BBF/Aug25_CampaignBufferReset/date=$formattedDate")
+          .withColumn("toBeReset", lit(true))
+    } catch {
+      case e: Exception => {
+        println(s"Failed to read reset data: ${e.getMessage}")
+
+        // Create an empty DataFrame with campaignId and toBeReset columns
+        val schema = StructType(Array(
+          StructField("CampaignId", StringType, true),
+          StructField("toBeReset", BooleanType, true)
+        ))
+        spark.createDataFrame(spark.sparkContext.emptyRDD[Row], schema)
+      }
+    }
+
     val yesterdaysData = HadesCampaignAdjustmentsDataset.readLatestDataUpToIncluding(
       date.minusDays(1), env = envForReadInternal, nullIfColAbsent = true, historyLength = HistoryLength)
-      // We get rid of unadjusted campaigns because if they are still underdelivering, they'll
-      // get picked up anyways. If not, we dont need to carry on that data.
+      .join(resetData, Seq("CampaignId"), "left")
+      .filter($"toBeReset".isNull)
       .as[HadesAdjustmentSchemaV2]
       .cache()
+
 
     val campaignUnderdeliveryData = CampaignThrottleMetricDataset.readDate(env = envForRead, date = date)
       .cache()
