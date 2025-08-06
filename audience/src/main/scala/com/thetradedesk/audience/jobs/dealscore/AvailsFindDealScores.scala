@@ -7,6 +7,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.expressions.{UserDefinedFunction, Window}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.datasets.sources.SupplyVendorDealDataSet
 import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
@@ -61,6 +62,7 @@ object AvailsFindDealScores {
     val dealSv = spark.read.parquet(deal_sv_path)
     val dealSvSeedDS = dealSv.select("DealCode", "SupplyVendorId", "SeedId").distinct().cache();
     val dealSvDS = dealSvSeedDS.select("DealCode", "SupplyVendorId").distinct()
+    SupplyVendorDealDataSet
 
     val dayToRead = LocalDate.parse(dateStrDash).atStartOfDay()
     val avails = IdentityAndDealAggHourlyDataSet.readFullDayPartition(dayToRead).filter(col("hour") >= min_hour && col("hour") < max_hour)
