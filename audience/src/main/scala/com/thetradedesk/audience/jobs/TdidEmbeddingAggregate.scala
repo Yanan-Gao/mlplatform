@@ -11,56 +11,55 @@ import org.apache.spark.sql.{Encoder, Encoders}
 
 import java.nio.charset.StandardCharsets
 
+case class Buffer(sums: Array[Double], var count: Long)
 
+object RelevanceScoresAggregator
+  extends Aggregator[Seq[Double], Buffer, Array[Double]] {
 
+  val arrayLength = 64
+  // Initialize the buffer
+  def zero: Buffer = Buffer(Array.fill(arrayLength)(0.0), 0L)
+
+  // Add a new value to the buffer
+  def reduce(buffer: Buffer, input: Seq[Double]): Buffer = {
+    require(
+      input.length == arrayLength,
+      s"Input array length ${input.length} does not match expected length $arrayLength"
+    )
+
+    for (i <- 0 until arrayLength) {
+      buffer.sums.update(i, buffer.sums(i) + input(i))
+    }
+    buffer.count = buffer.count + 1
+    buffer
+  }
+
+  // Merge two buffers
+  def merge(b1: Buffer, b2: Buffer): Buffer = {
+    for (i <- 0 until arrayLength) {
+      b1.sums.update(i, b1.sums(i) + b2.sums(i))
+    }
+
+    b1.count = b1.count + b2.count
+
+    b1
+  }
+
+  // Calculate final average
+  def finish(buffer: Buffer): Array[Double] = {
+    if (buffer.count == 0) {
+      Array.fill(arrayLength)(0.0f)
+    } else {
+      buffer.sums.map(sum => (sum / buffer.count).toDouble)
+    }
+  }
+
+  // Encoders for Spark to serialize the data
+  def bufferEncoder: Encoder[Buffer] = Encoders.product[Buffer]
+  def outputEncoder: Encoder[Array[Double]] = ExpressionEncoder[Array[Double]]
+}
 
 class TdidEmbeddingAggregate {
-
-  case class Buffer(sums: Array[Double], var count: Long)
-
-  object RelevanceScoresAggregator
-    extends Aggregator[Seq[Double], Buffer, Array[Double]] {
-
-    val arrayLength=64
-    // Initialize the buffer
-    def zero: Buffer = Buffer(Array.fill(arrayLength)(0.0), 0L)
-
-    // Add a new value to the buffer
-    def reduce(buffer: Buffer, input: Seq[Double]): Buffer = {
-      require(input.length == arrayLength,
-        s"Input array length ${input.length} does not match expected length $arrayLength")
-
-      for (i <- 0 until arrayLength) {
-        buffer.sums.update(i, buffer.sums(i) + input(i))
-      }
-      buffer.count = buffer.count + 1
-      buffer
-    }
-
-    // Merge two buffers
-    def merge(b1: Buffer, b2: Buffer): Buffer = {
-      for (i <- 0 until arrayLength) {
-        b1.sums.update(i, b1.sums(i) + b2.sums(i))
-      }
-
-      b1.count = b1.count + b2.count
-
-      b1
-    }
-
-    // Calculate final average
-    def finish(buffer: Buffer): Array[Double] = {
-      if (buffer.count == 0) {
-        Array.fill(arrayLength)(0.0f)
-      } else {
-        buffer.sums.map(sum => (sum / buffer.count).toDouble)
-      }
-    }
-
-    // Encoders for Spark to serialize the data
-    def bufferEncoder: Encoder[Buffer] = Encoders.product[Buffer]
-    def outputEncoder: Encoder[Array[Double]] = ExpressionEncoder[Array[Double]]
-  }
 
   //spark.udf.register("emb_avg", udaf(RelevanceScoresAggregator))
   val emb_avg = udaf(RelevanceScoresAggregator)
@@ -104,3 +103,4 @@ object TdidEmbeddingAggregate
     new TdidEmbeddingAggregate().run(conf)
   }
 }
+
