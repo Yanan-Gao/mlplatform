@@ -5,10 +5,10 @@ import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.transform.ContextualTransform.generateContextualFeatureTier1
 import com.thetradedesk.audience.utils.Logger.Log
-import com.thetradedesk.audience.{date, dateTime, _}
+import com.thetradedesk.audience._
 import com.thetradedesk.geronimo.shared.readModelFeatures
 import com.thetradedesk.audience.jobs.HitRateReportingTableGeneratorJob.prometheus
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.{RSMV2UserSampleSalt}
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.RSMV2UserSampleSalt
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -22,6 +22,7 @@ import org.apache.spark.sql.types._
 import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode, SparkSession}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
 import com.thetradedesk.audience.transform.IDTransform.{filterOnIdTypesSym, idTypesBitmap, joinOnIdTypes}
+import com.thetradedesk.audience.utils.SeedListUtils.activeCampaignSeedAndIdFilterUDF
 
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -55,11 +56,15 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
 
     val start = System.currentTimeMillis()
 
+    val (_, activeSeedIdFilterUDF) = activeCampaignSeedAndIdFilterUDF()
+
     val aggSeed = AggregatedSeedReadableDataset()
       .readPartition(date)(spark)
-      .filter(sampler.samplingFunction('TDID))
-      .cache()
+      .withColumn("SeedIds", activeSeedIdFilterUDF('SeedIds))
+      .withColumn("PersonGraphSeedIds", activeSeedIdFilterUDF('PersonGraphSeedIds))
+      .withColumn("HouseholdGraphSeedIds", activeSeedIdFilterUDF('HouseholdGraphSeedIds))
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
+      .cache()
 
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))

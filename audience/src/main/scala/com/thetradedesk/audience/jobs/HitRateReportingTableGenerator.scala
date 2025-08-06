@@ -5,6 +5,7 @@ import com.thetradedesk.audience.datasets.{AggregatedSeedReadableDataset, Campai
 import com.thetradedesk.audience.jobs.HitRateReportingTableGeneratorJob.prometheus
 import com.thetradedesk.audience.transform.IDTransform.{IDType, filterOnIdTypes, joinOnIdType}
 import com.thetradedesk.audience._
+import com.thetradedesk.audience.utils.SeedListUtils.activeCampaignSeedAndIdFilterUDF
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -40,29 +41,7 @@ abstract class HitRateTableGenerator(prometheus: PrometheusClient) {
 
     val start = System.currentTimeMillis()
 
-    val isStringInArray = udf((str: String, arr: Seq[String]) => {
-      Option(arr).exists(_.contains(str))
-    })
-
-    val activeCampaignSeed = CampaignSeedDataset()
-      .readPartition(dateTime.toLocalDate)
-      .join(CampaignFlightDataSet.activeCampaigns(date, startShift = 2, endShift = -1), Seq("CampaignId"))
-      .cache()
-
-    val activeSeedIdsValue = spark.sparkContext.broadcast(activeCampaignSeed
-      .select('SeedId)
-      .distinct()
-      .as[String]
-      .collect()
-      .toSet
-    )
-
-    val activeSeedIdFilterUDF = udf(
-      (seedIds: Seq[String]) => {
-        val activeSeedIds = activeSeedIdsValue.value
-        seedIds.filter(activeSeedIds.contains)
-      }
-    )
+    val (activeCampaignSeed, activeSeedIdFilterUDF) = activeCampaignSeedAndIdFilterUDF()
 
     val seedData = AggregatedSeedReadableDataset()
       .readPartition(date)(spark)
