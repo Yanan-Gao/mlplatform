@@ -29,7 +29,7 @@ object AvailsDealAggregate {
 
   // Maximum and minimum number of users to output
   val cap_users = config.getInt("cap_users", 15000)
-  val min_users = config.getInt("min_users", 3000)
+  val min_users = config.getInt("min_users", 8000)
   val lookback = config.getInt("look_back", 6)
 
   val dealCount = otelClient.createGauge(s"audience_deal_score_job_num_deal_svs", "Deal Score number unique DealCode supplyVendorIds")
@@ -102,12 +102,11 @@ object AvailsDealAggregate {
       .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
       .save(agg_score_out_path)
 
-    otelClient.pushMetrics()
-
   }
 
   def main(args: Array[String]): Unit = {
     runETLPipeline()
+    otelClient.pushMetrics()
   }
 }
 
