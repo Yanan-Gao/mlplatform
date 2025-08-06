@@ -240,7 +240,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
       )
       .cache()
 
-    val feature_store_user = TDIDDensityScoreReadableDataset().readPartition(date.minusDays(1), subFolderKey = Some("split"), subFolderValue = Some("1"))(spark)
+    val feature_store_user = TDIDDensityScoreReadableDataset().readPartition(date.minusDays(1))(spark)
                               .select('TDID, 'SyntheticId_Level1, 'SyntheticId_Level2)
 
     val feature_store_seed = DailySeedDensityScoreReadableDataset().readPartition(date.minusDays(1))(spark).select('FeatureKey, 'FeatureValueHashed, 'SeedId, 'DensityScore)
