@@ -7,6 +7,7 @@ import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.{getD
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface._
 import com.thetradedesk.audience.transform.IDTransform.joinOnIdTypes
 import com.thetradedesk.audience.transform.{MergeDensityLevelAgg, SeedMergerAgg}
+import com.thetradedesk.audience.utils.SeedListUtils.seedIdFilterUDF
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import org.apache.spark.sql.{DataFrame, Dataset}
@@ -23,15 +24,19 @@ object PostExtraSamplingSeedLabelSideDataGenerator extends SeedLabelSideDataGene
 
   override def prepareSeedSideFeatureAndLabel(optInSeed: Dataset[OptInSeedRecord], bidSideData: Dataset[BidSideDataRecord],
                                               userFs: Dataset[UserSiteZipLevelRecord]): Dataset[SeedLabelSideDataRecord] = {
+    val optInSeedIds = spark.sparkContext.broadcast(
+      optInSeed.select('SeedId).as[String].collect().toSet)
+
+    val activeSeedIdFilterUDF = seedIdFilterUDF(optInSeedIds)
+
     val aggregatedSeed = AggregatedSeedReadableDataset().readPartition(date)
-      .select("TDID", "idType", "SeedIds")
+      .select('TDID, 'idType, activeSeedIdFilterUDF('SeedIds).as("SeedIds"))
       .as[RSMV2AggregatedSeedRecord]
 
     val bidSeedData = getBidSeedData(bidSideData, aggregatedSeed, optInSeed.select('SeedId).as[String].collect()).cache()
 
     val sampleIndicator = generateSampleIndicator(bidSeedData, optInSeed)
 
-    val optInSeedIds = optInSeed.select("SeedId")
     // prepare negative sampling region
     val negativeWeightMap = sampleIndicator
       .select("SyntheticId", "NegativeRightBoundIndicator").collect()
