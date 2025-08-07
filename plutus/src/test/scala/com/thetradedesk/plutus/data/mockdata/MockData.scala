@@ -203,7 +203,7 @@ object MockData {
       LiveStream = Some(true),
       ContentLengthInSeconds = Some(60),
       //    MatchedGenre = Some(""),
-      ContentProductionQuality = Option(ProductionQualityLookupRecord()),
+      ContentProductionQuality = Option(ProductionQualityLookupRecord(2)),
       MatchedContentRating = Some(""),
       ContentGenre1 = Some(""),
 
@@ -503,12 +503,12 @@ object MockData {
     FloorBuffer = 0.2,
     MaxBidCpmInBucks = maxBidCpmInBucks,
 
-    VideoPlaybackType = Option(VideoPlaybackTypeLookupRecord()),
+    VideoPlaybackTypeValue = None,
     AdRefresh = Some(1),
     StreamingMediaNetwork = Some(""),
     StreamingMediaChannel = Some(""),
     ContentLengthInSeconds = Some(60),
-    ContentProductionQuality = Option(ProductionQualityLookupRecord()),
+    ContentProductionQualityValue = None,
     MatchedContentRating = Some(""),
     ContentGenre1 = Some(""),
 
@@ -516,20 +516,20 @@ object MockData {
     ContentTitle = Some("The Great Escape"),
     ContentSeries = Some("Adventure Chronicles"),
     ContentSeason = Some("Season 2"),
-    ContentContextType = None,
+    ContentContextTypeValue = None,
 
     Carrier = Some(101),
     VideoViewabilityScore = Some(0.85),
-    VideoPlayerSize = None,
+    VideoPlayerSizeValue = None,
 
     DisplayViewabilityScore = Some(0.75),
 
-    IdiosyncraticSegment = None, 
-    InventoryChannel = None, 
+    IdiosyncraticSegmentValue = None,
+    InventoryChannelValue = None,
 
     NativePlacementTypeId = Some(3),
     QualityScore = Some(0.92),
-    SupplyVendorSkippabilityConstraint = None,
+    SupplyVendorSkippabilityConstraintValue = None,
     TTDNativeContextTypeId = Some(7),
     TemperatureInCelsius = Some(22.0),
     SyntheticTransactionId = Some("FakeId"),
