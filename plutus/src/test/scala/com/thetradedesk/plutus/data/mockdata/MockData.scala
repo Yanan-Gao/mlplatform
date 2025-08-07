@@ -63,6 +63,8 @@ object MockData {
       IdType = Option("TDID"),
       IdCount = 2,
 
+      PropertyIdString = Option("Test geronimo PropertyIdString"),
+
       AdjustedBidCPMInUSD = 10000.0,
       BidsFirstPriceAdjustment = Some(0.9),
       FloorPriceInUSD = Some(5000.0),
@@ -198,7 +200,7 @@ object MockData {
       AdRefresh = Some(1),
       StreamingMediaNetwork = Some(""),
       StreamingMediaChannel = Some(""),
-      //    LiveStream = Some(true),
+      LiveStream = Some(true),
       ContentLengthInSeconds = Some(60),
       //    MatchedGenre = Some(""),
       ContentProductionQuality = Option(ProductionQualityLookupRecord()),
@@ -348,6 +350,8 @@ object MockData {
     IdType = Option("TDID"),
     IdCount = 2,
 
+    PropertyIdString = Option("Mocked PropertyIdString"),
+
     AdjustedBidCPMInUSD = adjustedBidCPMInUSD,
     BidsFirstPriceAdjustment = fpa, //Some(0.73),
     FloorPriceInUSD = Some(5.0),
@@ -401,6 +405,8 @@ object MockData {
 
     PredictiveClearingMode = pcMode, //3,
     PredictiveClearingRandomControl = false,
+
+    LiveStream = Some(false),
 
     // bidfeedback cols
     MediaCostCPMInUSD = Some(37.0),

@@ -16,6 +16,8 @@ case class PcResultsMergedSchema(
                                    IdType: Option[String],
                                    IdCount: Int,
 
+                                   PropertyIdString: Option[String],
+
                                    AdjustedBidCPMInUSD: Double,
                                    BidsFirstPriceAdjustment: Option[Double],
                                    FloorPriceInUSD: Option[Double],
@@ -69,6 +71,8 @@ case class PcResultsMergedSchema(
 
                                    PredictiveClearingMode: Int,
                                    PredictiveClearingRandomControl: Boolean = false,
+
+                                   LiveStream: Option[Boolean],
 
                                    // bidfeedback cols
                                    MediaCostCPMInUSD: Option[Double],
