@@ -103,6 +103,10 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
     assert(resultList.get(0).TemperatureInCelsius == Some(30.0), "Validating that temperature is propogated")
     assert(resultList.get(0).SyntheticTransactionId == Some("synid"), "Validating that SyntheticTransactionId is propogated")
     assert(resultList.get(0).DealFloorMultiplierCap == 2.0, "Validating that DealFloorMultiplierCap is propogated")
+
+    // Test Propagating other geronimo fields
+    assert(resultList.get(0).PropertyIdString.get == "Test geronimo PropertyIdString", "Validating that PropertyIdString is propogated")
+    assert(resultList.get(0).LiveStream.get == true, "Validating that LiveStream is propogated")
   }
 
   test("nullIfEmpty test") {
