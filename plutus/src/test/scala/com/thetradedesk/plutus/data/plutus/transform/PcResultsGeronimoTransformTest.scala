@@ -100,9 +100,13 @@ class PcResultsGeronimoTransformTest extends TTDSparkTest {
 
     // Validating idcount propogation
     assert(resultList.get(0).IdCount == 2, "Validating that idcount is propogated")
+    assert(resultList.get(0).UserSegmentCount == Some(500), "Validating that UserSegmentCount is being divided by IdCount")
+
     assert(resultList.get(0).TemperatureInCelsius == Some(30.0), "Validating that temperature is propogated")
     assert(resultList.get(0).SyntheticTransactionId == Some("synid"), "Validating that SyntheticTransactionId is propogated")
     assert(resultList.get(0).DealFloorMultiplierCap == 2.0, "Validating that DealFloorMultiplierCap is propogated")
+
+    assert(resultList.get(0).ContentProductionQualityValue == Some(2), "Validating that ContentProductionQuality's Value is extracted")
 
     // Test Propagating other geronimo fields
     assert(resultList.get(0).PropertyIdString.get == "Test geronimo PropertyIdString", "Validating that PropertyIdString is propogated")

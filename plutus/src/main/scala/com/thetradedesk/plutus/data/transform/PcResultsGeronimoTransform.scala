@@ -13,7 +13,7 @@ import com.thetradedesk.spark.sql.SQLFunctions.{ColumnExtensions, DataFrameExten
 import job.PcResultsGeronimoJob.{numRowsAbsent, numRowsWritten}
 import org.apache.spark.sql
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.DoubleType
+import org.apache.spark.sql.types.{DoubleType, IntegerType}
 import org.apache.spark.sql.{Dataset, SaveMode}
 
 import java.time.LocalDateTime
@@ -110,6 +110,20 @@ object PcResultsGeronimoTransform extends Logger {
       .withColumn("PublisherType", col("PublisherType.value"))
       .withColumn("AdsTxtSellerType", col("AdsTxtSellerType.value"))
       .withColumn("RenderingContext", col("RenderingContext.value"))
+      // Adding a 'value' suffix to these fields because we didn't remove the structs
+      // the first time around, and now we need to change the field names to get rid of the struct
+      .withColumn("VideoPlaybackTypeValue", col("VideoPlaybackType.value"))
+      .withColumn("ContentProductionQualityValue", col("ContentProductionQuality.value"))
+      .withColumn("ContentContextTypeValue", col("ContentContextType.value"))
+      .withColumn("VideoPlayerSizeValue", col("VideoPlayerSize.value"))
+      .withColumn("IdiosyncraticSegmentValue", col("IdiosyncraticSegment.value"))
+      .withColumn("InventoryChannelValue", col("InventoryChannel.value"))
+      .withColumn("SupplyVendorSkippabilityConstraintValue", col("SupplyVendorSkippabilityConstraint.value"))
+
+    // If a user has many different ids, we generate segments for each and do not deduplicate
+    // the segments when generating the count. This is a kindof deduplication of segments
+    // Rounding up to preserve integer value
+    res = res.withColumn("UserSegmentCount", ceil(col("UserSegmentCount") / col("IdCount")).cast(IntegerType))
 
     // This is a temporary field while we figure out how to populate all the fields properly in a Janus world
     res = res.withColumn("IsUsingJanus", col("JanusVariantMap").isNotNull)

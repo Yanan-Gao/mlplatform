@@ -171,13 +171,13 @@ case class PcResultsMergedSchema(
                                    FloorBufferAdjustment: Double,
                                    MaxBidCpmInBucks: Double,
 
-                                   VideoPlaybackType: Option[VideoPlaybackTypeLookupRecord],
+                                   VideoPlaybackTypeValue: Option[Int],
 
                                    AdRefresh: Option[Int],
                                    StreamingMediaNetwork: Option[String],
                                    StreamingMediaChannel: Option[String],
                                    ContentLengthInSeconds: Option[Int],
-                                   ContentProductionQuality: Option[ProductionQualityLookupRecord],
+                                   ContentProductionQualityValue: Option[Int],
                                    MatchedContentRating: Option[String],
 
                                    ContentGenre1: Option[String],
@@ -185,19 +185,19 @@ case class PcResultsMergedSchema(
                                    ContentTitle: Option[String],
                                    ContentSeries: Option[String],
                                    ContentSeason: Option[String],
-                                   ContentContextType: Option[ContextTypeLookupRecord],
+                                   ContentContextTypeValue: Option[Int],
 
                                    Carrier: Option[Int],
                                    DisplayViewabilityScore: Option[Double],
                                    VideoViewabilityScore: Option[Double],
-                                   VideoPlayerSize: Option[com.thetradedesk.streaming.records.rtb.VideoPlayerSizeLookupRecord],
+                                   VideoPlayerSizeValue: Option[Int],
 
-                                   IdiosyncraticSegment: Option[IdiosyncraticSegmentLookupRecord],
-                                   InventoryChannel: Option[InventoryChannelLookupRecord],
+                                   IdiosyncraticSegmentValue: Option[Int],
+                                   InventoryChannelValue: Option[Int],
 
                                    NativePlacementTypeId: Option[Int],
                                    QualityScore: Option[Double],
-                                   SupplyVendorSkippabilityConstraint: Option[SkippabilityConstraintLookupRecord],
+                                   SupplyVendorSkippabilityConstraintValue: Option[Int],
                                    TTDNativeContextTypeId: Option[Int],
 
                                    TemperatureInCelsius: Option[Double],
