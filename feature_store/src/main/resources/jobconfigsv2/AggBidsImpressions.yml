@@ -31,14 +31,25 @@ aggLevels:
     initWritePartitions: 1500
     rollupWritePartitions: 10000
     enableFeatureKeyCount: true
+  - level: SeedId
+    dependency: TDID
+    transform: [ TDID_To_SeedId ]
+    transformContext:
+      aggSeedDataSource: s3a://thetradedesk-mlplatform-us-east-1/data/prod/audience/aggregatedSeed/v=1/date={dateStr}
+    saltSize: -1
+    initAggGrains: [ hour ]
+    initWritePartitions: 1500
+    rollupWritePartitions: 10000
+    enableFeatureKeyCount: true
+
 
 initAggConfig:
-  outputRootPath: "s3a://thetradedesk-mlplatform-us-east-1"
-  outputPrefix: /features/feature_store/{ttdEnv}/profiles/source=bidsimpression/index={indexPartition}/job={grain}InitialAggJob/v=1/
+  outputRootPath: "s3a://thetradedesk-mlplatform-us-east-1/features/feature_store"
+  outputPrefix: /{ttdEnv}/profiles/source=bidsimpression/index={indexPartition}/job={grain}InitialAggJob/v=1/
 
 rollupAggConfig:
-  outputRootPath: "s3a://thetradedesk-mlplatform-us-east-1"
-  outputPrefix: /features/feature_store/{ttdEnv}/profiles/source=bidsimpression/index={indexPartition}/job=RollupAggJob/v=1/date={dateStr}/
+  outputRootPath: "s3a://thetradedesk-mlplatform-us-east-1/features/feature_store"
+  outputPrefix: /{ttdEnv}/profiles/source=bidsimpression/index={indexPartition}/job=RollupAggJob/v=1/date={dateStr}/
   windowGrain: day
 
 aggregations:

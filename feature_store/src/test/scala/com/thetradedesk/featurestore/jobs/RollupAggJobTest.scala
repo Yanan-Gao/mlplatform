@@ -180,7 +180,7 @@ class RollupAggJobTest extends TTDSparkTest {
       aggFuncs = Seq(AggFuncV2.Desc)
     ))
     val initDef = aggDef.extractInitialAggDefinition()
-    val initAggResult = InitialAggJob.aggByDefinition(df, initDef, AggLevelConfig("user_id", 2, Array(Grain.Hourly), enableFeatureKeyCount = false)).toDF()
+    val initAggResult = InitialAggJob.aggByDefinition(df, initDef, AggLevelConfig(level = "user_id", saltSize = 2, initAggGrains = Array(Grain.Hourly), enableFeatureKeyCount = false)).toDF()
 
     val rollupAggResult = RollupAggJob.aggAndSelectByDefinition(initAggResult, aggDef, 1, aggDef.aggLevels.head).collect().toList
     val sum = rollupAggResult.head.getAs[Double]("valueA_Sum_Last1D")

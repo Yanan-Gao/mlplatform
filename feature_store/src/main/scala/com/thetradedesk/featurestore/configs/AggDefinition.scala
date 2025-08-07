@@ -29,6 +29,9 @@ case class AggTaskConfig(
 
 case class AggLevelConfig(
                            level: String,
+                           dependency: Option[String] = None,
+                           transform: Option[Seq[String]] = None,
+                           transformContext: Map[String, String] = Map.empty,
                            saltSize: Int,
                            initAggGrains: Array[Grain],
                            initWritePartitions: Option[Int] = None,
@@ -171,6 +174,9 @@ object AggDefinition {
         val scalaAgg = agg.asScala.toMap
         AggLevelConfig(
           level = scalaAgg("level").toString,
+          dependency = scalaAgg.get("dependency").map(_.toString),
+          transform = scalaAgg.get("transform").map(_.asInstanceOf[java.util.List[String]].asScala.toSeq),
+          transformContext = scalaAgg.get("transformContext").map(_.asInstanceOf[java.util.Map[String, String]].asScala.toMap).getOrElse(Map.empty),
           saltSize = scalaAgg.getOrElse("saltSize", -1).asInstanceOf[Int],
           initAggGrains = scalaAgg("initAggGrains")
             .asInstanceOf[java.util.List[String]]
