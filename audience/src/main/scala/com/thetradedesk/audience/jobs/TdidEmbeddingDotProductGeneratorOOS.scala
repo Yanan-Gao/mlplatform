@@ -3,9 +3,11 @@ package com.thetradedesk.audience.jobs
 import com.thetradedesk.audience.datasets.{CrossDeviceVendor, DataSource}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.{_isDeviceIdSampledNPercent, isDeviceIdSampled1Percent}
 import com.thetradedesk.audience.{date, dateFormatter, shouldTrackTDID, ttdEnv}
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.isDeviceIdSampled1Percent
+import com.thetradedesk.audience.shouldTrackTDID
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.{DataFrame, Row, SaveMode}
 import org.apache.spark.sql.functions._
@@ -16,46 +18,9 @@ import java.util.UUID
 import java.nio.ByteBuffer
 import java.security.MessageDigest
 
-object TdidEmbeddingDotProductGeneratorOOS {
-  val prometheus = new PrometheusClient("AudienceModelJob", "TdidEmbeddingDotProductGeneratorOOS")
-
-  val salt="TRM"
-  val dateStr = date.format(dateFormatter)
-  val tdid_emb_path= config.getString(
-  "tdid_emb_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/RSMV2/emb/agg/v=1/date=${dateStr}/")
-  val seed_emb_path= config.getString(
-  "seed_emb_path", s"s3://thetradedesk-mlplatform-us-east-1/configdata/test/audience/embedding/RSMV2/RSMv2SensitiveDensityTest/v=1/${dateStr}000000/")
-  val density_feature_path= config.getString(
-  "density_feature_path", s"s3://thetradedesk-mlplatform-us-east-1/features/feature_store/prod/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/date=${dateStr}/")
-  val policy_table_path = config.getString(
-  "policy_table_path", s"s3://thetradedesk-mlplatform-us-east-1/configdata/prod/audience/policyTable/RSM/v=1/${dateStr}000000/")
-  val seed_id_path = config.getString(
-  "seed_id_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/seedids/v=2/date=${dateStr}/")
-  val out_path = config.getString("out_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/tdid2seedid_raw/v=1/date=${dateStr}/") // "s3://thetradedesk-mlplatform-us-east-1/users/youjun.yuan/rsmv2/emb/tdid2seedid/"
-  val density_split = config.getInt("density_split", -1)
-  val density_limit = config.getInt("density_limit", -1)
-  val tdid_limit = config.getInt("tdid_limit", -1)
-  val debug = config.getBoolean("debug", false)
-  val partition = config.getInt("partition", -1)
-  val EmbeddingSize = 64
-  val sensitiveModel = config.getBoolean("sensitiveModel", true)
-  val minMaxSeedEmb = config.getDouble("minMaxSeedEmb", 1e-6)
-  val r = config.getDouble("r", 1e-8f).toFloat
-  val loc_factor = config.getDouble("loc_factor", 0.8f).toFloat
-  val samplingRate = config.getInt("sampling_rate", 3)
-
-  val sigmoid = (x: Float) => (1.0f / (1.0f + math.exp(-x))).toFloat
-
-  val embeddings2scores = (bdEmb: Seq[Float], seedEmb: Seq[Float], index: Int) => {
-    var sum = 0f
-    for (i <- 0 until EmbeddingSize) {
-      sum = sum + bdEmb(i) * seedEmb(i + index)
-    }
-    sigmoid(sum)
-  }
+class TdidEmbeddingDotProductGeneratorOOS {
 
   case class SeedScore(SeedId:String, Score:Float)
-
 
   def convertUID2ToGUID(uid2: String) = {
     try {
@@ -77,7 +42,36 @@ object TdidEmbeddingDotProductGeneratorOOS {
   private def makeSampleUdf(n: Int) = udf((id: String) => _isDeviceIdSampledNPercent(id, n))
 
   /////
-  def runETLPipeline(): Unit = {
+  def run(conf: RelevanceModelOfflineScoringPart2Config): Unit = {
+
+    val tdid_emb_path = conf.tdid_emb_path
+    val seed_emb_path = conf.seed_emb_path
+    val density_feature_path = conf.density_feature_path
+    val policy_table_path = conf.policy_table_path
+    val seed_id_path = conf.seed_id_path
+    val out_path = conf.dot_product_out_path
+    val density_split = conf.density_split
+    val density_limit = conf.density_limit
+    val tdid_limit = conf.tdid_limit
+    val debug = conf.debug
+    val partition = conf.partition
+    val sensitiveModel = conf.sensitiveModel
+    val minMaxSeedEmb = conf.minMaxSeedEmb
+    val r = conf.r.toFloat
+    val loc_factor = conf.loc_factor.toFloat
+
+    val embeddingSize = 64
+    val sigmoid = (x: Float) => (1.0f / (1.0f + math.exp(-x))).toFloat
+    val embeddings2scores = (bdEmb: Seq[Float], seedEmb: Seq[Float], index: Int) => {
+      var sum = 0f
+      var i = 0
+      while (i < embeddingSize) {
+        sum += bdEmb(i) * seedEmb(i + index)
+        i += 1
+      }
+      sigmoid(sum)
+    }
+
     val df_seed_emb = spark.read.format("parquet").load(seed_emb_path)
       .withColumn("maxEmbedding", array_max('Embedding))
       .filter('maxEmbedding > lit(minMaxSeedEmb))
@@ -129,11 +123,11 @@ object TdidEmbeddingDotProductGeneratorOOS {
     val relevanceScoreUDF = udf(
       (bdSenEmb: Array[Float], bdNonSenEmb: Array[Float], SyntheticIdsLevel1: Array[Int], SyntheticIdsLevel2: Array[Int], SeedSyntheticIdsLevel1: Array[Int], SeedSyntheticIdsLevel2: Array[Int]) => {
         val syntheticIdToLevel = mutable.HashMap[Int, Int]()
-        if (SyntheticIdsLevel2.nonEmpty) SyntheticIdsLevel2.foreach(e => syntheticIdToLevel.put(e, 2 * EmbeddingSize))
-        if (SeedSyntheticIdsLevel2.nonEmpty) SeedSyntheticIdsLevel2.foreach(e => syntheticIdToLevel.put(e, 2 * EmbeddingSize))
+        if (SyntheticIdsLevel2.nonEmpty) SyntheticIdsLevel2.foreach(e => syntheticIdToLevel.put(e, 2 * embeddingSize))
+        if (SeedSyntheticIdsLevel2.nonEmpty) SeedSyntheticIdsLevel2.foreach(e => syntheticIdToLevel.put(e, 2 * embeddingSize))
 
-        if (SyntheticIdsLevel1.nonEmpty) SyntheticIdsLevel1.foreach(e => if (!syntheticIdToLevel.contains(e)) syntheticIdToLevel.put(e, 1 * EmbeddingSize))
-        if (SeedSyntheticIdsLevel1.nonEmpty) SeedSyntheticIdsLevel1.foreach(e => if (!syntheticIdToLevel.contains(e)) syntheticIdToLevel.put(e, 1 * EmbeddingSize))
+        if (SyntheticIdsLevel1.nonEmpty) SyntheticIdsLevel1.foreach(e => if (!syntheticIdToLevel.contains(e)) syntheticIdToLevel.put(e, 1 * embeddingSize))
+        if (SeedSyntheticIdsLevel1.nonEmpty) SeedSyntheticIdsLevel1.foreach(e => if (!syntheticIdToLevel.contains(e)) syntheticIdToLevel.put(e, 1 * embeddingSize))
         df_seed_emb_sensitivity
           .value
           .map(
@@ -142,17 +136,17 @@ object TdidEmbeddingDotProductGeneratorOOS {
               if (sensitiveModel) {
                 // skip embedding 0, only use embedding 1-3
                 val pair = if (e._3)
-                  (embeddings2scores(bdSenEmb, e._2, offset), offset / EmbeddingSize) // sensitive advertiser
+                  (embeddings2scores(bdSenEmb, e._2, offset), offset / embeddingSize) // sensitive advertiser
                 else
-                  (embeddings2scores(bdNonSenEmb, e._2, offset), offset / EmbeddingSize) // pair._2 is the density level
+                  (embeddings2scores(bdNonSenEmb, e._2, offset), offset / embeddingSize) // pair._2 is the density level
 
                 pair._1
               } else {
                 // non sensitive model, for sensitive advertiser, always use embedding 0
                 val pair = if (e._3)
-                  (embeddings2scores(bdSenEmb, e._2, 0), offset / EmbeddingSize) // sensitive advertiser, always 0 embedding
+                  (embeddings2scores(bdSenEmb, e._2, 0), offset / embeddingSize) // sensitive advertiser, always 0 embedding
                 else
-                  (embeddings2scores(bdNonSenEmb, e._2, offset + EmbeddingSize), offset / EmbeddingSize) // note: offset is 2 for level2, the corresponding offset should add another EmbeddingSize
+                  (embeddings2scores(bdNonSenEmb, e._2, offset + embeddingSize), offset / embeddingSize) // note: offset is 2 for level2, the corresponding offset should add another embeddingSize
 
                 pair._1
               }
@@ -162,9 +156,7 @@ object TdidEmbeddingDotProductGeneratorOOS {
     )
 
 
-
-
-    val isIdSampled = makeSampleUdf(samplingRate)
+    val isIdSampled = makeSampleUdf(conf.samplingRate)
     (0 to 9).filter(density_split < 0 || _ == density_split).foreach(i => {
       //val i = 1
       print(f"Process split ${i}")
@@ -194,10 +186,19 @@ object TdidEmbeddingDotProductGeneratorOOS {
         .save(out_path + f"split=${i}/")
     })
   }
+}
 
-  def main(args: Array[String]): Unit = {
-    runETLPipeline()
-    prometheus.pushMetrics()
+object TdidEmbeddingDotProductGeneratorOOS
+  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
+    groupName = "audience",
+    jobName = "TdidEmbeddingDotProductGeneratorOOS") {
+
+  override val prometheus: Option[PrometheusClient] =
+    Some(new PrometheusClient("AudienceModelJob", "TdidEmbeddingDotProductGeneratorOOS"))
+
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
+    new TdidEmbeddingDotProductGeneratorOOS().run(conf)
   }
 }
 

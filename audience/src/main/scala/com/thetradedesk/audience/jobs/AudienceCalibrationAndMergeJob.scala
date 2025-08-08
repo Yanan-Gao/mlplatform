@@ -1,7 +1,6 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.datasets.{AdGroupDataSet, AudienceModelPolicyReadableDataset, AudienceModelThresholdRecord, AudienceModelThresholdWritableDataset, CampaignSeedDataset, Model, CrossDeviceVendor}
-import com.thetradedesk.audience.jobs.TdidEmbeddingDotProductGeneratorOOS.EmbeddingSize
 import com.thetradedesk.audience.{audienceVersionDateFormat, date, dateTime, ttdReadEnv, ttdWriteEnv}
 import com.thetradedesk.audience.utils.S3Utils
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -17,7 +16,7 @@ import org.apache.spark.sql.DataFrame
 
 object AudienceCalibrationAndMergeJob {
   val prometheus = new PrometheusClient("AudienceModelJob", "AudienceCalibrationAndMergeJob")
-
+  val EmbeddingSize = 64;
   object Config {
     val model = Model.withName(config.getString("modelName", default = "RSM"))
     val mlplatformS3Bucket = S3Utils.refinePath(config.getString("mlplatformS3Bucket", "thetradedesk-mlplatform-us-east-1"))
