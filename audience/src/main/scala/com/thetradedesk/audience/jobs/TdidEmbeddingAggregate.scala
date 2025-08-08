@@ -1,9 +1,9 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.{date, dateFormatter, ttdEnv}
+import com.thetradedesk.audience.{date, dateFormatter}
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.expressions.Aggregator
@@ -11,69 +11,66 @@ import org.apache.spark.sql.{Encoder, Encoders}
 
 import java.nio.charset.StandardCharsets
 
+case class Buffer(sums: Array[Double], var count: Long)
 
+object RelevanceScoresAggregator
+  extends Aggregator[Seq[Double], Buffer, Array[Double]] {
 
+  val arrayLength = 64
+  // Initialize the buffer
+  def zero: Buffer = Buffer(Array.fill(arrayLength)(0.0), 0L)
 
-object TdidEmbeddingAggregate {
-  val salt = config.getString("salt", "TRM")
-  val dateStr = date.format(dateFormatter)
-  val br_emb_path= config.getString(
-  "br_emb_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/RSMV2/emb/raw/v=1/date=${dateStr}/")
-  val tdid_emb_path= config.getString(
-    "tdid_emb_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/RSMV2/emb/agg/v=1/date=${dateStr}/")
-  val decode_tdid = config.getBoolean("decode_tdid", true) // convert binary tdid format into string
+  // Add a new value to the buffer
+  def reduce(buffer: Buffer, input: Seq[Double]): Buffer = {
+    require(
+      input.length == arrayLength,
+      s"Input array length ${input.length} does not match expected length $arrayLength"
+    )
 
-  case class Buffer(sums: Array[Double], var count: Long)
-
-  object RelevanceScoresAggregator
-    extends Aggregator[Seq[Double], Buffer, Array[Double]] {
-
-    val arrayLength=64
-    // Initialize the buffer
-    def zero: Buffer = Buffer(Array.fill(arrayLength)(0.0), 0L)
-
-    // Add a new value to the buffer
-    def reduce(buffer: Buffer, input: Seq[Double]): Buffer = {
-      require(input.length == arrayLength,
-        s"Input array length ${input.length} does not match expected length $arrayLength")
-
-      for (i <- 0 until arrayLength) {
-        buffer.sums.update(i, buffer.sums(i) + input(i))
-      }
-      buffer.count = buffer.count + 1
-      buffer
+    for (i <- 0 until arrayLength) {
+      buffer.sums.update(i, buffer.sums(i) + input(i))
     }
-
-    // Merge two buffers
-    def merge(b1: Buffer, b2: Buffer): Buffer = {
-      for (i <- 0 until arrayLength) {
-        b1.sums.update(i, b1.sums(i) + b2.sums(i))
-      }
-
-      b1.count = b1.count + b2.count
-
-      b1
-    }
-
-    // Calculate final average
-    def finish(buffer: Buffer): Array[Double] = {
-      if (buffer.count == 0) {
-        Array.fill(arrayLength)(0.0f)
-      } else {
-        buffer.sums.map(sum => (sum / buffer.count).toDouble)
-      }
-    }
-
-    // Encoders for Spark to serialize the data
-    def bufferEncoder: Encoder[Buffer] = Encoders.product[Buffer]
-    def outputEncoder: Encoder[Array[Double]] = ExpressionEncoder[Array[Double]]
+    buffer.count = buffer.count + 1
+    buffer
   }
+
+  // Merge two buffers
+  def merge(b1: Buffer, b2: Buffer): Buffer = {
+    for (i <- 0 until arrayLength) {
+      b1.sums.update(i, b1.sums(i) + b2.sums(i))
+    }
+
+    b1.count = b1.count + b2.count
+
+    b1
+  }
+
+  // Calculate final average
+  def finish(buffer: Buffer): Array[Double] = {
+    if (buffer.count == 0) {
+      Array.fill(arrayLength)(0.0f)
+    } else {
+      buffer.sums.map(sum => (sum / buffer.count).toDouble)
+    }
+  }
+
+  // Encoders for Spark to serialize the data
+  def bufferEncoder: Encoder[Buffer] = Encoders.product[Buffer]
+  def outputEncoder: Encoder[Array[Double]] = ExpressionEncoder[Array[Double]]
+}
+
+class TdidEmbeddingAggregate {
 
   //spark.udf.register("emb_avg", udaf(RelevanceScoresAggregator))
   val emb_avg = udaf(RelevanceScoresAggregator)
   val utf8ToStringUdf = udf((bytes: Array[Byte]) => new String(bytes, StandardCharsets.UTF_8))
 
-  def runETLPipeline(): Unit = {
+  def run(conf: RelevanceModelOfflineScoringPart2Config): Unit = {
+    val salt = conf.salt
+    val br_emb_path = conf.br_emb_path
+    val tdid_emb_path = conf.tdid_emb_path
+    val decode_tdid = conf.decode_tdid
+
     val rawEmb = spark.read.format("parquet").load(br_emb_path)
     val aggedEmb = rawEmb.groupBy("TDID")
       .agg(
@@ -92,10 +89,18 @@ object TdidEmbeddingAggregate {
       .mode("overwrite")
       .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
       .save(tdid_emb_path)
-
-  }
-
-  def main(args: Array[String]): Unit = {
-    runETLPipeline()
   }
 }
+
+object TdidEmbeddingAggregate
+  extends AutoConfigResolvingETLJobBase[RelevanceModelOfflineScoringPart2Config](
+    groupName = "audience",
+    jobName   = "TdidEmbeddingAggregate") {
+
+  override val prometheus = None
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
+    new TdidEmbeddingAggregate().run(conf)
+  }
+}
+
