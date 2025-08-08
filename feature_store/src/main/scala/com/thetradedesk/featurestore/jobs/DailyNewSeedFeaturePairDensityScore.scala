@@ -2,7 +2,6 @@ package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore.datasets.metadata.DaRestrictedAdvertiserDataset
 import com.thetradedesk.featurestore.rsm.CommonEnums.DataSource
-import com.thetradedesk.featurestore.transform.IDTransform
 import com.thetradedesk.featurestore.transform.IDTransform.allIdType
 import com.thetradedesk.featurestore.utils.{S3Utils, SeedPolicyUtils}
 import com.thetradedesk.featurestore.{MLPlatformS3Root, date, ttdEnv}
@@ -111,24 +110,6 @@ object DailyNewSeedFeaturePairDensityScore extends DensityFeatureBaseJob {
       .cache()
   }
 
-  def loadBidImpression(date: LocalDate) = {
-    val dateStr = getDateStr(date)
-    val yyyy = dateStr.substring(0, 4)
-    val mm = dateStr.substring(4, 6)
-    val dd = dateStr.substring(6, 8)
-
-    val seedGroupFeatureCondition = seedGroupFeatureKeys
-      .map(c => col(c).isNotNull)
-      .reduce(_ && _)
-
-    spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/features/data/koav4/v=1/prod/bidsimpressions/year=$yyyy/month=$mm/day=$dd/")
-      .select((IDTransform.allIdTypes ++ seedGroupFeatureKeys :+ "BidRequestId").map(col): _*)
-      .filter(seedGroupFeatureCondition)
-      .withColumn("TDID", allIdType)
-      .withColumn("FeatureValueHashed", xxhash64(concat(concat_ws("", seedGroupFeatureKeys.map(col): _*), lit(salt))).cast("long"))
-      .select("TDID", "FeatureValueHashed", "BidRequestId")
-  }
-
   def readSeedDetailPath(seedDetailFilePath: String) = {
     if (readSeedDetailMode) {
       val maxRetries = 3
@@ -187,7 +168,10 @@ object DailyNewSeedFeaturePairDensityScore extends DensityFeatureBaseJob {
     }
     else {
       val aggregatedNewSeed = aggregateNewSeed(newSeedIds, seedDetailPath)
-      val bidreq = loadBidImpression(date)
+      val bidreq = readBidsImpressions(List((seedGroupFeatureKeys(0), seedGroupFeatureKeys(1))), date, None)
+        .withColumn("TDID", allIdType)
+        .withColumn("FeatureValueHashed", col(s"${seedGroupFeatureKeys(0)}${seedGroupFeatureKeys(1)}Hashed"))
+        .select("TDID", "FeatureValueHashed", "BidRequestId")
 
       val seedDensity =
         bidreq.join(aggregatedNewSeed, Seq("TDID"))
