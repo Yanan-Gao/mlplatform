@@ -75,13 +75,11 @@ object MergeCampaignBackoffAdjustments {
   private def getShortFlightBufferUDF: UserDefinedFunction = udf(getShortFlightBuffer _)
 
   def mergeBackoffDatasets(campaignAdjustmentsPacingDataset: Dataset[CampaignAdjustmentsPacingSchema],
-                           campaignFloorBufferDataset: Dataset[MergedCampaignFloorBufferSchema],
                            hadesCampaignBufferAdjustmentsDataset: Dataset[HadesBufferAdjustmentSchema],
                            shortFlightCampaignsDataset: Dataset[ShortFlightCampaignsSchema]
                           )
   : DataFrame = {
     addPrefix(campaignAdjustmentsPacingDataset.toDF(), "pc_")
-      .join(broadcast(addPrefix(campaignFloorBufferDataset.toDF(), "bf_")), Seq("CampaignId"), "fullouter")
       .join(broadcast(addPrefix(hadesCampaignBufferAdjustmentsDataset.toDF(), "hdv3_")), Seq("CampaignId"), "fullouter")
       .join(broadcast(addPrefix(shortFlightCampaignsDataset.toDF(), "sf_")), Seq("CampaignId"), "fullouter")
       .withColumn("MergedPCAdjustment", least(lit(1.0), col("pc_CampaignPCAdjustment")))
@@ -95,13 +93,12 @@ object MergeCampaignBackoffAdjustments {
             col("hdv3_HadesBackoff_FloorBuffer_Previous"),
             col("hdv3_Total_BidCount_Previous"))
         ).otherwise(
-          coalesce(col("hdv3_BBF_FloorBuffer"), col("sf_MinimumShortFlightFloorBuffer"), col("bf_BBF_FloorBuffer"), lit(platformWideBuffer))
+          coalesce(col("hdv3_BBF_FloorBuffer"), col("sf_MinimumShortFlightFloorBuffer"), lit(platformWideBuffer))
         )
       )
   }
 
   def transform(plutusCampaignAdjustmentsDataset: Dataset[CampaignAdjustmentsPacingSchema],
-                campaignFloorBufferData: Dataset[MergedCampaignFloorBufferSchema],
                 hadesCampaignBufferAdjustmentsDataset: Dataset[HadesBufferAdjustmentSchema],
                 shortFlightCampaignsDataset: Dataset[ShortFlightCampaignsSchema]
                ): Unit = {
@@ -109,7 +106,6 @@ object MergeCampaignBackoffAdjustments {
 
     val finalMergedAdjustments = mergeBackoffDatasets(
       plutusCampaignAdjustmentsDataset,
-      campaignFloorBufferData,
       hadesCampaignBufferAdjustmentsDataset,
       shortFlightCampaignsDataset
     )

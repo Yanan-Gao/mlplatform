@@ -33,13 +33,12 @@ object CampaignAdjustmentsJob {
   def main(args: Array[String]): Unit = {
     val jobDurationGaugeTimer = jobDurationGauge.startTimer()
 
-    val campaignFloorBufferData = MergedCampaignFloorBufferDataset.readDate(date, envForReadInternal)
     val campaignAdjustmentsPacingData = PlutusCampaignAdjustmentsDataset.readLatestDataUpToIncluding(date.minusDays(1), envForReadInternal)
 
     val plutusCampaignAdjustmentsDataset = PlutusCampaignAdjustmentsTransform.transform(date, updateAdjustmentsVersion, fileCount)
-    val hadesCampaignBufferAdjustmentsDataset  = HadesCampaignBufferAdjustmentsTransform.transform(date, underdeliveryThreshold, fileCount, campaignFloorBufferData, campaignAdjustmentsPacingData)
+    val hadesCampaignBufferAdjustmentsDataset  = HadesCampaignBufferAdjustmentsTransform.transform(date, underdeliveryThreshold, fileCount, campaignAdjustmentsPacingData)
     val shortFlightCampaignsDataset = ShortFlightCampaignSelectionTransform.transform(date, fileCount)
-    MergeCampaignBackoffAdjustments.transform(plutusCampaignAdjustmentsDataset, campaignFloorBufferData, hadesCampaignBufferAdjustmentsDataset, shortFlightCampaignsDataset)
+    MergeCampaignBackoffAdjustments.transform(plutusCampaignAdjustmentsDataset, hadesCampaignBufferAdjustmentsDataset, shortFlightCampaignsDataset)
 
     jobDurationGaugeTimer.setDuration()
     otelClient.pushMetrics()

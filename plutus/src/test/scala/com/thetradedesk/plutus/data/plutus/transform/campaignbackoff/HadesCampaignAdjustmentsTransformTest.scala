@@ -178,13 +178,11 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
   test("Merge Hades Backoff and Campaign Backoff test for schema/column correctness") {
     val campaignAdjustmentsData = DataGenerator.generateCampaignAdjustmentsPacingData.limit(3)
-    val todaysCampaignFloorBufferData = DataGenerator.generateMergedCampaignFloorBufferData
     val campaignBufferAdjustmentsHadesData = DataGenerator.generateCampaignBufferAdjustmentsHadesData
     val shortFlightCampaignsData = DataGenerator.generateShortFlightCampaignsData
 
     val finalMergedCampaignAdjustments = mergeBackoffDatasets(
       campaignAdjustmentsData,
-      todaysCampaignFloorBufferData,
       campaignBufferAdjustmentsHadesData,
       shortFlightCampaignsData
     )
@@ -200,7 +198,7 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
 
     // Test for campaign only in PC Campaign Backoff.
     // MergedPCAdjustment should be same as pc_CampaignPCAdjustment
-    assert(res.contains(Row("campaign1", null, null, 0.75, 0.75, 0.35)))
+    assert(res.contains(Row("campaign1", null, null, 0.75, 0.75, 0.01)))
 
     // Test for campaign that is HadesV3 Backoff test campaign and not in PC Campaign Backoff. This is a Hades problem campaign.
     // The HadesV3 Backoff adjustment should be final adjustment and MergedPCAdjustment should be 1
@@ -209,11 +207,6 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     // Test for campaign that is Hades Buffer Backoff test campaign and in PC Campaign Backoff. This is a Hades problem campaign.
     // It should have MergedPCAdjustment from PC backoff and CampaignBbfFloorBuffer from hades buffer backoff
     assert(res.contains(Row("campaign2", true, 0.30, 0.75, 0.75, 0.30)))
-
-    // Test for campaign that is not in the merge of Hades backoff and Campaign backoff but is present in the floor buffer snapshot.
-    // This campaign should have the final adjustment of 1 and it's floor buffer should be same as in the floor buffer snapshot.
-    assert(res.contains(Row("abc123", null, null, null, 1, 0.01)))
-    assert(res.contains(Row("abc234", null, null, null, 1, 0.20)))
 
     // Test for campaign that is a Short Flight Hades Backoff test campaign that will start after backoff runs.
     assert(res.contains(Row("short01", null, null, null, 1, MinimumShortFlightFloorBuffer)))
