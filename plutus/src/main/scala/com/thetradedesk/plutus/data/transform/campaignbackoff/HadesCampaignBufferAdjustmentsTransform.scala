@@ -195,7 +195,6 @@ object HadesCampaignBufferAdjustmentsTransform {
   val OptoutStatus_NoBids = "NoBids"
 
   def getFilteredCampaigns(campaignThrottleData: Dataset[CampaignThrottleMetricSchema],
-                           campaignFloorBuffer: Dataset[MergedCampaignFloorBufferSchema],
                            campaignAdjustmentsPacing: Dataset[PlutusCampaignAdjustment],
                            potentiallyNewCampaigns: Dataset[Campaign],
                            adjustedCampaigns: Dataset[Campaign],
@@ -235,16 +234,11 @@ object HadesCampaignBufferAdjustmentsTransform {
       .withColumn("CampaignType", lit(CampaignType_AdjustedCampaign))
       .select("CampaignId", "CampaignType")
 
-    val candidateSelection_campaignFloorBuffer = campaignFloorBuffer.withColumnRenamed("BBF_FloorBuffer", "CandidateSelection_BBF_FloorBuffer")
-
     val res = newOrNonSpendingCampaigns
       .union(newUnderDeliveringCampaigns)
       .union(yesterdaysCampaigns)
       .join(campaignAdjustmentsPacing, Seq("CampaignId"), "left") // Join to get Plutus Backoff value to use for Strategy in calculation
-      .join(candidateSelection_campaignFloorBuffer, Seq("CampaignId"), "left") // Join to get actual Floor buffer
-      .withColumn("Actual_BBF_FloorBuffer", // Log each campaign's actual floor buffer if no buffer backoff to use as minimum cap for buffer
-        when(col("CandidateSelection_BBF_FloorBuffer").isNotNull, $"CandidateSelection_BBF_FloorBuffer")
-          .otherwise(lit(platformWideBuffer)))
+      .withColumn("Actual_BBF_FloorBuffer", lit(platformWideBuffer))
       .selectAs[CampaignMetaData]
       .cache()
 
@@ -515,7 +509,6 @@ object HadesCampaignBufferAdjustmentsTransform {
   def transform(date: LocalDate,
                 underdeliveryThreshold: Double,
                 fileCount: Int,
-                campaignFloorBufferData: Dataset[MergedCampaignFloorBufferSchema],
                 campaignAdjustmentsPacingData: Dataset[CampaignAdjustmentsPacingSchema]
                ): Dataset[HadesBufferAdjustmentSchema] = {
 
@@ -554,7 +547,6 @@ object HadesCampaignBufferAdjustmentsTransform {
 
     val filteredCampaigns = getFilteredCampaigns(
       campaignThrottleData = campaignUnderdeliveryData,
-      campaignFloorBuffer = campaignFloorBufferData,
       campaignAdjustmentsPacing = campaignAdjustmentsPacingData
         .filter(col("IsTest"))
         .select("CampaignId", "CampaignPCAdjustment").distinct().as[PlutusCampaignAdjustment],
