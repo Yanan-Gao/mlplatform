@@ -99,10 +99,11 @@ object PlutusDataTransform extends Logger {
 
     val cleanExplicitDataset = EncodeLatLong(mergedDataset)
       .filter(col("AuctionType").isin(AuctionType.FirstPrice))
-      .filter(col("isMbtwValidStrict"))
+      .filter(col("isMbtwValid"))
       .withColumn("AdFormat", concat_ws("x", col("AdWidthInPixels"), col("AdHeightInPixels")))
       .withColumn(COL_NAME_CHANNEL, lower(regexp_replace(col("Channel"), " ", "")))
       .withColumn(COL_NAME_SUPPLYVENDOR, col("SupplyVendor"))
+      .withColumn("mbtwDelta", abs(col("mbtw") - col("finalBidPrice")) / col("finalBidPrice"))
       .drop("AdWidthInPixels", "AdHeightInPixels")
       .repartition(partitions)
       .persist(StorageLevel.MEMORY_ONLY_2)
