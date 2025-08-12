@@ -75,7 +75,7 @@ object DailySeedDensityScore extends DensityFeatureBaseJob {
     val result = densityScores.reduce(_.union(_)).union(seedDensityScore)
 
     val writePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/job=$jobName/v=1/date=${dateStr}/"
-    result.coalesce(8192).write.mode(SaveMode.Overwrite).parquet(writePath)
+    result.write.mode(SaveMode.Overwrite).parquet(writePath)
   }
 
 
