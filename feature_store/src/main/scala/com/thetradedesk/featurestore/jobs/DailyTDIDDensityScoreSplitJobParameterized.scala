@@ -1,18 +1,16 @@
 package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore._
-import com.thetradedesk.featurestore.jobs.SeedPriority
-import com.thetradedesk.featurestore.rsm.CommonEnums.{CrossDeviceVendor, DataSource}
+import com.thetradedesk.featurestore.rsm.CommonEnums.DataSource
 import com.thetradedesk.featurestore.transform._
 import com.thetradedesk.featurestore.utils.SIBSampler
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.{CampaignSeedDataSet, SeedDetailDataSet}
-import com.thetradedesk.spark.datasets.sources.provisioning.CampaignFlightDataSet
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.io.FSUtils
-import org.apache.spark.sql.{DataFrame, SaveMode}
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{DataFrame, SaveMode}
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -173,12 +171,22 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
           e => {
             val subWritePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=TDID/job=${jobName}Sub/Source=${e._1}/FeatureKey=$featurePair/v=1/date=$dateStr/split=$splitIndex"
 
-            tempDF
-              .select('TDID,
-                filterBySourceSyntheticUdf(col("x._1"), lit(e._2)).as("SyntheticId_Level1"),
-                filterBySourceSyntheticUdf(col("x._2"), lit(e._2)).as("SyntheticId_Level2")
-              )
-              .write.mode(SaveMode.Overwrite).parquet(subWritePath)
+            if (e._2) {
+              tempDF
+                .select('TDID,
+                  filterBySourceSyntheticUdf(col("x._1"), lit(e._2)).as("SyntheticId_Level1"),
+                  filterBySourceSyntheticUdf(col("x._2"), lit(e._2)).as("SyntheticId_Level2")
+                )
+                .write.mode(SaveMode.Overwrite).parquet(subWritePath)
+            } else {
+              tempDF
+                .select('TDID,
+                  filterBySourceSyntheticUdf(col("x._1"), lit(e._2)).as("SyntheticId_Level1"),
+                  filterBySourceSyntheticUdf(col("x._2"), lit(e._2)).as("SyntheticId_Level2")
+                )
+                .coalesce(1000)
+                .write.mode(SaveMode.Overwrite).parquet(subWritePath)
+            }
           }
         )
 
