@@ -5,7 +5,7 @@ import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.sql.SQLFunctions._
 import com.thetradedesk.spark.util.io.FSUtils
 import org.apache.spark.sql.{Dataset, SaveMode, SparkSession}
-
+import com.thetradedesk.featurestore.data.cbuffer.SchemaHelper.{CBufferDataFrameReader, CBufferDataFrameWriter, indicateArrayLength}
 import java.time.{LocalDate, LocalDateTime}
 import java.time.format.DateTimeFormatter
 import scala.reflect.runtime.universe._
@@ -73,7 +73,8 @@ abstract class LightWritableDataset[T <: Product : Manifest](
                      subFolderKey: Option[String] = None,
                      subFolderValue: Option[String] = None,
                      format: Option[String] = Some("parquet"),
-                     saveMode: SaveMode = SaveMode.ErrorIfExists
+                     saveMode: SaveMode = SaveMode.ErrorIfExists,
+                     maxChunkRecordCount: Int = 20480
                     ): Unit = {
 
     val partitionedPath: String = DatePartitionedPath(Option.apply(partition), subFolderKey, subFolderValue)
@@ -98,6 +99,14 @@ abstract class LightWritableDataset[T <: Product : Manifest](
         .coalesce(numPartitions.getOrElse(defaultNumPartitions))
         .write.mode(saveMode)
         .parquet(partitionedPath)
+      
+      case Some("cbuffer") => dataset
+        .coalesce(numPartitions.getOrElse(defaultNumPartitions))
+        .write.mode(saveMode)
+        // determine how many records in one chunk, when reading in python, batch size needs to be larger than this setting
+        .option("maxChunkRecordCount", maxChunkRecordCount)
+        .cb(partitionedPath)
+
       case _ => throw new UnsupportedOperationException(s"format ${format} is not supported")
     }
   }
@@ -162,6 +171,8 @@ abstract class LightReadableDataset[T <: Product : Manifest](
           case _ => loadParquetData[T](basePath, date, source, lookBack, dateSeparator)
         }
       }
+      case Some("cbuffer") => spark.read.cb(paths: _*).selectAs[T]
+  
       case _ => throw new UnsupportedOperationException(s"format ${format} is not supported")
     }
   }
@@ -189,6 +200,7 @@ abstract class LightReadableDataset[T <: Product : Manifest](
         .load(paths.flatMap(x => FSUtils.listFiles(x, true)(spark).map(y => x + "/" + y)): _*)
         .selectAs[T]
       case Some("parquet") => loadParquetDataHourly[T](basePath, date, hours, source)
+      case Some("cbuffer") => spark.read.cb(paths: _*).selectAs[T]
       case _ => throw new UnsupportedOperationException(s"format ${format} is not supported")
     }
   }
@@ -216,6 +228,10 @@ abstract class LightReadableDataset[T <: Product : Manifest](
       case Some("parquet") => spark
         .read
         .parquet(path)
+        .selectAs[T]
+      case Some("cbuffer") => spark
+        .read
+        .cb(path)
         .selectAs[T]
       case _ => throw new UnsupportedOperationException(s"format ${format} is not supported")
     }

@@ -1,6 +1,7 @@
 package com.thetradedesk.audience.jobs
 
-
+import com.thetradedesk.featurestore.data.cbuffer.SchemaHelper.{CBufferDataFrameReader, CBufferDataFrameWriter}
+import com.thetradedesk.audience.utils.IDTransformUtils.guidToLongs
 import com.thetradedesk.audience.datasets.{CrossDeviceVendor, DataSource}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -14,7 +15,6 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{ArrayType, FloatType, IntegerType}
 
 import scala.collection.mutable
-import java.util.UUID
 import java.time.LocalDateTime
 
 case class TdidEmbeddingDotProductGeneratorConfig(
@@ -143,43 +143,6 @@ object TdidEmbeddingDotProductGenerator
   })
 
 
-  ///// UDF sample
-  case class Uuid(MostSigBits: Long, LeastSigBits: Long)
-
-  def charToLong(char: Char): Long = {
-    if (char >= '0' && char <= '9')
-      char - '0'
-    else if (char >= 'A' && char <= 'F')
-      char - ('A' - 0xaL)
-    else if (char >= 'a' && char <= 'f')
-      char - ('a' - 0xaL)
-    else
-      0L
-  }
-
-  def guidToLongs(tdid: String): Uuid = {
-    if (tdid == null) {
-      Uuid(0,0)
-    } else {
-      val hexString = tdid.replace("-", "")
-
-      if (!hexString.matches("[0-9A-Fa-f]{32}")) {
-        Uuid(0, 0)
-      } else {
-        val highBits = hexString.slice(0, 16).map(charToLong).zipWithIndex.map { case (value, i) => value << (60 - (4 * i)) }.reduce(_ | _)
-        val lowBits = hexString.slice(16, 32).map(charToLong).zipWithIndex.map { case (value, i) => value << (60 - (4 * i)) }.reduce(_ | _)
-
-        Uuid(highBits, lowBits)
-      }
-    }
-  }
-
-  def udfGuidToLongs: UserDefinedFunction = udf((id: String) => guidToLongs(id))
-
-  def longsToGuid(tdid1: Long, tdid2: Long): String = {
-    new UUID(tdid1, tdid2).toString
-  }
-
   def toInt32(bytes: Array[Byte], index: Int): Int = {
     val b1 = (0xff & (bytes(index) & 0xFF )) << 0
     val b2 = (0xff & (bytes(index + 1) & 0xFF )) << 8
@@ -253,7 +216,7 @@ object TdidEmbeddingDotProductGenerator
 
     // Must match Constants.UserIsSampled in AdPlatform.
     // Also must stay constant between runs in prod as we read datasets produced from multiple runs.
-    userIsSampled(guidAsLongs.MostSigBits, guidAsLongs.LeastSigBits, 1000000, 10000)
+    userIsSampled(guidAsLongs.mostSigBits, guidAsLongs.leastSigBits, 1000000, 10000)
   }
 
   val isDeviceIdSampled: UserDefinedFunction = udf(_isDeviceIdSampled _)

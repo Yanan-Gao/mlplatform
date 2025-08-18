@@ -3,7 +3,10 @@ package com.thetradedesk.audience.utils
 import org.apache.spark.sql.{Encoder, Encoders}
 import org.apache.spark.sql.expressions.Aggregator
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
+import org.apache.spark.sql.{DataFrame, Column}
+import java.util.UUID
 object BitwiseOrAgg extends Aggregator[Int, Int, Int]{
   override def zero: Int = 0
 
@@ -168,3 +171,57 @@ class precisionRecallAggregator(threshold: Double) extends Aggregator[(Double, D
     def bufferEncoder: Encoder[PRCounts] = Encoders.product[PRCounts]
     def outputEncoder: Encoder[(Double, Double)] = Encoders.tuple(Encoders.scalaDouble, Encoders.scalaDouble)
   }
+
+  object IDTransformUtils {
+      ///// UDF sample
+    case class Uuid(mostSigBits: Long, leastSigBits: Long)
+
+    def charToLong(char: Char): Long = {
+      if (char >= '0' && char <= '9')
+        char - '0'
+      else if (char >= 'A' && char <= 'F')
+        char - ('A' - 0xaL)
+      else if (char >= 'a' && char <= 'f')
+        char - ('a' - 0xaL)
+      else
+        0L
+    }
+
+    def guidToLongs(tdid: String): Uuid = {
+      if (tdid == null) {
+        Uuid(0,0)
+      } else {
+        val hexString = tdid.replace("-", "")
+
+        if (!hexString.matches("[0-9A-Fa-f]{32}")) {
+          Uuid(0, 0)
+        } else {
+          val uid = UUID.fromString(tdid)
+          val highBits = uid.getMostSignificantBits
+          val lowBits = uid.getLeastSignificantBits
+
+          Uuid(highBits, lowBits)
+        }
+      }
+    }
+
+    def udfGuidToLongs: UserDefinedFunction = udf((id: String) => guidToLongs(id))
+
+    def longsToGuid(tdid1: Long, tdid2: Long): String = {
+      new UUID(tdid1, tdid2).toString
+    }
+
+    def udfLongsToGuid: UserDefinedFunction = udf((mostSigBits: Long, leastSigBits: Long)  => longsToGuid(mostSigBits,leastSigBits))
+
+    def addGuidBits(colName: String)(df: DataFrame): DataFrame = {
+      val tmp = s"${colName}Bits"
+      df.withColumn(tmp, udfGuidToLongs(col(colName)))
+        .withColumn(s"${colName}mostSigBits",  col(s"$tmp.mostSigBits"))
+        .withColumn(s"${colName}leastSigBits", col(s"$tmp.leastSigBits"))
+        .drop(tmp)
+    }
+
+
+  }
+
+  

@@ -22,6 +22,7 @@ import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode, SparkSession}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
 import com.thetradedesk.audience.datasets.S3Roots.ML_PLATFORM_ROOT
 import com.thetradedesk.audience.utils.DataFrameUtils._
+import com.thetradedesk.featurestore.data.cbuffer.SchemaHelper.{CBufferDataFrameReader, CBufferDataFrameWriter}
 
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -69,7 +70,7 @@ class DataQualityGenerator(val dataType: String, val dataSplitType: String) {
     if (!FSUtils.fileExists(s"${path}_SUCCESS")) {
       return null
     }
-
+    //  TODO： change to read cbuffer after full migrating to torch training
     val trainData = spark.read.format("tfrecord").load(path).select('SyntheticIds, 'Targets, 'ZipSiteLevel_Seed)
 
     val explodCols = Seq("SyntheticIds", "Targets", "ZipSiteLevel_Seed")

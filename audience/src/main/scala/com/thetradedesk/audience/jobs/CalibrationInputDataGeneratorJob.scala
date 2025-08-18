@@ -18,6 +18,7 @@ import org.apache.commons.lang3.exception.ExceptionUtils
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{ArrayType, StringType, StructType}
 import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode, SparkSession}
+import com.thetradedesk.featurestore.data.cbuffer.SchemaHelper.{CBufferDataFrameReader, CBufferDataFrameWriter}
 
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -57,8 +58,7 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
     val startDate = config.getDate("startDate",  default = LocalDate.parse("2025-02-13"))
     val oosDataS3Bucket = S3Utils.refinePath(config.getString("oosDataS3Bucket", "thetradedesk-mlplatform-us-east-1"))
     val oosDataS3Path = S3Utils.refinePath(config.getString("oosDataS3Path", s"data/${ttdReadEnv}/audience/RSMV2/Seed_None/v=1"))
-    val oosProdDataS3Path = S3Utils.refinePath(config.getString("oosDataS3Path", s"data/prod/audience/RSMV2/Seed_None/v=1"))
-    val calibrationOutputData3Path = S3Utils.refinePath(config.getString("oosDataS3Path", s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None/v=1"))
+    val calibrationOutputData3Path = S3Utils.refinePath(config.getString("calibrationOutputData3Path", s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None"))
     val subFolderKey = config.getString("subFolderKey", default = "mixedForward")
     val subFolderValue = config.getString("subFolderValue", default = "Calibration")
   }
@@ -70,7 +70,6 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
 
     val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
     val basePath = "s3://" + Config.oosDataS3Bucket + "/" + Config.oosDataS3Path
-    val prodBasePath = "s3://" + Config.oosDataS3Bucket + "/" + Config.oosProdDataS3Path
     val outputBasePath = "s3://" + Config.oosDataS3Bucket + "/" + Config.calibrationOutputData3Path
 
     val targetPath = constructPath(date, basePath)
@@ -83,9 +82,8 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
 
     val validPaths = candidateDates.flatMap { date =>
       val pathStr = constructPath(date, basePath)
-      val prodPathStr = constructPath(date, prodBasePath)
-      if (pathExists(pathStr)) Some(pathStr) else if (Config.coalesceProdData && pathExists(prodPathStr)) Some(prodPathStr) else None
-    }.reverse
+      if (pathExists(pathStr)) Some(pathStr) else None
+      }.reverse
 
     if (validPaths.isEmpty) {
       throw new Exception("No valid paths found within the lookback window.")
@@ -98,8 +96,9 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
     val pathWeightPairs: Seq[(String, Double)] = validPaths.zip(weights)
 
     val dfs: Seq[DataFrame] = pathWeightPairs.map { case (pathStr, weight) => {
-      val df = spark.read.format("tfrecord").load(pathStr).sample(withReplacement = false, fraction = weight)
-      // backward compatibility, to be cleaned up
+
+      val df = spark.read.cb(pathStr).sample(withReplacement = false, fraction = weight)
+      // backward compatibility, to be cleaned up 
       if (df.columns.contains("FeatureValueHashed")) {
         df.withColumnRenamed("FeatureValueHashed", "SiteZipHashed")
       } else {
@@ -120,14 +119,19 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
     }
     }
   
-    val result = dfs.reduce(_.unionByName(_))
+    val result = dfs.reduce(_.unionByName(_)).cache
+    
+    result.coalesce(audienceResultCoalesce)
+        .write.mode(SaveMode.Overwrite)
+        .option("maxChunkRecordCount", 20480)
+        .cb(s"$outputBasePath/v=2/${date.format(formatter)}000000/${Config.subFolderKey}=${Config.subFolderValue}")
     
     result.coalesce(audienceResultCoalesce)
         .write.mode(SaveMode.Overwrite)
         .format("tfrecord")
         .option("recordType", "Example")
         .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
-        .save(s"$outputBasePath/${date.format(formatter)}000000/${Config.subFolderKey}=${Config.subFolderValue}")
+        .save(s"$outputBasePath/v=1/${date.format(formatter)}000000/${Config.subFolderKey}=${Config.subFolderValue}")
 
     resultTableSize.labels(dateTime.toLocalDate.toString).set(result.count())
     jobRunningTime.labels(dateTime.toLocalDate.toString).set(System.currentTimeMillis() - start)

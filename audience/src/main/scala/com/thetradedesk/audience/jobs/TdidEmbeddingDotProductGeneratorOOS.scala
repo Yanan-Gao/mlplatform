@@ -162,7 +162,7 @@ class TdidEmbeddingDotProductGeneratorOOS {
       print(f"Process split ${i}")
 
       // without 'TDID
-      val dataset_prepare_to_calculate = df_tdid_embs(i).select('TDID.as("TDID"), 'cnt, 'sen_pred_avg.cast(ArrayType(FloatType)).as("bdSenEmb"), 'non_sen_pred_avg.cast(ArrayType(FloatType)).as("bdNonSenEmb"))
+      val dataset_prepare_to_calculate = df_tdid_embs(i).select('TDID.as("TDID"), 'cnt, 'sen_pred_avg.cast(ArrayType(FloatType)).as("bdSenEmb"), 'pred_avg.cast(ArrayType(FloatType)).as("bdNonSenEmb"))
 
       df_density_features(i) = df_density_features(i)
         .filter(isIdSampled('TDID))

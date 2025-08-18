@@ -2,10 +2,11 @@ package com.thetradedesk.audience.jobs.modelinput.rsmv2
 
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.BidImpSideDataGenerator.readBidImpressionWithNecessary
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.SubFolder
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.{SubFolder, paddingColumns}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig._
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface.{BidSideDataRecord, SeedLabelSideDataRecord}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.feature.userzipsite.{UserZipSiteLevelFeatureExternalReader, UserZipSiteLevelFeatureGenerator}
+import org.apache.spark.sql.expressions.UserDefinedFunction
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.optinseed.OptInSeedFactory
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.seedlabelside.PostExtraSamplingSeedLabelSideDataGenerator
 import com.thetradedesk.audience.transform.IDTransform.joinOnIdTypes
@@ -32,8 +33,12 @@ object RelevanceModelInputGeneratorJob {
         "OperatingSystemFamily","Browser","Latitude","Longitude","Region","InternetConnectionType",
         "OperatingSystem","ZipSiteLevel_Seed","Targets","SyntheticIds","City","sin_hour_week","cos_hour_week",
         "sin_hour_day","cos_hour_day","sin_minute_hour","cos_minute_hour","sin_minute_day","cos_minute_day",
-        "MatchedSegments", "MatchedSegmentsLength", "HasMatchedSegments", "UserSegmentCount", "IdTypesBitmap")
-
+        "MatchedSegments", "MatchedSegmentsLength", "HasMatchedSegments", "UserSegmentCount", "IdTypesBitmap", "BidRequestIdmostSigBits", "BidRequestIdleastSigBits", "TDIDmostSigBits", "TDIDleastSigBits")
+        // add sample weight column
+        .withColumn("SampleWeights", transform(col("Targets"), x => when(x === lit(1.0), lit(RelevanceModelInputGeneratorConfig.posSampleWeight)).otherwise(lit(RelevanceModelInputGeneratorConfig.negSampleWeight))))
+        // temp remove tdid null rows
+        .filter('TDID.isNotNull)
+        
     val rawJson = readModelFeatures(rsmV2FeatureSourcePath)()
 
     if (rsmV2FeatureDestPath != null && rawJson != null) {
@@ -42,14 +47,16 @@ object RelevanceModelInputGeneratorJob {
 
     // totalSplits default is 10 which train:val:holdout -> 8:1:1
     val totalSplits = trainValHoldoutTotalSplits
-    val resultSet = ModelFeatureTransform.modelFeatureTransform[RelevanceModelInputRecord](res, rawJson)
+    val result = ModelFeatureTransform.modelFeatureTransform[RelevanceModelInputRecord](res, rawJson)
       .withColumn("SubFolder",
         when('SplitRemainder === lit(SubFolder.Val.id), SubFolder.Val.id)
           .when('SplitRemainder === lit(SubFolder.Holdout.id), SubFolder.Holdout.id)
           .otherwise(SubFolder.Train.id))
       .withColumn("rand", rand())
       .orderBy("rand").drop("rand")
-      .cache()
+    
+    val resultSet = paddingColumns(result,RelevanceModelInputGeneratorConfig.paddingColumns, 0)
+                    .cache()
 
     // ensure one file at least 30k rows to make model learn well
     val rowCounts = res.count() / totalSplits
@@ -85,6 +92,39 @@ object RelevanceModelInputGeneratorJob {
       subFolderKey = Some(subFolder),
       subFolderValue = Some(SubFolder.Train.toString),
       format = Some("tfrecord"),
+      saveMode = SaveMode.Overwrite
+    )
+    
+    // Temp: keep tfrecord and write cbuffer to v2 
+    RelevanceModelInputDataset(RelevanceModelInputGeneratorConfig.model.toString, "Seed_None", version=2).writePartition(
+      resultSet.filter('SubFolder === lit(SubFolder.Val.id)).as[RelevanceModelInputRecord],
+      dateTime,
+      numPartitions = Some(partitionsForValHoldout),
+      subFolderKey = Some(subFolder),
+      subFolderValue = Some(SubFolder.Val.toString),
+      format = Some("cbuffer"),
+      saveMode = SaveMode.Overwrite
+    )
+
+    if (RelevanceModelInputGeneratorConfig.persistHoldoutSet) {
+      RelevanceModelInputDataset(RelevanceModelInputGeneratorConfig.model.toString, "Seed_None", version=2).writePartition(
+        resultSet.filter('SubFolder === lit(SubFolder.Holdout.id)).as[RelevanceModelInputRecord],
+        dateTime,
+        numPartitions = Some(partitionsForValHoldout),
+        subFolderKey = Some(subFolder),
+        subFolderValue = Some(SubFolder.Holdout.toString),
+        format = Some("cbuffer"),
+        saveMode = SaveMode.Overwrite
+      )
+    }
+
+    RelevanceModelInputDataset(RelevanceModelInputGeneratorConfig.model.toString, "Seed_None", version=2).writePartition(
+      resultSet.filter('SubFolder === lit(SubFolder.Train.id)).as[RelevanceModelInputRecord],
+      dateTime,
+      numPartitions = Some(partitionsForTrain),
+      subFolderKey = Some(subFolder),
+      subFolderValue = Some(SubFolder.Train.toString),
+      format = Some("cbuffer"),
       saveMode = SaveMode.Overwrite
     )
   }

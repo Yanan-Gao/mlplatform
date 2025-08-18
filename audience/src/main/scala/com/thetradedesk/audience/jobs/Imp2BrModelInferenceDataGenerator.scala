@@ -1,10 +1,11 @@
 package com.thetradedesk.audience.jobs
-import com.thetradedesk.audience.datasets.{AudienceModelInputDataset, AudienceModelInputRecord, Model}
-import com.thetradedesk.audience.doNotTrackTDID
+import com.thetradedesk.audience.datasets.{RelevanceModelInputDataset, RelevanceModelInputRecord, Model}
+import com.thetradedesk.audience.{audienceVersionDateFormat, date, dateTime, doNotTrackTDID, ttdEnv}
 import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.{_isDeviceIdSampled1Percent, _isDeviceIdSampledNPercent}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.{paddingColumns, castDoublesToFloat}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, readModelFeatures}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -12,7 +13,12 @@ import com.thetradedesk.confetti.utils.Logger
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.FloatType
-
+import com.thetradedesk.spark.util.TTDConfig.config
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig
+import com.thetradedesk.audience.transform.IDTransform.{allIdWithType, filterOnIdTypes, filterOnIdTypesSym, idTypesBitmap}
+import com.thetradedesk.audience.utils.IDTransformUtils.addGuidBits
+import org.apache.spark.sql.expressions.UserDefinedFunction
+import java.time.format.DateTimeFormatter
 import java.time.LocalDate
 import scala.collection.mutable.ArrayBuffer
 
@@ -101,11 +107,16 @@ class Imp2BrModelInferenceDataGenerator(prometheus: PrometheusClient) {
         'cos_minute_day,
         'CampaignId,
         'TDID,
+        'DeviceAdvertisingId,
+        'CookieTDID,
+        'UnifiedId2, 
+        'EUID, 
+        'IdentityLinkId,
         'LogEntryTime,
-        'ContextualCategories,
         'MatchedSegments
       )
       // they saved in struct type
+      .withColumn("SplitRemainder", lit(0))
       .withColumn("OperatingSystemFamily", 'OperatingSystemFamily("value"))
       .withColumn("Browser", 'Browser("value"))
       .withColumn("RenderingContext", 'RenderingContext("value"))
@@ -116,29 +127,49 @@ class Imp2BrModelInferenceDataGenerator(prometheus: PrometheusClient) {
       .withColumn("Latitude", when('Latitude.isNotNull, 'Latitude).otherwise(0))
       .withColumn("Longitude", ('Longitude + lit(180.0)) / lit(360.0)) //-180 - 180
       .withColumn("Longitude", when('Longitude.isNotNull, 'Longitude).otherwise(0))
-      .withColumn("SyntheticIds", typedLit(Seq.empty[Int]))
+      .withColumn("SyntheticIds", typedLit(Array(0)))
       .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0).otherwise(size('MatchedSegments)).cast(FloatType))
       .withColumn("HasMatchedSegments", when('MatchedSegmentsLength > lit(0), 1).otherwise(0))
-      .withColumn("ZipSiteLevel_Seed", typedLit(Seq.empty[Int]))
-      .withColumn("GroupId", 'TDID) // TODO:
-      .withColumn("ContextualCategoriesTier1", typedLit(Array.empty[Int]))
+      .withColumn("ZipSiteLevel_Seed", typedLit(Array(1)))
       .withColumn("UserSegmentCount", lit(0.0))
-      .withColumn("Targets", typedLit(Array.empty[Float]))
+      .withColumn("Targets", typedLit(Array(0.0f)))
       .withColumn("SupplyVendor", lit(0))
       .withColumn("AdvertiserId", lit(0))
       .withColumn("SupplyVendorPublisherId", lit(0))
+      .withColumn("IdTypesBitmap", idTypesBitmap)
+      // sample weight
+      .withColumn("SampleWeights", typedLit(Array(1.0f)))
+         
+      // convert id to long
+      .transform(addGuidBits("BidRequestId"))
+      .transform(addGuidBits("TDID"))
 
-    val dataset = ModelFeatureTransform.modelFeatureTransform[AudienceModelInputRecord](bidsImpressions, readModelFeatures(conf.feature_path))
+
+    val bidsImpressionsTrasnformed = castDoublesToFloat(bidsImpressions)
+
+    val dataset = ModelFeatureTransform.modelFeatureTransform[RelevanceModelInputRecord](bidsImpressionsTrasnformed, readModelFeatures(conf.feature_path))
+
+    val resultSet = paddingColumns(dataset.toDF(),RelevanceModelInputGeneratorConfig.paddingColumns, 0)
+                    .cache()
 
     try {
-      AudienceModelInputDataset(Model.RSMV2.toString, tag = "Imp_Seed_None", version = 1)
-        .writePartition(
-          dataset = dataset.as[AudienceModelInputRecord],
-          partition = dateTime,
-          format = Some("tfrecord"),
-          saveMode = SaveMode.Overwrite,
-          numPartitions = Some(10000)
-        )
+      RelevanceModelInputDataset(Model.RSMV2.toString,tag = "Imp_Seed_None", version = 2)
+      .writePartition(
+        dataset = resultSet.as[RelevanceModelInputRecord],
+        partition = dateTime,
+        format = Some("cbuffer"),
+        saveMode = SaveMode.Overwrite,
+        numPartitions = Some(10000)
+      )
+    
+    RelevanceModelInputDataset(Model.RSMV2.toString,tag = "Imp_Seed_None", version = 1)
+      .writePartition(
+        dataset = resultSet.as[RelevanceModelInputRecord],
+        partition = dateTime,
+        format = Some("tfrecord"),
+        saveMode = SaveMode.Overwrite,
+        numPartitions = Some(10000)
+      )
     } catch {
       case e: Exception =>
         logger.info("error when writing: " + e.getMessage)
@@ -148,6 +179,7 @@ class Imp2BrModelInferenceDataGenerator(prometheus: PrometheusClient) {
     logger.info("Finished writing feature dataset.")
   }
 }
+
 
 object Imp2BrModelInferenceDataGenerator
   extends AutoConfigResolvingETLJobBase[Imp2BrModelInferenceDataGeneratorConfig](
@@ -161,3 +193,5 @@ object Imp2BrModelInferenceDataGenerator
     new Imp2BrModelInferenceDataGenerator(prometheus.get).run(conf, getLogger)
   }
 }
+
+

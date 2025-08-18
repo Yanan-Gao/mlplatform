@@ -47,6 +47,7 @@ libraryDependencies ++= Seq(
   "com.thetradedesk" %% "eldorado-core" % eldoradoVersion,
   "com.thetradedesk" %% "availspipeline.spark-common_no_uniform" % availsVersion,
   "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
+  "com.thetradedesk" %% "feature_store" % "20250804031454-SNAPSHOT",
 
   "io.prometheus" % "simpleclient" % prometheusVersion,
   "io.prometheus" % "simpleclient_common" % prometheusVersion,
@@ -61,6 +62,8 @@ libraryDependencies ++= Seq(
   "com.deviceatlas"   % "deviceatlas-enterprise-java"    % "3.2",
   "com.adbrain" %% "neocortex-spark-3" % "3.0.1-SNAPSHOT" excludeAll(guava, awsJavaSdkBundle, logback, jacksonCore) withSources()
 )
+
+libraryDependencySchemes += "com.thetradedesk" %% "geronimo" % VersionScheme.Always
 
 dependencyOverrides ++= Seq(
   "com.fasterxml.jackson.core" % "jackson-core" % "2.12.7",

@@ -34,6 +34,8 @@ object RelevanceModelInputGeneratorConfig {
   val maxLabelLengthPerRow = config.getInt("maxLabelLengthPerRow", 50)
   val minRowNumsPerPartition = config.getInt("minRowNumsPerPartition", 100000)
   val trainValHoldoutTotalSplits = config.getInt("trainValHoldoutTotalSplits", 10)
-
+  val paddingColumns = config.getString("paddingColumns", "ZipSiteLevel_Seed,Targets,SyntheticIds,MatchedSegments,SampleWeights").split(",").map(_.trim).filter(_.nonEmpty)
+  val posSampleWeight = config.getDouble("posSampleWeight", 2.52).toFloat // class weight for training, all inference data can set as 1
+  val negSampleWeight = config.getDouble("negSampleWeight", 1).toFloat // class weight for training, all inference data can set as 1
   val activeSeedIdWhiteList = config.getString("activeSeedIdWhiteList", "")
 }
