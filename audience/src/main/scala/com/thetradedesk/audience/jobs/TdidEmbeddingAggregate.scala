@@ -8,7 +8,7 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.catalyst.encoders.ExpressionEncoder
 import org.apache.spark.sql.expressions.Aggregator
 import org.apache.spark.sql.{Encoder, Encoders}
-
+import com.thetradedesk.audience.utils.IDTransformUtils.udfLongsToGuid
 import java.nio.charset.StandardCharsets
 
 case class Buffer(sums: Array[Double], var count: Long)
@@ -72,15 +72,17 @@ class TdidEmbeddingAggregate {
     val decode_tdid = conf.decode_tdid
 
     val rawEmb = spark.read.format("parquet").load(br_emb_path)
-    val aggedEmb = rawEmb.groupBy("TDID")
+    val aggedEmb = rawEmb
+      .withColumn("TDID", udfLongsToGuid('TDIDmostSigBits,'TDIDleastSigBits))
+      .groupBy("TDID")
       .agg(
         emb_avg(col("sen_pred")).alias("sen_pred_avg"),
-        emb_avg(col("non_sen_pred")).alias("non_sen_pred_avg"),
+        emb_avg(col("pred")).alias("pred_avg"),
         count("*").alias("cnt")
       )
       .withColumn("TDID", utf8ToStringUdf(col("TDID"))) //when(lit(decode_tdid), utf8ToStringUdf(col("TDID"))).otherwise(col("TDID")))
       .withColumn("split", abs(xxhash64(concat(col("TDID"), lit(salt)))) % lit(10))
-      .select("TDID", "cnt", "sen_pred_avg", "non_sen_pred_avg", "split")
+      .select("TDID", "cnt", "sen_pred_avg", "pred_avg", "split")
 
     aggedEmb
       .write
@@ -103,4 +105,3 @@ object TdidEmbeddingAggregate
     new TdidEmbeddingAggregate().run(conf)
   }
 }
-

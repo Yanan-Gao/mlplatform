@@ -71,7 +71,7 @@ object AudienceCalibrationAndMergeJob {
     val outputEmbeddingPath = config.getString("overrideEmbeddingPath", s"s3://${Config.mlplatformS3Bucket}/${Config.embeddingDataS3Path}/${date.format(formatter)}000000")
 
     val alignEmbeddingColumn = when(size('Embedding) === lit(EmbeddingSize * 4), slice('Embedding, EmbeddingSize + 1, EmbeddingSize * 3)).otherwise('Embedding)
-    val embeddingCols = Seq("SyntheticId", "Embedding", "Thresholds", "Threshold", "AvgScore")
+    val embeddingCols = Seq("SyntheticId", "Embedding", "Thresholds", "Threshold")
     val currentTmpNonSenEmbeddingTable = spark.read.parquet(currentNonSenTmpEmbeddingPath).withColumn("Embedding", alignEmbeddingColumn).select(embeddingCols.map(col): _*)
     val currentTmpSenEmbeddingTable = spark.read.parquet(currentSenTmpEmbeddingPath).withColumn("Embedding", alignEmbeddingColumn).select(embeddingCols.map(col): _*)
     
@@ -102,13 +102,13 @@ object AudienceCalibrationAndMergeJob {
                                                 .withColumnRenamed("Embedding", "SenEmbedding")
                                                 .withColumnRenamed("Thresholds", "SenThresholds")
                                                 .withColumnRenamed("Threshold", "SenThreshold")
-                                                .withColumnRenamed("AvgScore", "SenAvgScore")     
+                                                // .withColumnRenamed("AvgScore", "SenAvgScore")     
                                                 , Seq("SyntheticId"), "left"                                  
                                           )
                                           .withColumn("Embedding", when('IsSensitive, 'SenEmbedding).otherwise('Embedding))
                                           .withColumn("Thresholds", when('IsSensitive, 'SenThresholds).otherwise('Thresholds))
                                           .withColumn("Threshold", when('IsSensitive, 'SenThreshold).otherwise('Threshold))
-                                          .withColumn("AvgScore", when('IsSensitive, 'SenAvgScore).otherwise('AvgScore))
+                                          // .withColumn("AvgScore", when('IsSensitive, 'SenAvgScore).otherwise('AvgScore))
 
     val calibrationCurrentVersionMetric = explodeSyntheticIds(calibrationCurrentModelInferenceData)
                                             .join(currentPolicyTable, Seq("SyntheticId"),"left")
@@ -152,17 +152,18 @@ object AudienceCalibrationAndMergeJob {
                               .join(currentPolicyTable, Seq("SyntheticId"),"left")
                               .withColumn("pred", when('IsSensitive, 'sen_pred).otherwise('pred))
                               .join(minMaxMetric,Seq("SyntheticId"),"left")
-                              .withColumn("pred", when('min_pred.isNotNull, least(greatest('pred-'min_pred,lit(0))/('max_pred-'min_pred),lit(1.0) )).otherwise('pred))
+                              .withColumn("relevance", when('min_pred.isNotNull, least(greatest('pred-'min_pred,lit(0))/('max_pred-'min_pred),lit(1.0) )).otherwise('pred))
                               .withColumn("r", lit(Config.baselineHitRate))
-                              .withColumn("weights",('r + (lit(1)-'r)*(lit(1)- lit(1)/(lit(1)+exp(-(lit(-Config.smoothFactor)*('pred-lit(Config.locationFactor))))))))
-                              .withColumn("pred", 'pred*'weights)
+                              .withColumn("weights",('r + (lit(1)-'r)*(lit(1)- lit(1)/(lit(1)+exp(-(lit(-Config.smoothFactor)*('relevance-lit(Config.locationFactor))))))))
+                              .withColumn("relevance", 'relevance*'weights)
                               .groupBy("SyntheticId")
                               .agg(
-                                avg('pred).alias("PopulationRelevance")
-                                , avg(log('pred)).alias("LogPopulationRelevance")
+                                avg('pred).alias("AvgScore")
+                                , avg('relevance).alias("PopulationRelevance")
+                                , avg(log('relevance)).alias("LogPopulationRelevance")
                                 , avg('min_pred).alias("MinScore")
                                 , avg('max_pred).alias("MaxScore")
-                              ).select('SyntheticId, 'PopulationRelevance, 'LogPopulationRelevance, 'MinScore, 'MaxScore)
+                              ).select('SyntheticId, 'PopulationRelevance, 'LogPopulationRelevance, 'MinScore, 'MaxScore, 'AvgScore)
     
     val finalEmbeddingTable = currentTmpMixedEmbeddingTable
                                                   .join(calibrationMetric, Seq("SyntheticId"), "left")
@@ -172,6 +173,7 @@ object AudienceCalibrationAndMergeJob {
                                                   .withColumn("CalibrationFactor", col("CalibrationFactor").cast(FloatType))
                                                   .withColumn("MinScore", col("MinScore").cast(FloatType))
                                                   .withColumn("MaxScore", col("MaxScore").cast(FloatType))
+                                                  .withColumn("AvgScore", col("AvgScore").cast(FloatType))
                                                   .withColumn("PopulationRelevance", col("PopulationRelevance").cast(FloatType))
                                                   .withColumn("LogPopulationRelevance", col("LogPopulationRelevance").cast(FloatType))
                                                   .withColumn("BaselineHitRate", col("BaselineHitRate").cast(FloatType))

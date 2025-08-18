@@ -24,25 +24,25 @@ final case class RelevanceOnlineRecord(
         MatchedFoldPosition: Option[Int],
         InternetConnectionType: Option[Int],
         Browser: Option[Int],
-        ContextualCategoriesTier1: Array[Int],
+        // ContextualCategoriesTier1: Array[Int],
         MatchedSegments: Array[Long],
-        MatchedSegmentsLength: Double,
+        MatchedSegmentsLength: Float,
         HasMatchedSegments: Option[Int],
-        UserSegmentCount: Double,
-        AdWidthInPixels: Double,
-        AdHeightInPixels: Double,
+        UserSegmentCount: Float,
+        AdWidthInPixels: Float,
+        AdHeightInPixels: Float,
 
-        sin_hour_week: Double,
-        cos_hour_week: Double,
-        sin_hour_day: Double,
-        cos_hour_day: Double,
-        sin_minute_hour: Double,
-        cos_minute_hour: Double,
-        sin_minute_day: Double,
-        cos_minute_day: Double,
+        sin_hour_week: Float,
+        cos_hour_week: Float,
+        sin_hour_day: Float,
+        cos_hour_day: Float,
+        sin_minute_hour: Float,
+        cos_minute_hour: Float,
+        sin_minute_day: Float,
+        cos_minute_day: Float,
 
-        Latitude: Double,
-        Longitude: Double,
+        Latitude: Float,
+        Longitude: Float,
 
         TDID: String,
         DeviceAdvertisingId: String,
@@ -54,18 +54,23 @@ final case class RelevanceOnlineRecord(
         AdvertiserId: Option[Int],
         CampaignId: String,
         AdGroupId: String,
-        SyntheticIds: Int, // array type in training
-        Targets: Double, // array type in training
+        SyntheticIds: Seq[Int], // array type in training
+        Targets: Seq[Float], // array type in training
+        SampleWeights: Seq[Float], // sample weight used during training
 
         // new features compare to trm model input
-        OnlineRelevanceScore: Double,
+        OnlineRelevanceScore: Float,
         DeviceTypeName: String,
-        PersonGraphTargets: Double, // array type in training
-        HouseholdGraphTargets: Double, // array type in training
+        PersonGraphTargets: Seq[Float], // array type in training
+        HouseholdGraphTargets: Seq[Float], // array type in training
         SiteZipHashed: Long,
         AliasedSupplyPublisherIdCityHashed: Long,
-        ZipSiteLevel_Seed: Int, // array type in training
-        IdTypesBitmap: Int
+        ZipSiteLevel_Seed: Seq[Int], // array type in training
+        IdTypesBitmap: Int,
+        BidRequestIdmostSigBits: Long, // cbuffer can only read non string value
+        BidRequestIdleastSigBits: Long, // cbuffer can only read non string value
+        TDIDmostSigBits: Long, // cbuffer can only read non string value
+        TDIDleastSigBits: Long // cbuffer can only read non string value
 )
 
 case class RelevanceOnlineDataset(model: String, tag: String, version: Int = 1) extends LightWritableDataset[RelevanceOnlineRecord](s"${ttdWriteEnv}/audience/${model}/${tag}/v=${version}", ML_PLATFORM_ROOT, audienceResultCoalesce, dateFormat = audienceVersionDateFormat)

@@ -34,7 +34,7 @@ class UploadEmbeddings {
     // non-sensitive results  type=301/date=20250228/hour=16/batch=01
     // push partition_ids 0 to 6 to first date
     embeddingFiltered
-      .select('UIID, 'non_sen_pred_avg.cast("array<float>").as("embedding"))
+      .select('UIID, 'pred_avg.cast("array<float>").as("embedding"))
       .repartition(totalPartitions)
       .write.format("parquet").mode("overwrite")
       .save(emb_bucket_dest + "type=" + nonsensitive_emb_enum + "/date=" + dateStr + "/hour=" + "%02d".format(base_hour) + "/batch=" + "%02d".format(batch_id));

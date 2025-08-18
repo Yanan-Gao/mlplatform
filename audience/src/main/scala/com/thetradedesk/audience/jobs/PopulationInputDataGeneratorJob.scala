@@ -7,7 +7,7 @@ import com.thetradedesk.audience.utils.Logger.Log
 import com.thetradedesk.audience.utils.S3Utils
 import com.thetradedesk.audience.{shouldConsiderTDID3, _}
 import com.thetradedesk.audience.jobs.PopulationInputDataGeneratorJob.prometheus
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.RSMV2PopulationUserSampleIndex
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
@@ -21,6 +21,8 @@ import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{ArrayType, StringType, StructType}
 import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode, SparkSession}
+import com.thetradedesk.featurestore.data.cbuffer.SchemaHelper.{CBufferDataFrameReader, CBufferDataFrameWriter}
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.{paddingColumns, castDoublesToFloat}
 
 import java.util.concurrent.ThreadLocalRandom
 import scala.collection.mutable
@@ -56,11 +58,12 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
     val model = config.getString("model", default = "RSMV2")
     val inputDataS3Bucket = S3Utils.refinePath(config.getString("inputDataS3Bucket", "thetradedesk-mlplatform-us-east-1"))
     val inputDataS3Path = S3Utils.refinePath(config.getString("inputDataS3Path", s"data/${ttdReadEnv}/audience/RSMV2/Imp_Seed_None/v=1"))
-    val populationOutputData3Path = S3Utils.refinePath(config.getString("populationOutputData3Path", s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None/v=1"))
+    val populationOutputData3Path = S3Utils.refinePath(config.getString("populationOutputData3Path", s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None"))
     val customInputDataPath = config.getString("customInputDataPath", default = null)
     val subFolderKey = config.getString("subFolderKey", default = "split")
     val subFolderValue = config.getString("subFolderValue", default = "Population")
     val syntheticIdLength = config.getInt("syntheticIdLength", default = 500)
+    val maxChunkRecordCount = config.getInt("maxChunkRecordCount", default = 20480)
   }
 
 
@@ -74,7 +77,8 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
     val outputBasePath = "s3://" + Config.inputDataS3Bucket + "/" + Config.populationOutputData3Path
 
     val windowSpec = Window.partitionBy("TDID").orderBy(rand())
-    val impData = spark.read.format("tfrecord").load(s"$basePath/${date.format(formatter)}000000").drop("Targets", "SyntheticIds")
+    // 
+    val impData = spark.read.cb(s"$basePath/${date.format(formatter)}000000").drop("Targets", "SyntheticIds", "ZipSiteLevel_Seed", "SampleWeights")
 //      .filter(sampler.samplingFunction('TDID))
       .withColumn("rn", row_number().over(windowSpec))
       .filter(col("rn") === 1)
@@ -263,18 +267,25 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
       .join(seedData.filter(size('SeedIds) > 0).select('TDID, 'SeedIds), Seq("TDID"), "left")
       .withColumn("SeedIds", coalesce('SeedIds, typedLit(Array.empty[String])))
       .withColumn("Targets", extractTargetsUDF('SeedIds, 'SyntheticIds))
+      .withColumn("SampleWeights", array_repeat(lit(1.0f), syntheticIdMaxLength))
       .drop("SeedIds", "TDID")
     
     
     val result = impData.join(labels,Seq("BidrequestId"),"inner")
 
+    val resultSet = paddingColumns(result.toDF(),RelevanceModelInputGeneratorConfig.paddingColumns, 0).cache
     
-    result.repartition(audienceResultCoalesce)
+    resultSet.repartition(audienceResultCoalesce)
+        .write.mode(SaveMode.Overwrite)
+        .option("maxChunkRecordCount", Config.maxChunkRecordCount)
+        .cb(s"${outputBasePath}/v=2/${date.format(formatter)}000000/${Config.subFolderKey}=${Config.subFolderValue}")
+    
+    resultSet.repartition(audienceResultCoalesce)
         .write.mode(SaveMode.Overwrite)
         .format("tfrecord")
         .option("recordType", "Example")
         .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
-        .save(s"$outputBasePath/${date.format(formatter)}000000/${Config.subFolderKey}=${Config.subFolderValue}")
+        .save(s"${outputBasePath}/v=1/${date.format(formatter)}000000/${Config.subFolderKey}=${Config.subFolderValue}")
 
     resultTableSize.labels(dateTime.toLocalDate.toString).set(result.count())
     jobRunningTime.labels(dateTime.toLocalDate.toString).set(System.currentTimeMillis() - start)

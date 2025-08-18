@@ -4,11 +4,13 @@ import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.audience.datasets._
 import com.thetradedesk.audience.transform.ContextualTransform.generateContextualFeatureTier1
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.{paddingColumns, castDoublesToFloat}
 import com.thetradedesk.audience.utils.Logger.Log
-import com.thetradedesk.audience._
+import com.thetradedesk.audience.{date, dateTime, _}
 import com.thetradedesk.geronimo.shared.readModelFeatures
 import com.thetradedesk.audience.jobs.HitRateReportingTableGeneratorJob.prometheus
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.RSMV2UserSampleSalt
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.{RSMV2UserSampleSalt}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -23,6 +25,9 @@ import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode, SparkSession}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
 import com.thetradedesk.audience.transform.IDTransform.{filterOnIdTypesSym, idTypesBitmap, joinOnIdTypes}
 import com.thetradedesk.audience.utils.SeedListUtils.activeCampaignSeedAndIdFilterUDF
+import com.thetradedesk.audience.utils.IDTransformUtils.addGuidBits
+import com.thetradedesk.featurestore.data.cbuffer.SchemaHelper.{CBufferDataFrameReader, CBufferDataFrameWriter}
+import org.apache.spark.sql.expressions.UserDefinedFunction
 
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
@@ -65,6 +70,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
       .withColumn("HouseholdGraphSeedIds", activeSeedIdFilterUDF('HouseholdGraphSeedIds))
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .cache()
+
 
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))
@@ -122,7 +128,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
       )
       .filter('RelevanceScore.isNotNull && 'RelevanceScore >= 0 && 'RelevanceScore <= 1)
       .withColumnRenamed("RelevanceScore", "OnlineRelevanceScore")
-      .withColumn("OnlineRelevanceScore", col("OnlineRelevanceScore").cast("double"))
+      .withColumn("OnlineRelevanceScore", col("OnlineRelevanceScore").cast("float"))
       // they saved in struct type
       .withColumn("OperatingSystemFamily", 'OperatingSystemFamily("value"))
       .withColumn("Browser", 'Browser("value"))
@@ -146,10 +152,16 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
         "Longitude",
         when('Longitude.isNotNull, ('Longitude + lit(180.0)) / lit(360.0)).otherwise(0)
       )
-      .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(DoubleType)))
+      .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(FloatType)))
       .withColumn("HasMatchedSegments", when('MatchedSegmentsLength > lit(0), 1).otherwise(0))
-      .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(DoubleType)))
+      .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(FloatType)))
       .withColumn("IdTypesBitmap", idTypesBitmap)
+      // sample weight
+      .withColumn("SampleWeights", typedLit(Array(1.0f)))
+         
+      // convert id to long
+      .transform(addGuidBits("BidRequestId"))
+      .transform(addGuidBits("TDID"))
       .cache()
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
 
@@ -275,36 +287,52 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
     // aggregate the targets and density features with max logic and join back with features
     // not use tdid from joinOnIdTypes -> will duplicate the info here
     val bidsImpressionExtendAgg = bidsImpressionExtend.groupBy("BidRequestId", "SiteZipHashed", "AliasedSupplyPublisherIdCityHashed")
-      .agg(max("Targets").as("Targets"),
-      max("PersonGraphTargets").as("PersonGraphTargets"),
-      max("HouseholdGraphTargets").as("HouseholdGraphTargets"),
-      max("ZipSiteLevel_Seed").as("ZipSiteLevel_Seed"))
+      .agg(array(max("Targets")).as("Targets"),
+      array(max("PersonGraphTargets")).as("PersonGraphTargets"),
+      array(max("HouseholdGraphTargets")).as("HouseholdGraphTargets"),
+      array(max("ZipSiteLevel_Seed")).as("ZipSiteLevel_Seed"))
 
     // get the full features back for each bidrequest
     val bidsImpressionExtendLabeled = generateContextualFeatureTier1(joinedImpressionsWithCampaign.join(bidsImpressionExtendAgg, Seq("BidRequestId"), "inner")
-                                      .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(DoubleType)))
-                                      .withColumn("HasMatchedSegments", when('MatchedSegmentsLength > lit(0), 1).otherwise(0))
-                                      .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(DoubleType)))
+                                      .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(FloatType)))
+                                      .withColumn("HasMatchedSegments", when('MatchedSegments.isNull,0).otherwise(1))
+                                      .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(FloatType)))
                                       .join(devicetype, devicetype("DeviceTypeId") === joinedImpressionsWithCampaign("DeviceType"), "left")
                                       .withColumn("DeviceTypeName", when(col("DeviceTypeName").isNotNull, 'DeviceTypeName)
                                                       .otherwise("Unknown"))
+                                      .withColumn("SyntheticIds", array('SyntheticIds))
                                       .drop("DeviceTypeId"))
                                       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
 
     val rawJson = readModelFeatures(featuresJsonSourcePath)()
 
-    val result = ModelFeatureTransform.modelFeatureTransform[RelevanceOnlineRecord](bidsImpressionExtendLabeled, rawJson)
+    val bidsImpressionsTrasnformed = castDoublesToFloat(bidsImpressionExtendLabeled)
+
+    val result = ModelFeatureTransform.modelFeatureTransform[RelevanceOnlineRecord](bidsImpressionsTrasnformed, rawJson)
+
+    val resultSet = paddingColumns(result.toDF(),RelevanceModelInputGeneratorConfig.paddingColumns, 0)
+                    .cache()
 
     val subFolderKey = config.getString("subFolderKey", default = "split")
     val subFolderValue = config.getString("subFolderValue", default = "OOS")
 
     // very important: tfrecord will auto convert single element array to a scalar
-    RelevanceOnlineDataset(config.getString("Model", default = "RSMV2"), config.getString("tag", default = "Seed_None"), config.getInt("version", default = 1))
+    RelevanceOnlineDataset(config.getString("Model", default = "RSMV2"), config.getString("tag", default = "Seed_None"), version=1)
       .writePartition(
-        result,
+        resultSet.as[RelevanceOnlineRecord],
         dateTime,
         saveMode = SaveMode.Overwrite,
         format = Some("tfrecord"),
+        subFolderKey = Some(subFolderKey),
+        subFolderValue = Some(subFolderValue)
+        )
+
+    RelevanceOnlineDataset(config.getString("Model", default = "RSMV2"), config.getString("tag", default = "Seed_None"), version=2)
+      .writePartition(
+        resultSet.as[RelevanceOnlineRecord],
+        dateTime,
+        saveMode = SaveMode.Overwrite,
+        format = Some("cbuffer"),
         subFolderKey = Some(subFolderKey),
         subFolderValue = Some(subFolderValue)
         )

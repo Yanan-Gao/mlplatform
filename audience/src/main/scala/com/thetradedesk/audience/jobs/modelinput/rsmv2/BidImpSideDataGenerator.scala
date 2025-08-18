@@ -4,6 +4,7 @@ import com.thetradedesk.audience.{date, getUiid}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.{intermediateResultBasePathEndWithoutSlash, overrideMode, samplerName, saveIntermediateResult, splitRemainderHashSalt, trainValHoldoutTotalSplits, sensitiveFeatureColumns}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface.{BidResult, BidSideDataRecord}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
+import com.thetradedesk.audience.utils.IDTransformUtils.addGuidBits
 import com.thetradedesk.audience.transform.IDTransform
 import com.thetradedesk.audience.transform.IDTransform.{allIdWithType, filterOnIdTypes, filterOnIdTypesSym, idTypesBitmap}
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
@@ -13,6 +14,8 @@ import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
+import org.apache.spark.sql.expressions.UserDefinedFunction
+
 
 object BidImpSideDataGenerator {
 
@@ -72,13 +75,18 @@ object BidImpSideDataGenerator {
       .withColumn("Latitude", when('Latitude.isNotNull, 'Latitude).otherwise(0))
       .withColumn("Longitude", ('Longitude + lit(180.0)) / lit(360.0)) //-180 - 180
       .withColumn("Longitude", when('Longitude.isNotNull, 'Longitude).otherwise(0))
-      .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(DoubleType)))
+      .withColumn("MatchedSegmentsLength", when('MatchedSegments.isNull,0.0).otherwise(size('MatchedSegments).cast(FloatType)))
       .withColumn("HasMatchedSegments", when('MatchedSegmentsLength > lit(0), 1).otherwise(0))
-      .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(DoubleType)))
+      .withColumn("UserSegmentCount", when('UserSegmentCount.isNull, 0.0).otherwise('UserSegmentCount.cast(FloatType)))
       .withColumn("IdTypesBitmap", idTypesBitmap)
+       // convert id to long
+      .transform(addGuidBits("BidRequestId"))
+      .transform(addGuidBits("TDID"))
+
+    val bidsImpressionsTrasnformed = RSMV2SharedFunction.castDoublesToFloat(bidsImpressionsLongRaw)
 
     // mask sensitive
-    val bidsImpressionsLong = sensitiveFeatureColumns.foldLeft(bidsImpressionsLongRaw) { (currentDs, colName) =>
+    val bidsImpressionsLong = sensitiveFeatureColumns.foldLeft(bidsImpressionsTrasnformed) { (currentDs, colName) =>
       if (currentDs.columns.contains(colName))
         currentDs.withColumn(colName, lit(0))
       else
