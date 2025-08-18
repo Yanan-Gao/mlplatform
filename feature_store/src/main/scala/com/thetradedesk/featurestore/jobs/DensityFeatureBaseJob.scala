@@ -128,7 +128,7 @@ abstract class DensityFeatureBaseJob {
   }
 
   def readTDIDDensityFeature(date: LocalDate): DataFrame = {
-    val basePath = s"$MLPlatformS3Root/$readEnv/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/date=20250629/"
+    val basePath = s"$MLPlatformS3Root/$readEnv/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/date=${getDateStr(date)}/"
     readAllSplits(date, basePath)
   }
 
