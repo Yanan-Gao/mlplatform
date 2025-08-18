@@ -276,7 +276,7 @@ case class OutOfSampleAttributionDatasetDeprecated(delayNDays: Int, experimentOv
     fileFormat = Csv.WithHeader,
     experimentOverride = experimentOverride
 ) {
-  override protected def supportsMetastorePartition: Boolean = false
+  override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
 case class OutOfSampleAttributionDataset(delayNDays: Int, experimentOverride: Option[String] = None)
@@ -288,6 +288,7 @@ case class OutOfSampleAttributionDataset(delayNDays: Int, experimentOverride: Op
     extraPartitionValue = s"${delayNDays}D"
   ) {
   override protected def getMetastoreTableName: String = "outofsampleattributionset_userdataoptin"
+  override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
 final case class OldOutOfSampleAttributionRecord(
@@ -416,6 +417,7 @@ case class OldOutOfSampleAttributionDataset(delayNDays: Int, experimentOverride:
     extraPartitionValue = s"${delayNDays}D"
   ) {
   override protected def getMetastoreTableName: String = "outofsampleattributionset"
+  override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
 final case class ArrayOutOfSampleAttributionRecord(

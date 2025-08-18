@@ -20,6 +20,6 @@ final case class AdGroupPolicyRecord(ConfigKey: String,
 case class AdGroupPolicyDataset(experimentOverride: Option[String] = None) extends KongMingDataset[AdGroupPolicyRecord](
   s3DatasetPath = "dailyadgrouppolicy/v=2",
   experimentOverride = experimentOverride
-  ) {
+) {
   override protected def getMetastoreTableName: String = "dailyadgrouppolicy"
 }

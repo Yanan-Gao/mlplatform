@@ -4,7 +4,8 @@ package com.thetradedesk.kongming.datasets
 import com.thetradedesk.spark.datasets.core._
 import org.apache.spark.sql.{Dataset, SaveMode, SparkSession}
 import com.thetradedesk.spark.datasets.core.SchemaPolicy.{DefaultUseFirstFileSchema, SchemaPolicyType}
-import com.thetradedesk.kongming.MetastoreTempViewName
+import com.thetradedesk.kongming.EnableMetastore
+import com.thetradedesk.spark.TTDSparkContext
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -19,7 +20,7 @@ class ExtendedDateSplitS3Dataset[T <: Product : Manifest]
   val extraPartitionValue: String,
   schemaPolicy: SchemaPolicyType = DefaultUseFirstFileSchema,
   experimentOverride: Option[String] = None
-)
+)(implicit sparkSession: SparkSession = TTDSparkContext.spark)
   extends DateSplitPartitionedS3Dataset[T](
     dataSetType,
     s3RootPath,
@@ -29,8 +30,12 @@ class ExtendedDateSplitS3Dataset[T <: Product : Manifest]
     experimentOverride
   ) {
 
+  override val metastorePartitionField1: String = extraPartitionName
+  override val metastorePartitionField2: String = "date"
+  override val metastorePartitionField3: String = "split"
+
   override protected def writeToMetastore(dataSet: Dataset[T], partition1: LocalDate, partition2: String, coalesceToNumFiles: Option[Int]): Unit = {
-    val dbName = getMetastoreDbName
+    val dbName = getDbNameForWrite()
     val tableName = getMetastoreTableName
 
     val reshapedData = coalesceToNumFiles match {
@@ -43,7 +48,9 @@ class ExtendedDateSplitS3Dataset[T <: Product : Manifest]
         dataSet
     }
 
-    reshapedData.createOrReplaceTempView(MetastoreTempViewName)
+    val tempViewName = sanitizeString(s"${dbName}_${tableName}_date${partition1.format(DateTimeFormatter.BASIC_ISO_DATE)}_split${partition2}")
+
+    reshapedData.createOrReplaceTempView(tempViewName)
 
     spark.sql(
       s"""
@@ -53,7 +60,7 @@ class ExtendedDateSplitS3Dataset[T <: Product : Manifest]
          |  date='${partition1.format(DateTimeFormatter.BASIC_ISO_DATE)}',
          |  split='${partition2}'
          |)
-         |SELECT * FROM $MetastoreTempViewName
+         |SELECT * FROM $tempViewName
          |""".stripMargin)
 
     println(s"Writing to partition: ${extraPartitionName}='${extraPartitionValue}', date='${partition1.format(DateTimeFormatter.BASIC_ISO_DATE)}', split='${partition2}' in table $dbName.$tableName")
@@ -66,9 +73,7 @@ class ExtendedDateSplitS3Dataset[T <: Product : Manifest]
   }
 
   override protected def registerMetastorePartition(date: LocalDate, split: String): Unit = {
-    if (!supportsMetastorePartition || isExperiment) return
-
-    val db = getMetastoreDbName
+    val db = getDbNameForWrite()
     val table = getMetastoreTableName
     val datePart = date.format(DateTimeFormatter.BASIC_ISO_DATE)
 
@@ -95,5 +100,37 @@ class ExtendedDateSplitS3Dataset[T <: Product : Manifest]
     }
   }
 
+  override def readStoragePartition(value: String): Dataset[T] = {
+    println(s"[readStoragePartition1] Read partition of $value")
+    if (shouldUseMetastoreForReadAndWrite()) {
+      import spark.implicits._
+      autoRenameAndAs[T](readPartitionFromMetastore(extraPartitionValue, value), schema)
+    }
+    else {
+      super.readStoragePartition(value)
+    }
+  }
+
+  override def readStoragePartition(value1: String, value2: String): Dataset[T] = {
+    println(s"[readPartition2] Read partition of $value1, $value2")
+    if (shouldUseMetastoreForReadAndWrite()) {
+      import spark.implicits._
+      autoRenameAndAs[T](readPartitionFromMetastore(extraPartitionValue, value1, value2), schema)
+    }
+    else {
+      super.readStoragePartition(value1, value2)
+    }
+  }
+
+  override def readLatestPartition(verbose: Boolean = true): Dataset[T] = {
+    println(s"[readLatestPartition] ...")
+    if (shouldUseMetastoreForReadAndWrite()) {
+      import spark.implicits._
+      autoRenameAndAs[T](readLatestPartitionFromMetastore(extraPartitionValue), schema)
+    }
+    else {
+      super.readLatestPartition(verbose=true)
+    }
+  }
 }
 
