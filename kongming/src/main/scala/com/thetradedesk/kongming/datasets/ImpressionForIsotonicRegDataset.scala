@@ -24,6 +24,7 @@ case class SampledImpressionForIsotonicRegDataset(experimentOverride: Option[Str
   experimentOverride = experimentOverride
   ) {
   override protected def getMetastoreTableName: String = "sampledimpressionforscoring"
+  override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
 case class ArraySampledImpressionForIsotonicRegDataset(experimentOverride: Option[String] = None)

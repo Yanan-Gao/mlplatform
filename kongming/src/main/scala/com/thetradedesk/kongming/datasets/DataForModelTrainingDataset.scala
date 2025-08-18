@@ -457,6 +457,7 @@ case class DataCsvForModelTrainingDatasetLastTouch(experimentOverride: Option[St
     experimentOverride = experimentOverride
   ) {
   override protected def getMetastoreTableName: String = "trainset"
+  override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
 case class DataCsvForModelTrainingDatasetClick(experimentOverride: Option[String] = None)
@@ -466,6 +467,7 @@ case class DataCsvForModelTrainingDatasetClick(experimentOverride: Option[String
     experimentOverride = experimentOverride
   ) {
   override protected def getMetastoreTableName: String = "trainset_click"
+  override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
 case class DataIncCsvForModelTrainingDatasetLastTouch(experimentOverride: Option[String] = None)
@@ -475,6 +477,7 @@ case class DataIncCsvForModelTrainingDatasetLastTouch(experimentOverride: Option
     experimentOverride = experimentOverride
   ) {
   override protected def getMetastoreTableName: String = "trainset_inc"
+  override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
 case class DataIncCsvForModelTrainingDatasetClick(experimentOverride: Option[String] = None)
@@ -484,6 +487,7 @@ case class DataIncCsvForModelTrainingDatasetClick(experimentOverride: Option[Str
     experimentOverride = experimentOverride
   ) {
   override protected def getMetastoreTableName: String = "trainset_click_inc"
+  override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
 case class UserDataIncCsvForModelTrainingDatasetLastTouch(experimentOverride: Option[String] = None)
@@ -493,6 +497,7 @@ case class UserDataIncCsvForModelTrainingDatasetLastTouch(experimentOverride: Op
     experimentOverride = experimentOverride
   ) {
   override protected def getMetastoreTableName: String = "trainset_userdata_inc"
+  override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
 case class UserDataCsvForModelTrainingDatasetLastTouch(experimentOverride: Option[String] = None)
@@ -502,6 +507,7 @@ case class UserDataCsvForModelTrainingDatasetLastTouch(experimentOverride: Optio
     experimentOverride = experimentOverride
   ) {
   override protected def getMetastoreTableName: String = "trainset_userdata"
+  override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
 case class UserDataCsvForModelTrainingDatasetClick(experimentOverride: Option[String] = None)
@@ -511,6 +517,7 @@ case class UserDataCsvForModelTrainingDatasetClick(experimentOverride: Option[St
     experimentOverride = experimentOverride
   ) {
   override protected def getMetastoreTableName: String = "trainset_click_userdata"
+  override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
 case class UserDataIncCsvForModelTrainingDatasetClick(experimentOverride: Option[String] = None)
@@ -520,6 +527,7 @@ case class UserDataIncCsvForModelTrainingDatasetClick(experimentOverride: Option
     experimentOverride = experimentOverride
   ) {
   override protected def getMetastoreTableName: String = "trainset_click_userdata_inc"
+  override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
 case class ArrayUserDataIncCsvForModelTrainingDatasetLastTouch(experimentOverride: Option[String] = None)

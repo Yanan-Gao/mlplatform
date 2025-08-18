@@ -1,12 +1,13 @@
 package com.thetradedesk.kongming.datasets
 
 import com.thetradedesk.MetadataType
-import com.thetradedesk.kongming.{EnableMetastoreWrite, EnablePartitionRegister, JobExperimentName, getExperimentVersion, task, writeThroughHdfs, MetastoreTempViewName}
+import com.thetradedesk.kongming.{EnableMetastore, EnablePartitionRegister, JobExperimentName, getExperimentVersion, task, writeThroughHdfs}
 import com.thetradedesk.spark.datasets.core._
+import com.thetradedesk.spark.datasets.core.SchemaPolicy.StrictCaseClassSchema
 import org.apache.spark.sql.{Dataset, SaveMode, SparkSession}
 import org.apache.spark.sql.functions.{lit, max, min, size}
 import com.thetradedesk.spark.TTDSparkContext
-import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+
 import com.thetradedesk.spark.listener.WriteListener
 import com.thetradedesk.spark.util.Environment
 import com.thetradedesk.spark.util.{ProdTesting, Production, Testing}
@@ -27,7 +28,7 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
   fileFormat: FileFormat,
   schemaPolicy: SchemaPolicyType = DefaultUseFirstFileSchema,
   experimentOverride: Option[String] = None
-)
+)(implicit sparkSession: SparkSession = TTDSparkContext.spark)
   extends PartitionedS3DataSet2[T, LocalDate, String, String, String](
     dataSetType, s3RootPath, rootFolderPath,
     "date" -> ColumnExistsInDataSet,
@@ -36,27 +37,23 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
     writeThroughHdfs = writeThroughHdfs,
     schemaPolicy = schemaPolicy,
     experimentOverride = experimentOverride
-  ) {
+  )
+    with MetastoreHandler {
+
+  override val datasetType: DataSetType = dataSetType
+  override val isInChain: Boolean = isInChain
+  override val isExperiment: Boolean = isExperiment
+  override val supportMetastore: Boolean = isMetastoreCompatibleDataFormat
+  override val tableName: String = getMetastoreTableName
+  override val metastorePartitionField1: String = "date"
+  override val metastorePartitionField2: String = "split"
+  override val isStrictCaseClassSchema: Boolean = finalSchemaPolicy == StrictCaseClassSchema
 
   def partitionField1: (String, PartitionColumnCalculation) = "date" -> ColumnExistsInDataSet
 
   def partitionField2: (String, PartitionColumnCalculation) = "split" -> ColumnExistsInDataSet
 
   def dateTimeFormat: DateTimeFormatter = DefaultTimeFormatStrings.dateTimeFormatter
-
-  @SmartReadEnabled
-  def readDate(date: LocalDate): Dataset[T] =
-    readDate(date.format(dateTimeFormat))
-
-  @SmartReadEnabled
-  def readDate(date: String): Dataset[T] =
-    if (!isSmartReading)
-      read(s"$rootFolderPath/date=$date/")
-    else {
-      val combinedPaths = getPartitionFoldersWithReadRoot(0, startingPrefix = PartitionedS3DataSet.buildPartitionPart("date" -> date))
-      readFromAbsolutePaths(combinedPaths)
-    }
-
 
   override def toStoragePartition1(date: LocalDate): String = date.format(dateTimeFormat)
 
@@ -66,22 +63,10 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
     "unknown_table"
   }
 
-  protected def getMetastoreDbName: String = {
-    (task, environment) match {
-      case ("roas", Production) => "roas"
-      case ("roas", _) => "roas_test"
-
-      case (_, Production) => "cpa"
-      case (_, _) => "cpa_test"
-    }
-  }
-
-  protected def supportsMetastorePartition: Boolean = true
+  protected def isMetastoreCompatibleDataFormat: Boolean = true
 
   protected def registerMetastorePartition(partition1: LocalDate, partition2: String): Unit = {
-    if (!supportsMetastorePartition || isExperiment) return
-
-    val db = getMetastoreDbName
+    val db = getDbNameForWrite()
     val table = getMetastoreTableName
     val datePart = partition1.format(DateTimeFormatter.BASIC_ISO_DATE)
 
@@ -109,7 +94,7 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
   }
 
   protected def writeToMetastore(dataSet: Dataset[T], partition1: LocalDate, partition2: String, coalesceToNumFiles: Option[Int]): Unit = {
-    val dbName = getMetastoreDbName
+    val dbName = getDbNameForWrite()
     val tableName = getMetastoreTableName
 
     val reshapedData = coalesceToNumFiles match {
@@ -122,13 +107,15 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
         dataSet
     }
 
-    reshapedData.createOrReplaceTempView(MetastoreTempViewName)
+    val tempViewName = sanitizeString(s"${dbName}_${tableName}_date${partition1.format(DateTimeFormatter.BASIC_ISO_DATE)}_split${partition2}")
+
+    reshapedData.createOrReplaceTempView(tempViewName)
 
     spark.sql(
       s"""
          |INSERT OVERWRITE TABLE $dbName.$tableName
          |PARTITION (date='${partition1.format(DateTimeFormatter.BASIC_ISO_DATE)}', split='${partition2}')
-         |SELECT * FROM $MetastoreTempViewName
+         |SELECT * FROM $tempViewName
          |""".stripMargin)
 
     println(s"Writing to partition: date='${partition1.format(DateTimeFormatter.BASIC_ISO_DATE)}', split='${partition2}' in table $dbName.$tableName")
@@ -143,7 +130,7 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
 
     var count: Long = 0L
 
-    if (EnableMetastoreWrite && supportsMetastorePartition && !isExperiment) {
+    if (shouldUseMetastoreForReadAndWrite()) {
       val listener = new WriteListener()
       spark.sparkContext.addSparkListener(listener)
 
@@ -157,8 +144,8 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
       // write partition to S3 folders
       count = super.writePartition(dataSet, partition1, partition2, coalesceToNumFiles)
 
-      // firstly register the partition
-      if(EnablePartitionRegister) {
+      // then register the partition
+      if(shouldUseMetastoreForPartitionRegister()) {
         registerMetastorePartition(partition1, partition2)
       }
 
@@ -198,6 +185,7 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
                 cleanDestDir: Boolean = true,
                 fileNameSuffix: Option[String] = None
                ): Long = {
+    import spark.implicits._
     val datePartitionedDataSet = dataSet
       .withColumn(partitionField1._1, lit(toStoragePartition1(date)))
       .as[T]
@@ -205,6 +193,41 @@ abstract class DateSplitPartitionedS3Dataset[T <: Product : Manifest]
     write(datePartitionedDataSet, coalesceToNumFiles, overrideSourceWrite, cleanDestDir, fileNameSuffix)
   }
 
+  override def readStoragePartition(value: String): Dataset[T] = {
+    println(s"[readStoragePartition1] Read partition of $value")
+    if (shouldUseMetastoreForReadAndWrite()) {
+      import spark.implicits._
+      autoRenameAndAs[T](readPartitionFromMetastore(value), schema)
+    }
+    else {
+      super.readStoragePartition(value)
+    }
+  }
+
+  override def readStoragePartition(value1: String, value2: String): Dataset[T] = {
+    println(s"[readPartition2] Read partition of $value1, $value2")
+    if (shouldUseMetastoreForReadAndWrite()) {
+      import spark.implicits._
+      autoRenameAndAs[T](readPartitionFromMetastore(value1, value2), schema)
+    }
+    else {
+      super.readStoragePartition(value1, value2)
+    }
+  }
+
+  override def readLatestPartition(verbose: Boolean = true): Dataset[T] = {
+    println(s"[readLatestPartition] ...")
+    if (shouldUseMetastoreForReadAndWrite()) {
+      import spark.implicits._
+      autoRenameAndAs[T](readLatestPartitionFromMetastore(), schema)
+    }
+    else {
+      super.readLatestPartition(verbose=true)
+    }
+  }
+
+  def readDate(date: LocalDate): Dataset[T] =
+    readPartition(date)
 }
 
 abstract class DateSplitPartitionedS3CBufferDataset[T <: Product : Manifest](
@@ -284,4 +307,5 @@ abstract class DateSplitPartitionedS3CBufferDataset[T <: Product : Manifest](
 
     (dataSetName, count)
   }
+
 }

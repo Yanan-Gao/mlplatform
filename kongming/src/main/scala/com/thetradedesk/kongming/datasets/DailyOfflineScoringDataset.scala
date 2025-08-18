@@ -266,6 +266,7 @@ case class DailyOfflineScoringDataset(experimentOverride: Option[String] = None)
   fileFormat = Csv.WithHeader
   ) {
   override protected def getMetastoreTableName: String = "dailyofflinescore"
+  override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
 
@@ -332,7 +333,7 @@ case class OldDailyOfflineScoringDataset(experimentOverride: Option[String] = No
   experimentOverride = experimentOverride,
   fileFormat = TFRecord.Example
 ) {
-  override protected def supportsMetastorePartition: Boolean = false
+  override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
 final case class ArrayDailyOfflineScoringRecord(

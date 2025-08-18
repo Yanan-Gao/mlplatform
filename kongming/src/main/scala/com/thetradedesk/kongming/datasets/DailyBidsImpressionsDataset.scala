@@ -90,13 +90,9 @@ case class DailyHourlyBidsImpressionsDataset(experimentOverride: Option[String] 
     experimentOverride = experimentOverride
   ) {
   override protected def getMetastoreTableName: String = "dailyhourlybidsimpressions"
-
-  override protected def supportsMetastorePartition: Boolean = false
 }
 
 case class DailyBidsImpressionsFullDataset(experimentOverride: Option[String] = None) extends KongMingDataset[com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressionsSchema](
   s3DatasetPath = "dailybidsimpressions/v=1",
   experimentOverride = experimentOverride
-  ) {
-  override protected def getMetastoreTableName: String = "dailybidsimpressions"
-}
+  )
