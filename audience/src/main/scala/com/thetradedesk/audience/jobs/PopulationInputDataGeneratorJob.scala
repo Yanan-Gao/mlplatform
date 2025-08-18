@@ -57,7 +57,7 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
   object Config {
     val model = config.getString("model", default = "RSMV2")
     val inputDataS3Bucket = S3Utils.refinePath(config.getString("inputDataS3Bucket", "thetradedesk-mlplatform-us-east-1"))
-    val inputDataS3Path = S3Utils.refinePath(config.getString("inputDataS3Path", s"data/${ttdReadEnv}/audience/RSMV2/Imp_Seed_None/v=1"))
+    val inputDataS3Path = S3Utils.refinePath(config.getString("inputDataS3Path", s"data/${ttdReadEnv}/audience/RSMV2/Imp_Seed_None/v=2"))
     val populationOutputData3Path = S3Utils.refinePath(config.getString("populationOutputData3Path", s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None"))
     val customInputDataPath = config.getString("customInputDataPath", default = null)
     val subFolderKey = config.getString("subFolderKey", default = "split")

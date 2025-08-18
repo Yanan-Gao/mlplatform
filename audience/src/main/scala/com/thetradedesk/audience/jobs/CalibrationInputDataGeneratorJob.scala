@@ -57,7 +57,7 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
     val coalesceProdData = config.getBoolean("coalesceProdData", default = false) // for testing and experiment, when data is missing in ttdReadEnv, use prod data
     val startDate = config.getDate("startDate",  default = LocalDate.parse("2025-02-13"))
     val oosDataS3Bucket = S3Utils.refinePath(config.getString("oosDataS3Bucket", "thetradedesk-mlplatform-us-east-1"))
-    val oosDataS3Path = S3Utils.refinePath(config.getString("oosDataS3Path", s"data/${ttdReadEnv}/audience/RSMV2/Seed_None/v=1"))
+    val oosDataS3Path = S3Utils.refinePath(config.getString("oosDataS3Path", s"data/${ttdReadEnv}/audience/RSMV2/Seed_None/v=2"))
     val calibrationOutputData3Path = S3Utils.refinePath(config.getString("calibrationOutputData3Path", s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None"))
     val subFolderKey = config.getString("subFolderKey", default = "mixedForward")
     val subFolderValue = config.getString("subFolderValue", default = "Calibration")
