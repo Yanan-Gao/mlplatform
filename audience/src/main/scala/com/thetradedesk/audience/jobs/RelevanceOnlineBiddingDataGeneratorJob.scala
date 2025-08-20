@@ -10,12 +10,12 @@ import com.thetradedesk.audience.transform.IDTransform.{filterOnIdTypesSym, idTy
 import com.thetradedesk.audience.utils.IDTransformUtils.addGuidBits
 import com.thetradedesk.audience.utils.SeedListUtils.activeCampaignSeedAndIdFilterUDF
 import com.thetradedesk.audience._
+import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, readModelFeatures}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
@@ -23,17 +23,25 @@ import org.apache.spark.sql.types._
 
 import java.time.LocalDate
 
-//TODO decouple with RelevanceModelInputGeneratorJob or onboard confetti.
-object RelevanceOnlineBiddingDataGeneratorJob {
-  val prometheus = new PrometheusClient("ModelQualityJob", "RelevanceOnlineBiddingDataGeneratorJob")
+case class RelevanceOnlineBiddingDataGeneratorJobConfig(
+  model: String = "RSMV2",
+  tag: String = "Seed_None",
+  subFolderKey: String = "split",
+  subFolderValue: String = "OOS",
+  runDate: LocalDate
+)
 
-  def main(args: Array[String]): Unit = {
-    runETLPipeline()
-    prometheus.pushMetrics()
-  }
+object RelevanceOnlineBiddingDataGeneratorJob
+  extends AutoConfigResolvingETLJobBase[RelevanceOnlineBiddingDataGeneratorJobConfig](
+    groupName = "audience",
+    jobName = "RelevanceOnlineBiddingDataGeneratorJob") {
 
-  def runETLPipeline(): Unit = {
-    new RelevanceOnlineBiddingDataGenerator(prometheus).generate(date)
+  override val prometheus: Option[PrometheusClient] =
+    Some(new PrometheusClient("ModelQualityJob", "RelevanceOnlineBiddingDataGeneratorJob"))
+
+  override def runETLPipeline(): Unit = {
+    val conf = getConfig
+    new RelevanceOnlineBiddingDataGenerator(prometheus.get).generate(conf.runDate, conf)
   }
 }
 
@@ -44,7 +52,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
   val onlineRelevanceBiddingTableSize = prometheus.createGauge(s"online_relevance_bidding_table_size", "OnlineRelevanceBiddingTableGenerator table size", "date")
   val sampler = SamplerFactory.fromString("RSMV2Measurement", RelevanceModelInputGeneratorJob.conf)
 
-  def generate(date: LocalDate): Unit = {
+  def generate(date: LocalDate, conf: RelevanceOnlineBiddingDataGeneratorJobConfig): Unit = {
     // todo this might be problematic.
     val RSMV2UserSampleSalt = RelevanceModelInputGeneratorJob.conf.RSMV2UserSampleSalt
 
@@ -303,11 +311,11 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
     val resultSet = paddingColumns(result.toDF(), RelevanceModelInputGeneratorJob.conf.paddingColumns, 0)
                     .cache()
 
-    val subFolderKey = config.getString("subFolderKey", default = "split")
-    val subFolderValue = config.getString("subFolderValue", default = "OOS")
+    val subFolderKey = conf.subFolderKey
+    val subFolderValue = conf.subFolderValue
 
     // very important: tfrecord will auto convert single element array to a scalar
-    RelevanceOnlineDataset(config.getString("Model", default = "RSMV2"), config.getString("tag", default = "Seed_None"), version=1)
+    RelevanceOnlineDataset(conf.model, conf.tag, version=1)
       .writePartition(
         resultSet.as[RelevanceOnlineRecord],
         dateTime,
@@ -317,7 +325,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
         subFolderValue = Some(subFolderValue)
         )
 
-    RelevanceOnlineDataset(config.getString("Model", default = "RSMV2"), config.getString("tag", default = "Seed_None"), version=2)
+    RelevanceOnlineDataset(conf.model, conf.tag, version=2)
       .writePartition(
         resultSet.as[RelevanceOnlineRecord],
         dateTime,
