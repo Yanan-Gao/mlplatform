@@ -5,6 +5,7 @@ import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsP
 import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferDataset}
 import com.thetradedesk.plutus.data.transform.campaignbackoff.{HadesCampaignAdjustmentsTransform, HadesCampaignBufferAdjustmentsTransform, MergeCampaignBackoffAdjustments, PlutusCampaignAdjustmentsTransform, ShortFlightCampaignSelectionTransform}
 import com.thetradedesk.plutus.data.transform.campaignfloorbuffer.MergeCampaignFloorBufferTransform.readMergedFloorBufferData
+import com.thetradedesk.plutus.data.transform.virtualmaxbidbackoff.VirtualMaxBidBackoffTransform
 import com.thetradedesk.plutus.data.utils.S3NoFilesFoundException
 import com.thetradedesk.spark.TTDSparkContext
 import com.thetradedesk.spark.TTDSparkContext.spark
@@ -28,6 +29,8 @@ object CampaignAdjustmentsJob {
   val hadesMetrics = otelClient.createGauge("campaignadjustments_hades_campaign_types", "Different adjustment types")
   val hadesBackoffV3Metrics = otelClient.createGauge("campaignadjustments_hades_backoffv3_campaign_types", "Different adjustment types")
   val shortFlightCampaignCounts = otelClient.createGauge("campaignadjustments_shortflight_campaign_count", "Number of identified short flight campaigns and how many applied the short flight adjustment")
+  val virtualMaxBidBackoffMetrics = otelClient.createGauge("campaignadjustments_virtualmaxbid_backoff_campaign_types", "Different adjustment types")
+
 
 
   def main(args: Array[String]): Unit = {
@@ -38,7 +41,8 @@ object CampaignAdjustmentsJob {
     val plutusCampaignAdjustmentsDataset = PlutusCampaignAdjustmentsTransform.transform(date, updateAdjustmentsVersion, fileCount)
     val hadesCampaignBufferAdjustmentsDataset  = HadesCampaignBufferAdjustmentsTransform.transform(date, underdeliveryThreshold, fileCount, campaignAdjustmentsPacingData)
     val shortFlightCampaignsDataset = ShortFlightCampaignSelectionTransform.transform(date, fileCount)
-    MergeCampaignBackoffAdjustments.transform(plutusCampaignAdjustmentsDataset, hadesCampaignBufferAdjustmentsDataset, shortFlightCampaignsDataset)
+    val propellerBackoffDataset = VirtualMaxBidBackoffTransform.transform(date)
+    MergeCampaignBackoffAdjustments.transform(plutusCampaignAdjustmentsDataset, hadesCampaignBufferAdjustmentsDataset, shortFlightCampaignsDataset, propellerBackoffDataset)
 
     jobDurationGaugeTimer.setDuration()
     otelClient.pushMetrics()

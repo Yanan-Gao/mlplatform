@@ -3,6 +3,7 @@ package com.thetradedesk.plutus.data.mockdata
 import MockData._
 import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsPacingSchema, CampaignFlightRecord, CampaignThrottleMetricSchema, HadesAdjustmentSchemaV2, HadesBufferAdjustmentSchema, RtbPlatformReportCondensedData, ShortFlightCampaignsSchema}
 import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferSchema}
+import com.thetradedesk.plutus.data.schema.virtualmaxbidbackoff.VirtualMaxBidBackoffSchema
 import com.thetradedesk.spark.datasets.sources.CountryRecord
 import org.apache.spark.sql.Dataset
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -270,6 +271,12 @@ object DataGenerator {
       mergedCampaignFloorBufferMock(campaignId = "campaign1", bufferFloor = 0.35, bufferType = "Adhoc"),
       mergedCampaignFloorBufferMock(campaignId = "abc123", bufferFloor = 0.01),
       mergedCampaignFloorBufferMock(campaignId = "abc234", bufferFloor = 0.20)
+    ).toDS()
+  }
+
+  def generatePropellerBackoffData : Dataset[VirtualMaxBidBackoffSchema] = {
+    Seq(
+      propellerBackoffMock(campaignId = "campaign1", VirtualMaxBid_Multiplier = 4)
     ).toDS()
   }
 

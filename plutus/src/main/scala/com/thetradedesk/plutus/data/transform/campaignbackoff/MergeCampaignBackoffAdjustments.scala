@@ -1,15 +1,16 @@
 package com.thetradedesk.plutus.data.transform.campaignbackoff
 
-import com.thetradedesk.plutus.data.schema.campaignbackoff.{CampaignAdjustmentsDataset, CampaignAdjustmentsPacingSchema, CampaignAdjustmentsSchema, HadesAdjustmentSchemaV2, HadesBufferAdjustmentSchema, MergedCampaignAdjustmentsDataset, ShortFlightCampaignsSchema}
-import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.MergedCampaignFloorBufferSchema
+import com.thetradedesk.plutus.data.schema.campaignbackoff._
 import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.platformWideBuffer
+import com.thetradedesk.plutus.data.schema.virtualmaxbidbackoff.VirtualMaxBidBackoffSchema
+import com.thetradedesk.plutus.data.transform.virtualmaxbidbackoff.VirtualMaxBidBackoffTransform.VirtualMaxBid_Multiplier_Platform
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import job.campaignbackoff.CampaignAdjustmentsJob.{date, fileCount, numRowsWritten, shortFlightCampaignCounts}
+import org.apache.spark.sql.expressions.UserDefinedFunction
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.storage.StorageLevel
-import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
-import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import org.apache.spark.sql.expressions.UserDefinedFunction
 
 object MergeCampaignBackoffAdjustments {
 
@@ -76,13 +77,16 @@ object MergeCampaignBackoffAdjustments {
 
   def mergeBackoffDatasets(campaignAdjustmentsPacingDataset: Dataset[CampaignAdjustmentsPacingSchema],
                            hadesCampaignBufferAdjustmentsDataset: Dataset[HadesBufferAdjustmentSchema],
-                           shortFlightCampaignsDataset: Dataset[ShortFlightCampaignsSchema]
+                           shortFlightCampaignsDataset: Dataset[ShortFlightCampaignsSchema],
+                           propellerBackoffDataset: Dataset[VirtualMaxBidBackoffSchema]
                           )
   : DataFrame = {
     addPrefix(campaignAdjustmentsPacingDataset.toDF(), "pc_")
       .join(broadcast(addPrefix(hadesCampaignBufferAdjustmentsDataset.toDF(), "hdv3_")), Seq("CampaignId"), "fullouter")
       .join(broadcast(addPrefix(shortFlightCampaignsDataset.toDF(), "sf_")), Seq("CampaignId"), "fullouter")
+      .join(broadcast(addPrefix(propellerBackoffDataset.toDF(), "pb_")), Seq("CampaignId"), "fullouter")
       .withColumn("MergedPCAdjustment", least(lit(1.0), col("pc_CampaignPCAdjustment")))
+      .withColumn("VirtualMaxBid_Multiplier", coalesce(col("pb_VirtualMaxBid_Multiplier"), lit(VirtualMaxBid_Multiplier_Platform)))
       .withColumn("CampaignBbfFloorBuffer",
         // If hdv3_HadesBackoff_FloorBuffer is null (or it's a future short-flight campaign),
         // the final `otherwise` fallback will assign MinimumShortFlightFloorBuffer if available.
@@ -100,14 +104,16 @@ object MergeCampaignBackoffAdjustments {
 
   def transform(plutusCampaignAdjustmentsDataset: Dataset[CampaignAdjustmentsPacingSchema],
                 hadesCampaignBufferAdjustmentsDataset: Dataset[HadesBufferAdjustmentSchema],
-                shortFlightCampaignsDataset: Dataset[ShortFlightCampaignsSchema]
+                shortFlightCampaignsDataset: Dataset[ShortFlightCampaignsSchema],
+                propellerBackoffDataset: Dataset[VirtualMaxBidBackoffSchema]
                ): Unit = {
     // Merging Campaign Backoff, Hades Backoff, Adhoc test campaigns and any remaining campaigns with non platform wide floor buffer
 
     val finalMergedAdjustments = mergeBackoffDatasets(
       plutusCampaignAdjustmentsDataset,
       hadesCampaignBufferAdjustmentsDataset,
-      shortFlightCampaignsDataset
+      shortFlightCampaignsDataset,
+      propellerBackoffDataset
     )
       .persist(StorageLevel.MEMORY_ONLY_2)
 
@@ -124,13 +130,18 @@ object MergeCampaignBackoffAdjustments {
 
     // Writing just the adjustments to s3; This is imported to provisioning
     // The provisioning import job expects the final adjustment to be called CampaignPCAdjustment
-    val campaignAdjustmentsWithFloorBuffer = finalMergedAdjustments
-      .select("CampaignId", "MergedPCAdjustment", "CampaignBbfFloorBuffer")
-      .withColumnRenamed("MergedPCAdjustment", "CampaignPCAdjustment")
-      .filter((col("CampaignPCAdjustment").isNotNull && col("CampaignPCAdjustment") < 1)
-        || (col("CampaignBbfFloorBuffer").isNotNull && col("CampaignBbfFloorBuffer") =!= platformWideBuffer))
-      .selectAs[CampaignAdjustmentsSchema]
+    val campaignAdjustmentsWithFloorBuffer = getCampaignAdjustments(finalMergedAdjustments)
 
     CampaignAdjustmentsDataset.writeData(date, campaignAdjustmentsWithFloorBuffer, fileCount)
+  }
+
+  def getCampaignAdjustments(finalMergedAdjustments: DataFrame): Dataset[CampaignAdjustmentsSchema] = {
+    finalMergedAdjustments
+      .withColumnRenamed("MergedPCAdjustment", "CampaignPCAdjustment")
+      .withColumnRenamed("VirtualMaxBid_Multiplier", "CampaignVirtualMaxBidMultiplierCap")
+      .filter((col("CampaignPCAdjustment").isNotNull && col("CampaignPCAdjustment") < 1)
+        || (col("CampaignBbfFloorBuffer").isNotNull && col("CampaignBbfFloorBuffer") =!= platformWideBuffer)
+        || (col("CampaignVirtualMaxBidMultiplierCap").isNotNull && col("CampaignVirtualMaxBidMultiplierCap") > lit(VirtualMaxBid_Multiplier_Platform)))
+      .selectAs[CampaignAdjustmentsSchema]
   }
 }
