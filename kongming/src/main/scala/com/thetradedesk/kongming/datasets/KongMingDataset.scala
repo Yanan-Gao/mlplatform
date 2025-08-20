@@ -51,61 +51,11 @@ abstract class KongMingDataset[T <: Product : Manifest](dataSetType: DataSetType
   protected def isMetastoreCompatibleDataFormat: Boolean = true
 
   protected def registerMetastorePartition(partition: LocalDate): Unit = {
-    val partValue = partition.format(DateTimeFormatter.BASIC_ISO_DATE)
-
-    val db = getDbNameForWrite()
-    val table = getMetastoreTableName
-    try {
-      if (table == "unknown_table") {
-        throw new IllegalStateException(
-          "Subclasses must override `getMetastoreTableName` to provide a valid table name."
-        )
-      }
-
-      val sqlStatement =
-        s"""ALTER TABLE `$db`.`$table`
-           |ADD IF NOT EXISTS PARTITION ($partitionField='$partValue')""".stripMargin
-
-      println(sqlStatement)
-      spark.sql(sqlStatement)
-      spark.catalog.refreshTable(s"$db.$table")
-
-    } catch {
-      case e: IllegalStateException =>
-        println(s"[ERROR] Partition registration skipped due to missing metastore table name: ${e.getMessage}")
-      case e: org.apache.spark.sql.AnalysisException =>
-        println(s"[ERROR] Metastore operation failed for table `$db`.`$table`: ${e.getMessage}")
-      case e: Exception =>
-        println(s"[ERROR] Unexpected error during partition registration: ${e.getMessage}")
-    }
+    registerPartitionToMetastore(partition)
   }
 
-  private def writeToMetastore(dataSet: Dataset[T], partition: LocalDate, coalesceToNumFiles: Option[Int]): Unit = {
-    val dbName = getDbNameForWrite()
-    val tableName = getMetastoreTableName
-
-    val reshapedData = coalesceToNumFiles match {
-      case Some(n) if n > 0 =>
-        val repartitioned = dataSet.repartition(n)
-        println(s"Repartitioned dataset to $n partitions.")
-        repartitioned
-      case _ =>
-        println(s"No coalesce applied.")
-        dataSet
-    }
-
-    val tempViewName = sanitizeString(s"${dbName}_${tableName}_date${partition.format(DateTimeFormatter.BASIC_ISO_DATE)}")
-
-    reshapedData.createOrReplaceTempView(tempViewName)
-
-    spark.sql(
-      s"""
-         |INSERT OVERWRITE TABLE $dbName.$tableName
-         |PARTITION (date='${partition.format(DateTimeFormatter.BASIC_ISO_DATE)}')
-         |SELECT * FROM $tempViewName
-         |""".stripMargin)
-
-    println(s"Writing to partition: date='${partition.format(DateTimeFormatter.BASIC_ISO_DATE)}' in table $dbName.$tableName")
+  protected def writeMetastorePartition(dataSet: Dataset[T], partition1: LocalDate, coalesceToNumFiles: Option[Int]): Unit = {
+    writePartitionToMetastore(dataSet, partition1, coalesceToNumFiles)
   }
 
   def writePartition(dataSet: Dataset[T], partition: LocalDate, coalesceToNumFiles: Option[Int]): (String, Long) = {
@@ -121,7 +71,7 @@ abstract class KongMingDataset[T <: Product : Manifest](dataSetType: DataSetType
       val listener = new WriteListener()
       spark.sparkContext.addSparkListener(listener)
 
-      writeToMetastore(dataSet, partition, coalesceToNumFiles)
+      writeMetastorePartition(dataSet, partition, coalesceToNumFiles)
 
       count = listener.rowsWritten
 
