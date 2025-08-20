@@ -8,8 +8,9 @@ import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.MergedCampaignFlo
 import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.{Campaign, bucketCount, getTestBucketUDF, platformWideBuffer}
 import com.thetradedesk.plutus.data.schema.{PcResultsMergedSchema, PlutusLogsData}
 import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform._
-import com.thetradedesk.plutus.data.transform.campaignbackoff.MergeCampaignBackoffAdjustments.{getShortFlightBuffer, mergeBackoffDatasets}
+import com.thetradedesk.plutus.data.transform.campaignbackoff.MergeCampaignBackoffAdjustments.{getCampaignAdjustments, getShortFlightBuffer, mergeBackoffDatasets}
 import com.thetradedesk.plutus.data.transform.campaignbackoff.ShortFlightCampaignSelectionTransform.MinimumShortFlightFloorBuffer
+import com.thetradedesk.plutus.data.transform.virtualmaxbidbackoff.VirtualMaxBidBackoffTransform.VirtualMaxBid_Multiplier_Platform
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.AdGroupRecord
 import org.apache.spark.sql.Row
@@ -180,12 +181,18 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     val campaignAdjustmentsData = DataGenerator.generateCampaignAdjustmentsPacingData.limit(3)
     val campaignBufferAdjustmentsHadesData = DataGenerator.generateCampaignBufferAdjustmentsHadesData
     val shortFlightCampaignsData = DataGenerator.generateShortFlightCampaignsData
+    val propellerBackoffData = DataGenerator.generatePropellerBackoffData
 
     val finalMergedCampaignAdjustments = mergeBackoffDatasets(
       campaignAdjustmentsData,
       campaignBufferAdjustmentsHadesData,
-      shortFlightCampaignsData
+      shortFlightCampaignsData,
+      propellerBackoffData
     )
+
+    val finalCampaignAdjustments = getCampaignAdjustments(finalMergedCampaignAdjustments)
+    finalCampaignAdjustments.collectAsList()
+    // TODO: Add a better test for finalCampaignAdjustments
 
     val res = finalMergedCampaignAdjustments.select(
       "CampaignId",
@@ -194,22 +201,23 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
       "pc_CampaignPCAdjustment",
       "MergedPCAdjustment",
       "CampaignBbfFloorBuffer",
+      "VirtualMaxBid_Multiplier",
     ).collect()
 
     // Test for campaign only in PC Campaign Backoff.
     // MergedPCAdjustment should be same as pc_CampaignPCAdjustment
-    assert(res.contains(Row("campaign1", null, null, 0.75, 0.75, 0.01)))
+    assert(res.contains(Row("campaign1", null, null, 0.75, 0.75, 0.01, 4.0)))
 
     // Test for campaign that is HadesV3 Backoff test campaign and not in PC Campaign Backoff. This is a Hades problem campaign.
     // The HadesV3 Backoff adjustment should be final adjustment and MergedPCAdjustment should be 1
-    assert(res.contains(Row("campaign4", true, 0.25, null, 1.0, 0.25)))
+    assert(res.contains(Row("campaign4", true, 0.25, null, 1.0, 0.25, VirtualMaxBid_Multiplier_Platform)))
 
     // Test for campaign that is Hades Buffer Backoff test campaign and in PC Campaign Backoff. This is a Hades problem campaign.
     // It should have MergedPCAdjustment from PC backoff and CampaignBbfFloorBuffer from hades buffer backoff
-    assert(res.contains(Row("campaign2", true, 0.30, 0.75, 0.75, 0.30)))
+    assert(res.contains(Row("campaign2", true, 0.30, 0.75, 0.75, 0.30, VirtualMaxBid_Multiplier_Platform)))
 
     // Test for campaign that is a Short Flight Hades Backoff test campaign that will start after backoff runs.
-    assert(res.contains(Row("short01", null, null, null, 1, MinimumShortFlightFloorBuffer)))
+    assert(res.contains(Row("short01", null, null, null, 1, MinimumShortFlightFloorBuffer, VirtualMaxBid_Multiplier_Platform)))
   }
 
   test("test for mergeTodayWithYesterdaysData") {

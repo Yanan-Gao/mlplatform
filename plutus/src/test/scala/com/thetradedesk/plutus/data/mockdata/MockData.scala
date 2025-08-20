@@ -5,6 +5,7 @@ import com.thetradedesk.plutus.data.MediaTypeId
 import com.thetradedesk.plutus.data.schema._
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
 import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferSchema}
+import com.thetradedesk.plutus.data.schema.virtualmaxbidbackoff.VirtualMaxBidBackoffSchema
 import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.platformWideBuffer
 import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignAdjustmentsTransform.{CampaignType_AdjustedCampaign, CampaignType_NewCampaign, EPSILON, gssFunc}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -308,7 +309,7 @@ object MockData {
     DealId = null,
     SupplyVendor = "ads",
     AdgroupId = adGroupId,
-    UncappedBidPrice = 2.0,
+    UncappedBidPrice = 2000.0,
     SnapbackMaxBid = 3.0,
     MaxBidMultiplierCap = 1.2,
     FloorBufferAdjustment = 1.0,
@@ -662,7 +663,9 @@ object MockData {
       EstimatedBudgetInUSD = cappedpotential,
       UnderdeliveryFraction = fraction,
       CampaignThrottleMetric = throttle,
-      CampaignEffectiveKeepRate = 0.9
+      CampaignEffectiveKeepRate = 0.9,
+      IsBaseBidOptimized="ValuePacingV2",
+      IsProgrammaticGuaranteed="NO",
     )).toDS()
   }
 
@@ -782,7 +785,9 @@ object MockData {
     EstimatedBudgetInUSD = 100,
     UnderdeliveryFraction = 0.25,
     CampaignThrottleMetric = 0.8,
-    CampaignEffectiveKeepRate = 0.9
+    CampaignEffectiveKeepRate = 0.9,
+    IsBaseBidOptimized="ValuePacingV2",
+    IsProgrammaticGuaranteed="NO"
   )
 
   def campaignFloorBufferMock(campaignId: String,
@@ -926,4 +931,38 @@ object MockData {
     PartnerId = "p2", SupplyVendor = "2", DealId = "sv2-deal-1", AdFormat = "300x200", EmpiricalDiscrepancy = 1.5
   )).toDS()
 
+  def propellerBackoffMock(campaignId: String,
+    VirtualMaxBid_Multiplier: Int = 3): VirtualMaxBidBackoffSchema = {
+    VirtualMaxBidBackoffSchema(
+      CampaignId = campaignId,
+      UnderdeliveryFraction = 0.03,
+      UnderdeliveryFraction_History= null,
+      VirtualMaxBid_Quantile = 90,
+      VirtualMaxBid_Quantile_History = null,
+      BidsCloseToMaxBid_Fraction = 0.3,
+      BidsCloseToMaxBid_Fraction_History = null,
+      SumInternalBidOverMaxBid_Fraction = 0.3,
+      SumInternalBidOverMaxBid_Fraction_History = null,
+
+      VirtualMaxBid_Multiplier = VirtualMaxBid_Multiplier,
+      VirtualMaxBid_Multiplier_Uncapped = VirtualMaxBid_Multiplier,
+      VirtualMaxBid_Multiplier_Options = null
+    )
+  }
+
+  def virtualMaxBidBackoffMock(campaignId: String) =
+    VirtualMaxBidBackoffSchema(
+      CampaignId = campaignId,
+      UnderdeliveryFraction = 0.25,
+      UnderdeliveryFraction_History = Array(0.3, 0.2, 0.25),
+      VirtualMaxBid_Quantile = 80,
+      VirtualMaxBid_Quantile_History = Array(80, 80, 80),
+      BidsCloseToMaxBid_Fraction = 0.6,
+      BidsCloseToMaxBid_Fraction_History = Array(0.5, 0.55, 0.6),
+      SumInternalBidOverMaxBid_Fraction = 0.1,
+      SumInternalBidOverMaxBid_Fraction_History = Array(0.08, 0.09, 0.1),
+      VirtualMaxBid_Multiplier = 1.2,
+      VirtualMaxBid_Multiplier_Uncapped = 1.3,
+      VirtualMaxBid_Multiplier_Options = Array(1.0, 1.1, 1.2, 1.3)
+    )
 }

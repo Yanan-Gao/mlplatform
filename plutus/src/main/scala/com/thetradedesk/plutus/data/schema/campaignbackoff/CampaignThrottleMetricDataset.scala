@@ -35,5 +35,7 @@ case class CampaignThrottleMetricSchema(
                                           UnderdeliveryInUSD: Double,
                                           TotalAdvertiserCostFromPerformanceReportInUSD: Double,
                                           EstimatedBudgetInUSD: Double,
-                                          UnderdeliveryFraction: Double
+                                          UnderdeliveryFraction: Double,
+                                          IsBaseBidOptimized: String,
+                                          IsProgrammaticGuaranteed: String
                                         )
