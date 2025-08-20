@@ -1,29 +1,27 @@
 package com.thetradedesk.audience.jobs
-import com.thetradedesk.audience.datasets.{RelevanceModelInputDataset, RelevanceModelInputRecord, Model}
-import com.thetradedesk.audience.{audienceVersionDateFormat, date, dateTime, doNotTrackTDID, ttdEnv}
+import com.thetradedesk.audience.datasets.{Model, RelevanceModelInputDatasetWithExperiment, RelevanceModelInputRecord}
+import com.thetradedesk.audience.doNotTrackTDID
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.{castDoublesToFloat, paddingColumns}
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler._isDeviceIdSampledNPercent
+import com.thetradedesk.audience.transform.IDTransform.idTypesBitmap
+import com.thetradedesk.audience.utils.IDTransformUtils.addGuidBits
 import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.{_isDeviceIdSampled1Percent, _isDeviceIdSampledNPercent}
+import com.thetradedesk.confetti.utils.Logger
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.{paddingColumns, castDoublesToFloat}
 import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, readModelFeatures}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import com.thetradedesk.confetti.utils.Logger
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.FloatType
-import com.thetradedesk.spark.util.TTDConfig.config
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig
-import com.thetradedesk.audience.transform.IDTransform.{allIdWithType, filterOnIdTypes, filterOnIdTypesSym, idTypesBitmap}
-import com.thetradedesk.audience.utils.IDTransformUtils.addGuidBits
-import org.apache.spark.sql.expressions.UserDefinedFunction
-import java.time.format.DateTimeFormatter
+
 import java.time.LocalDate
 import scala.collection.mutable.ArrayBuffer
 
 case class Imp2BrModelInferenceDataGeneratorConfig(
   feature_path: String,
+  paddingColumns: Seq[String],
   runDate: LocalDate,
   samplingRate: Int
 )
@@ -62,7 +60,10 @@ class Imp2BrModelInferenceDataGenerator(prometheus: PrometheusClient) {
     uiids.toSeq
   })
 
-  def run(conf: Imp2BrModelInferenceDataGeneratorConfig, logger: Logger): Unit = {
+  def run(conf: Imp2BrModelInferenceDataGeneratorConfig,
+          confettiEnv: String,
+          experimentName: Option[String],
+          logger: Logger): Unit = {
     val date = conf.runDate
     val dateTime = conf.runDate.atStartOfDay()
 
@@ -149,11 +150,16 @@ class Imp2BrModelInferenceDataGenerator(prometheus: PrometheusClient) {
 
     val dataset = ModelFeatureTransform.modelFeatureTransform[RelevanceModelInputRecord](bidsImpressionsTrasnformed, readModelFeatures(conf.feature_path))
 
-    val resultSet = paddingColumns(dataset.toDF(),RelevanceModelInputGeneratorConfig.paddingColumns, 0)
+    val resultSet = paddingColumns(dataset.toDF(), conf.paddingColumns, 0)
                     .cache()
 
     try {
-      RelevanceModelInputDataset(Model.RSMV2.toString,tag = "Imp_Seed_None", version = 2)
+      RelevanceModelInputDatasetWithExperiment(
+        Model.RSMV2.toString,
+        confettiEnv,
+        experimentName,
+        tag = "Imp_Seed_None",
+        version = 2)
       .writePartition(
         dataset = resultSet.as[RelevanceModelInputRecord],
         partition = dateTime,
@@ -162,7 +168,12 @@ class Imp2BrModelInferenceDataGenerator(prometheus: PrometheusClient) {
         numPartitions = Some(10000)
       )
     
-    RelevanceModelInputDataset(Model.RSMV2.toString,tag = "Imp_Seed_None", version = 1)
+    RelevanceModelInputDatasetWithExperiment(
+      Model.RSMV2.toString,
+      confettiEnv,
+      experimentName,
+      tag = "Imp_Seed_None",
+      version = 1)
       .writePartition(
         dataset = resultSet.as[RelevanceModelInputRecord],
         partition = dateTime,
@@ -190,7 +201,7 @@ object Imp2BrModelInferenceDataGenerator
 
   override def runETLPipeline(): Unit = {
     val conf = getConfig
-    new Imp2BrModelInferenceDataGenerator(prometheus.get).run(conf, getLogger)
+    new Imp2BrModelInferenceDataGenerator(prometheus.get).run(conf, confettiEnv, experimentName, getLogger)
   }
 }
 

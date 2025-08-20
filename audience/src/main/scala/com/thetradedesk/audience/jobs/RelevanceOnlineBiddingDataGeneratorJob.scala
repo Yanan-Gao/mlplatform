@@ -1,39 +1,29 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
-import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.audience.datasets._
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.{castDoublesToFloat, paddingColumns}
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorJob
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
 import com.thetradedesk.audience.transform.ContextualTransform.generateContextualFeatureTier1
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.{paddingColumns, castDoublesToFloat}
-import com.thetradedesk.audience.utils.Logger.Log
-import com.thetradedesk.audience.{date, dateTime, _}
-import com.thetradedesk.geronimo.shared.readModelFeatures
-import com.thetradedesk.audience.jobs.HitRateReportingTableGeneratorJob.prometheus
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.{RSMV2UserSampleSalt}
+import com.thetradedesk.audience.transform.IDTransform.{filterOnIdTypesSym, idTypesBitmap, joinOnIdTypes}
+import com.thetradedesk.audience.utils.IDTransformUtils.addGuidBits
+import com.thetradedesk.audience.utils.SeedListUtils.activeCampaignSeedAndIdFilterUDF
+import com.thetradedesk.audience._
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
-import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData}
+import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
+import com.thetradedesk.geronimo.shared.{GERONIMO_DATA_SOURCE, loadParquetData, readModelFeatures}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
-import com.thetradedesk.spark.util.io.FSUtils
+import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.commons.lang3.exception.ExceptionUtils
+import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
-import org.apache.spark.sql.{DataFrame, Dataset, Row, SaveMode, SparkSession}
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
-import com.thetradedesk.audience.transform.IDTransform.{filterOnIdTypesSym, idTypesBitmap, joinOnIdTypes}
-import com.thetradedesk.audience.utils.SeedListUtils.activeCampaignSeedAndIdFilterUDF
-import com.thetradedesk.audience.utils.IDTransformUtils.addGuidBits
-import com.thetradedesk.featurestore.data.cbuffer.SchemaHelper.{CBufferDataFrameReader, CBufferDataFrameWriter}
-import org.apache.spark.sql.expressions.UserDefinedFunction
 
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
-import java.time.{LocalDate, LocalDateTime}
-import scala.util.Random
+import java.time.LocalDate
 
+//TODO decouple with RelevanceModelInputGeneratorJob or onboard confetti.
 object RelevanceOnlineBiddingDataGeneratorJob {
   val prometheus = new PrometheusClient("ModelQualityJob", "RelevanceOnlineBiddingDataGeneratorJob")
 
@@ -44,7 +34,6 @@ object RelevanceOnlineBiddingDataGeneratorJob {
 
   def runETLPipeline(): Unit = {
     new RelevanceOnlineBiddingDataGenerator(prometheus).generate(date)
-
   }
 }
 
@@ -53,9 +42,11 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
 
   val jobRunningTime = prometheus.createGauge(s"relevance_online_bidding_generation_job_running_time", "RelevanceOnlineBiddingDataGenerator running time", "date")
   val onlineRelevanceBiddingTableSize = prometheus.createGauge(s"online_relevance_bidding_table_size", "OnlineRelevanceBiddingTableGenerator table size", "date")
-  val sampler = SamplerFactory.fromString("RSMV2Measurement")
+  val sampler = SamplerFactory.fromString("RSMV2Measurement", RelevanceModelInputGeneratorJob.conf)
 
   def generate(date: LocalDate): Unit = {
+    // todo this might be problematic.
+    val RSMV2UserSampleSalt = RelevanceModelInputGeneratorJob.conf.RSMV2UserSampleSalt
 
     val dateTime = date.atStartOfDay()
 
@@ -70,7 +61,6 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
       .withColumn("HouseholdGraphSeedIds", activeSeedIdFilterUDF('HouseholdGraphSeedIds))
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
       .cache()
-
 
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))
@@ -158,7 +148,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
       .withColumn("IdTypesBitmap", idTypesBitmap)
       // sample weight
       .withColumn("SampleWeights", typedLit(Array(1.0f)))
-         
+
       // convert id to long
       .transform(addGuidBits("BidRequestId"))
       .transform(addGuidBits("TDID"))
@@ -310,7 +300,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient) {
 
     val result = ModelFeatureTransform.modelFeatureTransform[RelevanceOnlineRecord](bidsImpressionsTrasnformed, rawJson)
 
-    val resultSet = paddingColumns(result.toDF(),RelevanceModelInputGeneratorConfig.paddingColumns, 0)
+    val resultSet = paddingColumns(result.toDF(), RelevanceModelInputGeneratorJob.conf.paddingColumns, 0)
                     .cache()
 
     val subFolderKey = config.getString("subFolderKey", default = "split")
