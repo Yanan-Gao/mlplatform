@@ -95,7 +95,119 @@ trait MetastoreHandler {
 
   val dateTimeFormatString: String = DefaultTimeFormatStrings.dateTimeFormatString
 
-  def readDateTimeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern(dateTimeFormatString)
+  private def localDateTimeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern(dateTimeFormatString)
+
+  private def dateTimeFormat: DateTimeFormatter = DateTimeFormatter.BASIC_ISO_DATE
+
+  def registerToMetastore(condition: String)(implicit spark: SparkSession): Unit = {
+    val db = getDbNameForWrite()
+
+    try {
+      if (tableName == "unknown_table") {
+        throw new IllegalStateException(
+          "Subclasses must override `getMetastoreTableName` to provide a valid table name."
+        )
+      }
+
+      val sql =
+        s"""ALTER TABLE `$db`.`$tableName`
+           |ADD IF NOT EXISTS PARTITION ($condition)""".stripMargin
+
+      println(sql)
+      spark.sql(sql)
+      spark.catalog.refreshTable(s"$db.$tableName")
+
+    } catch {
+      case e: IllegalStateException =>
+        println(s"[ERROR] Partition registration skipped due to missing metastore table name: ${e.getMessage}")
+      case e: org.apache.spark.sql.AnalysisException =>
+        println(s"[ERROR] Metastore operation failed for table `$db`.`$tableName`: ${e.getMessage}")
+      case e: Exception =>
+        println(s"[ERROR] Unexpected error during partition registration: ${e.getMessage}")
+    }
+  }
+
+  def registerPartitionToMetastore(partition1: LocalDate)(implicit spark: SparkSession): Unit = {
+    val partition_1 = partition1.format(dateTimeFormat)
+    val condition = s"$metastorePartitionField1 = '$partition_1'"
+    registerToMetastore(condition)
+  }
+
+  def registerPartitionToMetastore(partition1: LocalDate, partition2: String)(implicit spark: SparkSession): Unit = {
+    val partition_1 = partition1.format(dateTimeFormat)
+    val condition = s"$metastorePartitionField1 = '$partition_1', $metastorePartitionField2 = '$partition2'"
+    registerToMetastore(condition)
+  }
+
+  def registerPartitionToMetastore(partition1: String, partition2: LocalDate, partition3: String)(implicit spark: SparkSession): Unit = {
+    val partition_2 = partition2.format(dateTimeFormat)
+    val condition = s"$metastorePartitionField1 = '$partition1', $metastorePartitionField2 = '$partition_2', $metastorePartitionField3 = '$partition3'"
+    registerToMetastore(condition)
+  }
+
+  def writeToMetastore(reshapedData: Dataset[_], tempViewName: String, condition: String)(implicit spark: SparkSession): Unit = {
+    val db = getDbNameForWrite()
+
+    reshapedData.createOrReplaceTempView(tempViewName)
+
+    spark.sql(
+      s"""
+         |INSERT OVERWRITE TABLE $db.$tableName
+         |PARTITION ($condition)
+         |SELECT * FROM $tempViewName
+         |""".stripMargin)
+
+    println(s"Writing to partition: $condition in table $db.$tableName")
+  }
+
+  def applyCoalesce[T](dataSet: Dataset[T], coalesceToNumFiles: Option[Int]): Dataset[T] = {
+    coalesceToNumFiles match {
+      case Some(n) if n > 0 =>
+        val repartitioned = dataSet.repartition(n)
+        println(s"Repartitioned dataset to $n partitions.")
+        repartitioned
+      case _ =>
+        println(s"No coalesce applied.")
+        dataSet
+    }
+  }
+
+  def writePartitionToMetastore(dataSet: Dataset[_], partition1: LocalDate, coalesceToNumFiles: Option[Int])(implicit spark: SparkSession): Unit = {
+    val reshapedData = applyCoalesce(dataSet, coalesceToNumFiles)
+
+    val partition_1 = partition1.format(dateTimeFormat)
+    val condition = s"$metastorePartitionField1 = '$partition_1'"
+
+    val dbName = getDbNameForWrite()
+    val tempViewName = sanitizeString(s"${dbName}_${tableName}_${metastorePartitionField1}_${partition_1}")
+
+    writeToMetastore(reshapedData, tempViewName, condition)
+  }
+
+  def writePartitionToMetastore(dataSet: Dataset[_], partition1: LocalDate, partition2: String, coalesceToNumFiles: Option[Int])(implicit spark: SparkSession): Unit = {
+    val reshapedData = applyCoalesce(dataSet, coalesceToNumFiles)
+
+    val partition_1 = partition1.format(dateTimeFormat)
+    val condition = s"$metastorePartitionField1 = '$partition_1', $metastorePartitionField2 = '$partition2'"
+
+    val dbName = getDbNameForWrite()
+    val tempViewName = sanitizeString(s"${dbName}_${tableName}_${metastorePartitionField1}_${partition_1}_${metastorePartitionField2}_${partition2}")
+
+    writeToMetastore(reshapedData, tempViewName, condition)
+  }
+
+  def writePartitionToMetastore(dataSet: Dataset[_], partition1: String, partition2: LocalDate, partition3: String, coalesceToNumFiles: Option[Int])(implicit spark: SparkSession): Unit = {
+    val reshapedData = applyCoalesce(dataSet, coalesceToNumFiles)
+
+    val partition_2 = partition2.format(dateTimeFormat)
+    val condition = s"$metastorePartitionField1 = '$partition1', $metastorePartitionField2 = '$partition_2', $metastorePartitionField3 = '$partition3'"
+
+    val dbName = getDbNameForWrite()
+    val tempViewName = sanitizeString(s"${dbName}_${tableName}_${metastorePartitionField1}_${partition1}_${metastorePartitionField2}_${partition_2}_${metastorePartitionField3}_${partition3}")
+
+    writeToMetastore(reshapedData, tempViewName, condition)
+  }
+
 
   def readFromMetastore(
                           filterCondition: String
@@ -195,9 +307,9 @@ trait MetastoreHandler {
     if (fromDate.isAfter(toDate))
       throw new IllegalArgumentException(s"The fromDate $fromDate is later than the toDate $toDate")
 
-    val fromStr = fromDate.format(readDateTimeFormat)
-    val toStrRaw = toDate.format(readDateTimeFormat)
-    val toStrFinal = if (isInclusive) toStrRaw else toDate.minusDays(1).format(readDateTimeFormat)
+    val fromStr = fromDate.format(localDateTimeFormat)
+    val toStrRaw = toDate.format(localDateTimeFormat)
+    val toStrFinal = if (isInclusive) toStrRaw else toDate.minusDays(1).format(localDateTimeFormat)
 
     val filterCondition = s"date BETWEEN '$fromStr' AND '$toStrFinal'"
     println(s"  filterCondition = $filterCondition")
@@ -238,7 +350,7 @@ trait MetastoreHandler {
 
     val candidateDates =
       (0 until numberOfDaysToRead + maxExtraCheckDays)
-        .map(offset => firstDateToCheck.minusDays(offset).format(readDateTimeFormat))
+        .map(offset => firstDateToCheck.minusDays(offset).format(localDateTimeFormat))
 
     val dbName = getDbNameForRead()
     val availableDates = getAvailablePartitionsFromMetastore(dbName, tableName, "date")
@@ -349,7 +461,7 @@ trait MetastoreHandler {
                                maxInclusivePartition: LocalDate,
                                isInclusive: Boolean = false
                              )(implicit spark: SparkSession): DataFrame = {
-    val maxInclusivePartitionStr = maxInclusivePartition.format(readDateTimeFormat)
+    val maxInclusivePartitionStr = maxInclusivePartition.format(localDateTimeFormat)
 
     val dbName = getDbNameForRead()
     val availableDates = getAvailablePartitionsFromMetastore(dbName, tableName, "date")
