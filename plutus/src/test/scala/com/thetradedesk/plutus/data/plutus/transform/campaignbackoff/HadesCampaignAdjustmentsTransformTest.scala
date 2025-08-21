@@ -271,6 +271,28 @@ class HadesCampaignAdjustmentsTransformTest extends TTDSparkTest{
     assert(test4.HadesBackoff_PCAdjustment_Previous.contains(0.5))
   }
 
+  test("Testing Remove Reset Campaigns") {
+    val yesterdaysData = Seq(
+      campaignAdjustmentsHadesMock(campaignId = "campaign1", hadesPCAdjustmentPrevious = Array(0.4), campaignType_Previous = Array(CampaignType_NewCampaign)),
+      campaignAdjustmentsHadesMock(campaignId = "campaign2", hadesPCAdjustmentPrevious = Array(0.4)),
+      // No Campaign 3
+      campaignAdjustmentsHadesMock(campaignId = "campaign4", hadesPCAdjustmentCurrent = 0.5 /* This will be carried on */, hadesPCAdjustmentPrevious = Array(0.5), hadesProblemCampaign = false)
+    ).toDS()
+
+    val mockResetData = Seq(
+      CampaignResetSchema("campaign1")
+    ).toDS()
+
+    // Test your function logic directly
+    val result = yesterdaysData.join(
+      mockResetData,
+      Seq("CampaignId"),
+      "left_anti"
+    )
+
+    assert(result.count == yesterdaysData.count - 1)
+  }
+
   test("Testing GetFilteredCampaigns") {
     val campaignUnderdeliveryData = Seq(campaignUnderdeliveryForHadesMock()).toDS()
 

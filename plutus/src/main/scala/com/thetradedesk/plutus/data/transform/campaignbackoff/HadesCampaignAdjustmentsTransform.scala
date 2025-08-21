@@ -17,6 +17,8 @@ import org.apache.spark.storage.StorageLevel
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.Row
 
+import scala.util.{Try, Success, Failure}
+
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
@@ -469,7 +471,20 @@ object HadesCampaignAdjustmentsTransform {
       .select(columns.head, columns.drop(1): _*)
       .union(plutusLogsData)
   }
-  
+
+  def removeResetCampaignsIfExists(date: LocalDate, yesterdaysData: Dataset[HadesAdjustmentSchemaV2]): (Dataset[HadesAdjustmentSchemaV2], Long) = {
+    Try(CampaignResetDataset.readDate(env = envForRead, date = date)) match {
+      case Success(campaignResetData) =>
+        (yesterdaysData.join(
+          campaignResetData,
+          Seq("CampaignId"),
+          "left_anti"
+        ).as[HadesAdjustmentSchemaV2], campaignResetData.count)
+      case Failure(exception) =>
+        println(s"Campaign reset data not found for date $date: ${exception.getMessage}")
+        (yesterdaysData, 0L)
+    }
+  }
   def transform(date: LocalDate,
                 testSplit: Option[Double],
                 underdeliveryThreshold: Double,
@@ -477,33 +492,12 @@ object HadesCampaignAdjustmentsTransform {
                 campaignFloorBufferData: Dataset[MergedCampaignFloorBufferSchema]
                ): Dataset[HadesAdjustmentSchemaV2] = {
 
-    /*temporary. we are performing a reset on adhoc data this needs to be formalized*/
-    val formatter: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyyMMdd")
-    val formattedDate: String = date.format(formatter)
-
-    val resetData = try {
-        spark.read.option("header", "true").csv(f"s3://ttd-adhoc-datperf-useast/env=dev/users/nik/BBF/Aug25_CampaignBufferReset/date=$formattedDate")
-          .withColumn("toBeReset", lit(true))
-    } catch {
-      case e: Exception => {
-        println(s"Failed to read reset data: ${e.getMessage}")
-
-        // Create an empty DataFrame with campaignId and toBeReset columns
-        val schema = StructType(Array(
-          StructField("CampaignId", StringType, true),
-          StructField("toBeReset", BooleanType, true)
-        ))
-        spark.createDataFrame(spark.sparkContext.emptyRDD[Row], schema)
-      }
-    }
-
-    val yesterdaysData = HadesCampaignAdjustmentsDataset.readLatestDataUpToIncluding(
+    val yesterdaysDataPrelim = HadesCampaignAdjustmentsDataset.readLatestDataUpToIncluding(
       date.minusDays(1), env = envForReadInternal, nullIfColAbsent = true, historyLength = HistoryLength)
-      .join(resetData, Seq("CampaignId"), "left")
-      .filter($"toBeReset".isNull)
       .as[HadesAdjustmentSchemaV2]
-      .cache()
 
+    val resetData = removeResetCampaignsIfExists(date, yesterdaysDataPrelim)
+    val yesterdaysData = resetData._1.cache()
 
     val campaignUnderdeliveryData = CampaignThrottleMetricDataset.readDate(env = envForRead, date = date)
       .cache()
@@ -558,6 +552,7 @@ object HadesCampaignAdjustmentsTransform {
 
     hadesCampaignCounts.labels(Map("status" -> "HadesProblemCampaigns")).set(hadesIsProblemCampaignsCount)
     hadesCampaignCounts.labels(Map("status" -> "HadesAdjustedCampaigns")).set(hadesTotalAdjustmentsCount)
+    hadesCampaignCounts.labels(Map("status" -> "HadesResetCampaigns")).set(resetData._2)
     metrics.foreach { metric =>
       hadesMetrics.labels(Map(
         "CampaignType" -> metric.CampaignType,
