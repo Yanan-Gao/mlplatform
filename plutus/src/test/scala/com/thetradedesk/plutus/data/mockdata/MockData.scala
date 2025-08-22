@@ -283,9 +283,9 @@ object MockData {
     UserFriendlyLabel = None
   )
 
-  def pcResultsLogMock(bidRequestId: String, bbfExceptedSource: Int = 0, adGroupId: String = "asdasd"): PlutusLogsData = PlutusLogsData(
+  def pcResultsLogMock(bidRequestId: String, initialBid: Double = 10.0, bbfExceptedSource: Int = 0, adGroupId: String = "asdasd", maxBidCpmInBucks: Double = 9.0): PlutusLogsData = PlutusLogsData(
     BidRequestId = bidRequestId,
-    InitialBid = 10,
+    InitialBid = initialBid,
     FinalBidPrice = 9,
     Discrepancy = 0.1,
     BaseBidAutoOpt = 0.3,
@@ -314,7 +314,7 @@ object MockData {
     MaxBidMultiplierCap = 1.2,
     FloorBufferAdjustment = 1.0,
     FloorBuffer = 0.2,
-    MaxBidCpmInBucks = 9,
+    MaxBidCpmInBucks = maxBidCpmInBucks,
     Channel = "CTV",
     Country = "USA",
     DealFloorMultiplierCap = 2.0
@@ -343,7 +343,7 @@ object MockData {
     IsMargin = false
   )
 
-  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), adgroupId: Option[String] = Some("mno012"), supplyVendor: Option[String] = Some("google"), renderingContext: Int = 1, deviceType: Int = 1, pcMode: Int = 3, channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0, auctionType: Int = 1, uncappedBidPrice: Double = 0, snapbackMaxBid: Double = 0, maxBidMultiplierCap: Double = 0, maxBidCpmInBucks: Double = 9.0) = PcResultsMergedSchema(
+  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), adgroupId: Option[String] = Some("mno012"), supplyVendor: Option[String] = Some("google"), renderingContext: Int = 1, deviceType: Int = 1, pcMode: Int = 3, partnerCost: Option[Double] = Some(0.1), channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0, auctionType: Int = 1, uncappedBidPrice: Double = 0, snapbackMaxBid: Double = 0, maxBidMultiplierCap: Double = 0, maxBidCpmInBucks: Double = 9.0) = PcResultsMergedSchema(
     BidRequestId = "1",
     DealId = dealId,
 
@@ -413,7 +413,7 @@ object MockData {
     MediaCostCPMInUSD = Some(37.0),
     DiscrepancyAdjustmentMultiplier = Some(1.0),
     AdvertiserCostInUSD = Some(0.1),
-    PartnerCostInUSD = Some(0.1),
+    PartnerCostInUSD = partnerCost, //Some(0.1),
     TTDCostInUSD = Some(0.05),
     AdvertiserCurrencyExchangeRateFromUSD = None,
 
@@ -572,7 +572,7 @@ object MockData {
 
 
   val adGroupMock = adGroupMockData()
-  def adGroupMockData(adGroupId: String = "mno012", campaignId: String = "jkl789"): AdGroupRecord = AdGroupRecord(
+  def adGroupMockData(adGroupId: String = "mno012", campaignId: String = "jkl789", pcEnabled: Boolean = true): AdGroupRecord = AdGroupRecord(
     AdGroupId = adGroupId,
     AdGroupName = "test_ag",
     CampaignId = campaignId,
@@ -586,7 +586,7 @@ object MockData {
     TargetPerGrainInAdvertiserCurrency = Some(25.0),
     ROIGoalValue = Some(50.0),
     PrivateContractDefaultAdjustment = Some(2.0),
-    PredictiveClearingEnabled = true,
+    PredictiveClearingEnabled = pcEnabled,
     AdvertiserId = Some("def456"),
     PartnerId = Some("abc123")
   )

@@ -1,5 +1,8 @@
 package com.thetradedesk.plutus.data.schema.shared
-import org.apache.spark.sql.functions.udf
+import com.thetradedesk.plutus.data.schema.campaignbackoff.CampaignThrottleMetricSchema
+import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import org.apache.spark.sql.Dataset
+import org.apache.spark.sql.functions.{col, max, udf}
 
 import java.sql.Timestamp
 import scala.util.hashing.MurmurHash3
@@ -24,4 +27,17 @@ object BackoffCommon {
     Math.abs(MurmurHash3.stringHash(entityId) % bucketCount).toShort
   }
   val getTestBucketUDF = udf(computeBudgetBucketHash(_: String, _: Int))
+
+  def handleDuplicateCampaignFlights(campaignThrottleData: Dataset[CampaignThrottleMetricSchema]): Dataset[CampaignThrottleMetricSchema]  = {
+    // Get the most recent campaign flight when duplicate campaigns
+    val mostRecentCampaignFlights = campaignThrottleData
+      .groupBy("CampaignId")
+      .agg(
+        max("CampaignFlightId").as("CampaignFlightId")
+      ).select("CampaignFlightId")
+
+    campaignThrottleData
+      .join(mostRecentCampaignFlights, Seq("CampaignFlightId"), "inner")
+      .as[CampaignThrottleMetricSchema]
+  }
 }
