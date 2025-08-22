@@ -41,6 +41,7 @@ final case class RelevanceModelInputRecord(
                                            UserSegmentCount: Float,
                                            IdTypesBitmap: Integer,
                                            TDID: String,
+                                           IDType: Int,
                                            BidRequestIdmostSigBits: Long,
                                            BidRequestIdleastSigBits: Long,
                                            TDIDmostSigBits: Long,

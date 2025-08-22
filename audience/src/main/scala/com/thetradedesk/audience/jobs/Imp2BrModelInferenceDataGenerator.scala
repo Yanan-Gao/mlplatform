@@ -3,6 +3,7 @@ import com.thetradedesk.audience.datasets.{RelevanceModelInputDataset, Relevance
 import com.thetradedesk.audience.{audienceVersionDateFormat, date, dateTime, doNotTrackTDID, ttdEnv}
 import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.{_isDeviceIdSampled1Percent, _isDeviceIdSampledNPercent}
+import com.thetradedesk.audience.transform.IDTransform
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.{paddingColumns, castDoublesToFloat}
@@ -40,24 +41,24 @@ class Imp2BrModelInferenceDataGenerator(prometheus: PrometheusClient) {
   }
 
   def getAllUiidsUdfWithSample(sampleFun: String => Boolean) = udf((tdid: String, deviceAdvertisingId: String, uid2: String, euid: String, identityLinkId: String) => {
-    val uiids = ArrayBuffer[String]()
+    val uiids = ArrayBuffer[(String, Int)]()
 
     // when CookieTDID == DeviceAdvertisingId, keep the latter
     // we don't expect clash among other id types
     if (tdid != null && tdid != doNotTrackTDID && sampleFun(tdid) && tdid != deviceAdvertisingId) {
-      uiids += tdid
+      uiids.append((tdid, IDTransform.IDType.CookieTDID.id))
     }
     if (deviceAdvertisingId != null && deviceAdvertisingId != doNotTrackTDID && sampleFun(deviceAdvertisingId)) {
-      uiids += deviceAdvertisingId
+      uiids.append((deviceAdvertisingId, IDTransform.IDType.DeviceAdvertisingId.id))
     }
     if (uid2 != null && uid2 != doNotTrackTDID && sampleFun(uid2)) {
-      uiids += uid2
+      uiids.append((uid2, IDTransform.IDType.UnifiedId2.id))
     }
     if (euid != null && euid != doNotTrackTDID && sampleFun(euid)) {
-      uiids += euid
+      uiids.append((euid, IDTransform.IDType.EUID.id))
     }
     if (identityLinkId != null && identityLinkId != doNotTrackTDID && sampleFun(identityLinkId)) {
-      uiids += identityLinkId
+      uiids.append((identityLinkId, IDTransform.IDType.IdentityLinkId.id))
     }
     uiids.toSeq
   })
@@ -68,8 +69,10 @@ class Imp2BrModelInferenceDataGenerator(prometheus: PrometheusClient) {
 
     val bidsImpressions = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack=Some(0), source = Some(GERONIMO_DATA_SOURCE))
       .withColumn("Uiids", getAllUiidsUdfWithSample(makeSampleFun( conf.samplingRate ))('CookieTDID, 'DeviceAdvertisingId, 'UnifiedId2, 'EUID, 'IdentityLinkId))
-      .withColumn("TDID", explode(col("Uiids")))
-      .drop("Uiids")
+      .withColumn("TdidAndIdType", explode(col("Uiids")))
+      .withColumn("TDID", col("TdidAndIdType._1"))
+      .withColumn("IDType", col("TdidAndIdType._2"))
+      .drop("Uiids", "TdidAndIdType")
       .filter("SUBSTRING(TDID, 9, 1) = '-'")
       .select('BidRequestId, // use to connect with bidrequest, to get more features
         'AdvertiserId,
@@ -107,6 +110,7 @@ class Imp2BrModelInferenceDataGenerator(prometheus: PrometheusClient) {
         'cos_minute_day,
         'CampaignId,
         'TDID,
+        'IDType,
         'DeviceAdvertisingId,
         'CookieTDID,
         'UnifiedId2, 
