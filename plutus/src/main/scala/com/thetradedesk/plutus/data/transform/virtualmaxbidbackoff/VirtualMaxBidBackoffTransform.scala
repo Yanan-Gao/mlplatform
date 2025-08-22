@@ -81,8 +81,8 @@ object VirtualMaxBidBackoffTransform {
     underdeliveryFraction_History: Array[Double],
     virtualMaxBidQuantileHistory: Array[Int]
   ): Int = {
-    // Check if we have enough history
     if (virtualMaxBidQuantileHistory == null || virtualMaxBidQuantileHistory.length < WaitingPeriod) {
+      // Case 1: If we dont have enough history, we return the default value
       return VirtualMaxBidCap_Quantile_Default
     }
 
@@ -96,9 +96,13 @@ object VirtualMaxBidBackoffTransform {
       val daysUnderdelivered = underdeliveryFractions_actual.takeRight(daysSinceLastChange).count(_ >= UnderdeliveryThreshold)
 
       if (daysUnderdelivered > 0) {
-        // We return the quantile pre-adjustment
+        // Case 2: If there was a recent change to the quantile, and underdelivery went up,
+        // we revert to the quantile before the change
         return virtualMaxBidQuantileHistory.apply(indexOfLastChange)
       }
+
+      // Case 3: If there was a recent change to the quantile, and delivery is stable,
+      // we dont change the quantile
       return lastQuantile
     }
 
@@ -106,14 +110,17 @@ object VirtualMaxBidBackoffTransform {
     val isDeliveryStable = underdeliveryFractions_actual.takeRight(WaitingPeriod).forall(_ < UnderdeliveryThreshold)
 
     if (isDeliveryStable) {
-      // Time to lower the quantile
-      // we allow this to go below 1. If we see that any campaign is going below 1,
-      // we will remove the adjustment from that campaign
+      // Case 4: If we have waited for `WaitingPeriod` days and delivery has been stable,
+      // we lower the quantile
+
+      // Note: we allow this to go below 10. If we see that any campaign is going below 10,
+      // we will remove the adjustment from that campaign later right after this function call
       val newQuantile = virtualMaxBidQuantileHistory.last - VirtualMaxBidCap_Quantile_Adjustment
       return newQuantile
     }
 
-    // Otherwise, keep current quantile
+    // Case 5: If we have waited for `WaitingPeriod` days and delivery has not been stable,
+    // we dont change the quantile
     lastQuantile
   }
 
@@ -180,8 +187,7 @@ object VirtualMaxBidBackoffTransform {
 
     VirtualMaxBidBackoffDataset.writeData(date, res, filecount = 10)
 
-    val metrics = getMetrics(res)
-    metrics.foreach { metric =>
+    getMetrics(res).foreach { metric =>
       virtualMaxBidBackoffMetrics.labels(Map(
         "CampaignType" -> metric.CampaignType,
         "Pacing" -> metric.PacingType,
@@ -194,7 +200,9 @@ object VirtualMaxBidBackoffTransform {
 
   def getMetrics(res: Dataset[VirtualMaxBidBackoffSchema]): Array[VirtualMaxBidMetrics] = {
     res
-      .withColumn("CampaignType", when($"UnderdeliveryFraction_History".isNull, "New Campaign")
+      .withColumn("CampaignType",
+        when($"VirtualMaxBid_Multiplier" === lit(VirtualMaxBid_Multiplier_Platform), "Not Adjusted")
+        .when($"UnderdeliveryFraction_History".isNull, "New Campaign")
         .otherwise("Old Campaign"))
       .withColumn("PacingType",
         when($"UnderdeliveryFraction".isNull, PacingStatus_NoPacingData)

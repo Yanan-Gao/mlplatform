@@ -3,7 +3,6 @@ package com.thetradedesk.plutus.data.schema
 import com.thetradedesk.plutus.data.utils.S3HourlyParquetDataset
 import com.thetradedesk.plutus.data.{paddedDatePart, paddedDateTimePart}
 import com.thetradedesk.spark.datasets.core.S3Roots
-import com.thetradedesk.streaming.records.rtb.{ContextTypeLookupRecord, IdiosyncraticSegmentLookupRecord, InventoryChannelLookupRecord, ProductionQualityLookupRecord, SkippabilityConstraintLookupRecord, VideoPlaybackTypeLookupRecord}
 
 import java.time.{LocalDate, LocalDateTime}
 
