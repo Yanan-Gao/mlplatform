@@ -49,7 +49,7 @@ object GenerateTrainSetClick extends KongmingBaseJob {
     val sampledImpressions = (0 to lookback).map(i => {
       val ImpDate = startDate.plusDays(i)
       // Attr [T-ConvLB, T]
-      val dailyImp = OldDailyOfflineScoringDataset().readDate(ImpDate)
+      val dailyImp = OldDailyOfflineScoringParquetDataset().readDate(ImpDate)
         .join(broadcast(advertiserToExclude), Seq("AdvertiserIdStr"), "left_anti")
         .withColumn("sin_hour_week", $"sin_hour_week".cast("float"))
         .withColumn("cos_hour_week", $"cos_hour_week".cast("float"))

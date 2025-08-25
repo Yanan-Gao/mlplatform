@@ -336,6 +336,13 @@ case class OldDailyOfflineScoringDataset(experimentOverride: Option[String] = No
   override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
+case class OldDailyOfflineScoringParquetDataset(experimentOverride: Option[String] = None) extends KongMingDataset[OldDailyOfflineScoringRecord](
+  s3DatasetPath = "dailyofflinescore/v=0",
+  experimentOverride = experimentOverride,
+) {
+  override protected def supportsMetastorePartition: Boolean = false
+}
+
 final case class ArrayDailyOfflineScoringRecord(
                                            AdGroupId: Int,
                                            CampaignId: Int,

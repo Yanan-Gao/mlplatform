@@ -93,7 +93,7 @@ object OutOfSampleAttributionSetGenerator extends KongmingBaseJob {
       val ImpDate = scoreDate.plusDays(i)
       // Attr [T-ConvLB, T]
       val AttrDates = (ImpDate.toEpochDay to date.toEpochDay).map(LocalDate.ofEpochDay)
-      val dailyImp = OldDailyOfflineScoringDataset().readDate(ImpDate)
+      val dailyImp = OldDailyOfflineScoringParquetDataset().readDate(ImpDate)
       val impressionsToScore = dailyImp.withColumnRenamed("AdGroupId", "AdGroupIdInt").withColumnRenamed("AdGroupIdStr", "AdGroupId")
         .withColumnRenamed("CampaignId", "CampaignIdInt").withColumnRenamed("CampaignIdStr", "CampaignId")
         .withColumnRenamed("AdvertiserId", "AdvertiserIdInt").withColumnRenamed("AdvertiserIdStr", "AdvertiserId")
