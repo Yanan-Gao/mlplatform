@@ -8,7 +8,7 @@ version := "0.1"
 
 scalaVersion := "2.12.15"
 
-val sparkVersion = "3.2.1"
+val sparkVersion = "3.5.0"
 val prometheusVersion = "0.9.0"
 
 credentials += Credentials(
@@ -34,7 +34,7 @@ libraryDependencies ++= Seq(
  // "MrPowers" % "spark-fast-tests" % "2.2.0_0.5.0" % "test"
 
   "com.thetradedesk" %% "geronimo" % "0.2.42-SNAPSHOT",
-  "com.thetradedesk" %% "eldorado-core" % "1.0.285-spark-3.2.1",
+  "com.thetradedesk" %% "eldorado-core" % "1.0.340-spark-3.5.0",
   "com.thetradedesk" %% "feature_store" % "20250218045228-SNAPSHOT",
   "com.amazonaws" % "aws-java-sdk-glue" % "1.12.654",
 )
