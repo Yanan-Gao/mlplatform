@@ -1,7 +1,6 @@
 package com.thetradedesk.audience.jobs.modelinput.rsmv2
 
 import com.thetradedesk.audience.{date, getUiid}
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.RelevanceModelInputGeneratorConfig.{intermediateResultBasePathEndWithoutSlash, overrideMode, samplerName, saveIntermediateResult, splitRemainderHashSalt, trainValHoldoutTotalSplits, sensitiveFeatureColumns}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface.{BidResult, BidSideDataRecord}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SamplerFactory
 import com.thetradedesk.audience.utils.IDTransformUtils.addGuidBits
@@ -19,8 +18,8 @@ import org.apache.spark.sql.expressions.UserDefinedFunction
 
 object BidImpSideDataGenerator {
 
-  def readBidImpressionWithNecessary(): Dataset[BidSideDataRecord] = {
-    val sampler = SamplerFactory.fromString(samplerName)
+  def readBidImpressionWithNecessary(conf: RelevanceModelInputGeneratorJobConfig): Dataset[BidSideDataRecord] = {
+    val sampler = SamplerFactory.fromString(conf.samplerName, conf)
     val bidImpressionsS3Path = BidsImpressions.BIDSIMPRESSIONSS3 + "prod/bidsimpressions/"
 
     val bidsImpressionsLongRaw = loadParquetData[BidsImpressionsSchema](bidImpressionsS3Path, date, lookBack = Some(0), source = Some(GERONIMO_DATA_SOURCE))
@@ -64,7 +63,7 @@ object BidImpSideDataGenerator {
           "UserSegmentCount"
       )
       .withColumn("SplitRemainderUserId", coalesce('DeviceAdvertisingId, 'CookieTDID, 'UnifiedId2, 'EUID, 'IdentityLinkId))
-      .withColumn("SplitRemainder", (abs(xxhash64(concat('SplitRemainderUserId, lit(splitRemainderHashSalt)))) % trainValHoldoutTotalSplits).cast("int"))
+      .withColumn("SplitRemainder", (abs(xxhash64(concat('SplitRemainderUserId, lit(conf.splitRemainderHashSalt)))) % conf.trainValHoldoutTotalSplits).cast("int"))
       .withColumn("OperatingSystemFamily", 'OperatingSystemFamily("value"))
       .withColumn("Browser", 'Browser("value"))
       .withColumn("RenderingContext", 'RenderingContext("value"))
@@ -86,7 +85,7 @@ object BidImpSideDataGenerator {
     val bidsImpressionsTrasnformed = RSMV2SharedFunction.castDoublesToFloat(bidsImpressionsLongRaw)
 
     // mask sensitive
-    val bidsImpressionsLong = sensitiveFeatureColumns.foldLeft(bidsImpressionsTrasnformed) { (currentDs, colName) =>
+    val bidsImpressionsLong = conf.sensitiveFeatureColumns.foldLeft(bidsImpressionsTrasnformed) { (currentDs, colName) =>
       if (currentDs.columns.contains(colName))
         currentDs.withColumn(colName, lit(0))
       else
@@ -95,13 +94,13 @@ object BidImpSideDataGenerator {
 
     val dateStr = RSMV2SharedFunction.getDateStr()
     var writePath: String = null
-    if (saveIntermediateResult) {
-      writePath = s"s3://${intermediateResultBasePathEndWithoutSlash}/${dateStr}/bidreq"
+    if (conf.saveIntermediateResult) {
+      writePath = s"s3://${conf.intermediateResultBasePathEndWithoutSlash}/${dateStr}/bidreq"
     }
-    RSMV2SharedFunction.writeOrCache(Option(writePath), overrideMode, bidsImpressionsLong, cache=false).as[BidSideDataRecord]
+    RSMV2SharedFunction.writeOrCache(Option(writePath), conf.overrideMode, bidsImpressionsLong, cache=false).as[BidSideDataRecord]
   }
 
-  def prepareBidImpSideFeatureDataset(rawBidReq: Dataset[BidSideDataRecord]): BidResult = {
+  def prepareBidImpSideFeatureDataset(rawBidReq: Dataset[BidSideDataRecord], conf: RelevanceModelInputGeneratorJobConfig): BidResult = {
 
     val dateStr = RSMV2SharedFunction.getDateStr()
 
@@ -116,11 +115,11 @@ object BidImpSideDataGenerator {
       .drop("rand", "row", "AllIdsWithIdTypes")
 
     var writePath: String = null
-    if (saveIntermediateResult) {
-      writePath = s"s3://${intermediateResultBasePathEndWithoutSlash}/${dateStr}/all_bidreq_features"
+    if (conf.saveIntermediateResult) {
+      writePath = s"s3://${conf.intermediateResultBasePathEndWithoutSlash}/${dateStr}/all_bidreq_features"
     }
 
-    BidResult(rawBidReq, RSMV2SharedFunction.writeOrCache(Option(writePath), overrideMode, res).as[BidSideDataRecord])
+    BidResult(rawBidReq, RSMV2SharedFunction.writeOrCache(Option(writePath), conf.overrideMode, res).as[BidSideDataRecord])
   }
 
 }

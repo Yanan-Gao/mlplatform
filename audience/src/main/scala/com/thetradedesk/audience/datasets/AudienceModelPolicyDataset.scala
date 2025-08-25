@@ -63,8 +63,11 @@ final case class AudienceModelPolicyRecord(TargetingDataId: Long,
 case class AudienceModelPolicyWritableDataset(model: Model) extends
   LightWritableDataset[AudienceModelPolicyRecord](s"configdata/${ttdEnv}/audience/policyTable/${model}/v=1", "s3a://thetradedesk-mlplatform-us-east-1/", policyTableResultCoalesce, dateFormat = audienceVersionDateFormat)
 
+case class AudienceModelPolicyWritableDatasetWithExperiment(model: Model, env: String, exp: Option[String]) extends
+  LightWritableDataset[AudienceModelPolicyRecord](s"configdata/$env${exp.filter(_.nonEmpty).map(e => s"/$e").getOrElse("")}/audience/policyTable/${model}/v=1", "s3a://thetradedesk-mlplatform-us-east-1/", policyTableResultCoalesce, dateFormat = audienceVersionDateFormat)
+
 case class AudienceModelPolicyReadableDataset(model: Model) extends 
-  LightReadableDataset[AudienceModelPolicyRecord](s"configdata/${config.getString(s"${getClassName(AudienceModelPolicyReadableDataset)}ReadEnv", ttdEnv)}/audience/policyTable/${model}/v=1", "s3a://thetradedesk-mlplatform-us-east-1/", dateFormat = audienceVersionDateFormat)
+  LightReadableDataset[AudienceModelPolicyRecord](s"configdata/prod/audience/policyTable/${model}/v=1", "s3a://thetradedesk-mlplatform-us-east-1/", dateFormat = audienceVersionDateFormat)
 
 object Model extends Enumeration {
   type Model = Value

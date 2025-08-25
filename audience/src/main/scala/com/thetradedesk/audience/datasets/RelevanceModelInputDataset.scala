@@ -50,3 +50,15 @@ final case class RelevanceModelInputRecord(
 
 case class RelevanceModelInputDataset(model: String, tag: String, version: Int = 1) extends
   LightWritableDataset[RelevanceModelInputRecord](s"/${ttdWriteEnv}/audience/${model}/${tag}/v=${version}", S3Roots.ML_PLATFORM_ROOT, audienceResultCoalesce, dateFormat = audienceVersionDateFormat)
+
+case class RelevanceModelInputDatasetWithExperiment(model: String,
+                                                 env: String,
+                                                 exp: Option[String],
+                                                 tag: String,
+                                                 version: Int = 1
+                                                ) extends LightWritableDataset[RelevanceModelInputRecord](
+  s"/$env${exp.filter(_.nonEmpty).map(e => s"/$e").getOrElse("")}/audience/$model/${tag}/v=$version",
+  S3Roots.ML_PLATFORM_ROOT,
+  audienceResultCoalesce,
+  dateFormat = audienceVersionDateFormat
+)

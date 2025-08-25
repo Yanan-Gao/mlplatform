@@ -78,6 +78,17 @@ class MapConfigReader(map: Map[String, String], logger: Logger) {
     case None => None
   }
 
+  def getFloatOpt(key: String): Option[Float] = map.get(key) match {
+    case Some(v) =>
+      Try(v.toFloat).toOption match {
+        case Some(f) => Some(f)
+        case None =>
+          errors += s"$key is expecting Float type"
+          None
+      }
+    case None => None
+  }
+
   def getLongOpt(key: String): Option[Long] = map.get(key) match {
     case Some(v) =>
       Try(v.toLong).toOption match {
@@ -123,6 +134,9 @@ class MapConfigReader(map: Map[String, String], logger: Logger) {
   def getDoubleSeqOpt(key: String): Option[Seq[Double]] =
     getSeqOpt(key, _.toDouble, "Double")
 
+  def getFloatSeqOpt(key: String): Option[Seq[Float]] =
+    getSeqOpt(key, _.toFloat, "Float")
+
   def getDateSeqOpt(key: String): Option[Seq[LocalDate]] =
     getSeqOpt(key, LocalDate.parse, "LocalDate")
 
@@ -145,6 +159,19 @@ class MapConfigReader(map: Map[String, String], logger: Logger) {
         case Some(d) => Some(d)
         case None =>
           errors += s"$key is expecting Double type"
+          None
+      }
+    case None =>
+      errors += s"$key does not exist"
+      None
+  }
+
+  def getFloat(key: String): Option[Float] = map.get(key) match {
+    case Some(v) =>
+      Try(v.toFloat).toOption match {
+        case Some(f) => Some(f)
+        case None =>
+          errors += s"$key is expecting Float type"
           None
       }
     case None =>
@@ -203,6 +230,9 @@ class MapConfigReader(map: Map[String, String], logger: Logger) {
   def getDoubleSeq(key: String): Option[Seq[Double]] =
     getSeq(key, _.toDouble, "Double")
 
+  def getFloatSeq(key: String): Option[Seq[Float]] =
+    getSeq(key, _.toFloat, "Float")
+
   def getDateSeq(key: String): Option[Seq[LocalDate]] =
     getSeq(key, LocalDate.parse, "LocalDate")
 
@@ -218,7 +248,7 @@ class MapConfigReader(map: Map[String, String], logger: Logger) {
   /**
    * Construct an instance of the given case class using reflection. Field names
    * must match configuration keys exactly and supported types are String,
-   * Int, Long, Double, Boolean, java.time.LocalDate and various Seq types.
+   * Int, Long, Double, Float, Boolean, java.time.LocalDate and various Seq types.
    * Fields wrapped in
    * `Option` are treated as optional.
    */
@@ -241,6 +271,7 @@ class MapConfigReader(map: Map[String, String], logger: Logger) {
             if (inner =:= typeOf[String]) getStringOpt(name)
             else if (inner =:= typeOf[Int]) getIntOpt(name)
             else if (inner =:= typeOf[Double]) getDoubleOpt(name)
+            else if (inner =:= typeOf[Float]) getFloatOpt(name)
             else if (inner =:= typeOf[Long]) getLongOpt(name)
             else if (inner =:= typeOf[Boolean]) getBooleanOpt(name)
             else if (inner =:= typeOf[LocalDate]) getDateOpt(name)
@@ -248,6 +279,7 @@ class MapConfigReader(map: Map[String, String], logger: Logger) {
             else if (inner =:= typeOf[Seq[Int]]) getIntSeqOpt(name)
             else if (inner =:= typeOf[Seq[Long]]) getLongSeqOpt(name)
             else if (inner =:= typeOf[Seq[Double]]) getDoubleSeqOpt(name)
+            else if (inner =:= typeOf[Seq[Float]]) getFloatSeqOpt(name)
             else if (inner =:= typeOf[Seq[LocalDate]]) getDateSeqOpt(name)
             else {
               errors += s"$name has unsupported type $t"
@@ -257,6 +289,7 @@ class MapConfigReader(map: Map[String, String], logger: Logger) {
         } else if (t =:= typeOf[String]) getString(name)
         else if (t =:= typeOf[Int]) getInt(name)
         else if (t =:= typeOf[Double]) getDouble(name)
+        else if (t =:= typeOf[Float]) getFloat(name)
         else if (t =:= typeOf[Long]) getLong(name)
         else if (t =:= typeOf[Boolean]) getBoolean(name)
         else if (t =:= typeOf[LocalDate]) getDate(name)
@@ -264,6 +297,7 @@ class MapConfigReader(map: Map[String, String], logger: Logger) {
         else if (t =:= typeOf[Seq[Int]]) getIntSeq(name)
         else if (t =:= typeOf[Seq[Long]]) getLongSeq(name)
         else if (t =:= typeOf[Seq[Double]]) getDoubleSeq(name)
+        else if (t =:= typeOf[Seq[Float]]) getFloatSeq(name)
         else if (t =:= typeOf[Seq[LocalDate]]) getDateSeq(name)
         else {
           errors += s"$name has unsupported type $t"

@@ -2,7 +2,6 @@ package com.thetradedesk.audience.jobs.policytable
 
 import com.thetradedesk.audience._
 import com.thetradedesk.audience.datasets._
-import com.thetradedesk.audience.jobs.policytable.AudiencePolicyTableGeneratorJob.prometheus
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.TTDConfig.{config, defaultCloudProvider}
@@ -13,7 +12,12 @@ import org.apache.spark.sql.functions._
 import java.sql.Timestamp
 import java.time.{LocalDate, LocalDateTime, ZoneOffset}
 
-object AEMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.AEM, prometheus: PrometheusClient) {
+class AEMPolicyTableGenerator(
+    prometheus: PrometheusClient,
+    confettiEnv: String,
+    experimentName: Option[String],
+    config: AudiencePolicyTableGeneratorConfig)
+    extends AudiencePolicyTableGenerator(Model.AEM, prometheus, confettiEnv, experimentName, config) {
 
   override def retrieveSourceData(date: LocalDate): DataFrame = {
     retrieveConversionData(date: LocalDate)
@@ -55,7 +59,7 @@ object AEMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.AEM, p
     val activeConversionTrackerTagId = retrieveActiveCampaignConversionTrackerTagIds();
 
     var conversionDataset = ConversionDataset(defaultCloudProvider)
-      .readRange(date.minusDays(Config.conversionLookBack).atStartOfDay(), date.plusDays(1).atStartOfDay())
+      .readRange(date.minusDays(conf.conversionLookBack).atStartOfDay(), date.plusDays(1).atStartOfDay())
       .select('TDID, 'TrackingTagId)
       .filter(samplingFunction('TDID))
 
@@ -65,8 +69,8 @@ object AEMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.AEM, p
       .select("TrackingTagId", "TargetingDataId")
       .distinct()
 
-    if (Config.useSelectedPixel) {
-      val selectedTrackingTagIds = spark.read.parquet(Config.selectedPixelsConfigPath)
+    if (conf.useSelectedPixel) {
+      val selectedTrackingTagIds = spark.read.parquet(conf.selectedPixelsConfigPath)
         .join(trackingTagDataset, "TargetingDataId").select("TrackingTagId")
 
       conversionDataset =
@@ -93,7 +97,7 @@ object AEMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.AEM, p
 
     var conversionFinal: DataFrame = null
 
-    if (Config.useSelectedPixel) {
+    if (conf.useSelectedPixel) {
       conversionFinal = conversionSize
         .join(trackingTagDataset, "TrackingTagId")
         .join(conversionActiveSize, "TrackingTagId")
@@ -102,7 +106,7 @@ object AEMPolicyTableGenerator extends AudiencePolicyTableGenerator(Model.AEM, p
         .join(conversionActiveSize, "TrackingTagId")
         .join(trackingTagDataset, "TrackingTagId")
         .orderBy(desc("ActiveSize"))
-        .limit(Config.aemPixelLimit)
+        .limit(conf.aemPixelLimit)
     }
 
     val policyTable = conversionFinal
