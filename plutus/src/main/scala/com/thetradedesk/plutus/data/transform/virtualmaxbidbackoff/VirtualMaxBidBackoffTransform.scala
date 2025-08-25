@@ -268,13 +268,18 @@ object VirtualMaxBidBackoffTransform {
   def getRelevantCampaigns(yesterdaysData: Dataset[VirtualMaxBidBackoffSchema], campaignThrottleDataset: Dataset[CampaignThrottleMetricSchema]): Dataset[VirtualMaxBidCampaignData] = {
     val underdeliveringCampaigns = campaignThrottleDataset
       .filter(col("IsValuePacing")
-        && col("IsBaseBidOptimized") != lit("AllAnchored")
-        && col("IsProgrammaticGuaranteed") != lit("PG"))
+        && col("IsBaseBidOptimized") =!= lit("AllAnchored")
+        && col("IsProgrammaticGuaranteed") =!= lit("PG"))
       .groupBy("CampaignId")
       .agg(
         max($"UnderdeliveryFraction").as("UnderdeliveryFraction")
       )
       .cache()
+
+    val campaignsToExclude = campaignThrottleDataset
+      .filter(col("IsBaseBidOptimized") === lit("AllAnchored")
+        || col("IsProgrammaticGuaranteed") === lit("PG"))
+      .select("CampaignId").distinct()
 
     val newUnderdeliveringCampaigns = underdeliveringCampaigns
       .join(yesterdaysData, Seq("CampaignId"), "left_anti")
@@ -286,6 +291,7 @@ object VirtualMaxBidBackoffTransform {
       .selectAs[VirtualMaxBidCampaignData]
 
     val oldAdjustedCampaigns = yesterdaysData
+      .join(campaignsToExclude, Seq("CampaignId"), "left_anti")
       .drop("UnderdeliveryFraction",
         "VirtualMaxBidQuantile",
         "SumInternalBidOverMaxBid_Fraction",

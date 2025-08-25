@@ -772,7 +772,7 @@ object MockData {
     )
   }
 
-  def campaignUnderdeliveryForHadesMock(campaignId : String = "jkl789", isValuePacing: Boolean = true) = CampaignThrottleMetricSchema(
+  def campaignUnderdeliveryForHadesMock(campaignId : String = "jkl789", isValuePacing: Boolean = true, isPG: String = "NO") = CampaignThrottleMetricSchema(
     Date = Timestamp.valueOf(LocalDateTime.of(2024, 12, 1, 14, 30)),
     CampaignId = campaignId,
     CampaignFlightId = 12345,
@@ -787,7 +787,7 @@ object MockData {
     CampaignThrottleMetric = 0.8,
     CampaignEffectiveKeepRate = 0.9,
     IsBaseBidOptimized="ValuePacingV2",
-    IsProgrammaticGuaranteed="NO"
+    IsProgrammaticGuaranteed=isPG
   )
 
   def campaignFloorBufferMock(campaignId: String,
