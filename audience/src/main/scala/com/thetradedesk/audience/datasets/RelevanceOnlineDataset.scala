@@ -74,3 +74,13 @@ final case class RelevanceOnlineRecord(
 )
 
 case class RelevanceOnlineDataset(model: String, tag: String, version: Int = 1) extends LightWritableDataset[RelevanceOnlineRecord](s"${ttdWriteEnv}/audience/${model}/${tag}/v=${version}", ML_PLATFORM_ROOT, audienceResultCoalesce, dateFormat = audienceVersionDateFormat)
+
+case class RelevanceOnlineDatasetWithExperiment(model: String,
+                                                    env: String,
+                                                    exp: Option[String],
+                                                    tag: String,
+                                                    version: Int = 1
+                                                   ) extends LightWritableDataset[RelevanceOnlineRecord](
+  s"/$env${exp.filter(_.nonEmpty).map(e => s"/$e").getOrElse("")}/audience/$model/${tag}/v=$version",
+  ML_PLATFORM_ROOT, audienceResultCoalesce, dateFormat = audienceVersionDateFormat
+)

@@ -1,13 +1,15 @@
 package com.thetradedesk.audience.jobs.modelinput.rsmv2.seedlabelside
 
 import com.thetradedesk.audience.doNotTrackTDID
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.BidImpSideDataGenerator
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.{BidImpSideDataGenerator, RelevanceModelInputGeneratorJobConfig}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface.{BidSideDataRecord, RSMV2AggregatedSeedRecord, UserPosNegSynIds, UserSiteZipLevelRecord}
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.seedlabelside.PostExtraSamplingSeedLabelSideDataGenerator.BidSeedDataRecord
 import com.thetradedesk.audience.transform.IDTransform.IDType
 import com.thetradedesk.audience.utils.TTDSparkTest
 import org.apache.spark.sql.Dataset
 import org.apache.spark.sql.functions._
+
+import java.time.LocalDate
 
 class PostExtraSamplingSeedLabelSideDataGeneratorTest extends TTDSparkTest {
   test("test getBidImpSideData") {
@@ -20,7 +22,41 @@ class PostExtraSamplingSeedLabelSideDataGeneratorTest extends TTDSparkTest {
       BidSideDataRecord("4", TDID = "device1", DeviceAdvertisingId = Some("device1"))
     ).toDS()
 
-    val bidResult = BidImpSideDataGenerator.prepareBidImpSideFeatureDataset(bidRequests)
+    val config = RelevanceModelInputGeneratorJobConfig(
+      modelName = "RSMV2",
+      useTmpFeatureGenerator = false,
+      extraSamplingThreshold = 0.05,
+      rsmV2FeatureSourcePath = "/featuresV2.json",
+      rsmV2FeatureDestPath = "",
+      subFolder = "Full",
+      optInSeedEmptyTagPath = "",
+      densityFeatureReadPathWithoutSlash = "profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1",
+      sensitiveFeatureColumns = Seq("Site", "Zip"),
+      persistHoldoutSet = true,
+      optInSeedType = "Active",
+      optInSeedFilterExpr = "true",
+      posNegRatio = 50,
+      lowerLimitPosCntPerSeed = 200,
+      RSMV2UserSampleSalt = "TRM",
+      RSMV2PopulationUserSampleIndex = Seq(3, 5, 7),
+      RSMV2UserSampleRatio = 1,
+      samplerName = "RSMV2",
+      overrideMode = false,
+      splitRemainderHashSalt = "split_RSMV2",
+      upLimitPosCntPerSeed = 40000,
+      saveIntermediateResult = false,
+      intermediateResultBasePathEndWithoutSlash = "thetradedesk-mlplatform-us-east-1/users/yixuan.zheng/allinone/dataset/Full",
+      maxLabelLengthPerRow = 50,
+      minRowNumsPerPartition = 100000,
+      trainValHoldoutTotalSplits = 10,
+      activeSeedIdWhiteList = "",
+      paddingColumns = "ZipSiteLevel_Seed,Targets,SyntheticIds,MatchedSegments,SampleWeights".split(",").map(_.trim).filter(_.nonEmpty),
+      posSampleWeight = 2.52f,
+      negSampleWeight = 1f,
+      runDate = LocalDate.parse("2025-07-25")
+    )
+
+    val bidResult = BidImpSideDataGenerator.prepareBidImpSideFeatureDataset(bidRequests, config)
     val bidSideTrainingData = bidResult.bidSideTrainingData
 
     val expectedBidSideTrainingData = Set(
