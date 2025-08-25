@@ -46,6 +46,24 @@ class VirtualMaxBidBackoffTransformTest extends TTDSparkTest {
     }
   }
 
+  test("Testing exclusions in getRelevantCampaigns") {
+    val campaignId1 = "Camp1"
+    val campaignId2 = "Camp2"
+
+    val yesterdaysData = Seq(virtualMaxBidBackoffMock(campaignId1)).toDS()
+
+    val campaignThrottleDataset = Seq(
+      campaignUnderdeliveryForHadesMock(campaignId = campaignId1, isPG = "PG"),
+      campaignUnderdeliveryForHadesMock(campaignId = campaignId2, isPG = "PG")
+    ).toDS()
+
+    val relevantCampaigns = getRelevantCampaigns(yesterdaysData, campaignThrottleDataset)
+
+    // campaignId1 is excluded even though its in yesterday's data
+    // because we exclude PG and Anchored Model campaigns
+    assert(relevantCampaigns.count() == 0)
+  }
+
 
   test("getLastChanges should return correct daysSinceLastChange and indexOfLastChange") {
     val testCases = Seq(
