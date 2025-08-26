@@ -340,7 +340,7 @@ case class OldDailyOfflineScoringParquetDataset(experimentOverride: Option[Strin
   s3DatasetPath = "dailyofflinescore/v=0",
   experimentOverride = experimentOverride,
 ) {
-  override protected def supportsMetastorePartition: Boolean = false
+  override protected def isMetastoreCompatibleDataFormat: Boolean = false
 }
 
 final case class ArrayDailyOfflineScoringRecord(
