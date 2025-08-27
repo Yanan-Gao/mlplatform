@@ -69,7 +69,7 @@ object RelevanceModelInputGeneratorJob
 
   def generateTrainingDataset(bidImpSideData: Dataset[BidSideDataRecord], seedLabelSideData: Dataset[SeedLabelSideDataRecord]) = {
     val res = bidImpSideData.join(seedLabelSideData, "BidRequestId")
-      .select("TDID", "Site","Zip","BidRequestId","SplitRemainder","AdvertiserId","AliasedSupplyPublisherId",
+      .select("TDID", "IDType", "Site","Zip","BidRequestId","SplitRemainder","AdvertiserId","AliasedSupplyPublisherId",
         "Country","DeviceMake","DeviceModel","RequestLanguages","RenderingContext","DeviceType",
         "OperatingSystemFamily","Browser","Latitude","Longitude","Region","InternetConnectionType",
         "OperatingSystem","ZipSiteLevel_Seed","Targets","SyntheticIds","City","sin_hour_week","cos_hour_week",
