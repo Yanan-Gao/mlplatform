@@ -1,5 +1,6 @@
 package com.thetradedesk.audience.jobs.modelinput.rsmv2.datainterface
 
+import com.thetradedesk.audience.transform.IDTransform
 import org.apache.spark.sql.Dataset
 
 
@@ -8,6 +9,7 @@ case class OptInSeedRecord(SeedId: String,
 
 case class BidSideDataRecord(BidRequestId: String,
                              TDID: String,
+                             IDType: Int = IDTransform.IDType.Unknown.id,
                              Site: Option[String] = None,
                              Zip: Option[String] = None,
                              DeviceAdvertisingId: Option[String] = None,
