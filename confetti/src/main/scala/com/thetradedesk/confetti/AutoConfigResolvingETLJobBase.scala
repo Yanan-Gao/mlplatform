@@ -60,52 +60,41 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
   private final def execute(): Unit = {
     val successPath = runtimePathBase + "_SUCCESS"
     val runningPath = runtimePathBase + "_RUNNING"
-    var runningMarkerWritten = false
-    try {
-      if (withRetry("check success marker on S3") {
-            S3Utils.exists(successPath)
-          }) {
-        logger.info(s"Success marker exists at $successPath; skipping execution")
-        return
-      }
-      if (withRetry("check running marker on S3") {
-            S3Utils.exists(runningPath)
-          }) {
-        val msg = s"Running marker exists at $runningPath; aborting job"
-        logger.error(msg)
-        throw new IllegalStateException(msg)
-      }
-      withRetry("write running marker to S3") {
-        S3Utils.writeToS3(runningPath, experimentName.getOrElse(""))
-      }
-      runningMarkerWritten = true
-      logger.info(s"Wrote running marker to $runningPath")
-
-      val yamlPaths = withRetry("list YAML files from S3") {
-        S3Utils.listYamlFiles(runtimePathBase)
-      }
-      val config = yamlPaths
-        .map(readYaml)
-        .foldLeft(Map.empty[String, String])(_ ++ _)
-      logger.info(new Yaml().dump(config.asJava))
-      jobConfig = Some(new MapConfigReader(config, logger).as[C])
-      if (jobConfig.isEmpty) {
-        throw new IllegalStateException("Config not initialized")
-      }
-      runETLPipeline()
-      // Write a _SUCCESS file to signal job completion with experiment name
-      withRetry("write success marker to S3") {
-        S3Utils.writeToS3(successPath, experimentName.getOrElse(""))
-      }
-      logger.info(s"Wrote success marker to $successPath")
-    } finally {
-      if (runningMarkerWritten) {
-        withRetry("delete running marker from S3") {
-          S3Utils.deleteFromS3(runningPath)
-        }
-        logger.info(s"Deleted running marker at $runningPath")
-      }
+    if (withRetry("check success marker on S3") {
+          S3Utils.exists(successPath)
+        }) {
+      logger.info(s"Success marker exists at $successPath; skipping execution")
+      return
     }
+    if (withRetry("check running marker on S3") {
+          S3Utils.exists(runningPath)
+        }) {
+      val msg = s"Running marker exists at $runningPath; aborting job"
+      logger.error(msg)
+      throw new IllegalStateException(msg)
+    }
+    withRetry("write running marker to S3") {
+      S3Utils.writeToS3(runningPath, experimentName.getOrElse(""))
+    }
+    logger.info(s"Wrote running marker to $runningPath")
+
+    val yamlPaths = withRetry("list YAML files from S3") {
+      S3Utils.listYamlFiles(runtimePathBase)
+    }
+    val config = yamlPaths
+      .map(readYaml)
+      .foldLeft(Map.empty[String, String])(_ ++ _)
+    logger.info(new Yaml().dump(config.asJava))
+    jobConfig = Some(new MapConfigReader(config, logger).as[C])
+    if (jobConfig.isEmpty) {
+      throw new IllegalStateException("Config not initialized")
+    }
+    runETLPipeline()
+    // Write a _SUCCESS file to signal job completion with experiment name
+    withRetry("write success marker to S3") {
+      S3Utils.writeToS3(successPath, experimentName.getOrElse(""))
+    }
+    logger.info(s"Wrote success marker to $successPath")
   }
 
   /** Read a YAML file from S3 into a map. */
