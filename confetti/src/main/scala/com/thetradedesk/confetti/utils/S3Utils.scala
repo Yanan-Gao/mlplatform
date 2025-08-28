@@ -25,6 +25,18 @@ object S3Utils {
     s3Client.putObject(uri.getBucket, uri.getKey, is, null)
   }
 
+  /** Check if an object exists at the given S3 path. */
+  def exists(path: String): Boolean = {
+    val uri = new AmazonS3URI(path)
+    s3Client.doesObjectExist(uri.getBucket, uri.getKey)
+  }
+
+  /** Delete the object at the given S3 path. */
+  def deleteFromS3(path: String): Unit = {
+    val uri = new AmazonS3URI(path)
+    s3Client.deleteObject(uri.getBucket, uri.getKey)
+  }
+
   /** List YAML files under the given S3 folder path. */
   def listYamlFiles(folderPath: String): Seq[String] = {
     val uri = new AmazonS3URI(folderPath)
