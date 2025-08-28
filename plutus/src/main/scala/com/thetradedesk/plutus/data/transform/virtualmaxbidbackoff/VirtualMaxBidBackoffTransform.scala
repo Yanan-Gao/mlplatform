@@ -22,7 +22,7 @@ object VirtualMaxBidBackoffTransform {
 
   // Configuration
   val CampaignBucketStart = 0;
-  val CampaignBucketEnd = 100;
+  val CampaignBucketEnd = 200;
   val UnderdeliveryThreshold = 0.075;
 
   val VirtualMaxBidCap_Quantile_Adjustment = 10
