@@ -10,6 +10,7 @@ import com.thetradedesk.audience.transform.{MergeDensityLevelAgg, SeedMergerAgg}
 import com.thetradedesk.audience.utils.SeedListUtils.seedIdFilterUDF
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.{DataFrame, Dataset}
 import org.apache.spark.sql.expressions.{UserDefinedFunction, Window}
 import org.apache.spark.sql.functions._
@@ -142,12 +143,13 @@ object PostExtraSamplingSeedLabelSideDataGenerator extends SeedLabelSideDataGene
 
     val positiveCntPerSeed = getPositiveCntPerSeed(bidSeedData)
 
+    val upLimitPosCntPerSeed = config.getInt("upLimitPosCntPerSeed", 40000)
+
     // prepare pos randIndicator
     val indicator = positiveCntPerSeed
       .join(broadcast(optInSeed), "SeedId")
-      .withColumn("PositiveRandIndicator", least(lit(conf.upLimitPosCntPerSeed), col("count")) / col("count"))
-      .withColumn("NegativeCount", least(lit(conf.upLimitPosCntPerSeed), col("count")) * conf.posNegRatio)
-
+      .withColumn("PositiveRandIndicator", least(lit(upLimitPosCntPerSeed), col("count")) / col("count"))
+      .withColumn("NegativeCount", least(lit(upLimitPosCntPerSeed), col("count")) * conf.posNegRatio)
 
     val totalNegCnt = indicator.agg(sum("NegativeCount")).first().getLong(0)
 

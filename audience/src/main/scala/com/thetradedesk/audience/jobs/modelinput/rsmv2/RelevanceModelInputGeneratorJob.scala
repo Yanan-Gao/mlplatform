@@ -17,6 +17,7 @@ import com.thetradedesk.spark.util.io.FSUtils
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{Dataset, SaveMode}
+import com.thetradedesk.spark.util.TTDConfig.config
 
 import java.time.LocalDate
 
@@ -27,13 +28,10 @@ case class RelevanceModelInputGeneratorJobConfig(
                                                   extraSamplingThreshold: Double,
                                                   rsmV2FeatureSourcePath: String,
                                                   rsmV2FeatureDestPath: String,
-                                                  subFolder: String,
                                                   optInSeedEmptyTagPath: String,
-                                                  densityFeatureReadPathWithoutSlash: String,
                                                   sensitiveFeatureColumns: Seq[String],
                                                   persistHoldoutSet: Boolean,
                                                   optInSeedType: String,
-                                                  optInSeedFilterExpr: String,
                                                   posNegRatio: Int,
                                                   lowerLimitPosCntPerSeed: Int,
                                                   RSMV2UserSampleSalt: String,
@@ -42,7 +40,6 @@ case class RelevanceModelInputGeneratorJobConfig(
                                                   samplerName: String,
                                                   overrideMode: Boolean,
                                                   splitRemainderHashSalt: String,
-                                                  upLimitPosCntPerSeed: Int,
                                                   saveIntermediateResult: Boolean,
                                                   intermediateResultBasePathEndWithoutSlash: String,
                                                   maxLabelLengthPerRow: Int,
@@ -68,6 +65,10 @@ object RelevanceModelInputGeneratorJob
   var conf: RelevanceModelInputGeneratorJobConfig = _
 
   def generateTrainingDataset(bidImpSideData: Dataset[BidSideDataRecord], seedLabelSideData: Dataset[SeedLabelSideDataRecord]) = {
+
+    logger.info("==== bidImpSideData schema ====\n" + bidImpSideData.schema.treeString)
+    logger.info("==== seedLabelSideData schema ====\n" + seedLabelSideData.schema.treeString)
+
     val res = bidImpSideData.join(seedLabelSideData, "BidRequestId")
       .select("TDID", "IDType", "Site","Zip","BidRequestId","SplitRemainder","AdvertiserId","AliasedSupplyPublisherId",
         "Country","DeviceMake","DeviceModel","RequestLanguages","RenderingContext","DeviceType",
@@ -86,6 +87,8 @@ object RelevanceModelInputGeneratorJob
       FSUtils.writeStringToFile(conf.rsmV2FeatureDestPath, rawJson)(spark)
     }
 
+    logger.info("==== res schema ====\n" + res.schema.treeString)
+
     // totalSplits default is 10 which train:val:holdout -> 8:1:1
     val totalSplits = conf.trainValHoldoutTotalSplits
     val result = ModelFeatureTransform.modelFeatureTransform[RelevanceModelInputRecord](res, rawJson)
@@ -94,22 +97,27 @@ object RelevanceModelInputGeneratorJob
           .when('SplitRemainder === lit(SubFolder.Holdout.id), SubFolder.Holdout.id)
           .otherwise(SubFolder.Train.id))
       .withColumn("rand", rand())
-      .withColumn("IDType", lit(0)) // TODO this is a temp fix for https://gitlab.adsrvr.org/thetradedesk/teams/aifun/mlplatform/-/merge_requests/1260/, pending vishal's actual fix
       .orderBy("rand").drop("rand")
 
     val resultSet = paddingColumns(result,conf.paddingColumns, 0)
                     .cache()
 
+    logger.info("==== resultSet schema ====\n" + resultSet.schema.treeString)
+
     // ensure one file at least 30k rows to make model learn well
     val rowCounts = res.count() / totalSplits
     val partitionsForValHoldout = math.min(math.max(1, rowCounts / conf.minRowNumsPerPartition), audienceResultCoalesce).toInt
     val partitionsForTrain = math.min(math.max(1, (totalSplits - 2) * rowCounts / conf.minRowNumsPerPartition), audienceResultCoalesce).toInt
+
+    // todo consolidate this into confetti as well. 
+    val subFolder = config.getString("subFolder", "Full")
+
     // TODO: remove hardcode seed_none
     RelevanceModelInputDatasetWithExperiment(conf.modelName, confettiEnv, experimentName, "Seed_None").writePartition(
       resultSet.filter('SubFolder === lit(SubFolder.Val.id)).as[RelevanceModelInputRecord],
       dateTime,
       numPartitions = Some(partitionsForValHoldout),
-      subFolderKey = Some(conf.subFolder),
+      subFolderKey = Some(subFolder),
       subFolderValue = Some(SubFolder.Val.toString),
       format = Some("tfrecord"),
       saveMode = SaveMode.Overwrite
@@ -120,7 +128,7 @@ object RelevanceModelInputGeneratorJob
         resultSet.filter('SubFolder === lit(SubFolder.Holdout.id)).as[RelevanceModelInputRecord],
         dateTime,
         numPartitions = Some(partitionsForValHoldout),
-        subFolderKey = Some(conf.subFolder),
+        subFolderKey = Some(subFolder),
         subFolderValue = Some(SubFolder.Holdout.toString),
         format = Some("tfrecord"),
         saveMode = SaveMode.Overwrite
@@ -131,7 +139,7 @@ object RelevanceModelInputGeneratorJob
       resultSet.filter('SubFolder === lit(SubFolder.Train.id)).as[RelevanceModelInputRecord],
       dateTime,
       numPartitions = Some(partitionsForTrain),
-      subFolderKey = Some(conf.subFolder),
+      subFolderKey = Some(subFolder),
       subFolderValue = Some(SubFolder.Train.toString),
       format = Some("tfrecord"),
       saveMode = SaveMode.Overwrite
@@ -142,7 +150,7 @@ object RelevanceModelInputGeneratorJob
       resultSet.filter('SubFolder === lit(SubFolder.Val.id)).as[RelevanceModelInputRecord],
       dateTime,
       numPartitions = Some(partitionsForValHoldout),
-      subFolderKey = Some(conf.subFolder),
+      subFolderKey = Some(subFolder),
       subFolderValue = Some(SubFolder.Val.toString),
       format = Some("cbuffer"),
       saveMode = SaveMode.Overwrite
@@ -153,7 +161,7 @@ object RelevanceModelInputGeneratorJob
         resultSet.filter('SubFolder === lit(SubFolder.Holdout.id)).as[RelevanceModelInputRecord],
         dateTime,
         numPartitions = Some(partitionsForValHoldout),
-        subFolderKey = Some(conf.subFolder),
+        subFolderKey = Some(subFolder),
         subFolderValue = Some(SubFolder.Holdout.toString),
         format = Some("cbuffer"),
         saveMode = SaveMode.Overwrite
@@ -164,7 +172,7 @@ object RelevanceModelInputGeneratorJob
       resultSet.filter('SubFolder === lit(SubFolder.Train.id)).as[RelevanceModelInputRecord],
       dateTime,
       numPartitions = Some(partitionsForTrain),
-      subFolderKey = Some(conf.subFolder),
+      subFolderKey = Some(subFolder),
       subFolderValue = Some(SubFolder.Train.toString),
       format = Some("cbuffer"),
       saveMode = SaveMode.Overwrite
@@ -176,7 +184,9 @@ object RelevanceModelInputGeneratorJob
     dateTime = conf.runDate.atStartOfDay()
 
     val start = System.currentTimeMillis()
-    val optInSeedGenerator = OptInSeedFactory.fromString(conf.optInSeedType, conf.optInSeedFilterExpr)
+    val optInSeedFilterExpr = config.getString("optInSeedFilterExpr", "true")
+
+    val optInSeedGenerator = OptInSeedFactory.fromString(conf.optInSeedType, optInSeedFilterExpr)
     val optInSeed = optInSeedGenerator.generate(conf)
     val count = optInSeed.count()
     val rawBidReq = readBidImpressionWithNecessary(conf)
