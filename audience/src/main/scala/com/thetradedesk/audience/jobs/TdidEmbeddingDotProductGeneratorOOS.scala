@@ -1,15 +1,14 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.datasets.{CrossDeviceVendor, DataSource}
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.{_isDeviceIdSampledNPercent, isDeviceIdSampled1Percent}
-import com.thetradedesk.audience.{date, dateFormatter, shouldTrackTDID, ttdEnv}
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.isDeviceIdSampled1Percent
-import com.thetradedesk.audience.shouldTrackTDID
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.{_isDeviceIdSampledNPercent}
+import com.thetradedesk.audience.{date, shouldTrackTDID}
 import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.datasets.sources.AdvertiserDataSet
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-import org.apache.spark.sql.{DataFrame, Row, SaveMode}
+import org.apache.spark.sql.{DataFrame, SaveMode}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{ArrayType, FloatType, IntegerType}
 
@@ -88,9 +87,13 @@ class TdidEmbeddingDotProductGeneratorOOS {
 
     val df_sensitive_synthetic_ids = spark.read.parquet(policy_table_path)
       .where('Source === lit(DataSource.Seed.id) && 'CrossDeviceVendorId === lit(CrossDeviceVendor.None.id) && 'Tag.isin(2, 4) && 'ExtendedActiveSize >= lit(2000))
-      .select('SourceId.as("SeedId"), 'SyntheticId.cast(IntegerType).as("SyntheticId"), 'IsSensitive, 'ExtendedActiveSize)
+      .join(AdvertiserDataSet().readDate(date).select('PartnerId, 'AdvertiserId), Seq("AdvertiserId"))
+      .select('SourceId.as("SeedId"), 'SyntheticId.cast(IntegerType).as("SyntheticId"), 'IsSensitive, 'ExtendedActiveSize, 'PartnerId, 'AdvertiserId)
 
     val seedEmb = df_seed_emb.drop("IsSensitive").withColumn("SyntheticId", 'SyntheticId.cast(IntegerType)).join(df_sensitive_synthetic_ids, Seq("SyntheticId"), "inner")
+      // order seed embedding by (PartnerId, AdvertiserId) to speed up ADPB team's processing
+      .orderBy('PartnerId, 'AdvertiserId)
+      .drop("PartnerId", "AdvertiserId")
       .withColumn("ActiveSize", col("ExtendedActiveSize"))
       .select('SeedId, 'SyntheticId, 'IsSensitive, 'Embedding, 'ActiveSize, 'ExtendedActiveSize,'PopulationRelevance, 'MinScore, 'MaxScore,
         coalesce('LocationFactor, lit(loc_factor)).alias("LocationFactor"),
