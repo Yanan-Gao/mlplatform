@@ -58,25 +58,25 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
     if (runtimeConfigBasePath.endsWith("/")) runtimeConfigBasePath else runtimeConfigBasePath + "/"
 
   private final def execute(): Unit = {
-    val successPath = runtimePathBase + "_SUCCESS"
-    val runningPath = runtimePathBase + "_RUNNING"
-    if (withRetry("check success marker on S3") {
-          S3Utils.exists(successPath)
-        }) {
-      logger.info(s"Success marker exists at $successPath; skipping execution")
-      return
-    }
-    if (withRetry("check running marker on S3") {
-          S3Utils.exists(runningPath)
-        }) {
-      val msg = s"Running marker exists at $runningPath; aborting job"
-      logger.error(msg)
-      throw new IllegalStateException(msg)
-    }
-    withRetry("write running marker to S3") {
-      S3Utils.writeToS3(runningPath, experimentName.getOrElse(""))
-    }
-    logger.info(s"Wrote running marker to $runningPath")
+//    val successPath = runtimePathBase + "_SUCCESS"
+//    val runningPath = runtimePathBase + "_RUNNING"
+//    if (withRetry("check success marker on S3") {
+//          S3Utils.exists(successPath)
+//        }) {
+//      logger.info(s"Success marker exists at $successPath; skipping execution")
+//      return
+//    }
+//    if (withRetry("check running marker on S3") {
+//          S3Utils.exists(runningPath)
+//        }) {
+//      val msg = s"Running marker exists at $runningPath; aborting job"
+//      logger.error(msg)
+//      throw new IllegalStateException(msg)
+//    }
+//    withRetry("write running marker to S3") {
+//      S3Utils.writeToS3(runningPath, experimentName.getOrElse(""))
+//    }
+//    logger.info(s"Wrote running marker to $runningPath")
 
     val yamlPaths = withRetry("list YAML files from S3") {
       S3Utils.listYamlFiles(runtimePathBase)
@@ -91,10 +91,10 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
     }
     runETLPipeline()
     // Write a _SUCCESS file to signal job completion with experiment name
-    withRetry("write success marker to S3") {
-      S3Utils.writeToS3(successPath, experimentName.getOrElse(""))
-    }
-    logger.info(s"Wrote success marker to $successPath")
+//    withRetry("write success marker to S3") {
+//      S3Utils.writeToS3(successPath, experimentName.getOrElse(""))
+//    }
+//    logger.info(s"Wrote success marker to $successPath")
   }
 
   /** Read a YAML file from S3 into a map. */

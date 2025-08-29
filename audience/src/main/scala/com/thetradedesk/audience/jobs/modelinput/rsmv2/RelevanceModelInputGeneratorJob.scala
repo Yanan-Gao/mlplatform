@@ -65,7 +65,6 @@ object RelevanceModelInputGeneratorJob
   var conf: RelevanceModelInputGeneratorJobConfig = _
 
   def generateTrainingDataset(bidImpSideData: Dataset[BidSideDataRecord], seedLabelSideData: Dataset[SeedLabelSideDataRecord]) = {
-
     logger.info("==== bidImpSideData schema ====\n" + bidImpSideData.schema.treeString)
     logger.info("==== seedLabelSideData schema ====\n" + seedLabelSideData.schema.treeString)
 
