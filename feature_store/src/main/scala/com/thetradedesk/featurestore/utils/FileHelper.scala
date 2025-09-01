@@ -97,17 +97,19 @@ object FileHelper {
   }
 
   def appendVersionToCurrentFile(filePath: String, version: String, ensureVersionIncrease: Boolean, truncateVersion: Int = 30)(implicit sparkSession: SparkSession): Boolean = {
-    if (version.isEmpty) {
+    println(s"updating current file version $version to $filePath")
+    if (version.isEmpty || truncateVersion <= 0) {
       false
     } else if (fileExists(filePath)) {
-      val currentVersions = readStringFromFile(filePath).trim.split("\n")
-      if (ensureVersionIncrease && currentVersions(0) >= version) {
+      val currentVersions = readStringFromFile(filePath).trim.split("\n").sorted.distinct.reverse
+      // if the version is smaller than the last version to be kept in the dataset when the size of versions is equal to truncateVersion, just ignore it
+      if ((ensureVersionIncrease && currentVersions.head >= version) || (currentVersions.length >= truncateVersion && version <= currentVersions(truncateVersion - 1))) {
         false
       } else {
         if (currentVersions.contains(version)) {
           true
         } else {
-          val newVersions = (version +: currentVersions).take(truncateVersion).mkString(",")
+          val newVersions = (version +: currentVersions).sorted.reverse.take(truncateVersion).mkString(",")
           writeStringToFile(filePath, newVersions)
           true
         }

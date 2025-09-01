@@ -37,7 +37,7 @@ case class UserFeatureMergeDefinition(
 
   lazy val dataSetPath: String = s"${datasetPrefix}/${ttdEnv}/${datasetName}/v=${datasetVersion}"
   private lazy val dataMetaPath: String = s"${datasetPrefix}/${ttdEnv}/${datasetName}_meta/v=${datasetVersion}"
-  lazy val dataMetaSchemaPath: String = s"${datasetPrefix}/${ttdEnv}/${datasetName}_meta/v=${datasetVersion}/_CURRENT"
+  lazy val dataMetaSchemaPath: String = PathUtils.concatPath(rootPath, s"${datasetPrefix}/${ttdEnv}/${datasetName}_meta/v=${datasetVersion}/_CURRENT")
   def versionStr(dateTime: LocalDateTime): String = UserFeatureMergeDefinition.dateFormatter.format(dateTime)
 
   private def metaPath(dateTime: LocalDateTime): String = PathUtils.concatPath(rootPath, PathUtils.concatPath(dataMetaPath, versionStr(dateTime)))
