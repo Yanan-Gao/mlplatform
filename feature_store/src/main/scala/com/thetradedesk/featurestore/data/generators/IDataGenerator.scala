@@ -1,7 +1,6 @@
 package com.thetradedesk.featurestore.data.generators
 
 import com.thetradedesk.featurestore.configs.{DataType, FeatureDefinition, UserFeatureMergeDefinition}
-import com.thetradedesk.featurestore.constants.FeatureConstants
 import com.thetradedesk.featurestore.constants.FeatureConstants.FeatureDataKey
 import com.thetradedesk.featurestore.data.loader.FeatureDataLoader
 import com.thetradedesk.featurestore.data.metrics.UserFeatureMergeJobTelemetry
@@ -38,6 +37,7 @@ abstract class IDataGenerator(implicit sparkSession: SparkSession, telemetry: Us
     println("feature schema json:")
     println(featureSchemaJson)
     FileHelper.writeStringToFile(userFeatureMergeDefinition.schemaPath(dateTime), featureSchemaJson)(spark)
+    FileHelper.appendVersionToCurrentFile(userFeatureMergeDefinition.dataMetaSchemaPath, userFeatureMergeDefinition.versionStr(dateTime), ensureVersionIncrease = false)(spark)
 
     val cachedResult = result.cache()
 
