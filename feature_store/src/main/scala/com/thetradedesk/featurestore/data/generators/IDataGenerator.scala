@@ -37,7 +37,9 @@ abstract class IDataGenerator(implicit sparkSession: SparkSession, telemetry: Us
     println("feature schema json:")
     println(featureSchemaJson)
     FileHelper.writeStringToFile(userFeatureMergeDefinition.schemaPath(dateTime), featureSchemaJson)(spark)
-    FileHelper.appendVersionToCurrentFile(userFeatureMergeDefinition.dataMetaSchemaPath, userFeatureMergeDefinition.versionStr(dateTime), ensureVersionIncrease = false)(spark)
+    if (!FileHelper.appendVersionToCurrentFile(userFeatureMergeDefinition.dataMetaSchemaPath, userFeatureMergeDefinition.versionStr(dateTime), ensureVersionIncrease = false)(spark)) {
+      throw new RuntimeException("feature schema _CURRENT file is not updated successfully")
+    }
 
     val cachedResult = result.cache()
 
