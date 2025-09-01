@@ -40,7 +40,7 @@ object FileHelper {
     FSUtils.fileExists(path)
   }
 
-  def copyFile(srcFile: String, destFile: String, overwrite: Boolean = true, deleteSrcOnSuccess : Boolean = false) (implicit sparkSession: SparkSession) : Boolean = {
+  def copyFile(srcFile: String, destFile: String, overwrite: Boolean = true, deleteSrcOnSuccess: Boolean = false)(implicit sparkSession: SparkSession): Boolean = {
     val srcPath = databricksHack(srcFile)
     val destPath = databricksHack(destFile)
     FSUtils.copyFile(srcPath, destPath, overwrite, deleteSrcOnSuccess)
@@ -93,6 +93,28 @@ object FileHelper {
       "/dbfs/" + path.substring("dbfs:/".length)
     } else {
       path
+    }
+  }
+
+  def appendVersionToCurrentFile(filePath: String, version: String, ensureVersionIncrease: Boolean, truncateVersion: Int = 30)(implicit sparkSession: SparkSession): Boolean = {
+    if (version.isEmpty) {
+      false
+    } else if (fileExists(filePath)) {
+      val currentVersions = readStringFromFile(filePath).trim.split("\n")
+      if (ensureVersionIncrease && currentVersions(0) >= version) {
+        false
+      } else {
+        if (currentVersions.contains(version)) {
+          true
+        } else {
+          val newVersions = (version +: currentVersions).take(truncateVersion).mkString(",")
+          writeStringToFile(filePath, newVersions)
+          true
+        }
+      }
+    } else {
+      writeStringToFile(filePath, version)
+      true
     }
   }
 }
