@@ -33,6 +33,8 @@ object HadesCampaignBufferAdjustmentsTransform {
   val MinimumFloorBuffer = 0.01
   val MaximumFloorBuffer = 1
 
+  val DOOH_SPEND_PCT_THRESHOLD = 50.0
+
   def cdf(mu: Double, sigma: Double, x: Double): Double = {
     //val a = (math.log(x) - mu) / math.sqrt(2 * math.pow(sigma, 2))
     val a = (math.log(x) - mu) / (math.sqrt(2) * sigma)
@@ -72,6 +74,7 @@ object HadesCampaignBufferAdjustmentsTransform {
     bidData
       // Exclude rare cases with initial bids below the floor to avoid skewing the median (this includes BBF Gauntlet bids)
       .filter(col("FloorPrice") < col("InitialBid"))
+      .filter($"Channel" =!= lit("Digital Out Of Home"))
       .join(broadcast(filteredCampaigns), Seq("CampaignId"), "inner")
       .withColumn("MaxBidCpmInBucks", coalesce(col("MaxBidCpmInBucks"), col("InitialBid"))) // Null check
       .withColumn("Market", // Define Market only using AuctionType and if has DealId
@@ -131,7 +134,8 @@ object HadesCampaignBufferAdjustmentsTransform {
     val campaignUnderdeliveryData = campaignThrottleData
       .groupBy("CampaignId")
       .agg(
-        max($"UnderdeliveryFraction").as("UnderdeliveryFraction")
+        max($"UnderdeliveryFraction").as("UnderdeliveryFraction"),
+        max($"OutOfHomeSpendPct").as("OutOfHomeSpendPct")
       )
 
     campaignBidData
@@ -204,7 +208,8 @@ object HadesCampaignBufferAdjustmentsTransform {
       .groupBy("CampaignId")
       .agg(
         first($"IsValuePacing").as("IsValuePacing"),
-        max($"UnderdeliveryFraction").as("UnderdeliveryFraction")
+        max($"UnderdeliveryFraction").as("UnderdeliveryFraction"),
+        min($"OutOfHomeSpendPct").as("OutOfHomeSpendPct")
       )
 
     // Campaigns with no prior adjustments and no underdelivery data
@@ -227,8 +232,10 @@ object HadesCampaignBufferAdjustmentsTransform {
         col("IsValuePacing") &&
           (col("TestBucket") >= (lit(bucketCount) * MinTestBucketIncluded) && col("TestBucket") < (lit(bucketCount) * MaxTestBucketExcluded))
       )
+      .filter($"OutOfHomeSpendPct" <= lit(DOOH_SPEND_PCT_THRESHOLD))
       .select("CampaignId")
       .withColumn("CampaignType", lit(CampaignType_NewCampaign))
+
 
     val yesterdaysCampaigns = adjustedCampaigns
       .withColumn("CampaignType", lit(CampaignType_AdjustedCampaign))
@@ -238,6 +245,7 @@ object HadesCampaignBufferAdjustmentsTransform {
       .union(newUnderDeliveringCampaigns)
       .union(yesterdaysCampaigns)
       .join(campaignAdjustmentsPacing, Seq("CampaignId"), "left") // Join to get Plutus Backoff value to use for Strategy in calculation
+      .withColumn("CampaignPCAdjustment", coalesce(col("CampaignPCAdjustment"), lit(1.0)))
       .withColumn("Actual_BBF_FloorBuffer", lit(platformWideBuffer))
       .selectAs[CampaignMetaData]
       .cache()
@@ -512,7 +520,7 @@ object HadesCampaignBufferAdjustmentsTransform {
                 campaignAdjustmentsPacingData: Dataset[CampaignAdjustmentsPacingSchema]
                ): Dataset[HadesBufferAdjustmentSchema] = {
 
-    val yesterdaysData = (try {
+    val yesterdaysDataPrelim = (try {
       HadesCampaignBufferAdjustmentsDataset.readLatestDataUpToIncluding(
         date.minusDays(1),
         env = envForReadInternal,
@@ -532,6 +540,18 @@ object HadesCampaignBufferAdjustmentsTransform {
       .cache()
 
     val pcResultsMergedData = PcResultsMergedDataset.readDate(env = envForRead, date = date, nullIfColAbsent = true)
+
+    val campaignsToExclude = campaignUnderdeliveryData
+      .groupBy("CampaignId")
+      .agg(
+        first($"IsValuePacing").as("IsValuePacing"),
+        max($"UnderdeliveryFraction").as("UnderdeliveryFraction"),
+        min($"OutOfHomeSpendPct").as("OutOfHomeSpendPct")
+      ).filter($"OutOfHomeSpendPct" > lit(DOOH_SPEND_PCT_THRESHOLD))
+
+    // Temporary check to remove existing DOOH campaigns
+    val yesterdaysData = yesterdaysDataPrelim.join(campaignsToExclude, Seq("CampaignId"), "left_anti")
+      .as[HadesBufferAdjustmentSchema].cache()
 
     val pcOptoutData = PlutusOptoutBidsDataset.readDate(env = envForRead, date = date, nullIfColAbsent = true)
 
