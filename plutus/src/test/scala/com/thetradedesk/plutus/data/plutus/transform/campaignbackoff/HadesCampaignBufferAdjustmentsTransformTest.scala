@@ -3,6 +3,7 @@ package com.thetradedesk.plutus.data.plutus.transform.campaignbackoff
 import com.thetradedesk.TestUtils.TTDSparkTest
 import com.thetradedesk.plutus.data.mockdata.MockData._
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
+import com.thetradedesk.plutus.data.schema.shared.BackoffCommon.Campaign
 import com.thetradedesk.plutus.data.schema.{PcResultsMergedSchema, PlutusLogsData}
 import com.thetradedesk.plutus.data.transform.campaignbackoff.HadesCampaignBufferAdjustmentsTransform._
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -43,5 +44,53 @@ class HadesCampaignBufferAdjustmentsTransformTest extends TTDSparkTest{
     val (hadesAdjustmentsData, _) = identifyAndHandleProblemCampaigns(campaignBBFOptOutRate, yesterdaysData, underdeliveryThreshold)
     val res = hadesAdjustmentsData.collectAsList()
     assert(res.size() == 1)
+  }
+
+  test("Testing GetFilteredCampaigns") {
+    val campaign1 = "newCampaignNoUnderdelivery"
+    val campaign2 = "oldCampaign"
+
+    // Campaign4 and Campaign5 are identical except Campaign5 is DOOH
+    val campaign4 = "newCampaign"
+    val campaign5 = "newCampaignDooh"
+
+    val campaignUnderdeliveryData = Seq(
+      campaignUnderdeliveryForHadesMock(campaignId = campaign2),
+      campaignUnderdeliveryForHadesMock(campaignId = campaign4),
+      campaignUnderdeliveryForHadesMock(campaignId = campaign5, doohSpendPct = 70.0)
+    ).toDS()
+
+    val liveCampaigns = Seq(campaign1)
+      .toDF()
+      .withColumnRenamed("value", "CampaignId")
+      .as[Campaign]
+
+    val yesterdaysCampaigns = Seq(campaign2)
+      .toDF()
+      .withColumnRenamed("value", "CampaignId")
+      .as[Campaign]
+
+    var campaignAdjustments = Seq(
+      PlutusCampaignAdjustment(campaign2, 0.6)
+    ).toDS()
+
+    val filteredCampaigns = getFilteredCampaigns(
+      campaignThrottleData = campaignUnderdeliveryData,
+      campaignAdjustmentsPacing = campaignAdjustments,
+      potentiallyNewCampaigns = liveCampaigns,
+      adjustedCampaigns = yesterdaysCampaigns,
+      0.1
+    )
+
+    // Both campaign3 and campaign5 should be excluded.
+    assert(filteredCampaigns.count() == 3)
+
+    // check the campaigns have expected buffer values
+    val test1 = filteredCampaigns.filter($"CampaignId" === campaign1).collect().head
+    assert(test1.CampaignType == CampaignType_NewCampaign)
+    val test2 = filteredCampaigns.filter($"CampaignId" === campaign2).collect().head
+    assert(test2.CampaignType == CampaignType_AdjustedCampaign)
+    val test3 = filteredCampaigns.filter($"CampaignId" === campaign4).collect().head
+    assert(test3.CampaignType == CampaignType_NewCampaign)
   }
 }

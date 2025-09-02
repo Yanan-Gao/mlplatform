@@ -37,5 +37,6 @@ case class CampaignThrottleMetricSchema(
                                           EstimatedBudgetInUSD: Double,
                                           UnderdeliveryFraction: Double,
                                           IsBaseBidOptimized: String,
-                                          IsProgrammaticGuaranteed: String
-                                        )
+                                          IsProgrammaticGuaranteed: String,
+                                          OutOfHomeSpendPct: BigDecimal
+)
