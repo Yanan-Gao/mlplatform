@@ -109,7 +109,7 @@ object FileHelper {
         if (currentVersions.contains(version)) {
           true
         } else {
-          val newVersions = (version +: currentVersions).sorted.reverse.take(truncateVersion).mkString(",")
+          val newVersions = (version +: currentVersions).sorted.reverse.take(truncateVersion).mkString("\n")
           writeStringToFile(filePath, newVersions)
           true
         }
