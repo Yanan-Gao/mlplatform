@@ -32,6 +32,7 @@ object PostExtraSamplingSeedLabelSideDataGenerator extends SeedLabelSideDataGene
 
     val activeSeedIdFilterUDF = seedIdFilterUDF(optInSeedIds)
     val aggregatedSeed = AggregatedSeedReadableDataset().readPartition(date)
+      .filter(col("IsOriginal").isNotNull)
       .select('TDID, 'idType, activeSeedIdFilterUDF('SeedIds).as("SeedIds"))
       .as[RSMV2AggregatedSeedRecord]
 

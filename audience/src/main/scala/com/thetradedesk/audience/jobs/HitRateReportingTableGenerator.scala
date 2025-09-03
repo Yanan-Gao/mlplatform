@@ -45,6 +45,7 @@ abstract class HitRateTableGenerator(prometheus: PrometheusClient) {
 
     val seedData = AggregatedSeedReadableDataset()
       .readPartition(date)(spark)
+      .filter(col("IsOriginal").isNotNull)
       .select('TDID
         , 'idType
         , activeSeedIdFilterUDF('SeedIds).as("SeedIds")

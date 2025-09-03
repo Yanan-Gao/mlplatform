@@ -68,6 +68,7 @@ class RelevanceOnlineBiddingDataGenerator(prometheus: PrometheusClient,
 
     val aggSeed = AggregatedSeedReadableDataset()
       .readPartition(date)(spark)
+      .filter(col("IsOriginal").isNotNull)
       .withColumn("SeedIds", activeSeedIdFilterUDF('SeedIds))
       .withColumn("PersonGraphSeedIds", activeSeedIdFilterUDF('PersonGraphSeedIds))
       .withColumn("HouseholdGraphSeedIds", activeSeedIdFilterUDF('HouseholdGraphSeedIds))

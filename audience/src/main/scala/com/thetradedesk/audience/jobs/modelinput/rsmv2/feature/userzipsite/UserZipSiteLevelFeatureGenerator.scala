@@ -25,6 +25,7 @@ object UserZipSiteLevelFeatureGenerator extends UserZipSiteLevelFeatureGetter {
     val mapping = RSMV2SharedFunction.seedIdToSyntheticIdMapping(seedIdToSyntheticId)
 
     val aggregatedSeed = AggregatedSeedReadableDataset().readPartition(date)
+      .filter(col("IsOriginal").isNotNull)
       .withColumn("SyntheticIds", mapping(col("SeedIds")))
       .select("TDID", "SyntheticIds")
 
