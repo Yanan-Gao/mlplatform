@@ -1,6 +1,6 @@
 package com.thetradedesk.confetti
 
-import com.thetradedesk.confetti.utils.{CloudWatchLoggerFactory, Logger, LoggerFactory, MapConfigReader, S3Utils}
+import com.thetradedesk.confetti.utils.{CloudWatchLoggerFactory, Logger, LoggerFactory, MapConfigReader}
 import com.thetradedesk.confetti.RuntimeConfigLoader
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.yaml.snakeyaml.Yaml
@@ -75,15 +75,8 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
 //    }
 //    logger.info(s"Wrote running marker to $runningPath")
 
-    val runtimePathBase = new RuntimeConfigLoader(confettiEnv, experimentName, groupName, jobName)
+    val (_, config) = new RuntimeConfigLoader(confettiEnv, experimentName, groupName, jobName)
       .prepareRuntimeConfig(Map.empty)
-
-    val yamlPaths = withRetry("list YAML files from S3") {
-      S3Utils.listYamlFiles(runtimePathBase)
-    }
-    val config = yamlPaths
-      .map(readYaml)
-      .foldLeft(Map.empty[String, String])(_ ++ _)
     logger.info(new Yaml().dump(config.asJava))
     jobConfig = Some(new MapConfigReader(config, logger).as[C])
     if (jobConfig.isEmpty) {
@@ -95,25 +88,6 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
 //      S3Utils.writeToS3(successPath, experimentName.getOrElse(""))
 //    }
 //    logger.info(s"Wrote success marker to $successPath")
-  }
-
-  /** Read a YAML file from S3 into a map. */
-  private def readYaml(path: String): Map[String, String] = {
-    val yamlStr = withRetry(s"read YAML from $path") {
-      S3Utils.readFromS3(path)
-    }
-    val yaml = new Yaml()
-    val javaMap = yaml.load[java.util.Map[String, Any]](yamlStr)
-    javaMap.asScala.map { case (k, v) => k -> v.toString }.toMap
-  }
-
-  /** Convert the map back to YAML and write it to the runtime config location. */
-  private def writeYaml(config: Map[String, String], s3Path: String): Unit = {
-    val yaml = new Yaml()
-    val rendered = yaml.dump(config.asJava)
-    withRetry(s"write YAML to $s3Path") {
-      S3Utils.writeToS3(s3Path, rendered)
-    }
   }
 
   /** Retry the given block up to 5 times with simple backoff and final error logging. */
