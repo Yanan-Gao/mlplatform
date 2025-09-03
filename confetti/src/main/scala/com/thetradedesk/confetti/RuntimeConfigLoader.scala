@@ -19,9 +19,15 @@ class RuntimeConfigLoader(
     logger: Logger
 ) {
 
+  // Build the template directory once and log it for easier debugging
+  private lazy val templateDir: String = {
+    val dir = buildTemplateDir()
+    logger.info(s"Using template directory: $dir")
+    dir
+  }
+
   /** Render the identity config and return the runtime base path without writing anything. */
   def renderIdentityConfig(runtimeVars: Map[String, String]): (String, Map[String, String]) = {
-    val templateDir = buildTemplateDir()
     val identityPath = templateDir + "identity_config.yml"
     val identityConfig = readYaml(identityPath)
     val renderedIdentity = renderRuntimeVariables(identityConfig, runtimeVars)
@@ -30,6 +36,7 @@ class RuntimeConfigLoader(
     val renderedIdentityStr = yaml.dump(renderedIdentity.asJava)
     val hash = HashUtils.sha256Base64(renderedIdentityStr)
     val runtimeBase = buildRuntimeBase(hash)
+    logger.info(s"Rendered identity config at $identityPath to runtime base $runtimeBase")
     (runtimeBase, renderedIdentity)
   }
 
@@ -39,9 +46,10 @@ class RuntimeConfigLoader(
       identityConfig: Map[String, String],
       runtimeVars: Map[String, String]
   ): Map[String, String] = {
-    val templateDir = buildTemplateDir()
-    val additionalConfigs = uploadAdditionalConfigs(templateDir, runtimeBase, runtimeVars)
-    identityConfig ++ additionalConfigs
+    val additionalConfigs = uploadAdditionalConfigs(runtimeBase, runtimeVars)
+    val merged = identityConfig ++ additionalConfigs
+    logger.info(s"Loaded ${merged.size} runtime config entries to $runtimeBase")
+    merged
   }
 
   /** Check for existing runs via S3 markers and perform fast-pass copy when appropriate. */
@@ -82,11 +90,11 @@ class RuntimeConfigLoader(
 
   /** Upload all configs other than the identity config to the runtime path. */
   private def uploadAdditionalConfigs(
-      templateDir: String,
       runtimeBase: String,
       runtimeVars: Map[String, String]
   ): Map[String, String] = {
     val templates = S3Utils.listYamlFiles(templateDir)
+    logger.info(s"Uploading ${templates.size - 1} additional configs to $runtimeBase")
     templates
       .filterNot(_.endsWith("identity_config.yml"))
       .map { path =>
@@ -130,7 +138,6 @@ class RuntimeConfigLoader(
       runtimeBase: String,
       runtimeVars: Map[String, String]
   ): Unit = {
-    val templateDir = buildTemplateDir()
     val outTemplatePath = templateDir + "output_config.yml"
     val outTemplate = readYaml(outTemplatePath)
     val currentCfg = renderRuntimeVariables(outTemplate, runtimeVars)
