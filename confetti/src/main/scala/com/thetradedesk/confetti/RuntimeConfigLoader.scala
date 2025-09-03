@@ -1,6 +1,6 @@
 package com.thetradedesk.confetti
 
-import com.thetradedesk.confetti.utils.{HashUtils, S3Utils}
+import com.thetradedesk.confetti.utils.{HashUtils, Logger, S3Utils}
 import org.yaml.snakeyaml.Yaml
 
 import scala.collection.JavaConverters._
@@ -13,14 +13,8 @@ import scala.collection.JavaConverters._
  */
 class RuntimeConfigLoader(env: String, experimentName: Option[String], groupName: String, jobName: String) {
 
-  /** Render templates and upload them to a hashed runtime path.
-   *
-   * @param runtimeVars variables used to render template placeholders of the
-   *                    form `{{var}}`
-   * @return tuple containing the S3 prefix where rendered runtime configs were written
-   *         and the combined rendered configuration in memory
-   */
-  def prepareRuntimeConfig(runtimeVars: Map[String, String]): (String, Map[String, String]) = {
+  /** Render the identity config and return the runtime base path without writing anything. */
+  def renderIdentityConfig(runtimeVars: Map[String, String]): (String, Map[String, String]) = {
     val templateDir = buildTemplateDir()
     val identityPath = templateDir + "identity_config.yml"
     val identityConfig = readYaml(identityPath)
@@ -31,12 +25,59 @@ class RuntimeConfigLoader(env: String, experimentName: Option[String], groupName
     val renderedIdentityStr = yaml.dump(renderedIdentity.asJava)
     val hash = HashUtils.sha256Base64(renderedIdentityStr)
     val runtimeBase = buildRuntimeBase(hash)
-    val runtimeCfgKey = runtimeBase + "runtime_config.yml"
-    S3Utils.writeToS3(runtimeCfgKey, renderedIdentityStr)
+    (runtimeBase, renderedIdentity)
+  }
 
+  /** Write all runtime configs to S3 under the given runtime base. */
+  def writeRuntimeConfigs(
+      runtimeBase: String,
+      identityConfig: Map[String, String],
+      runtimeVars: Map[String, String]
+  ): Map[String, String] = {
+    val yaml = new Yaml()
+    val runtimeCfgKey = runtimeBase + "runtime_config.yml"
+    S3Utils.writeToS3(runtimeCfgKey, yaml.dump(identityConfig.asJava))
+
+    val templateDir = buildTemplateDir()
     val additionalConfigs = uploadAdditionalConfigs(templateDir, runtimeBase, runtimeVars)
-    val configs = renderedIdentity ++ additionalConfigs
-    (runtimeBase, configs)
+    identityConfig ++ additionalConfigs
+  }
+
+  /** Check for existing runs via S3 markers and perform fast-pass copy when appropriate. */
+  def checkExistingRun(
+      runtimeBase: String,
+      runtimeVars: Map[String, String],
+      logger: Logger
+  ): Boolean = {
+    val successPath = runtimeBase + "_SUCCESS"
+    val runningPath = runtimeBase + "_RUNNING"
+
+    if (withRetry("check success marker on S3") { S3Utils.exists(successPath) }) {
+      logger.info(s"Success marker exists at $successPath; skipping execution")
+      copyPreviousOutputs(runtimeBase, runtimeVars, logger)
+      true
+    } else if (withRetry("check running marker on S3") { S3Utils.exists(runningPath) }) {
+      logger.warn(s"Running marker exists at $runningPath; waiting for completion")
+      val timeoutMillis = 2 * 60 * 60 * 1000L // 2 hours
+      val pollIntervalMillis = 30000L
+      val startTime = System.currentTimeMillis()
+      var done = false
+      while (!done && System.currentTimeMillis() - startTime < timeoutMillis) {
+        Thread.sleep(pollIntervalMillis)
+        done = withRetry("check success marker on S3") { S3Utils.exists(successPath) }
+      }
+      if (done) {
+        logger.info(s"Success marker exists at $successPath; skipping execution")
+        copyPreviousOutputs(runtimeBase, runtimeVars, logger)
+        true
+      } else {
+        val msg = s"Running marker exists at $runningPath; aborting job after timeout"
+        logger.error(msg)
+        throw new IllegalStateException(msg)
+      }
+    } else {
+      false
+    }
   }
 
   /** Upload all configs other than the identity config to the runtime path. */
@@ -85,6 +126,34 @@ class RuntimeConfigLoader(env: String, experimentName: Option[String], groupName
     }
   }
 
+  /** Copy previous job outputs to the current output paths. */
+  private def copyPreviousOutputs(
+      runtimeBase: String,
+      runtimeVars: Map[String, String],
+      logger: Logger
+  ): Unit = {
+    val templateDir = buildTemplateDir()
+    val outTemplatePath = templateDir + "output_config.yml"
+    val outTemplate = readYaml(outTemplatePath)
+    val currentCfg = renderRuntimeVariables(outTemplate, runtimeVars)
+    checkForUnresolvedVariables(currentCfg)
+    val prevCfgPath = runtimeBase + "output_config.yml"
+    val prevCfg = readYaml(prevCfgPath)
+    if (currentCfg.keySet != prevCfg.keySet) {
+      throw new IllegalArgumentException("Output config keys do not match previous run")
+    }
+    prevCfg.foreach { case (k, prevPath) =>
+      val currPath = currentCfg(k)
+      try {
+        val data = S3Utils.readFromS3(prevPath)
+        S3Utils.writeToS3(currPath, data)
+      } catch {
+        case e: Throwable =>
+          logger.warn(s"Failed to copy $prevPath to $currPath: ${e.getMessage}")
+      }
+    }
+  }
+
   private def buildTemplateDir(): String = {
     val expDir = experimentName.filter(_.nonEmpty).map(n => s"$n/").getOrElse("")
     s"s3://thetradedesk-mlplatform-us-east-1/configdata/confetti/configs/$env/$expDir$groupName/$jobName/"
@@ -94,5 +163,25 @@ class RuntimeConfigLoader(env: String, experimentName: Option[String], groupName
     val expDir = experimentName.filter(_.nonEmpty).map(n => s"$n/").getOrElse("")
     s"s3://thetradedesk-mlplatform-us-east-1/configdata/confetti/runtime/$env/$expDir$groupName/$jobName/$hash/"
   }
+
+  /** Retry helper for S3 operations. */
+  private def withRetry[T](operation: String, retries: Int = 5)(block: => T): T = {
+    var attempt = 0
+    var lastError: Throwable = null
+    while (attempt < retries) {
+      try {
+        return block
+      } catch {
+        case e: Throwable =>
+          lastError = e
+          attempt += 1
+          if (attempt < retries) {
+            Thread.sleep(1000L * attempt)
+          }
+      }
+    }
+    throw lastError
+  }
 }
+
 
