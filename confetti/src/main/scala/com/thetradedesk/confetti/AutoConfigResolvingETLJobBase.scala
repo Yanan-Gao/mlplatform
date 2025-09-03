@@ -66,7 +66,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
         return
       }
 
-      val config = loader.writeRuntimeConfigs(runtimePathBase, identityCfg, runtimeVars)
+      val config = loader.loadRuntimeConfigs(runtimePathBase, identityCfg, runtimeVars)
 
       val successPath = runtimePathBase + "_SUCCESS"
       val runningPath = runtimePathBase + "_RUNNING"
