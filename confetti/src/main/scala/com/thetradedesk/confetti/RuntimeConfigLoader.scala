@@ -17,9 +17,10 @@ class RuntimeConfigLoader(env: String, experimentName: Option[String], groupName
    *
    * @param runtimeVars variables used to render template placeholders of the
    *                    form `{{var}}`
-   * @return the S3 prefix where rendered runtime configs were written
+   * @return tuple containing the S3 prefix where rendered runtime configs were written
+   *         and the combined rendered configuration in memory
    */
-  def prepareRuntimeConfig(runtimeVars: Map[String, String]): String = {
+  def prepareRuntimeConfig(runtimeVars: Map[String, String]): (String, Map[String, String]) = {
     val templateDir = buildTemplateDir()
     val identityPath = templateDir + "identity_config.yml"
     val identityConfig = readYaml(identityPath)
@@ -33,16 +34,21 @@ class RuntimeConfigLoader(env: String, experimentName: Option[String], groupName
     val runtimeCfgKey = runtimeBase + "runtime_config.yml"
     S3Utils.writeToS3(runtimeCfgKey, renderedIdentityStr)
 
-    uploadAdditionalConfigs(templateDir, runtimeBase, runtimeVars)
-    runtimeBase
+    val additionalConfigs = uploadAdditionalConfigs(templateDir, runtimeBase, runtimeVars)
+    val configs = renderedIdentity ++ additionalConfigs
+    (runtimeBase, configs)
   }
 
   /** Upload all configs other than the identity config to the runtime path. */
-  private def uploadAdditionalConfigs(templateDir: String, runtimeBase: String, runtimeVars: Map[String, String]): Unit = {
+  private def uploadAdditionalConfigs(
+      templateDir: String,
+      runtimeBase: String,
+      runtimeVars: Map[String, String]
+  ): Map[String, String] = {
     val templates = S3Utils.listYamlFiles(templateDir)
     templates
       .filterNot(_.endsWith("identity_config.yml"))
-      .foreach { path =>
+      .map { path =>
         val name = path.split("/").last
         val cfg = readYaml(path)
         val rendered = renderRuntimeVariables(cfg, runtimeVars)
@@ -50,7 +56,9 @@ class RuntimeConfigLoader(env: String, experimentName: Option[String], groupName
         val yaml = new Yaml()
         val renderedStr = yaml.dump(rendered.asJava)
         S3Utils.writeToS3(runtimeBase + name, renderedStr)
+        rendered
       }
+      .foldLeft(Map.empty[String, String])(_ ++ _)
   }
 
   /** Read a YAML file from S3 into a map of string values. */
