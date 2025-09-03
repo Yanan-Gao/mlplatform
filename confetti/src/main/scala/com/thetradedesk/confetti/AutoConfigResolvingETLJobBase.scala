@@ -1,6 +1,6 @@
 package com.thetradedesk.confetti
 
-import com.thetradedesk.confetti.utils.{CloudWatchLoggerFactory, Logger, LoggerFactory, MapConfigReader}
+import com.thetradedesk.confetti.utils.{CloudWatchLoggerFactory, Logger, LoggerFactory, MapConfigReader, S3Utils}
 import com.thetradedesk.confetti.RuntimeConfigLoader
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.yaml.snakeyaml.Yaml
@@ -55,28 +55,24 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
 
   /** Executes the job by loading configuration, running the pipeline and writing the results. */
   private final def execute(): Unit = {
-//    val successPath = runtimePathBase + "_SUCCESS"
-//    val runningPath = runtimePathBase + "_RUNNING"
-//    if (withRetry("check success marker on S3") {
-//          S3Utils.exists(successPath)
-//        }) {
-//      logger.info(s"Success marker exists at $successPath; skipping execution")
-//      return
-//    }
-//    if (withRetry("check running marker on S3") {
-//          S3Utils.exists(runningPath)
-//        }) {
-//      val msg = s"Running marker exists at $runningPath; aborting job"
-//      logger.error(msg)
-//      throw new IllegalStateException(msg)
-//    }
-//    withRetry("write running marker to S3") {
-//      S3Utils.writeToS3(runningPath, experimentName.getOrElse(""))
-//    }
-//    logger.info(s"Wrote running marker to $runningPath")
+    val runtimeVars = Map.empty[String, String]
+    val loader = new RuntimeConfigLoader(confettiEnv, experimentName, groupName, jobName)
+    val (runtimePathBase, identityCfg) = loader.renderIdentityConfig(runtimeVars)
 
-    val (_, config) = new RuntimeConfigLoader(confettiEnv, experimentName, groupName, jobName)
-      .prepareRuntimeConfig(Map.empty)
+    if (loader.checkExistingRun(runtimePathBase, runtimeVars, logger)) {
+      return
+    }
+
+    val config = loader.writeRuntimeConfigs(runtimePathBase, identityCfg, runtimeVars)
+
+    val successPath = runtimePathBase + "_SUCCESS"
+    val runningPath = runtimePathBase + "_RUNNING"
+
+    withRetry("write running marker to S3") {
+      S3Utils.writeToS3(runningPath, experimentName.getOrElse(""))
+    }
+    logger.info(s"Wrote running marker to $runningPath")
+
     logger.info(new Yaml().dump(config.asJava))
     jobConfig = Some(new MapConfigReader(config, logger).as[C])
     if (jobConfig.isEmpty) {
@@ -84,10 +80,10 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
     }
     runETLPipeline()
     // Write a _SUCCESS file to signal job completion with experiment name
-//    withRetry("write success marker to S3") {
-//      S3Utils.writeToS3(successPath, experimentName.getOrElse(""))
-//    }
-//    logger.info(s"Wrote success marker to $successPath")
+    withRetry("write success marker to S3") {
+      S3Utils.writeToS3(successPath, experimentName.getOrElse(""))
+    }
+    logger.info(s"Wrote success marker to $successPath")
   }
 
   /** Retry the given block up to 5 times with simple backoff and final error logging. */
