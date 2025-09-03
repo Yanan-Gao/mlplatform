@@ -1,4 +1,14 @@
+include:
+   - component: $CI_SERVER_FQDN/thetradedesk/teams/infsrv/gitlab-cicd-cloudsmith/cloudsmith-auth@1
 
+default:
+  id_tokens:
+    DEVINFRA_SERVITOR_ID_TOKEN:
+      aud: https://servitor.gen.adsrvr.org
+    DEVINFRA_VAULT_ID_TOKEN:
+      aud: https://vault.adsrvr.org
+    SPIFFE_GITLAB_ID_TOKEN:
+      aud: https://spire.prod.adsrvr.net
 variables:
   SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
   KONGMING_JAR_NAME: "kongming.jar"
@@ -32,6 +42,12 @@ kongming:test:
     # we don't need to set up the machine for S3 in order to run tests
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
   script:
+    # fix debian stretch issues before running cloudsmith-auth
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
     - pushd ./kongming/
     - sbt test
     - popd
@@ -47,6 +63,12 @@ kongming:push_bits_merge_request:
         - "kongming/src/main/scala/**/*"
         - "kongming/build.sbt"
   script:
+    # fix debian stretch issues before running cloudsmith-auth
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
     - pushd ./kongming/
     - sbt "set test in assembly := {}" clean assembly
     - DEST=${KONGMING_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
@@ -63,16 +85,22 @@ kongming:push_bits_merge_request:
 
 kongming:generate_pyspark_dev:
   stage: assembly_upload
-  image: production.docker.adsrvr.org/ttd-base/mlops/ttd_pyspark:0.3.0
+  image: docker.pkgs.adsrvr.org/ttd-base-prod/ttd-base/mlops/ttd_pyspark:0.3.0
   needs: [ "kongming:push_bits_merge_request" ]
   dependencies: [ "kongming:push_bits_merge_request" ]
   allow_failure: true
   script:
+    # fix debian stretch issues before running cloudsmith-auth
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
     - pushd ./kongming/
     - python3 -m ttd_pyspark --jar ${KONGMING_ASSEMBLY_OUT} --name kongming_jar --version 0.2.0
     - pushd generated
     - poetry build
-    - poetry publish -r dev_ttd_pypi-upload -u ${PYPI_DEV_USER} -p ${PYPI_DEV_PASS}
+    - poetry publish -r dev_ttd_pypi-upload -u ${TTD_CLOUDSMITHUSERNAME} -p ${TTD_CLOUDSMITHAPITOKEN}
     - popd
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -92,6 +120,12 @@ kongming:push_bits_master_snapshot:
         - "kongming/src/main/scala/**/*"
         - "kongming/build.sbt"
   script:
+    # fix debian stretch issues before running cloudsmith-auth
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
     - pushd ./kongming/
     - sbt "set test in assembly := {}" clean assembly
     - DEST=${KONGMING_SNAPSHOTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
@@ -109,6 +143,12 @@ kongming:deploy_release:
         - "kongming/build.sbt"
       allow_failure: false
   script:
+    # fix debian stretch issues before running cloudsmith-auth
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
     - pushd ./kongming/
     - sbt "set test in assembly := {}" clean assembly
     - aws s3 cp ${KONGMING_ASSEMBLY_OUT} ${KONGMING_PROD_JAR_FOLDER}/${KONGMING_JAR_NAME}
@@ -122,6 +162,11 @@ kongming:deploy_production:
     - if: '$CI_COMMIT_TAG =~ /^(kongming_production_\d{8,8}.*)$/'
       allow_failure: false
   script:
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
     - pushd ./kongming/
     - sbt "set test in assembly := {}" clean assembly
     - aws s3 cp ${KONGMING_ASSEMBLY_OUT} ${KONGMING_PROD_JAR_FOLDER}/${KONGMING_JAR_NAME_PRODUCTION}
@@ -139,6 +184,11 @@ kongming:push_mergerequests_scripts:
         - "kongming/src/main/bash/**/*"
         - "kongming/.gitlab-ci.yml"
   script:
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
     - pushd ./kongming/
     - DEST=${KONGMING_MERGEREQUESTS_SCRIPTS_DEST}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
     - DEST_FIXED=${KONGMING_MERGEREQUESTS_SCRIPTS_DEST}/${CI_COMMIT_REF_NAME}/latest
@@ -156,6 +206,11 @@ kongming:push_prod_scripts:
         - "kongming/src/main/bash/**/*"
         - "kongming/.gitlab-ci.yml"
   script:
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
     - pushd ./kongming/
     - aws s3 cp ${KONGMING_SCRIPTS_SOURCE} ${KONGMING_PROD_SCRIPTS_DEST} --recursive
     - popd
@@ -169,6 +224,11 @@ kongming:push_feature_json:
       changes:
         - "kongming/resources/feature.json"
   script:
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
     - pip3 install awscli
     - aws s3 cp ${KONGMING_FEATURE_JSON_SOURCE} ${KONGMING_FEATURE_JSON_DEST}
     - echo "pushed feature.json to s3"

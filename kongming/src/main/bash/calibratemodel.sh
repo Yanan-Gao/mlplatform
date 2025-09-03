@@ -15,7 +15,7 @@ fi
 
 DOCKER_IMAGE_NAME="ttd-base/audauto/kongming"
 DOCKER_IMAGE_VERSION="release"
-DOCKER_INTERNAL_BASE="internal.docker.adsrvr.org"
+DOCKER_INTERNAL_BASE="docker.pkgs.adsrvr.org/apps-dev"
 DOCKER_USER="svc.emr-docker-ro"
 HOME_HADOOP="/mnt"
 
