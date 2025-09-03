@@ -61,12 +61,14 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
       val runtimeVars = Map.empty[String, String]
       val loader = new RuntimeConfigLoader(confettiEnv, experimentName, groupName, jobName, logger)
       val (runtimePathBase, identityCfg) = loader.renderIdentityConfig(runtimeVars)
+      logger.info(s"Resolved runtime path base $runtimePathBase")
 
       if (loader.checkExistingRun(runtimePathBase, runtimeVars)) {
         return
       }
 
       val config = loader.loadRuntimeConfigs(runtimePathBase, identityCfg, runtimeVars)
+      logger.info("Loaded runtime configuration")
 
       val successPath = runtimePathBase + "_SUCCESS"
       val runningPath = runtimePathBase + "_RUNNING"
