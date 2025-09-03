@@ -1,6 +1,7 @@
 package com.thetradedesk.confetti
 
 import com.thetradedesk.confetti.utils.{CloudWatchLoggerFactory, Logger, LoggerFactory, MapConfigReader, S3Utils}
+import com.thetradedesk.confetti.RuntimeConfigLoader
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.yaml.snakeyaml.Yaml
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -21,7 +22,6 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
   ) extends Serializable {
   @transient lazy val confettiEnv = config.getStringRequired("confettiEnv")
   @transient lazy val experimentName = config.getStringOption("experimentName")
-  @transient lazy val runtimeConfigBasePath = config.getStringRequired("confettiRuntimeConfigBasePath")
 
   /** Optional Prometheus client for pushing metrics. */
   protected val prometheus: Option[PrometheusClient]
@@ -54,9 +54,6 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
   def runETLPipeline(): Unit
 
   /** Executes the job by loading configuration, running the pipeline and writing the results. */
-  private val runtimePathBase: String =
-    if (runtimeConfigBasePath.endsWith("/")) runtimeConfigBasePath else runtimeConfigBasePath + "/"
-
   private final def execute(): Unit = {
 //    val successPath = runtimePathBase + "_SUCCESS"
 //    val runningPath = runtimePathBase + "_RUNNING"
@@ -77,6 +74,9 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
 //      S3Utils.writeToS3(runningPath, experimentName.getOrElse(""))
 //    }
 //    logger.info(s"Wrote running marker to $runningPath")
+
+    val runtimePathBase = new RuntimeConfigLoader(confettiEnv, experimentName, groupName, jobName)
+      .prepareRuntimeConfig(Map.empty)
 
     val yamlPaths = withRetry("list YAML files from S3") {
       S3Utils.listYamlFiles(runtimePathBase)
