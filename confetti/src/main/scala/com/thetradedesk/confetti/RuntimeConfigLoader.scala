@@ -11,7 +11,13 @@ import scala.collection.JavaConverters._
  * derived from the rendered identity configuration so that identical runtime
  * identities map to the same runtime location.
  */
-class RuntimeConfigLoader(env: String, experimentName: Option[String], groupName: String, jobName: String) {
+class RuntimeConfigLoader(
+    env: String,
+    experimentName: Option[String],
+    groupName: String,
+    jobName: String,
+    logger: Logger
+) {
 
   /** Render the identity config and return the runtime base path without writing anything. */
   def renderIdentityConfig(runtimeVars: Map[String, String]): (String, Map[String, String]) = {
@@ -46,15 +52,14 @@ class RuntimeConfigLoader(env: String, experimentName: Option[String], groupName
   /** Check for existing runs via S3 markers and perform fast-pass copy when appropriate. */
   def checkExistingRun(
       runtimeBase: String,
-      runtimeVars: Map[String, String],
-      logger: Logger
+      runtimeVars: Map[String, String]
   ): Boolean = {
     val successPath = runtimeBase + "_SUCCESS"
     val runningPath = runtimeBase + "_RUNNING"
 
     if (withRetry("check success marker on S3") { S3Utils.exists(successPath) }) {
       logger.info(s"Success marker exists at $successPath; skipping execution")
-      copyPreviousOutputs(runtimeBase, runtimeVars, logger)
+      copyPreviousOutputs(runtimeBase, runtimeVars)
       true
     } else if (withRetry("check running marker on S3") { S3Utils.exists(runningPath) }) {
       logger.warn(s"Running marker exists at $runningPath; waiting for completion")
@@ -68,7 +73,7 @@ class RuntimeConfigLoader(env: String, experimentName: Option[String], groupName
       }
       if (done) {
         logger.info(s"Success marker exists at $successPath; skipping execution")
-        copyPreviousOutputs(runtimeBase, runtimeVars, logger)
+        copyPreviousOutputs(runtimeBase, runtimeVars)
         true
       } else {
         val msg = s"Running marker exists at $runningPath; aborting job after timeout"
@@ -129,8 +134,7 @@ class RuntimeConfigLoader(env: String, experimentName: Option[String], groupName
   /** Copy previous job outputs to the current output paths. */
   private def copyPreviousOutputs(
       runtimeBase: String,
-      runtimeVars: Map[String, String],
-      logger: Logger
+      runtimeVars: Map[String, String]
   ): Unit = {
     val templateDir = buildTemplateDir()
     val outTemplatePath = templateDir + "output_config.yml"

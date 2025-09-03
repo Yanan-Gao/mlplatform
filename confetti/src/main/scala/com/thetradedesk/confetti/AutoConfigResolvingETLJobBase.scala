@@ -2,6 +2,7 @@ package com.thetradedesk.confetti
 
 import com.thetradedesk.confetti.utils.{CloudWatchLoggerFactory, Logger, LoggerFactory, MapConfigReader, S3Utils}
 import com.thetradedesk.confetti.RuntimeConfigLoader
+import org.apache.spark.sql.SparkSession
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.yaml.snakeyaml.Yaml
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
@@ -55,35 +56,40 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
 
   /** Executes the job by loading configuration, running the pipeline and writing the results. */
   private final def execute(): Unit = {
-    val runtimeVars = Map.empty[String, String]
-    val loader = new RuntimeConfigLoader(confettiEnv, experimentName, groupName, jobName)
-    val (runtimePathBase, identityCfg) = loader.renderIdentityConfig(runtimeVars)
+    implicit val spark: SparkSession = SparkSession.builder().getOrCreate()
+    try {
+      val runtimeVars = Map.empty[String, String]
+      val loader = new RuntimeConfigLoader(confettiEnv, experimentName, groupName, jobName, logger)
+      val (runtimePathBase, identityCfg) = loader.renderIdentityConfig(runtimeVars)
 
-    if (loader.checkExistingRun(runtimePathBase, runtimeVars, logger)) {
-      return
+      if (loader.checkExistingRun(runtimePathBase, runtimeVars)) {
+        return
+      }
+
+      val config = loader.writeRuntimeConfigs(runtimePathBase, identityCfg, runtimeVars)
+
+      val successPath = runtimePathBase + "_SUCCESS"
+      val runningPath = runtimePathBase + "_RUNNING"
+
+      withRetry("write running marker to S3") {
+        S3Utils.writeToS3(runningPath, experimentName.getOrElse(""))
+      }
+      logger.info(s"Wrote running marker to $runningPath")
+
+      logger.info(new Yaml().dump(config.asJava))
+      jobConfig = Some(new MapConfigReader(config, logger).as[C])
+      if (jobConfig.isEmpty) {
+        throw new IllegalStateException("Config not initialized")
+      }
+      runETLPipeline()
+      // Write a _SUCCESS file to signal job completion with experiment name
+      withRetry("write success marker to S3") {
+        S3Utils.writeToS3(successPath, experimentName.getOrElse(""))
+      }
+      logger.info(s"Wrote success marker to $successPath")
+    } finally {
+      spark.stop()
     }
-
-    val config = loader.writeRuntimeConfigs(runtimePathBase, identityCfg, runtimeVars)
-
-    val successPath = runtimePathBase + "_SUCCESS"
-    val runningPath = runtimePathBase + "_RUNNING"
-
-    withRetry("write running marker to S3") {
-      S3Utils.writeToS3(runningPath, experimentName.getOrElse(""))
-    }
-    logger.info(s"Wrote running marker to $runningPath")
-
-    logger.info(new Yaml().dump(config.asJava))
-    jobConfig = Some(new MapConfigReader(config, logger).as[C])
-    if (jobConfig.isEmpty) {
-      throw new IllegalStateException("Config not initialized")
-    }
-    runETLPipeline()
-    // Write a _SUCCESS file to signal job completion with experiment name
-    withRetry("write success marker to S3") {
-      S3Utils.writeToS3(successPath, experimentName.getOrElse(""))
-    }
-    logger.info(s"Wrote success marker to $successPath")
   }
 
   /** Retry the given block up to 5 times with simple backoff and final error logging. */
