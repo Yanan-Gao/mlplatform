@@ -120,6 +120,7 @@ abstract class PopulationInputDataGenerator(prometheus: PrometheusClient) {
     val seedData = AggregatedSeedReadableDataset()
       .readPartition(date)(spark)
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
+      .filter(col("IsOriginal").isNotNull)
       .cache()
     
     val syntheticIdMaxLength = conf.syntheticIdLength

@@ -36,6 +36,7 @@ abstract class AudienceModelGraphInputGenerator(name: String, crossDeviceVendor:
   DataFrame = {
     val seedData = getAggregatedSeedReadableDataset()
       .readPartition(date)(spark)
+      .filter(col("IsOriginal").isNotNull)
       .filter(samplingFunction('TDID))
       .repartition(AudienceModelInputGeneratorConfig.bidImpressionRepartitionNumAfterFilter, 'TDID)
 
