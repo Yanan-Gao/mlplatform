@@ -25,7 +25,6 @@ class RuntimeConfigLoader(
     val identityPath = templateDir + "identity_config.yml"
     val identityConfig = readYaml(identityPath)
     val renderedIdentity = renderRuntimeVariables(identityConfig, runtimeVars)
-    checkForUnresolvedVariables(renderedIdentity)
 
     val yaml = new Yaml()
     val renderedIdentityStr = yaml.dump(renderedIdentity.asJava)
@@ -34,16 +33,12 @@ class RuntimeConfigLoader(
     (runtimeBase, renderedIdentity)
   }
 
-  /** Write all runtime configs to S3 under the given runtime base. */
-  def writeRuntimeConfigs(
+  /** Load all runtime configs under the given runtime base and upload them to S3. */
+  def loadRuntimeConfigs(
       runtimeBase: String,
       identityConfig: Map[String, String],
       runtimeVars: Map[String, String]
   ): Map[String, String] = {
-    val yaml = new Yaml()
-    val runtimeCfgKey = runtimeBase + "runtime_config.yml"
-    S3Utils.writeToS3(runtimeCfgKey, yaml.dump(identityConfig.asJava))
-
     val templateDir = buildTemplateDir()
     val additionalConfigs = uploadAdditionalConfigs(templateDir, runtimeBase, runtimeVars)
     identityConfig ++ additionalConfigs
@@ -98,7 +93,6 @@ class RuntimeConfigLoader(
         val name = path.split("/").last
         val cfg = readYaml(path)
         val rendered = renderRuntimeVariables(cfg, runtimeVars)
-        checkForUnresolvedVariables(rendered)
         val yaml = new Yaml()
         val renderedStr = yaml.dump(rendered.asJava)
         S3Utils.writeToS3(runtimeBase + name, renderedStr)
@@ -115,20 +109,20 @@ class RuntimeConfigLoader(
     javaMap.asScala.map { case (k, v) => k -> v.toString }.toMap
   }
 
-  /** Replace placeholders in the config with provided runtime variables. */
-  private def renderRuntimeVariables(config: Map[String, String], runtimeVars: Map[String, String]): Map[String, String] = {
+  /** Replace placeholders in the config with provided runtime variables and validate. */
+  private def renderRuntimeVariables(
+      config: Map[String, String],
+      runtimeVars: Map[String, String]
+  ): Map[String, String] = {
     def render(value: String): String =
       runtimeVars.foldLeft(value) { case (acc, (k, v)) => acc.replace(s"{{${k}}}", v) }
-    config.map { case (k, v) => k -> render(v) }
-  }
-
-  /** Ensure no placeholders remain unresolved. */
-  private def checkForUnresolvedVariables(config: Map[String, String]): Unit = {
-    val unresolved = config.filter { case (_, v) => v.contains("{{") && v.contains("}}") }
+    val rendered = config.map { case (k, v) => k -> render(v) }
+    val unresolved = rendered.filter { case (_, v) => v.contains("{{") && v.contains("}}") }
     if (unresolved.nonEmpty) {
       val entries = unresolved.map { case (k, v) => s"$k=$v" }.mkString(", ")
       throw new IllegalArgumentException(s"Config contains unresolved variables: $entries")
     }
+    rendered
   }
 
   /** Copy previous job outputs to the current output paths. */
@@ -140,7 +134,6 @@ class RuntimeConfigLoader(
     val outTemplatePath = templateDir + "output_config.yml"
     val outTemplate = readYaml(outTemplatePath)
     val currentCfg = renderRuntimeVariables(outTemplate, runtimeVars)
-    checkForUnresolvedVariables(currentCfg)
     val prevCfgPath = runtimeBase + "output_config.yml"
     val prevCfg = readYaml(prevCfgPath)
     if (currentCfg.keySet != prevCfg.keySet) {
