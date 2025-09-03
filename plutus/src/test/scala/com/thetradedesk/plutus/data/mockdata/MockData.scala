@@ -229,6 +229,9 @@ object MockData {
       TTDNativeContextTypeId = Some(7),
 
       TemperatureInCelsius = Some(30.0),
+      SensitiveDataPoliciesApplicable = Option(List("String")),
+      ImpressionMultiplier = Some(3.0),
+      AdvertiserFirstPartyDataIds = Array(1L)
     )
 
   val privateContractsMock = PrivateContractRecord(
@@ -534,7 +537,8 @@ object MockData {
     TTDNativeContextTypeId = Some(7),
     TemperatureInCelsius = Some(22.0),
     SyntheticTransactionId = Some("FakeId"),
-    DealFloorMultiplierCap = 0
+    DealFloorMultiplierCap = 0,
+    ImpressionMultiplier = Some(1.0)
   )
 
   def supplyVendorMock(supplyVendorName: String = "google", openPathEnabled: Boolean = false) = SupplyVendorRecord(

@@ -203,6 +203,7 @@ case class PcResultsMergedSchema(
 
                                    SyntheticTransactionId: Option[String],
                                    DealFloorMultiplierCap: Double,
+                                   ImpressionMultiplier: Option[Double]
 
                                    // Note: I've removed a bunch of fields from the Geronimo schema since
                                    // these fields dont seem relevant to plutus.
