@@ -35,6 +35,8 @@ case class AudiencePolicyTableGeneratorConfig(
   useSelectedPixel: Boolean,
   campaignFlightStartingBufferInDays: Int,
   allRSMSeed: Boolean,
+  audioGraphExtensionRatio: Double,
+  ctvGraphExtensionRatio: Double,
   activeAdvertiserLookBackDays: Int,
   newSeedLookBackDays: Int,
   userDownSampleHitPopulation: Int,
