@@ -105,7 +105,7 @@ object ModelInputTransform extends Logger {
   def addBidAndClickLabels(clicks: Dataset[ClickTrackerRecord],
                             bidsImpsDat: Dataset[BidsImpressionsSchema]) : (Dataset[ClickTrackerRecord], Dataset[BidsImpressionsSchema]) = {
 
-    val clickLabels = clicks.withColumn("label", lit(1))
+    val clickLabels = clicks.distinct().withColumn("label", lit(1))
       .as[ClickTrackerRecord]
 
     val bidsImpsPreJoin = bidsImpsDat
