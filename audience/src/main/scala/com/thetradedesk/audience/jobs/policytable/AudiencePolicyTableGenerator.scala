@@ -1,6 +1,6 @@
 package com.thetradedesk.audience.jobs.policytable
 
-import com.thetradedesk.audience._
+import com.thetradedesk.audience.{date, _}
 import com.thetradedesk.audience.datasets.CrossDeviceVendor.CrossDeviceVendor
 import com.thetradedesk.audience.datasets.Model.Model
 import com.thetradedesk.audience.datasets._
@@ -72,6 +72,24 @@ abstract class AudiencePolicyTableGenerator(
     val advertiser = AdvertiserDataSet().readPartition(date)(spark)
     val restrictedAdvertiser = RestrictedAdvertiserDataSet().readPartition(date)(spark)
 
+    // generate needGraphExtension
+    val campaign = CampaignDataSet().readPartition(date).select("CampaignId","PrimaryChannelId")
+      .join(CampaignFlightDataSet.activeCampaigns(date, startShift = 2, endShift = -1), "CampaignId")
+
+    val campaignSeed = CampaignSeedDataset().readPartition(date)
+    
+    val seedCampaignNeedGE = campaign.join(campaignSeed,Seq("CampaignId"))
+      .groupBy("SeedId")
+      .agg(
+        count("*").alias("total_campaigns"),
+        sum(when(col("PrimaryChannelId") === 4, 1).otherwise(0)).alias("ctv_count"),
+        sum(when(col("PrimaryChannelId") === 3, 1).otherwise(0)).alias("audio_count")
+      )
+      .withColumnRenamed("SeedId", "SourceId")
+      .withColumn("NeedGraphExtension", col("ctv_count") / col("total_campaigns") >= conf.ctvGraphExtensionRatio ||
+        col("audio_count") / col("total_campaigns") >= conf.audioGraphExtensionRatio
+      )
+
     val seedAdvertiserDataset = seedAdvertiserMetaDataset
         .join(advertiser, Seq("AdvertiserId"), "left")
         .join(restrictedAdvertiser, Seq("AdvertiserId"), "left")
@@ -85,6 +103,8 @@ abstract class AudiencePolicyTableGenerator(
     val policyTableResult = allocateSyntheticId(dateTime, policyTable)
                             .join(seedAdvertiserDataset, Seq("SourceId"), "left")
                             .withColumn("IsSensitive", coalesce(col("IsSensitive"), lit(false))) // in case ttd segment data does not include in seeddetail
+                            .join(seedCampaignNeedGE, Seq("SourceId"), "left")
+                            .withColumn("NeedGraphExtension", coalesce(col("NeedGraphExtension"), lit(false)))
 
     AudienceModelPolicyWritableDatasetWithExperiment(model, confettiEnv, experimentName)
       .writePartition(
