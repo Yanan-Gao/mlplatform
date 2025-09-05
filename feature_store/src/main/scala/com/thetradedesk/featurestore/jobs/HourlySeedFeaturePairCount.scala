@@ -1,13 +1,13 @@
 package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore._
+import com.thetradedesk.featurestore.rsm.CommonEnums.DataSource
+import com.thetradedesk.featurestore.transform.{BatchSeedCountAgg, SeedMergerAgg}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.featurestore.rsm.CommonEnums.{CrossDeviceVendor, DataSource}
-import com.thetradedesk.featurestore.transform.{BatchSeedCountAgg, SeedMergerAgg}
 import com.thetradedesk.spark.util.io.FSUtils
-import org.apache.spark.sql.{DataFrame, SaveMode}
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.{DataFrame, SaveMode}
 
 object HourlySeedFeaturePairCount extends DensityFeatureBaseJob {
   override val jobName = "HourlySeedFeaturePairCount"
@@ -29,7 +29,15 @@ object HourlySeedFeaturePairCount extends DensityFeatureBaseJob {
     }
     val bidreq = readBidsImpressionsWithIDExploded(featurePairs, date, Some(hourInt))
     val policyTable = readPolicyTable(date.minusDays(1), DataSource.Seed.id, DataSource.TTDOwnData.id)
-    val aggregatedSeed = readAggregatedSeed(date.minusDays(1))
+    val seedsToExtend = spark.sparkContext.broadcast(
+      policyTable.filter('NeedGraphExtension)
+        .select('SeedId)
+        .distinct()
+        .as[String]
+        .collect()
+        .toSet
+    )
+    val aggregatedSeed = if (enableSeedExtension) readAggregatedSeed(date.minusDays(1), seedsToExtend) else readAggregatedSeed(date.minusDays(1))
 
     val hourlyAggregatedFeatureCount = aggregateFeatureCount(bidreq, aggregatedSeed, policyTable)
 

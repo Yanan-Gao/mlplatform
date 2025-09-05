@@ -9,6 +9,7 @@ import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.provisioning.CampaignFlightDataSet
+import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.expressions.Window
 import org.apache.spark.sql.functions._
@@ -103,11 +104,33 @@ abstract class DensityFeatureBaseJob {
     spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/configdata/$readEnv/audience/policyTable/RSM/v=1/${getDateStr(date)}000000/")
       // filter non graph data only
       .filter(col("CrossDeviceVendorId") === lit(CrossDeviceVendor.None.id) && col("Source").isin(sources: _*))
-      .select(col("SourceId").as("SeedId"), col("MappingId"), col("SyntheticId"), col("IsSensitive"), 'Source)
+      .select(col("SourceId").as("SeedId"), col("MappingId"), col("SyntheticId"), col("IsSensitive"), col("NeedGraphExtension"), 'Source)
   }
 
   def readAggregatedSeed(date: LocalDate): DataFrame = {
     spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/data/$readEnv/audience/aggregatedSeed/v=1/date=${getDateStr(date)}")
+  }
+
+  def readAggregatedSeed(date: LocalDate, extendableSeedsBroadcast: Broadcast[Set[String]]): DataFrame = {
+    val seedFilterUDF = udf(
+      (seedIds: Seq[String]) => {
+        val extendableSeeds = extendableSeedsBroadcast.value
+        seedIds.filter(
+          e => {
+            extendableSeeds.contains(e)
+          }
+        )
+      }
+    )
+
+    spark.read
+      .parquet(s"s3://thetradedesk-mlplatform-us-east-1/data/$readEnv/audience/aggregatedSeed/v=1/date=${getDateStr(date)}")
+      .withColumn("PersonGraphSeedIds", seedFilterUDF('PersonGraphSeedIds))
+      .withColumn("SeedIds", array_union(
+        coalesce(col("SeedIds"), array()),
+        coalesce(col("PersonGraphSeedIds"), array())
+      ))
+      .select("TDID", "SeedIds")
   }
 
   def readActiveCampaigns(date: LocalDate): DataFrame = {
