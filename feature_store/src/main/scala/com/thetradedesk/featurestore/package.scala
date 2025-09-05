@@ -35,6 +35,7 @@ package object featurestore {
   val writeThroughHdfs: Boolean = config.getBoolean("writeThroughHdfs", true)
   val densityFeatureWindowSizeDays = config.getInt("DensityFeatureWindowSizeDays", default = 1)
   val grain = config.getString("grain", "hour")
+  val enableSeedExtension = config.getBoolean("enableSeedExtension", default = false)
 
   val normalUserBidCountPerHour = config.getInt("normalUserBidCountPerHour", default = 200)
   val overrideOutput = config.getBoolean("overrideOutput", default = false)
