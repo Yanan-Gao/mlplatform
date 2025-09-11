@@ -13,9 +13,15 @@ import java.time.LocalDate
 object DailySeedDensityScore extends DensityFeatureBaseJob {
 
   override val jobName: String = "DailySeedDensityScore"
+
+  // configuration overrides
+  val hourlySeedCountEnv: String = config.getString("hourlySeedCountEnv", ttdEnv)
+  val newSeedEnv: String = config.getString("newSeedEnv", ttdEnv)
+
+
   val newSeedJobConfigName: String = config.getString("newSeedJobConfigName", "DailyNewSeedDensityScore")
   def readHourlySeedCounts(date: LocalDate, windowSizeDays: Int) = {
-    val hourlySeedCountsS3Path = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/job=HourlySeedFeaturePairCount/v=1"
+    val hourlySeedCountsS3Path = s"$MLPlatformS3Root/$hourlySeedCountEnv/profiles/source=bidsimpression/index=SeedId/job=HourlySeedFeaturePairCount/v=1"
     spark
       .read
       .option("basePath", hourlySeedCountsS3Path)
@@ -64,7 +70,7 @@ object DailySeedDensityScore extends DensityFeatureBaseJob {
 
     // union new seed densityScore
     val densityScores = featurePairStrings.map { featurePair =>
-      val siteZipScoreNewSeedPathPreFix = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/config=$newSeedJobConfigName$featurePair/v=1"
+      val siteZipScoreNewSeedPathPreFix = s"$MLPlatformS3Root/$newSeedEnv/profiles/source=bidsimpression/index=SeedId/config=$newSeedJobConfigName$featurePair/v=1"
       val siteZipScoreNewSeedPath = s"${siteZipScoreNewSeedPathPreFix}/date=${dateStr}"
 
       spark.read.parquet(siteZipScoreNewSeedPath).withColumn("FeatureKey", lit(featurePair))
@@ -74,7 +80,7 @@ object DailySeedDensityScore extends DensityFeatureBaseJob {
 
     val result = densityScores.reduce(_.union(_)).union(seedDensityScore)
 
-    val writePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/job=$jobName/v=1/date=${dateStr}/"
+    val writePath = s"$MLPlatformS3Root/$writeEnv/profiles/source=bidsimpression/index=SeedId/job=$jobName/v=1/date=${dateStr}/"
     result.write.mode(SaveMode.Overwrite).parquet(writePath)
   }
 

@@ -2,13 +2,13 @@ package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore._
 import com.thetradedesk.featurestore.rsm.CommonEnums.CrossDeviceVendor
-import com.thetradedesk.featurestore.rsm.CommonEnums.DataSource.DataSource
 import com.thetradedesk.featurestore.transform.IDTransform.{allIdType, filterOnIdTypes}
 import com.thetradedesk.featurestore.transform.MappingIdSplitUDF
 import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.provisioning.CampaignFlightDataSet
+import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.expressions.Window
@@ -20,6 +20,12 @@ import scala.collection.mutable
 
 abstract class DensityFeatureBaseJob {
   val jobName = "DensityFeatureBaseJob"
+
+  // configuration overrides
+  val policyEnv: String = config.getString("policyEnv", readEnv)
+  val aggSeedEnv: String = config.getString("aggSeedEnv", readEnv)
+  val tdidDensityFeatureEnv: String = config.getString("tdidDensityFeatureEnv", readEnv)
+
 
   val nonSensitiveFeaturePair = "SiteZip"
   val sensitiveFeaturePair = "AliasedSupplyPublisherIdCity"
@@ -101,14 +107,14 @@ abstract class DensityFeatureBaseJob {
 
   def readPolicyTable(date: LocalDate, sources: Int*) = {
     // read the given date's RSM policy table and filter for only seeds
-    spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/configdata/$readEnv/audience/policyTable/RSM/v=1/${getDateStr(date)}000000/")
+    spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/configdata/$policyEnv/audience/policyTable/RSM/v=1/${getDateStr(date)}000000/")
       // filter non graph data only
       .filter(col("CrossDeviceVendorId") === lit(CrossDeviceVendor.None.id) && col("Source").isin(sources: _*))
       .select(col("SourceId").as("SeedId"), col("MappingId"), col("SyntheticId"), col("IsSensitive"), col("NeedGraphExtension"), 'Source)
   }
 
   def readAggregatedSeed(date: LocalDate): DataFrame = {
-    spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/data/$readEnv/audience/aggregatedSeed/v=1/date=${getDateStr(date)}")
+    spark.read.parquet(s"s3://thetradedesk-mlplatform-us-east-1/data/$aggSeedEnv/audience/aggregatedSeed/v=1/date=${getDateStr(date)}")
   }
 
   def readAggregatedSeed(date: LocalDate, extendableSeedsBroadcast: Broadcast[Set[String]]): DataFrame = {
@@ -124,7 +130,7 @@ abstract class DensityFeatureBaseJob {
     )
 
     spark.read
-      .parquet(s"s3://thetradedesk-mlplatform-us-east-1/data/$readEnv/audience/aggregatedSeed/v=1/date=${getDateStr(date)}")
+      .parquet(s"s3://thetradedesk-mlplatform-us-east-1/data/$aggSeedEnv/audience/aggregatedSeed/v=1/date=${getDateStr(date)}")
       .withColumn("PersonGraphSeedIds", seedFilterUDF('PersonGraphSeedIds))
       .withColumn("SeedIds", array_union(
         coalesce(col("SeedIds"), array()),
@@ -145,13 +151,8 @@ abstract class DensityFeatureBaseJob {
       .distinct()
   }
 
-  def readTDIDSubDensityFeature(date: LocalDate, dataSource: DataSource, featurePair: String): DataFrame = {
-    val basePath = s"$MLPlatformS3Root/$readEnv/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJobSub/Source=${dataSource.toString}/FeatureKey=$featurePair/v=1/date=${getDateStr(date)}"
-    readAllSplits(date, basePath)
-  }
-
   def readTDIDDensityFeature(date: LocalDate): DataFrame = {
-    val basePath = s"$MLPlatformS3Root/$readEnv/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/date=${getDateStr(date)}/"
+    val basePath = s"$MLPlatformS3Root/$tdidDensityFeatureEnv/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/date=${getDateStr(date)}/"
     readAllSplits(date, basePath)
   }
 

@@ -19,7 +19,7 @@ object HourlySeedFeaturePairCount extends DensityFeatureBaseJob {
   }
 
   def runTransformHour(args: Array[String], hourInt: Int): Unit = {
-    val writePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/job=${jobName}/v=1/date=${getDateStr(date)}/hour=$hourInt/"
+    val writePath = s"$MLPlatformS3Root/$writeEnv/profiles/source=bidsimpression/index=SeedId/job=${jobName}/v=1/date=${getDateStr(date)}/hour=$hourInt/"
     val successFile = s"$writePath/_SUCCESS"
 
     // skip processing this split if data from a previous run already exists

@@ -22,10 +22,14 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
 
   override val jobName: String = "DailyTDIDDensityScoreSplitJob"
 
+  // configuration overrides
+  val tdidFeaturePairEnv: String = config.getString("tdidFeaturePairEnv", ttdEnv)
+  val syntheticIdDensityEnv: String = config.getString("syntheticIdDensityEnv", ttdEnv)
+
   val repartitionNum = 65520
 
   def readTDIDFeaturePairMappingRDD(date: LocalDate, featurePair: String, splitIndex: Int, numPartitions: Int) = {
-    val featurePairToTDIDDF = spark.read.parquet(s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=TDID/job=DailyTDIDFeaturePairMapping/config=${featurePair}/v=1/date=${getDateStr(date)}")
+    val featurePairToTDIDDF = spark.read.parquet(s"$MLPlatformS3Root/$tdidFeaturePairEnv/profiles/source=bidsimpression/index=TDID/job=DailyTDIDFeaturePairMapping/config=${featurePair}/v=1/date=${getDateStr(date)}")
       .select(s"${featurePair}Hashed", "TDID", "FeatureFrequency", "UserFrequency")
       .cache()
 
@@ -42,7 +46,7 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
   }
 
   def readSyntheticIdDensityCategories(date: LocalDate) = {
-    spark.read.parquet(s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=FeatureKeyValue/job=DailyDensityScoreReIndexingJob/config=SyntheticIdDensityScoreCategorized/date=${getDateStr(date)}")
+    spark.read.parquet(s"$MLPlatformS3Root/$syntheticIdDensityEnv/profiles/source=bidsimpression/index=FeatureKeyValue/job=DailyDensityScoreReIndexingJob/config=SyntheticIdDensityScoreCategorized/date=${getDateStr(date)}")
       .repartition(repartitionNum, 'FeatureValueHashed)
       .cache()
   }
@@ -146,7 +150,7 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
     def processSplit(splitIndex: Int): Unit = {
       val tdidFeaturePairMappings = featurePairStrings.map(featurePair => (featurePair, readTDIDFeaturePairMappingRDD(date, featurePair, splitIndex, numPartitions)))
 
-      val writePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=TDID/job=$jobName/v=1/date=$dateStr/split=$splitIndex"
+      val writePath = s"$MLPlatformS3Root/$writeEnv/profiles/source=bidsimpression/index=TDID/job=$jobName/v=1/date=$dateStr/split=$splitIndex"
       val successFile = s"$writePath/_SUCCESS"
 
       // skip processing this split if data from a previous run already exists
@@ -169,7 +173,7 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
 
         sourceTypeToKeepSeed.foreach(
           e => {
-            val subWritePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=TDID/job=${jobName}Sub/Source=${e._1}/FeatureKey=$featurePair/v=1/date=$dateStr/split=$splitIndex"
+            val subWritePath = s"$MLPlatformS3Root/$writeEnv/profiles/source=bidsimpression/index=TDID/job=${jobName}Sub/Source=${e._1}/FeatureKey=$featurePair/v=1/date=$dateStr/split=$splitIndex"
 
             if (e._2) {
               tempDF
