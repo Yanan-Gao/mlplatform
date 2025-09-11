@@ -3,8 +3,8 @@ package com.thetradedesk.featurestore.configs
 import com.thetradedesk.featurestore.constants.FeatureConstants
 import com.thetradedesk.featurestore.constants.FeatureConstants._
 import com.thetradedesk.featurestore.entities.Result
-import com.thetradedesk.featurestore.ttdEnv
 import com.thetradedesk.featurestore.utils.PathUtils
+import com.thetradedesk.featurestore.writeEnv
 import upickle.default._
 
 import java.time.LocalDateTime
@@ -35,9 +35,9 @@ case class UserFeatureMergeDefinition(
     }
   }
 
-  lazy val dataSetPath: String = s"${datasetPrefix}/${ttdEnv}/${datasetName}/v=${datasetVersion}"
-  private lazy val dataMetaPath: String = s"${datasetPrefix}/${ttdEnv}/${datasetName}_meta/v=${datasetVersion}"
-  lazy val dataMetaSchemaPath: String = PathUtils.concatPath(rootPath, s"${datasetPrefix}/${ttdEnv}/${datasetName}_meta/v=${datasetVersion}/_CURRENT")
+  lazy val dataSetPath: String = s"${datasetPrefix}/${writeEnv}/${datasetName}/v=${datasetVersion}"
+  private lazy val dataMetaPath: String = s"${datasetPrefix}/${writeEnv}/${datasetName}_meta/v=${datasetVersion}"
+  lazy val dataMetaSchemaPath: String = PathUtils.concatPath(rootPath, s"${datasetPrefix}/${writeEnv}/${datasetName}_meta/v=${datasetVersion}/_CURRENT")
   def versionStr(dateTime: LocalDateTime): String = UserFeatureMergeDefinition.dateFormatter.format(dateTime)
 
   private def metaPath(dateTime: LocalDateTime): String = PathUtils.concatPath(rootPath, PathUtils.concatPath(dataMetaPath, versionStr(dateTime)))

@@ -12,7 +12,7 @@ object DailyTDIDFeaturePairMapping extends DensityFeatureBaseJob {
     val bidreq = readBidsImpressionsWithIDExploded(featurePairs, date, None)
 
     featurePairStrings.foreach { featurePair =>
-      val writePath = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=TDID/job=$jobName/config=${featurePair}/v=1/date=${getDateStr(date)}/"
+      val writePath = s"$MLPlatformS3Root/$writeEnv/profiles/source=bidsimpression/index=TDID/job=$jobName/config=${featurePair}/v=1/date=${getDateStr(date)}/"
       bidreq.select("TDID", s"${featurePair}Hashed")
         .na.drop()
         .groupBy("TDID", s"${featurePair}Hashed")

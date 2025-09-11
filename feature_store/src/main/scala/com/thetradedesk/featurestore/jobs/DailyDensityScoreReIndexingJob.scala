@@ -1,25 +1,29 @@
 package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore._
-import com.thetradedesk.featurestore.rsm.CommonEnums.{CrossDeviceVendor, DataSource}
+import com.thetradedesk.featurestore.rsm.CommonEnums.DataSource
 import com.thetradedesk.featurestore.transform.DensityScoreFilterUDF
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
+import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 
 object DailyDensityScoreReIndexingJob extends DensityFeatureBaseJob {
 
   override val jobName: String = "DailyDensityScoreReIndexingJob"
 
+  // configuration overrides
+  val densityScoreEnv: String = config.getString("densityScoreEnv", ttdEnv)
+
+
   val numPartitions = 10
   val repartitionNum = 32768
 
   def readSeedDensity(date: LocalDate) = {
-    spark.read.parquet(s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=SeedId/job=DailySeedDensityScore/v=1/date=${getDateStr(date)}")
+    spark.read.parquet(s"$MLPlatformS3Root/$densityScoreEnv/profiles/source=bidsimpression/index=SeedId/job=DailySeedDensityScore/v=1/date=${getDateStr(date)}")
   }
 
   override def runTransform(args: Array[String]) = {
@@ -60,7 +64,7 @@ object DailyDensityScoreReIndexingJob extends DensityFeatureBaseJob {
       .select("FeatureKey", "FeatureValueHashed", "SyntheticIdLevel1", "SyntheticIdLevel2")
 
     // joined dataset for downstream processing in rest of the TDID splits
-    val writePathBase = s"$MLPlatformS3Root/$ttdEnv/profiles/source=bidsimpression/index=FeatureKeyValue/job=$jobName"
+    val writePathBase = s"$MLPlatformS3Root/$writeEnv/profiles/source=bidsimpression/index=FeatureKeyValue/job=$jobName"
     val writePathJoinedDf = s"${writePathBase}/config=SyntheticIdDensityScorePolicyTableJoined/date=$dateStr"
     featurePairDensityScoreJoinedDf.coalesce(8192).write.mode(SaveMode.Overwrite).parquet(writePathJoinedDf)
 
