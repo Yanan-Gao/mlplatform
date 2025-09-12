@@ -11,12 +11,12 @@ class MetastoreTraitTest extends AnyFunSuite {
 
   val reader: MetastoreHandler = new MetastoreHandler {
     environment = Production
-    override val datasetType: DataSetType = SourceDataSet
-    override val isInChain: Boolean = false
+    override val datasetTypeMh: DataSetType = SourceDataSet
+    override val isInChainMh: Boolean = false
     override val tableName: String = ""
     override val metastorePartitionField1: String = ""
     override val isStrictCaseClassSchema: Boolean = true
-    override val isExperiment: Boolean = false
+    override val isExperimentMh: Boolean = false
     override val supportMetastore: Boolean = true
   }
 

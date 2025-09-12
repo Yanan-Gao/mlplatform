@@ -1,25 +1,20 @@
 package com.thetradedesk.kongming.datasets
 import com.thetradedesk.kongming.{EnableMetastore, EnablePartitionRegister, task}
-import com.thetradedesk.spark.datasets.core.PartitionedS3DataSet.buildPath
 import com.thetradedesk.spark.datasets.core._
-import com.thetradedesk.spark.listener.WriteListener
 import com.thetradedesk.spark.util.{ProdTesting, Production, Testing}
-import com.thetradedesk.spark.util.TTDConfig.{config, environment}
-import com.thetradedesk.spark.util.io.FSUtils
-import org.apache.spark.sql.functions.{lit, typedLit}
+import com.thetradedesk.spark.util.TTDConfig.environment
+import org.apache.spark.sql.functions.typedLit
 import org.apache.spark.sql.{DataFrame, Dataset, Encoder, SparkSession}
 import org.apache.spark.sql.types.StructType
 
-import scala.reflect.runtime.universe._
-import java.time.temporal.ChronoUnit
 import java.time.{LocalDate, LocalDateTime}
 import scala.reflect.runtime.universe.TypeTag
 import java.time.format.DateTimeFormatter
 
 trait MetastoreHandler {
-  val datasetType: DataSetType
-  val isInChain: Boolean
-  val isExperiment: Boolean
+  val datasetTypeMh: DataSetType
+  val isInChainMh: Boolean
+  val isExperimentMh: Boolean
   val supportMetastore: Boolean
   val tableName: String
   val metastorePartitionField1: String
@@ -32,7 +27,7 @@ trait MetastoreHandler {
   val ROAS: String = "roas"
   val ROAS_TEST: String = "roas_test"
 
-  def getDbNameForRead(datasetType: DataSetType = datasetType, isInChain: Boolean = isInChain, task: String = task): String = {
+  def getDbNameForRead(datasetType: DataSetType = datasetTypeMh, isInChain: Boolean = isInChainMh, task: String = task): String = {
     (environment, datasetType, isInChain, task) match {
       case (Production, _, _, "cpa") => CPA
       case (Production, _, _, "roas") => ROAS
@@ -81,7 +76,7 @@ trait MetastoreHandler {
    * Only when all three conditions are met will Metastore be used for data read/write operations.
    */
 
-  def shouldUseMetastoreForReadAndWrite(): Boolean = EnableMetastore && supportMetastore && !isExperiment
+  def shouldUseMetastoreForReadAndWrite(): Boolean = EnableMetastore && supportMetastore && !isExperimentMh
 
   /**
    * Similar to `shouldUseMetastore`, but controlled by `enablePartitionRegister`.
@@ -90,7 +85,7 @@ trait MetastoreHandler {
    */
 
   def shouldUseMetastoreForPartitionRegister(): Boolean = {
-    EnablePartitionRegister && supportMetastore && !isExperiment
+    EnablePartitionRegister && supportMetastore && !isExperimentMh
   }
 
   val dateTimeFormatString: String = DefaultTimeFormatStrings.dateTimeFormatString
