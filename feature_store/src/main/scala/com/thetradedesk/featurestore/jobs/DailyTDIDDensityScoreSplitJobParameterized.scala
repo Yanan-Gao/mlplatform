@@ -6,17 +6,13 @@ import com.thetradedesk.featurestore.transform._
 import com.thetradedesk.featurestore.utils.SIBSampler
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.datasets.sources.{CampaignSeedDataSet, SeedDetailDataSet}
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.io.FSUtils
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.{DataFrame, SaveMode}
 
 import java.time.LocalDate
-import java.time.format.DateTimeFormatter
 import scala.collection.mutable
-import scala.util.Random
-import scala.util.control.Breaks.{break, breakable}
 
 object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob {
 
@@ -58,44 +54,11 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
     val densityFeatureLevel2Threshold = config.getDouble("densityFeatureLevel2Threshold", default = 0.05).floatValue()
     val mergeDensityLevels = udaf(MergeDensityLevelAgg(densityFeatureLevel2Threshold))
     val syntheticIdDensityCategories = readSyntheticIdDensityCategories(date)
+    val policyData = readPolicyTable(date, DataSource.Seed.id)
 
-    // Get active seed ids
-    val activeCampaign = readActiveCampaigns(date)
+    val seedPriority = getSeedPriority
 
-    val newSeedStartDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.minusDays(newSeedBufferInDays))
-
-    val newSeed = SeedDetailDataSet()
-      .readLatestPartition()
-      .where(to_timestamp('CreatedAt, "yyyy-MM-dd HH:mm:ss").gt(newSeedStartDateTimeStr))
-      .select('SeedId)
-      .withColumn("SeedPriority", lit(SeedPriority.NewSeed.id))
-
-    val campaignSeed = CampaignSeedDataSet()
-      .readLatestPartition()
-
-    // active campaign seed >> new seed >> inactive campaign seed >> other
-    val seedPriority = campaignSeed
-      .join(activeCampaign.withColumn("SeedPriority", lit(SeedPriority.ActiveCampaignSeed.id)), Seq("CampaignId"), "left")
-      .withColumn("SeedPriority", coalesce('SeedPriority, lit(SeedPriority.CampaignSeed.id)))
-      .groupBy('SeedId)
-      .agg(
-        max('SeedPriority).as("SeedPriority")
-      )
-      .unionByName(newSeed)
-      .groupBy('SeedId)
-      .agg(
-        max('SeedPriority).as("SeedPriority")
-      )
-
-
-    val syntheticIdToMappingId =
-      spark.sparkContext.broadcast(readPolicyTable(date, DataSource.Seed.id)
-        .join(seedPriority, Seq("SeedId"), "left")
-        .select('SyntheticId, 'MappingId, coalesce('SeedPriority, lit(SeedPriority.Other.id)).as("SeedPriority"))
-        .as[(Int, Int, Int)]
-        .map(e => (e._1, (e._2, e._3)))
-        .collect()
-        .toMap)
+    val syntheticIdToMappingId = getSyntheticIdToMappingId(policyData, seedPriority)
 
     val filterBySourceSyntheticUdf = udf(
       (pairs: Seq[Int], keepSeed: Boolean) => {
@@ -106,43 +69,6 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
     val sourceTypeToKeepSeed = mutable.HashMap[String, Boolean](
       DataSource.Seed.toString -> true,
       DataSource.TTDOwnData.toString -> false
-    )
-
-    val syntheticIdToMappingIdUdf = udf(
-      (pairs: Seq[Int], maxLength: Int) =>
-      {
-        val priorityCount = Array.fill(SeedPriority.values.size)(0)
-        val result = pairs.flatMap(e => {
-          val v = syntheticIdToMappingId.value.get(e)
-          // count how many mapping ids in different priorities
-          if (v.nonEmpty) priorityCount.update(v.get._2, priorityCount(v.get._2) + 1)
-          v
-        })
-        if (pairs.length <= maxLength) {
-          result.map(_._1)
-        }
-        else {
-          var resultCount = 0
-          var currentIndex = 0
-          breakable {
-            for (i <- priorityCount.indices) {
-              resultCount = resultCount + priorityCount(i)
-              if (resultCount >= maxLength) {
-                currentIndex = i
-                break
-              }
-            }
-          }
-
-          if (resultCount == maxLength) {
-            result.filter(e => e._2 <= currentIndex).map(_._1)
-          } else {
-            val lowerPriorityResult = result.filter(e => e._2 < currentIndex).map(_._1)
-            val currentPriorityResult = Random.shuffle(result.filter(e => e._2 == currentIndex).map(_._1)).take(maxLength - resultCount + priorityCount(currentIndex))
-            lowerPriorityResult ++ currentPriorityResult
-          }
-        }
-      }
     )
 
     val maxNumMappingIdsInAerospike = config.getInt("maxNumMappingIdsInAerospike", default = 1500)
@@ -205,6 +131,8 @@ object DailyTDIDDensityScoreSplitJobParameterized extends DensityFeatureBaseJob 
             filterBySourceSyntheticUdf(col("x._2"), lit(true)).as("SyntheticId_Level2"))
         }
       }
+
+      val syntheticIdToMappingIdUdf = getSyntheticIdToMappingIdUdf(syntheticIdToMappingId.value)
 
       val tdidDensityScore = splitDensityScoreSlots(
         tdidFeaturePairDensityScore

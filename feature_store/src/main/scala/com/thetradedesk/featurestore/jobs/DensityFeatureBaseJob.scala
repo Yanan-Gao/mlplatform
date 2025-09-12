@@ -8,15 +8,18 @@ import com.thetradedesk.geronimo.bidsimpression.schema.BidsImpressions
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.provisioning.CampaignFlightDataSet
+import com.thetradedesk.spark.datasets.sources.{CampaignSeedDataSet, SeedDetailDataSet}
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.sql.DataFrame
-import org.apache.spark.sql.expressions.Window
+import org.apache.spark.sql.expressions.{UserDefinedFunction, Window}
 import org.apache.spark.sql.functions._
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import scala.collection.mutable
+import scala.util.Random
+import scala.util.control.Breaks.{break, breakable}
 
 abstract class DensityFeatureBaseJob {
   val jobName = "DensityFeatureBaseJob"
@@ -24,7 +27,7 @@ abstract class DensityFeatureBaseJob {
   // configuration overrides
   val policyEnv: String = config.getString("policyEnv", readEnv)
   val aggSeedEnv: String = config.getString("aggSeedEnv", readEnv)
-  val tdidDensityFeatureEnv: String = config.getString("tdidDensityFeatureEnv", readEnv)
+  val tdidDensityFeatureEnv: String = config.getString("tdidDensityFeatureEnv", ttdEnv)
 
 
   val nonSensitiveFeaturePair = "SiteZip"
@@ -156,6 +159,14 @@ abstract class DensityFeatureBaseJob {
     readAllSplits(date, basePath)
   }
 
+  def readTDIDDensityFeature(date: LocalDate, splitNum: Int): DataFrame = {
+    val basePath = s"$MLPlatformS3Root/$tdidDensityFeatureEnv/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/date=${getDateStr(date)}/"
+    spark
+      .read
+      .option("basePath", basePath)
+      .parquet(s"$basePath/split=$splitNum")
+  }
+
   def readAllSplits(date: LocalDate, basePath: String): DataFrame = {
     spark
       .read
@@ -169,6 +180,85 @@ abstract class DensityFeatureBaseJob {
       .withColumn("MappingIdLevel2", MappingIdSplitUDF(0)('MappingIdLevel2))
       .withColumn("MappingIdLevel1S1", MappingIdSplitUDF(1)('MappingIdLevel1))
       .withColumn("MappingIdLevel1", MappingIdSplitUDF(0)('MappingIdLevel1))
+  }
+
+  def getSeedPriority: DataFrame = {
+
+    // Get active seed ids
+    val activeCampaign = readActiveCampaigns(date)
+
+    val newSeedStartDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.minusDays(newSeedBufferInDays))
+
+    val newSeed = SeedDetailDataSet()
+      .readLatestPartition()
+      .where(to_timestamp('CreatedAt, "yyyy-MM-dd HH:mm:ss").gt(newSeedStartDateTimeStr))
+      .select('SeedId)
+      .withColumn("SeedPriority", lit(SeedPriority.NewSeed.id))
+
+    val campaignSeed = CampaignSeedDataSet()
+      .readLatestPartition()
+
+    // active campaign seed >> new seed >> inactive campaign seed >> other
+    campaignSeed
+      .join(activeCampaign.withColumn("SeedPriority", lit(SeedPriority.ActiveCampaignSeed.id)), Seq("CampaignId"), "left")
+      .withColumn("SeedPriority", coalesce('SeedPriority, lit(SeedPriority.CampaignSeed.id)))
+      .groupBy('SeedId)
+      .agg(
+        max('SeedPriority).as("SeedPriority")
+      )
+      .unionByName(newSeed)
+      .groupBy('SeedId)
+      .agg(
+        max('SeedPriority).as("SeedPriority")
+      )
+  }
+
+  def getSyntheticIdToMappingId(policyData: DataFrame, seedPriority: DataFrame): Broadcast[Map[Int, (Int, Int)]] = {
+    spark.sparkContext.broadcast(policyData
+      .join(seedPriority, Seq("SeedId"), "left")
+      .select('SyntheticId, 'MappingId, coalesce('SeedPriority, lit(SeedPriority.Other.id)).as("SeedPriority"))
+      .as[(Int, Int, Int)]
+      .map(e => (e._1, (e._2, e._3)))
+      .collect()
+      .toMap)
+  }
+
+  def getSyntheticIdToMappingIdUdf(syntheticIdToMappingId: Map[Int, (Int, Int)]): UserDefinedFunction = {
+    udf(
+      (pairs: Seq[Int], maxLength: Int) => {
+        val priorityCount = Array.fill(SeedPriority.values.size)(0)
+        val result = pairs.flatMap(e => {
+          val v = syntheticIdToMappingId.get(e)
+          // count how many mapping ids in different priorities
+          if (v.nonEmpty) priorityCount.update(v.get._2, priorityCount(v.get._2) + 1)
+          v
+        })
+        if (pairs.length <= maxLength) {
+          result.map(_._1)
+        }
+        else {
+          var resultCount = 0
+          var currentIndex = 0
+          breakable {
+            for (i <- priorityCount.indices) {
+              resultCount = resultCount + priorityCount(i)
+              if (resultCount >= maxLength) {
+                currentIndex = i
+                break
+              }
+            }
+          }
+
+          if (resultCount == maxLength) {
+            result.filter(e => e._2 <= currentIndex).map(_._1)
+          } else {
+            val lowerPriorityResult = result.filter(e => e._2 < currentIndex).map(_._1)
+            val currentPriorityResult = Random.shuffle(result.filter(e => e._2 == currentIndex).map(_._1)).take(maxLength - resultCount + priorityCount(currentIndex))
+            lowerPriorityResult ++ currentPriorityResult
+          }
+        }
+      }
+    )
   }
 
   def runTransform(args: Array[String]): Unit
