@@ -36,9 +36,9 @@ abstract class KongMingDataset[T <: Product : Manifest](dataSetType: DataSetType
   )
   with MetastoreHandler {
 
-  override val datasetType: DataSetType = dataSetType
-  override val isInChain: Boolean = isInChain
-  override val isExperiment: Boolean = isExperiment
+  override val datasetTypeMh: DataSetType = dataSetType
+  override val isInChainMh: Boolean = isInChain
+  override val isExperimentMh: Boolean = isExperiment
   override val supportMetastore: Boolean = isMetastoreCompatibleDataFormat
   override val tableName: String = getMetastoreTableName
   override val metastorePartitionField1: String = "date"
