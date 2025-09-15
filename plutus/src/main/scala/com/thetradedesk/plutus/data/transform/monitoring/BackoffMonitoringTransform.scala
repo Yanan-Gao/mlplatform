@@ -327,7 +327,7 @@ object BackoffMonitoringTransform {
   def transform(date: LocalDate, fileCount: Int): Unit = {
 
     // Get metrics from the buffer backoff job data
-    val backoffData = MergedCampaignAdjustmentsDataset.readDataframe(date, env = envForRead)
+    val backoffData = MergedCampaignAdjustmentsDataset.readLatestDataframeUpToIncluding(date, env = envForRead)
     val backoffMetrics = getBackoffMetrics(backoffData)
 
     // Get metrics from throttle dataset

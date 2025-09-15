@@ -23,45 +23,9 @@ abstract class S3DailyParquetDataset[T <: Product] extends S3DailyParquetDatafra
       .selectAs[T](nullIfColAbsent)
   }
 
-  protected def extractDateFromPath(path: String): Option[LocalDate] = {
-    val datePattern = Pattern.compile("date=(\\d{8})")
-    val matcher = datePattern.matcher(path)
-    if (matcher.find()) {
-      val dateString = matcher.group(1)
-      Try(LocalDate.parse(dateString, DateTimeFormatter.ofPattern("yyyyMMdd"))).toOption
-    } else {
-      None
-    }
-  }
-
   def readLatestDataUpToIncluding(maxDate: LocalDate, env: String, lookBack: Int = 0, nullIfColAbsent: Boolean = false)
                                  (implicit encoder: Encoder[T], spark: SparkSession): Dataset[T] = {
-    val basePath = genBasePath(env)
-    val listEntries = listDirectoryContents(basePath)(spark)
-    val allDates = listEntries
-      .filter(_.isDirectory)
-      .map(_.getPath.toString)
-      .flatMap(extractDateFromPath)
-      .distinct
-
-    println(s"readLatestDataUpToIncluding maxDate: $maxDate")
-    println(s"readLatestDataUpToIncluding lookBack: $lookBack")
-    println(s"readLatestDataUpToIncluding basePath: $basePath")
-    println(s"readLatestDataUpToIncluding allDates.length: ${allDates.length}")
-
-    val paths = allDates.filter(date => date.isBefore(maxDate) || date.isEqual(maxDate))
-      .sortWith(_.isAfter(_))
-      .take(lookBack + 1)
-      .map(genPathForDate(_, env))
-      .toSeq
-
-    println(s"readLatestDataUpToIncluding paths: ${paths.mkString(", ")}")
-
-    if (paths.isEmpty) {
-      throw new S3NoFilesFoundException(f"No paths found in ${basePath}")
-    }
-
-    spark.read.parquet(paths: _*)
+    readLatestDataframeUpToIncluding(maxDate, env, lookBack)
       .selectAs[T](nullIfColAbsent)
   }
 }
@@ -108,6 +72,47 @@ abstract class S3DailyParquetDataframe {
     val paths = genPathsForDateWithLookback(date, lookBack, env)
     println(s"readDate called(date = $date, env=$env, lookback=$lookBack, nullIfColAbsent=$nullIfColAbsent)")
     println(s"readDate paths: ${paths.mkString(", ")}")
+    spark.read.parquet(paths: _*)
+  }
+
+  protected def extractDateFromPath(path: String): Option[LocalDate] = {
+    val datePattern = Pattern.compile("date=(\\d{8})")
+    val matcher = datePattern.matcher(path)
+    if (matcher.find()) {
+      val dateString = matcher.group(1)
+      Try(LocalDate.parse(dateString, DateTimeFormatter.ofPattern("yyyyMMdd"))).toOption
+    } else {
+      None
+    }
+  }
+
+  def readLatestDataframeUpToIncluding(maxDate: LocalDate, env: String, lookBack: Int = 0)
+                                      (implicit spark: SparkSession): DataFrame = {
+    val basePath = genBasePath(env)
+    val listEntries = listDirectoryContents(basePath)(spark)
+    val allDates = listEntries
+      .filter(_.isDirectory)
+      .map(_.getPath.toString)
+      .flatMap(extractDateFromPath)
+      .distinct
+
+    println(s"readLatestDataUpToIncluding maxDate: $maxDate")
+    println(s"readLatestDataUpToIncluding lookBack: $lookBack")
+    println(s"readLatestDataUpToIncluding basePath: $basePath")
+    println(s"readLatestDataUpToIncluding allDates.length: ${allDates.length}")
+
+    val paths = allDates.filter(date => date.isBefore(maxDate) || date.isEqual(maxDate))
+      .sortWith(_.isAfter(_))
+      .take(lookBack + 1)
+      .map(genPathForDate(_, env))
+      .toSeq
+
+    println(s"readLatestDataUpToIncluding paths: ${paths.mkString(", ")}")
+
+    if (paths.isEmpty) {
+      throw new S3NoFilesFoundException(f"No paths found in ${basePath}")
+    }
+
     spark.read.parquet(paths: _*)
   }
 }
