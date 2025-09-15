@@ -77,7 +77,7 @@ object SharedTransforms {
             .when(col("PublisherRelationshipTypeId") === lit(PublisherRelationshipType.IndirectFixedPrice), MarketType.AccuenFixedPrice)
             .otherwise(MarketType.UnknownPMP))
           .otherwise(MarketType.OpenMarket))
-      .select($"df.*", $"DetailedMarketType")
+      .select($"df.*", $"DetailedMarketType", $"CurrencyCodeId")
   }
 
   def AddDeviceTypeIdAndRenderingContextId(df: DataFrame, renderingContextCol: String = "RenderingContext.value", deviceTypeCol: String = "DeviceType.value"): DataFrame = {

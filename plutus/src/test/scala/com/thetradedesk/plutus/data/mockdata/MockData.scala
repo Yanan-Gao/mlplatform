@@ -20,7 +20,7 @@ object MockData {
 
   val supplyVendorBidding = Svb(RequestName = "Google", SupplyVendorId = "1", DiscrepancyAdjustment = 0.1)
   val partnerSupplyVendorDiscrepancyAdj = Pda(SupplyVendorName = "Google", PartnerId = "1", DiscrepancyAdjustment = 0.2)
-  val supplyVendorDealRecord = Deals(SupplyVendorId = "1", SupplyVendorDealCode = "", IsVariablePrice = true)
+  val supplyVendorDealRecord = Deals(SupplyVendorId = "1", SupplyVendorDealCode = "", IsVariablePrice = true, FloorPriceCPMInContractCurrency = 1.0)
 
 
   def createMbToWinRow(
@@ -346,7 +346,7 @@ object MockData {
     IsMargin = false
   )
 
-  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), adgroupId: Option[String] = Some("mno012"), supplyVendor: Option[String] = Some("google"), renderingContext: Int = 1, deviceType: Int = 1, pcMode: Int = 3, partnerCost: Option[Double] = Some(0.1), channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0, auctionType: Int = 1, uncappedBidPrice: Double = 0, snapbackMaxBid: Double = 0, maxBidMultiplierCap: Double = 0, maxBidCpmInBucks: Double = 9.0) = PcResultsMergedSchema(
+  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), adgroupId: Option[String] = Some("mno012"), supplyVendor: Option[String] = Some("google"), renderingContext: Int = 1, deviceType: Int = 1, pcMode: Int = 3, partnerCost: Option[Double] = Some(0.1), channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, floorPriceInUSD: Option[Double] = Some(5.0), mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0, auctionType: Int = 1, uncappedBidPrice: Double = 0, snapbackMaxBid: Double = 0, maxBidMultiplierCap: Double = 0, maxBidCpmInBucks: Double = 9.0, detailedMarketType: String = "Open Market", isValuePacing: Option[Boolean] = Some(true), currencyCodeId: Option[String] = Some("USD")) = PcResultsMergedSchema(
     BidRequestId = "1",
     DealId = dealId,
 
@@ -358,7 +358,7 @@ object MockData {
 
     AdjustedBidCPMInUSD = adjustedBidCPMInUSD,
     BidsFirstPriceAdjustment = fpa, //Some(0.73),
-    FloorPriceInUSD = Some(5.0),
+    FloorPriceInUSD = floorPriceInUSD,
 
     PartnerId = Some("abc123"),
     AdvertiserId = Some("def456"),
@@ -446,7 +446,7 @@ object MockData {
     Channel = channel, //"MobileInApp",
     ChannelSimple = "Display",
 
-    DetailedMarketType = "Open Market", // from PrivateContractRecord
+    DetailedMarketType = detailedMarketType, // from PrivateContractRecord
 
     JanusVariantMap = None,
     IsUsingJanus = false,
@@ -494,7 +494,7 @@ object MockData {
     ExpectedValue = Some(200),
     RPacingValue = Some(0.5),
 
-    IsValuePacing = Some(true), // from ProductionAdgroupBudgetData
+    IsValuePacing = isValuePacing, // from ProductionAdgroupBudgetData
     IsUsingPIDController = Some(false),
 
     UseUncappedBidForPushdown = useUncappedBidForPushdown,
@@ -538,7 +538,8 @@ object MockData {
     TemperatureInCelsius = Some(22.0),
     SyntheticTransactionId = Some("FakeId"),
     DealFloorMultiplierCap = 0,
-    ImpressionMultiplier = Some(1.0)
+    ImpressionMultiplier = Some(1.0),
+    CurrencyCodeId = currencyCodeId
   )
 
   def supplyVendorMock(supplyVendorName: String = "google", openPathEnabled: Boolean = false) = SupplyVendorRecord(
@@ -930,7 +931,7 @@ object MockData {
   )).toDS()
 
   def dealsMock(): Dataset[Deals] = Seq(Deals(
-    SupplyVendorId = "1", SupplyVendorDealCode = "sv1-deal-1", IsVariablePrice = true
+    SupplyVendorId = "1", SupplyVendorDealCode = "sv1-deal-1", IsVariablePrice = true, FloorPriceCPMInContractCurrency = 1.0
   )).toDS()
 
   def empiricalDiscrepancyMock(): Dataset[EmpiricalDiscrepancy] = Seq(EmpiricalDiscrepancy(

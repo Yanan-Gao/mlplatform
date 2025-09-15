@@ -4,7 +4,7 @@ final case class Svb(RequestName: String, SupplyVendorId: String, DiscrepancyAdj
 
 final case class Pda(SupplyVendorName: String, PartnerId: String, DiscrepancyAdjustment: BigDecimal)
 
-final case class Deals(SupplyVendorId: String, SupplyVendorDealCode: String, IsVariablePrice: Boolean)
+final case class Deals(SupplyVendorId: String, SupplyVendorDealCode: String, IsVariablePrice: Boolean, FloorPriceCPMInContractCurrency: BigDecimal)
 
 final case class EmpiricalDiscrepancy(PartnerId: String, SupplyVendor: String, DealId: String, AdFormat: String, EmpiricalDiscrepancy: Double)
 
