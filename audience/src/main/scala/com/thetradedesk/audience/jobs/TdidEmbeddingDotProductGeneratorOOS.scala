@@ -203,6 +203,13 @@ object TdidEmbeddingDotProductGeneratorOOS
     val conf = getConfig
     new TdidEmbeddingDotProductGeneratorOOS().run(conf)
   }
+
+  /**
+   * for backward compatibility, local test usage.
+   * */
+  override def loadLegacyConfig(): RelevanceModelOfflineScoringPart2Config = {
+    RelevanceModelOfflineScoringLegacyConfigLoader.loadLegacyPart2Config()
+  }
 }
 
 case class SyntheticEmbeddingOOS(SeedId: String, SyntheticId: Int, IsSensitive: Boolean, Embedding: Array[Float], ActiveSize: Long, ExtendedActiveSize: Long, PopulationRelevance: Float, MinScore: Float, MaxScore: Float, LocationFactor: Float, BaselineHitRate: Float)

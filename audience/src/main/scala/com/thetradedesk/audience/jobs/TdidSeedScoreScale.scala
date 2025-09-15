@@ -135,4 +135,11 @@ object TdidSeedScoreScale
     val conf = getConfig
     new TdidSeedScoreScale().run(conf)
   }
+
+  /**
+   * for backward compatibility, local test usage.
+   * */
+  override def loadLegacyConfig(): RelevanceModelOfflineScoringPart2Config = {
+    RelevanceModelOfflineScoringLegacyConfigLoader.loadLegacyPart2Config()
+  }
 }

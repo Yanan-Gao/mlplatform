@@ -60,4 +60,11 @@ object UploadEmbeddings
     val conf = getConfig
     new UploadEmbeddings().run(conf)
   }
+
+  /**
+   * for backward compatibility, local test usage.
+   * */
+  override def loadLegacyConfig(): RelevanceModelOfflineScoringPart2Config = {
+    RelevanceModelOfflineScoringLegacyConfigLoader.loadLegacyPart2Config()
+  }
 }

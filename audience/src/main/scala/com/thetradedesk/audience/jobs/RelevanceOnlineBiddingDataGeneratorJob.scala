@@ -45,6 +45,11 @@ object RelevanceOnlineBiddingDataGeneratorJob
     val conf = getConfig
     new RelevanceOnlineBiddingDataGenerator(prometheus.get, confettiEnv, experimentName, conf).generate()
   }
+
+  /**
+   * for backward compatibility, local test usage.
+   * */
+  override def loadLegacyConfig(): RelevanceOnlineBiddingDataGeneratorJobConfig = ???
 }
 
 

@@ -21,4 +21,9 @@ object AEMGraphPolicyTableGeneratorJob
     val generator = new AEMGraphPolicyTableGenerator(prometheus.get, confettiEnv, experimentName, conf)
     generator.generatePolicyTable()
   }
+
+  /**
+   * for backward compatibility, local test usage.
+   * */
+  override def loadLegacyConfig(): AudiencePolicyTableGeneratorConfig = ???
 }

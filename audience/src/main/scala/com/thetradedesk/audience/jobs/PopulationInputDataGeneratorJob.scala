@@ -50,6 +50,11 @@ object PopulationInputDataGeneratorJob
 
     RSMPopulationInputDataGenerator.generatePopulationData(date, conf)
   }
+
+  /**
+   * for backward compatibility, local test usage.
+   * */
+  override def loadLegacyConfig(): PopulationInputDataGeneratorJobConfig = ???
 }
 
 

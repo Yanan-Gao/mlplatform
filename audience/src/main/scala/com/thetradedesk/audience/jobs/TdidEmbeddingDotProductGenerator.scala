@@ -367,6 +367,12 @@ object TdidEmbeddingDotProductGenerator
         .save(out_path + f"split=${i}/")
   })
   }
+
+  /**
+   * for backward compatibility, local test usage.
+   * TODO delete this class.
+   * */
+  override def loadLegacyConfig(): TdidEmbeddingDotProductGeneratorConfig = ???
 }
 
 case class SyntheticEmbedding(SeedId: String, SyntheticId: Int, IsSensitive: Boolean, Embedding: Array[Float])
