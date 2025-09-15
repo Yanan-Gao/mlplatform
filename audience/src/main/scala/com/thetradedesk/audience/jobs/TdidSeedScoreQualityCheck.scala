@@ -84,4 +84,11 @@ object TdidSeedScoreQualityCheck
     val conf = getConfig
     new TdidSeedScoreQualityCheck(prometheus.get).run(conf)
   }
+
+  /**
+   * for backward compatibility, local test usage.
+   * */
+  override def loadLegacyConfig(): RelevanceModelOfflineScoringPart2Config = {
+    RelevanceModelOfflineScoringLegacyConfigLoader.loadLegacyPart2Config()
+  }
 }

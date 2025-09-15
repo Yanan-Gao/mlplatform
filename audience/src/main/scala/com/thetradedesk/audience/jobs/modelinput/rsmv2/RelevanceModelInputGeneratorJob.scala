@@ -209,4 +209,9 @@ object RelevanceModelInputGeneratorJob
 
     jobRunningTime.labels(conf.modelName.toLowerCase, dateTime.toLocalDate.toString).set(System.currentTimeMillis() - start)
   }
+
+  /**
+   * for backward compatibility, local test usage.
+   * */
+  override def loadLegacyConfig(): RelevanceModelInputGeneratorJobConfig = ???
 }

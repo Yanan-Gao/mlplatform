@@ -7,7 +7,7 @@ import com.thetradedesk.audience.transform.IDTransform.idTypesBitmap
 import com.thetradedesk.audience.utils.IDTransformUtils.addGuidBits
 import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.confetti.utils.Logger
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.{_isDeviceIdSampled1Percent, _isDeviceIdSampledNPercent}
+import com.thetradedesk.audience.{audienceVersionDateFormat, date, dateTime}
 import com.thetradedesk.audience.transform.IDTransform
 import com.thetradedesk.geronimo.bidsimpression.schema.{BidsImpressions, BidsImpressionsSchema}
 import com.thetradedesk.geronimo.shared.transform.ModelFeatureTransform
@@ -17,8 +17,10 @@ import com.thetradedesk.spark.util.prometheus.PrometheusClient
 import org.apache.spark.sql.SaveMode
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.FloatType
+import com.thetradedesk.spark.util.TTDConfig.config
 
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import scala.collection.mutable.ArrayBuffer
 
 case class Imp2BrModelInferenceDataGeneratorConfig(
@@ -207,6 +209,26 @@ object Imp2BrModelInferenceDataGenerator
   override def runETLPipeline(): Unit = {
     val conf = getConfig
     new Imp2BrModelInferenceDataGenerator(prometheus.get).run(conf, confettiEnv, experimentName, getLogger)
+  }
+
+  /**
+   * for backward compatibility, local test usage.
+   * */
+  override def loadLegacyConfig(): Imp2BrModelInferenceDataGeneratorConfig = {
+
+    val modelVersion = s"${dateTime.format(DateTimeFormatter.ofPattern(audienceVersionDateFormat))}"
+
+    Imp2BrModelInferenceDataGeneratorConfig(
+      feature_path = config.getString(
+        "feature_path", s"s3://thetradedesk-mlplatform-us-east-1/models/prod/RSM/full_model/${modelVersion}/features.json"),
+      paddingColumns = config.getString(
+        "paddingColumns", "ZipSiteLevel_Seed,Targets,SyntheticIds,MatchedSegments,SampleWeights").split(",")
+        .filter(_.nonEmpty)
+        .map(_.trim)
+        .toSeq,
+      runDate = date,
+      samplingRate = config.getInt("samplingRate", 3)
+    )
   }
 }
 

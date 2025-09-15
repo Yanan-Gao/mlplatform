@@ -318,10 +318,10 @@ abstract class AudiencePolicyTableGenerator(
         .withColumn("MappingId", row_number().over(Window.partitionBy('Source, 'CrossDeviceVendorId).orderBy(rand())))
       updatedPolicyTable
     } else {
-      val previousPolicyTable = AudienceModelPolicyReadableDataset(model)
-        .readSinglePartition(recentVersionOption.get)(spark)
       logger.info("dateTime: " + dateTime.toLocalDate.toString)
       logger.info("recentVersion: " + recentVersionOption.get.toLocalDate.toString)
+      val previousPolicyTable = AudienceModelPolicyReadableDataset(model)
+        .readSinglePartition(recentVersionOption.get)(spark)
       updateSyntheticId(dateTime.toLocalDate, policyTable, previousPolicyTable, recentVersionOption.get.toLocalDate)
     }
   }

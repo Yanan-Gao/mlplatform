@@ -1,11 +1,9 @@
 package com.thetradedesk.confetti
 
-import com.thetradedesk.confetti.utils.{CloudWatchLoggerFactory, Logger, LoggerFactory, MapConfigReader, S3Utils}
+import com.thetradedesk.confetti.utils.{CloudWatchLoggerFactory, Logger, LoggerFactory, RuntimeConfigLoader}
 import com.thetradedesk.spark.util.TTDConfig.config
-import org.yaml.snakeyaml.Yaml
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
 
-import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 
@@ -19,9 +17,10 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
     jobName: String,
     loggerFactory: LoggerFactory = CloudWatchLoggerFactory
   ) extends Serializable {
-  @transient lazy val confettiEnv = config.getStringRequired("confettiEnv")
+  // todo after fully onboard confetti, make this required, as well as runtimeConfigBasePath
+  @transient lazy val confettiEnv = config.getString("confettiEnv", config.getString("ttd.env", "dev"))
   @transient lazy val experimentName = config.getStringOption("experimentName")
-  @transient lazy val runtimeConfigBasePath = config.getStringRequired("confettiRuntimeConfigBasePath")
+  @transient lazy val runtimeConfigBasePath = config.getStringOption("confettiRuntimeConfigBasePath")
 
   /** Optional Prometheus client for pushing metrics. */
   protected val prometheus: Option[PrometheusClient]
@@ -53,9 +52,10 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
    */
   def runETLPipeline(): Unit
 
-  /** Executes the job by loading configuration, running the pipeline and writing the results. */
-  private val runtimePathBase: String =
-    if (runtimeConfigBasePath.endsWith("/")) runtimeConfigBasePath else runtimeConfigBasePath + "/"
+  /**
+   * for backward compatibility, local test usage.
+   * */
+  def loadLegacyConfig(): C
 
   private final def execute(): Unit = {
 //    val successPath = runtimePathBase + "_SUCCESS"
@@ -78,14 +78,15 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
 //    }
 //    logger.info(s"Wrote running marker to $runningPath")
 
-    val yamlPaths = withRetry("list YAML files from S3") {
-      S3Utils.listYamlFiles(runtimePathBase)
+    if (runtimeConfigBasePath.exists(_.nonEmpty)) {
+      // provided confetti runtime path
+      val configLoader = new RuntimeConfigLoader[C](logger)
+      jobConfig = Some(configLoader.loadConfig(runtimeConfigBasePath.get))
+    } else {
+      // doesn't provided confetti path. need to fall back to old way.
+      jobConfig = Some(loadLegacyConfig())
     }
-    val config = yamlPaths
-      .map(readYaml)
-      .foldLeft(Map.empty[String, String])(_ ++ _)
-    logger.info(new Yaml().dump(config.asJava))
-    jobConfig = Some(new MapConfigReader(config, logger).as[C])
+
     if (jobConfig.isEmpty) {
       throw new IllegalStateException("Config not initialized")
     }
@@ -95,46 +96,6 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
 //      S3Utils.writeToS3(successPath, experimentName.getOrElse(""))
 //    }
 //    logger.info(s"Wrote success marker to $successPath")
-  }
-
-  /** Read a YAML file from S3 into a map. */
-  private def readYaml(path: String): Map[String, String] = {
-    val yamlStr = withRetry(s"read YAML from $path") {
-      S3Utils.readFromS3(path)
-    }
-    val yaml = new Yaml()
-    val javaMap = yaml.load[java.util.Map[String, Any]](yamlStr)
-    javaMap.asScala.map { case (k, v) => k -> v.toString }.toMap
-  }
-
-  /** Convert the map back to YAML and write it to the runtime config location. */
-  private def writeYaml(config: Map[String, String], s3Path: String): Unit = {
-    val yaml = new Yaml()
-    val rendered = yaml.dump(config.asJava)
-    withRetry(s"write YAML to $s3Path") {
-      S3Utils.writeToS3(s3Path, rendered)
-    }
-  }
-
-  /** Retry the given block up to 5 times with simple backoff and final error logging. */
-  private def withRetry[T](operation: String, retries: Int = 5)(block: => T): T = {
-    var attempt = 0
-    var lastError: Throwable = null
-    while (attempt < retries) {
-      try {
-        return block
-      } catch {
-        case e: Throwable =>
-          lastError = e
-          attempt += 1
-          logger.warn(s"$operation failed on attempt $attempt: ${e.getMessage}")
-          if (attempt < retries) {
-            Thread.sleep(1000L * attempt)
-          }
-      }
-    }
-    logger.error(s"$operation failed after $retries attempts: ${lastError.getMessage}")
-    throw lastError
   }
 
 }

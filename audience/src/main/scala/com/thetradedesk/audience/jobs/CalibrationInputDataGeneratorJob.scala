@@ -48,6 +48,39 @@ object CalibrationInputDataGeneratorJob
     )
     RSMCalibrationInputDataGenerator.generateMixedOOSData(conf.runDate, jobConf)
   }
+
+  /**
+   * for backward compatibility, local test usage.
+   * */
+  override def loadLegacyConfig(): CalibrationInputDataGeneratorJobConfig = {
+    val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
+    val oosDataS3Bucket = S3Utils.refinePath(config.getString("oosDataS3Bucket", "thetradedesk-mlplatform-us-east-1"))
+    val oosDataS3Path = S3Utils.refinePath(config.getString("oosDataS3Path", s"data/${ttdReadEnv}/audience/RSMV2/Seed_None/v=2"))
+    val calibrationOutputData3Path = S3Utils.refinePath(config.getString("calibrationOutputData3Path", s"data/${ttdWriteEnv}/audience/RSMV2/Seed_None"))
+
+    val outputBasePath = "s3://" + oosDataS3Bucket + "/" + calibrationOutputData3Path
+
+    val subFolderKey = config.getString("subFolderKey", default = "mixedForward")
+    val subFolderValue = config.getString("subFolderue", default = "Calibration")
+
+    CalibrationInputDataGeneratorJobConfig(
+      model = config.getString("model", default = "RSMV2"),
+      tag = config.getString("tag", default = "Seed_None"),
+      version = config.getInt("version", default = 1),
+      lookBack = config.getInt("lookBack", default = 3),
+      coalesceProdData = config.getBoolean("coalesceProdData", default = false), // for testing and experiment, when data is missing in ttdReadEnv, use prod data
+      startDate = config.getDate("startDate", default = LocalDate.parse("2025-02-13")),
+      oosDataS3Bucket = oosDataS3Bucket,
+      oosDataS3Path = oosDataS3Path,
+      subFolderKey = subFolderKey,
+      subFolderValue = subFolderValue,
+      audienceResultCoalesce = config.getInt("audienceResultCoalesce", 4096),
+      outputPath = s"$outputBasePath/v=1/${date.format(formatter)}000000/${subFolderKey}=${subFolderValue}",
+      outputCBPath = s"$outputBasePath/v=2/${date.format(formatter)}000000/${subFolderKey}=${subFolderValue}",
+      oosProdDataS3Path = config.getString("oosProdDataS3Path", default = "data/prod/audience/RSMV2/Seed_None/v=1"),
+      runDate = date
+    )
+  }
 }
 
 
@@ -74,7 +107,7 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
     val validPaths = candidateDates.flatMap { date =>
       val pathStr = constructPath(date, basePath)
       if (pathExists(pathStr)) Some(pathStr) else None
-      }.reverse
+    }.reverse
 
     if (validPaths.isEmpty) {
       throw new Exception("No valid paths found within the lookback window.")
@@ -82,7 +115,7 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
 
     val validLookBackDays = validPaths.length - 1
 
-    val weights = List(1-0.1*(validLookBackDays)) ++ List.fill(validLookBackDays)(0.1)
+    val weights = List(1 - 0.1 * (validLookBackDays)) ++ List.fill(validLookBackDays)(0.1)
 
     val pathWeightPairs: Seq[(String, Double)] = validPaths.zip(weights)
 
@@ -109,14 +142,14 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
       addMissingColumns(df, potentiallyMissingColumns)
     }
     }
-  
+
     val result = dfs.reduce(_.unionByName(_)).cache
 
     result.coalesce(conf.audienceResultCoalesce)
-        .write.mode(SaveMode.Overwrite)
-        .option("maxChunkRecordCount", 20480)
-        .cb(conf.outputCBPath)
-    
+      .write.mode(SaveMode.Overwrite)
+      .option("maxChunkRecordCount", 20480)
+      .cb(conf.outputCBPath)
+
     result.coalesce(conf.audienceResultCoalesce)
       .write.mode(SaveMode.Overwrite)
       .format("tfrecord")
@@ -128,9 +161,9 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
     jobRunningTime.labels(dateTime.toLocalDate.toString).set(System.currentTimeMillis() - start)
   }
 
-  def pathExists(pathStr: String) (implicit spark: SparkSession): Boolean = {
-      FSUtils.directoryExists(pathStr)(spark)
-    }
+  def pathExists(pathStr: String)(implicit spark: SparkSession): Boolean = {
+    FSUtils.directoryExists(pathStr)(spark)
+  }
 
   def constructPath(date: LocalDate, basePath: String): String = {
     val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
