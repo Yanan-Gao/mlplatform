@@ -3,7 +3,7 @@
   "featureSourceDefinitions": [
     {
       "name": "iddensity",
-      "dataSetPath": "features/feature_store/prod/profiles/source=bidsimpression/index=TDID/job=DailyTDIDDensityScoreSplitJob/v=1/",
+      "dataSetPath": "features/feature_store/prod/profiles/source=bidsimpression/index=TDID/job=DailyExtendTDIDDensityScoreJob/XDV=IAV2Person/v=1/",
       "features": [
         {
           "name": "MappingIdLevel1",
@@ -14,12 +14,34 @@
           "name": "MappingIdLevel2",
           "dtype": 3,
           "arrayLength": 1
-        },{
+        },
+        {
           "name": "MappingIdLevel1S1",
           "dtype": 3,
           "arrayLength": 1
-        },{
+        },
+        {
           "name": "MappingIdLevel2S1",
+          "dtype": 3,
+          "arrayLength": 1
+        },
+        {
+          "name": "GraphMappingIdLevel1",
+          "dtype": 3,
+          "arrayLength": 1
+        },
+        {
+          "name": "GraphMappingIdLevel2",
+          "dtype": 3,
+          "arrayLength": 1
+        },
+        {
+          "name": "GraphMappingIdLevel1S1",
+          "dtype": 3,
+          "arrayLength": 1
+        },
+        {
+          "name": "GraphMappingIdLevel2S1",
           "dtype": 3,
           "arrayLength": 1
         }
