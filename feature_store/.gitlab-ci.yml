@@ -1,3 +1,14 @@
+include:
+   - component: $CI_SERVER_FQDN/thetradedesk/teams/infsrv/gitlab-cicd-cloudsmith/cloudsmith-auth@1
+
+default:
+  id_tokens:
+    DEVINFRA_SERVITOR_ID_TOKEN:
+      aud: https://servitor.gen.adsrvr.org
+    DEVINFRA_VAULT_ID_TOKEN:
+      aud: https://vault.adsrvr.org
+    SPIFFE_GITLAB_ID_TOKEN:
+      aud: https://spire.prod.adsrvr.net
 variables:
   SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
   FEATURE_STORE_JAR_NAME: "feature_store.jar"
@@ -29,6 +40,12 @@ feature_store:test:
     # we don't need to set up the machine for S3 in order to run tests
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
   script:
+    # fix debian stretch issues before running cloudsmith-auth
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
     - pushd ./feature_store/
     - sbt test
     - popd
@@ -44,9 +61,15 @@ feature_store:push_bits_merge_request:
         - "feature_store/build.sbt"
         - "feature_store/src/main/resources/**/*"
   script:
+    # fix debian stretch issues before running cloudsmith-auth
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
     - pushd ./feature_store/
-    - NEXUS_MAVEN_READ_USER=${NEXUS_MAVEN_SNAPSHOT_USER}
-    - NEXUS_MAVEN_READ_PASS=${NEXUS_MAVEN_SNAPSHOT_PASS}
+    - TTD_CLOUDSMITHUSERNAME=${TTD_CLOUDSMITHUSERNAME}
+    - TTD_CLOUDSMITHAPITOKEN=${TTD_CLOUDSMITHAPITOKEN}
     - sbt -J-Xss4M -J-Xms512M -J-Xmx2048M -J-XX:+CMSClassUnloadingEnabled "set test in assembly := {}" clean assembly
     - sbt -J-Xms512M -J-Xss4M -J-Xmx2048M -J-XX:+CMSClassUnloadingEnabled "set version := \"${CI_COMMIT_TITLE}-SNAPSHOT\"; set isSnapshot := true" publish
     - sbt -J-Xms512M -J-Xss4M -J-Xmx2048M -J-XX:+CMSClassUnloadingEnabled "set version := \"${CI_COMMIT_TITLE}-`date '+%Y%m%d%H%M%S'`-SNAPSHOT\"; set isSnapshot := true" publish
@@ -68,6 +91,12 @@ feature_store:push_bits_master_snapshot:
         - "feature_store/build.sbt"
         - "feature_store/src/main/resources/**/*"
   script:
+    # fix debian stretch issues before running cloudsmith-auth
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
     - pushd ./feature_store/
     - sbt "set test in assembly := {}" clean assembly
     - DEST=${FEATURE_STORE_SNAPSHOTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
@@ -86,9 +115,15 @@ feature_store:deploy_release:
         - "feature_store/src/main/resources/**/*"
       allow_failure: false
   script:
+    # fix debian stretch issues before running cloudsmith-auth
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
     - pushd ./feature_store/
-    - NEXUS_MAVEN_READ_USER=${NEXUS_MAVEN_SNAPSHOT_USER}
-    - NEXUS_MAVEN_READ_PASS=${NEXUS_MAVEN_SNAPSHOT_PASS}
+    - TTD_CLOUDSMITHUSERNAME=${TTD_CLOUDSMITHUSERNAME}
+    - TTD_CLOUDSMITHAPITOKEN=${TTD_CLOUDSMITHAPITOKEN}
     - sbt -J-Xss4M -J-Xms512M -J-Xmx2048M -J-XX:+CMSClassUnloadingEnabled "set test in assembly := {}" clean assembly
     - sbt -J-Xms512M -J-Xss4M -J-Xmx2048M -J-XX:+CMSClassUnloadingEnabled "set version := \"`date '+%Y%m%d%H%M%S'`-SNAPSHOT\"; set isSnapshot := true" publish
     - aws s3 cp ${FEATURE_STORE_ASSEMBLY_OUT} ${FEATURE_STORE_PROD_JAR_FOLDER}/${FEATURE_STORE_JAR_NAME}
