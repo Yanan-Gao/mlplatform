@@ -1,5 +1,8 @@
+include:
+  - component: $CI_SERVER_FQDN/thetradedesk/teams/infsrv/gitlab-cicd-cloudsmith/cloudsmith-auth@1
+
 variables:
-  SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+  AUDIENCE_SCALA_BUILD_IMAGE: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
   ALTERNATE_SPARK_VERSION: "3.5.1"
   AUDIENCE_JAR_NAME: "audience.jar"
   AUDIENCE_MERGEREQUESTS_JAR_FOLDER: "s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/mergerequests"
@@ -12,7 +15,7 @@ variables:
   AUDIENCE_TRAINING_IMAGE: "audience/training-gpu"
 
 audience:test:
-  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  image: "$AUDIENCE_SCALA_BUILD_IMAGE"
   stage: test
   cache:
     policy: pull
@@ -26,6 +29,12 @@ audience:test:
         - "audience/src/**/*"
         - "audience/build.sbt"
   before_script:
+    # fix debian stretch issues before running cloudsmith-auth
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
     # we don't need to set up the machine for S3 in order to run tests
     - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
   script:
@@ -50,13 +59,23 @@ audience:lint:
     - echo "ran lint for audience"
 
 audience:push_bits_merge_request:
-  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  image: "$AUDIENCE_SCALA_BUILD_IMAGE"
   stage: assembly_upload
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
         - "audience/src/main/scala/**/*"
         - "audience/build.sbt"
+  before_script:
+    # fix debian stretch issues before running cloudsmith-auth
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
+    - apt-get update
+    - apt-get install -y python3-pip
+    - pip3 install awscli
   script:
     - pushd ./audience/
     - sbt "set test in assembly := {}" clean assembly
@@ -75,13 +94,23 @@ audience:push_bits_merge_request:
 
 
 audience:push_bits_merge_request_spark3.5:
-  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  image: "$AUDIENCE_SCALA_BUILD_IMAGE"
   stage: assembly_upload
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
       changes:
         - "audience/src/main/scala/**/*"
         - "audience/build.sbt"
+  before_script:
+    # fix debian stretch issues before running cloudsmith-auth
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
+    - apt-get update
+    - apt-get install -y python3-pip
+    - pip3 install awscli
   script:
     - pushd ./audience/
     - sbt -DsparkVersion="${ALTERNATE_SPARK_VERSION}" "set test in assembly := {}" clean assembly
@@ -99,13 +128,23 @@ audience:push_bits_merge_request_spark3.5:
     - echo "ran AUDIENCE_push_bits_merge_request"
 
 audience:push_bits_master_snapshot:
-  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  image: "$AUDIENCE_SCALA_BUILD_IMAGE"
   stage: assembly_upload
   rules:
     - if: '$CI_COMMIT_BRANCH == "master"'
       changes:
         - "audience/src/main/scala/**/*"
         - "audience/build.sbt"
+  before_script:
+    # fix debian stretch issues before running cloudsmith-auth
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
+    - apt-get update
+    - apt-get install -y python3-pip
+    - pip3 install awscli
   script:
     - pushd ./audience/
     - sbt "set test in assembly := {}" clean assembly
@@ -125,7 +164,7 @@ audience:push_bits_master_snapshot:
     - echo "ran AUDIENCE_push_bits_master_snapshot"
 
 audience:deploy_release:
-  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  image: "$AUDIENCE_SCALA_BUILD_IMAGE"
   stage: deploy
   rules:
     - if: '$CI_COMMIT_BRANCH == "master"'
@@ -133,6 +172,16 @@ audience:deploy_release:
         - "audience/src/main/scala/**/*"
         - "audience/build.sbt"
       allow_failure: false
+  before_script:
+    # fix debian stretch issues before running cloudsmith-auth
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [.cloudsmith-auth, script]
+    - apt-get update
+    - apt-get install -y python3-pip
+    - pip3 install awscli
   script:
     - pushd ./audience/
     - sbt "set test in assembly := {}" clean assembly
@@ -152,6 +201,8 @@ audience:push_scripts:
       changes:
         - "audience/src/main/bash/**/*"
         - "audience/.gitlab-ci.yml"
+  before_script:
+    - pip3 install awscli
   script:
     - pushd ./audience/
     - aws s3 cp ${AUDIENCE_SCRIPTS_SOURCE} ${AUDIENCE_SCRIPTS_DEST} --recursive

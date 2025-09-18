@@ -13,10 +13,20 @@ lazy val audience = (project in file(".")).dependsOn(confetti).settings(
 
 resolvers += "bintray-spark-packages" at "https://dl.bintray.com/spark-packages/maven/"
 
-credentials += Credentials(
-  "Sonatype Nexus Repository Manager", "nexus.adsrvr.org", System.getenv("NEXUS_MAVEN_READ_USER"), System.getenv("NEXUS_MAVEN_READ_PASS"))
-resolvers += "TTDNexusSnapshots" at "https://nexus.adsrvr.org/repository/ttd-snapshot"
-resolvers += "TTDNexusReleases" at "https://nexus.adsrvr.org/repository/ttd-release"
+
+// Cloudsmith credentials and resolvers
+val cloudsmithUser = Option(System.getenv("TTD_CLOUDSMITHUSERNAME"))
+  .getOrElse(throw new IllegalStateException("TTD_CLOUDSMITHUSERNAME not defined - check README.md on how to set"))
+val cloudsmithPassword = Option(System.getenv("TTD_CLOUDSMITHAPITOKEN"))
+  .getOrElse(throw new IllegalStateException("TTD_CLOUDSMITHAPITOKEN not defined - check README.md on how to set"))
+
+credentials += Credentials("Private Repository: thetradedesk/libs-dev", "pkgs.adsrvr.org", cloudsmithUser, cloudsmithPassword)
+credentials += Credentials("Private Repository: thetradedesk/libs-staging", "pkgs.adsrvr.org", cloudsmithUser, cloudsmithPassword)
+credentials += Credentials("Private Repository: thetradedesk/libs-prod", "pkgs.adsrvr.org", cloudsmithUser, cloudsmithPassword)
+credentials += Credentials("Cloudsmith API", "maven.pkgs.adsrvr.org", cloudsmithUser, cloudsmithPassword)
+resolvers += "TTDCloudsmithDev" at "https://pkgs.adsrvr.org/basic/libs-dev/maven/"
+resolvers += "TTDCloudsmithStaging" at "https://pkgs.adsrvr.org/basic/libs-staging/maven/"
+resolvers += "TTDCloudsmithProduction" at "https://pkgs.adsrvr.org/basic/libs-prod/maven/"
 
 //unmanagedJars in Compile += baseDirectory.value / "geronimo.jar"
 

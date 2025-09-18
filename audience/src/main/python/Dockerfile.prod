@@ -1,4 +1,4 @@
-FROM nvidia/cuda:11.2.0-cudnn8-devel-ubuntu20.04
+FROM nvidia/cuda:11.2.2-cudnn8-devel-ubuntu20.04
 CMD nvidia-smi
 
 # sometimes nvidia breaks their repo and we have to do this. Gonna leave this around for next time
