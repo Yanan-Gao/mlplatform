@@ -214,7 +214,8 @@ case class ModelInputUserRecord(
 )
 
 object ModelInputUserDataSet {
-  val PHILOS3 = (env: String) => f"s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/${env}/processed/"
-  val FILTERED = (env: String) => f"s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/${env}/filtered/"
-  val APAC = (env: String) =>  f"s3://thetradedesk-mlplatform-us-east-1/features/data/philo/v=1/${env}/apac/"
+  // S3 paths moved to com.thetradedesk.philo.S3Paths for centralization
+  val PHILOS3 = com.thetradedesk.philo.S3Paths.PHILO_S3
+  val FILTERED = com.thetradedesk.philo.S3Paths.FILTERED
+  val APAC = com.thetradedesk.philo.S3Paths.APAC
 }
