@@ -263,7 +263,7 @@ object RelevanceBoostModelInputGeneratorJob {
     val lalReadEnv = config.getString("lalReadEnv", ttdReadEnv)
 
     // TODO: route it to the final segment density dataset when it's ready
-    val lalDateStr = getDateStr(date.minusDays(2))
+    val lalDateStr = getDateStr(date.minusDays(1))
 
     val thirdParty = spark.read.parquet(s"s3://ttd-identity/datapipeline/$lalReadEnv/models/rsm_lal/all_model_unfiltered_results/v=1/idCap=100000/date=$lalDateStr")
       .select($"SeedId", $"TargetingDataId", $"RelevanceRatio", lit(SegmentDataSource.Tpd.id).alias("DataSource"))
