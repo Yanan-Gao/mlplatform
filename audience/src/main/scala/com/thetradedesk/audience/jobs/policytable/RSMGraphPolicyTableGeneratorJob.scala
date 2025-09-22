@@ -65,7 +65,7 @@ object RSMGraphPolicyTableGeneratorJob
       activeAdvertiserLookBackDays = config.getInt("activeAdvertiserLookBackDays", 180),
       newSeedLookBackDays = config.getInt("newSeedLookBackDays", 7),
 
-      audioGraphExtensionRatio = config.getDouble("audioGraphExtensionRatio", 0.5),
+      audioGraphExtensionRatio = config.getDouble("audioGraphExtensionRatio", 0.3),
       ctvGraphExtensionRatio = config.getDouble("ctvGraphExtensionRatio", 0.3),
       userDownSampleHitPopulation = config.getInt("userDownSampleHitPopulation", 1000000),
       saltToSampleUser = config.getString("saltToSampleUser", "0BgGCE"),
