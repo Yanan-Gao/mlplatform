@@ -60,8 +60,9 @@ case class PlutusLogsData(
                            Country: String,
                            Channel: String,
                            DealFloorMultiplierCap: Double,
+                           TtdLibraryFloorPrice: Double,
                            PredictiveClearingEnabled: Boolean,
-                           PredictiveClearingMode: String,
+                           PredictiveClearingMode: String
                          )
 
 case object PlutusLogsData {
@@ -125,6 +126,7 @@ case object PlutusLogsData {
           Channel = i.getChannel,
           Country = i.getCountry,
           DealFloorMultiplierCap = i.getDealFloorMultiplierCap,
+          TtdLibraryFloorPrice = i.getTtdLibraryFloorPrice,
           PredictiveClearingEnabled = i.getPredictiveClearingEnabled,
           PredictiveClearingMode = i.getPredictiveClearingMode,
         )

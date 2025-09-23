@@ -322,6 +322,7 @@ object MockData {
     Channel = "CTV",
     Country = "USA",
     DealFloorMultiplierCap = 2.0,
+    TtdLibraryFloorPrice = 1.2,
     PredictiveClearingEnabled = true,
     PredictiveClearingMode = WithFeeUsingOriginalBid
   )
@@ -543,7 +544,8 @@ object MockData {
     DealFloorMultiplierCap = 0,
     ImpressionMultiplier = Some(1.0),
     CurrencyCodeId = currencyCodeId,
-    PredictiveClearingEnabled = true
+    PredictiveClearingEnabled = true,
+    TtdLibraryFloorPrice = Some(1.2)
   )
 
   def supplyVendorMock(supplyVendorName: String = "google", openPathEnabled: Boolean = false) = SupplyVendorRecord(
