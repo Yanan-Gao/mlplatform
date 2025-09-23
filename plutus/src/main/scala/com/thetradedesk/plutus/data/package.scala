@@ -352,6 +352,14 @@ package object data {
     val ConditionalWin = 301
   }
 
+  // Copied from https://gitlab.adsrvr.org/thetradedesk/adplatform/-/blob/master/TTD/DB/Provisioning/TTD.DB.Provisioning.Primitives/Bidding/PredictiveClearingMode.cs
+  object PredictiveClearingMode extends Enumeration {
+    val Disabled = "Disabled"
+    val AdjustmentNotFound = "AdjustmentNotFound"
+    val WithFeeCalculation = "WithFeeCalculation"
+    val WithFeeUsingOriginalBid = "WithFeeUsingOriginalBid"
+  }
+
   var envForRead: String = config.getStringOption("ttd.env").map(_.toLowerCase) match {
     case Some("prod") | Some("production") => "prod"
     case Some("prodtest") | Some("prodtesting") => "prod"

@@ -1,6 +1,7 @@
 package com.thetradedesk.plutus.data.plutus.transform.monitoring
 
 import com.thetradedesk.TestUtils.TTDSparkTest
+import com.thetradedesk.plutus.data.PredictiveClearingMode.Disabled
 import com.thetradedesk.plutus.data.mockdata.MockData.{adGroupMockData, campaignUnderdeliveryForHadesMock, pcResultsLogMock, pcResultsMergedMock}
 import com.thetradedesk.plutus.data.schema.{PcResultsMergedSchema, PlutusLogsData}
 import com.thetradedesk.plutus.data.transform.monitoring.BackoffMonitoringTransform.{aggregateBidOptOutData, combineMetrics, getBackoffMetrics, unionBidAndOptOutData}
@@ -32,8 +33,8 @@ class BackoffMonitoringTransformTest extends TTDSparkTest {
         pcResultsMergedMock(campaignId = Some(campaignId), adgroupId = Some(adGroupId), maxBidMultiplierCap = 4, feeAmount = Some(1.0), partnerCost = Some(10.0), adjustedBidCPMInUSD = 9.0, maxBidCpmInBucks = 10.0),
         pcResultsMergedMock(campaignId = Some(campaignId), adgroupId = Some(adGroupId), maxBidMultiplierCap = 0, feeAmount = Some(0), partnerCost = Some(0), adjustedBidCPMInUSD = 9.0, maxBidCpmInBucks = 10.0),
         pcResultsMergedMock(campaignId = Some(campaignId), adgroupId = Some(adGroupId), maxBidMultiplierCap = 0, feeAmount = Some(1.0), partnerCost = Some(10.0), adjustedBidCPMInUSD = 9.0, maxBidCpmInBucks = 10.0),
-        pcResultsMergedMock(campaignId = Some("campaign_pcDisabled"), pcMode = 0, model = "noPcApplied"),
-        pcResultsMergedMock(campaignId = Some("campaign_usePcEnabledCoalesce"), adgroupId = Some("ag"), pcMode = 0, model = "noPcApplied"),
+        pcResultsMergedMock(campaignId = Some("campaign_pcDisabled"), pcMode = Disabled, model = "noPcApplied"),
+        pcResultsMergedMock(campaignId = Some("campaign_usePcEnabledCoalesce"), adgroupId = Some("ag"), pcMode = Disabled, model = "noPcApplied"),
       ).toDS().selectAs[PcResultsMergedSchema]
     val throttleMetricDataset = Seq(campaignUnderdeliveryForHadesMock(campaignId = campaignId)).toDS()
     val backoffData  = Seq((campaignId, 10, 15, 50, 0.58, 1, 3))

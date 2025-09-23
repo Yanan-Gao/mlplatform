@@ -68,7 +68,6 @@ case class PcResultsMergedSchema(
                                    Latitude: Option[Double],
                                    Longitude: Option[Double],
 
-                                   PredictiveClearingMode: Int,
                                    PredictiveClearingRandomControl: Boolean = false,
 
                                    LiveStream: Option[Boolean],
@@ -205,7 +204,10 @@ case class PcResultsMergedSchema(
                                    DealFloorMultiplierCap: Double,
                                    ImpressionMultiplier: Option[Double],
 
-                                   CurrencyCodeId: Option[String]
+                                   CurrencyCodeId: Option[String],
+
+                                   PredictiveClearingEnabled: Boolean,
+                                   PredictiveClearingMode: String,
 
 
                                    // Note: I've removed a bunch of fields from the Geronimo schema since
