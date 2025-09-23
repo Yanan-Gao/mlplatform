@@ -208,7 +208,7 @@ case class PcResultsMergedSchema(
 
                                    PredictiveClearingEnabled: Boolean,
                                    PredictiveClearingMode: String,
-
+                                   TtdLibraryFloorPrice: Option[Double]
 
                                    // Note: I've removed a bunch of fields from the Geronimo schema since
                                    // these fields dont seem relevant to plutus.
