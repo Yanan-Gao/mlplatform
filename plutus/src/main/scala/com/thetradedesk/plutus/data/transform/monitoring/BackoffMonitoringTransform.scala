@@ -91,6 +91,7 @@ object BackoffMonitoringTransform {
                              ): Dataset[RelevantBidData] = {
 
     val relevantPcOptOutData = pcOptOutData
+      .withColumnRenamed("PredictiveClearingEnabled", "PredictiveClearingEnabled_pcOptOut")
       .join(broadcast(adGroupData.select("AdgroupId", "CampaignId", "PredictiveClearingEnabled").distinct()), Seq("AdgroupId"), "inner")
       // Using bid level signals to determine if PC is enabled for the campaign.
       .withColumn("PredictiveClearingApplied", // OptOut dataset only has Model column, so it needs to be handled differently than Bid dataset.
@@ -106,6 +107,7 @@ object BackoffMonitoringTransform {
       .selectAs[RelevantBidData]
 
     val relevantPcBidData = pcBidData
+      .withColumnRenamed("PredictiveClearingEnabled", "PredictiveClearingEnabled_pcBidData")
       .join(broadcast(adGroupData.select("AdgroupId", "PredictiveClearingEnabled").distinct()), Seq("AdgroupId"), "left")
       // Using bid level signals to determine if PC is enabled for the campaign.
       .withColumn("PredictiveClearingApplied", // Bid dataset can use both PCMode & Model columns to determine value.

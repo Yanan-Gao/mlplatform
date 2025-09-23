@@ -35,7 +35,6 @@ class AdgroupMeanDealImpressionFloorTransformTest extends TTDSparkTest {
         feeAmount = Some(0.1),
         detailedMarketType = "Private Auction Variable Price",
         isValuePacing = Some(true),
-        pcMode = 3,
         currencyCodeId = Some("1")
       ),
       pcResultsMergedMock(
@@ -49,7 +48,6 @@ class AdgroupMeanDealImpressionFloorTransformTest extends TTDSparkTest {
         feeAmount = Some(0.2),
         detailedMarketType = "Private Auction Variable Price",
         isValuePacing = Some(true),
-        pcMode = 3,
         currencyCodeId = Some("1")
       ),
       pcResultsMergedMock(
@@ -63,7 +61,6 @@ class AdgroupMeanDealImpressionFloorTransformTest extends TTDSparkTest {
         feeAmount = Some(0.3),
         detailedMarketType = "Private Auction Variable Price",
         isValuePacing = Some(true),
-        pcMode = 3,
         currencyCodeId = Some("1")
       ),
       // Non-CTV device (should be filtered out)
@@ -78,7 +75,6 @@ class AdgroupMeanDealImpressionFloorTransformTest extends TTDSparkTest {
         feeAmount = Some(0.1),
         detailedMarketType = "Private Auction Variable Price",
         isValuePacing = Some(true),
-        pcMode = 3,
         currencyCodeId = Some("1")
       ),
       // Non-deal impression (should be filtered out)
@@ -93,7 +89,6 @@ class AdgroupMeanDealImpressionFloorTransformTest extends TTDSparkTest {
         feeAmount = Some(0.1),
         detailedMarketType = "Private Auction Variable Price",
         isValuePacing = Some(true),
-        pcMode = 3,
         currencyCodeId = Some("1")
       )
     ).toDS().as[PcResultsMergedSchema]
@@ -169,7 +164,6 @@ class AdgroupMeanDealImpressionFloorTransformTest extends TTDSparkTest {
         feeAmount = Some(0.1),
         detailedMarketType = "Private Auction Variable Price",
         isValuePacing = Some(true),
-        pcMode = 3,
         currencyCodeId = Some("1")
       ),
       // Low CTV spend (should be filtered out) - 50% CTV, 50% Mobile
@@ -184,7 +178,6 @@ class AdgroupMeanDealImpressionFloorTransformTest extends TTDSparkTest {
         feeAmount = Some(0.1),
         detailedMarketType = "Private Auction Variable Price",
         isValuePacing = Some(true),
-        pcMode = 3,
         currencyCodeId = Some("1")
       ),
       // Add Mobile device for lowCTV to make it 50% CTV
@@ -199,7 +192,6 @@ class AdgroupMeanDealImpressionFloorTransformTest extends TTDSparkTest {
         feeAmount = Some(0.1),
         detailedMarketType = "Private Auction Variable Price",
         isValuePacing = Some(true),
-        pcMode = 3,
         currencyCodeId = Some("1")
       )
     ).toDS().as[PcResultsMergedSchema]
@@ -265,7 +257,6 @@ class AdgroupMeanDealImpressionFloorTransformTest extends TTDSparkTest {
         feeAmount = Some(0.1),
         detailedMarketType = "Private Auction Variable Price",
         isValuePacing = Some(true),
-        pcMode = 3,
         currencyCodeId = Some("1")
       ),
       // Case with null MeanDealImpressionFloor (no deal wins)
@@ -280,7 +271,6 @@ class AdgroupMeanDealImpressionFloorTransformTest extends TTDSparkTest {
         feeAmount = Some(0.1),
         detailedMarketType = "Private Auction Variable Price",
         isValuePacing = Some(true),
-        pcMode = 3,
         currencyCodeId = Some("1")
       )
     ).toDS().as[PcResultsMergedSchema]

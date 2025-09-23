@@ -1,6 +1,7 @@
 package com.thetradedesk.plutus.data.transform.virtualmaxbidbackoff
 
 import com.thetradedesk.common.Constants.DeviceType
+import com.thetradedesk.plutus.data.PredictiveClearingMode.WithFeeUsingOriginalBid
 import com.thetradedesk.plutus.data.loadParquetData
 import com.thetradedesk.plutus.data.schema.{Deals, DiscrepancyDataset, PcResultsMergedDataset, PcResultsMergedSchema}
 import com.thetradedesk.plutus.data.schema.virtualmaxbidbackoff.{AdgroupAggData, AdgroupAggDataDataset, AdgroupDealImpMeanFloorDataset, AdgroupMeanDealImpressionFloorDataset}
@@ -45,9 +46,9 @@ object AdgroupMeanDealImpressionFloorTransform {
                           exchangeRateDataSet: Dataset[CurrencyExchangeRateRecord],
                           variableSpendThreshold: Double,
                           ctvSpendThreshold: Double): Dataset[AdgroupAggDataDataset] = {
-    
+
     pcResultsData
-      .filter($"IsValuePacing" && $"PredictiveClearingMode" === lit(3))
+      .filter($"IsValuePacing" && $"PredictiveClearingMode" === lit(WithFeeUsingOriginalBid))
       .withColumn("IsDealImp", when($"DealId".isNotNull && $"IsImp", 1).otherwise(0))
       .withColumn("IsImp", $"IsImp".cast(IntegerType))
       .withColumn("VariablePriceSpend", when($"DetailedMarketType" === "Private Auction Variable Price", $"FinalBidPrice" * $"isImp").otherwise(lit(0)))

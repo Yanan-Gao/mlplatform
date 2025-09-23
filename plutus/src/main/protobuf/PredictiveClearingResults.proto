@@ -35,6 +35,10 @@ message PcResultLog {
   optional string Country=29;
   optional string Channel=30;
   optional double DealFloorMultiplierCap=31;
+  optional double TtdLibraryFloorPrice=32;
+  optional bool PredictiveClearingEnabled=33;
+  optional string PredictiveClearingMode=34;
+  optional string CampaignId=35;
 }
 
 message PlutusLog {

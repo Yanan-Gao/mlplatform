@@ -23,7 +23,7 @@ object PcResultsGeronimoTransform extends Logger {
   val extremeValueThreshold = 0.75
 
   // These columns exist in Geronimo already
-  val excludeFromPlutusLogsData = Seq("LogEntryTime","IsValuePacing","AuctionType","DealId","SupplyVendor","AdgroupId","Country","Channel")
+  val excludeFromPlutusLogsData = Seq("LogEntryTime","IsValuePacing","AuctionType","DealId","SupplyVendor","AdgroupId","Country","Channel","PredictiveClearingMode")
 
   def joinGeronimoPcResultsLog(geronimo: Dataset[BidsImpressionsSchema],
                                plutusLogs: Dataset[PlutusLogsData],
