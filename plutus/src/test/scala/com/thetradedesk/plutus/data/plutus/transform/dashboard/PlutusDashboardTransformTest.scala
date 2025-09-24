@@ -120,7 +120,7 @@ class PlutusDashboardTransformTest extends TTDSparkTest {
 
   test("Plutus Dashboard data transform test 4 for schema/column correctness - ex with lost bid, pressure reducer adjustment, DealId=null, Floor=0, Mu=0") {
 
-    val pcResultsMergedData = Seq(pcResultsMergedMock(dealId = null, pcMode = "Disabled", isImp = false, feeAmount = None, floorPrice = 0, mu = 0.0f)).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedData = Seq(pcResultsMergedMock(dealId = null, pcMode = 0, isImp = false, feeAmount = None, floorPrice = 0, mu = 0.0f)).toDS().as[PcResultsMergedSchema]
     val supplyVendorData = Seq(supplyVendorMock()).toDS().as[SupplyVendorRecord]
 
 

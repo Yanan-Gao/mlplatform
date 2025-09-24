@@ -1,7 +1,6 @@
 package com.thetradedesk.plutus.data.transform.dashboard
 
 import com.thetradedesk.logging.Logger
-import com.thetradedesk.plutus.data.PredictiveClearingMode.{AdjustmentNotFound, Disabled, WithFeeUsingOriginalBid}
 import com.thetradedesk.plutus.data.schema._
 import com.thetradedesk.plutus.data.{envForRead, envForWrite, loadParquetDataDailyV2}
 import com.thetradedesk.spark.TTDSparkContext
@@ -41,9 +40,9 @@ object CampaignDAPlutusDashboardDataTransform extends Logger {
         col("PredictiveClearingEnabled")
       ).withColumn(
         "PredictiveClearingEnabled", // heuristic to account for nulls when joining to s3 prov ag table
-        when(col("PredictiveClearingMode") === Disabled && col("BidsFirstPriceAdjustment").isNull && (col("Model") === "noPcApplied" || col("Model").isNull), false)
-          .when(col("PredictiveClearingMode") === AdjustmentNotFound && col("BidsFirstPriceAdjustment").isNull, true)
-          .when(col("PredictiveClearingMode") === WithFeeUsingOriginalBid && !col("BidsFirstPriceAdjustment").isNull && (col("Model") =!= "noPcApplied" || col("Model").isNull), true)
+        when(col("PredictiveClearingMode") === 0 && col("BidsFirstPriceAdjustment").isNull && (col("Model") === "noPcApplied" || col("Model").isNull), false)
+          .when(col("PredictiveClearingMode") === 1 && col("BidsFirstPriceAdjustment").isNull, true)
+          .when(col("PredictiveClearingMode") === 3 && !col("BidsFirstPriceAdjustment").isNull && (col("Model") =!= "noPcApplied" || col("Model").isNull), true)
           .otherwise(col("S3prov_PredictiveClearingEnabled"))
       ).drop(
         col("Channel")

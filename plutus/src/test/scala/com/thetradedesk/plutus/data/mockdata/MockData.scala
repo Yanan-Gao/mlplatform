@@ -2,7 +2,6 @@ package com.thetradedesk.plutus.data.mockdata
 
 import com.thetradedesk.geronimo.bidsimpression.schema._
 import com.thetradedesk.plutus.data.MediaTypeId
-import com.thetradedesk.plutus.data.PredictiveClearingMode.WithFeeUsingOriginalBid
 import com.thetradedesk.plutus.data.schema._
 import com.thetradedesk.plutus.data.schema.campaignbackoff._
 import com.thetradedesk.plutus.data.schema.campaignfloorbuffer.{CampaignFloorBufferSchema, MergedCampaignFloorBufferSchema}
@@ -323,8 +322,7 @@ object MockData {
     Country = "USA",
     DealFloorMultiplierCap = 2.0,
     TtdLibraryFloorPrice = 1.2,
-    PredictiveClearingEnabled = true,
-    PredictiveClearingMode = WithFeeUsingOriginalBid
+    PredictiveClearingEnabled = true
   )
 
   val mbtwDataMock = MinimumBidToWinData(
@@ -350,7 +348,7 @@ object MockData {
     IsMargin = false
   )
 
-  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), adgroupId: Option[String] = Some("mno012"), supplyVendor: Option[String] = Some("google"), renderingContext: Int = 1, deviceType: Int = 1, pcMode: String = WithFeeUsingOriginalBid, partnerCost: Option[Double] = Some(0.1), channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, floorPriceInUSD: Option[Double] = Some(5.0), mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0, auctionType: Int = 1, uncappedBidPrice: Double = 0, snapbackMaxBid: Double = 0, maxBidMultiplierCap: Double = 0, maxBidCpmInBucks: Double = 9.0, detailedMarketType: String = "Open Market", isValuePacing: Option[Boolean] = Some(true), currencyCodeId: Option[String] = Some("USD")) = PcResultsMergedSchema(
+  def pcResultsMergedMock(dealId: String = "", adjustedBidCPMInUSD: Double = 50.0, fpa: Option[Double] = Some(0.73), campaignId: Option[String] = Some("jkl789"), adgroupId: Option[String] = Some("mno012"), supplyVendor: Option[String] = Some("google"), renderingContext: Int = 1, deviceType: Int = 1, pcMode: Int = 3, partnerCost: Option[Double] = Some(0.1), channel: String = "MobileInApp", isImp: Boolean = true, feeAmount: Option[Double] = Some(0.000012), baseBidAutoOpt: Double = 1, finalBidPrice: Double = 36, discrepancy: Double = 1.03, floorPrice: Double = 5, floorPriceInUSD: Option[Double] = Some(5.0), mu: Float = 0.5f, sigma: Float = 2.5f, model: String = "plutus", strategy: Int = 100, useUncappedBidForPushdown: Boolean = false, uncappedFpa: Double = 0, auctionType: Int = 1, uncappedBidPrice: Double = 0, snapbackMaxBid: Double = 0, maxBidMultiplierCap: Double = 0, maxBidCpmInBucks: Double = 9.0, detailedMarketType: String = "Open Market", isValuePacing: Option[Boolean] = Some(true), currencyCodeId: Option[String] = Some("USD")) = PcResultsMergedSchema(
     BidRequestId = "1",
     DealId = dealId,
 
