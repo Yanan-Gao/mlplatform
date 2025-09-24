@@ -10,7 +10,7 @@ case class DAPlutusDashboardSchema(
                                               Channel: String,
                                               MarketType: String,
                                               DetailedMarketType: String,
-                                              PredictiveClearingMode: String,
+                                              PredictiveClearingMode: Int,
                                               PredictiveClearingEnabled: Boolean,
                                               IsValuePacing: Option[Boolean],
                                               IsManagedByTTD: Option[Boolean],

@@ -1,7 +1,6 @@
 package com.thetradedesk.plutus.data.transform.dashboard
 
 import com.thetradedesk.logging.Logger
-import com.thetradedesk.plutus.data.PredictiveClearingMode.{AdjustmentNotFound, Disabled, WithFeeUsingOriginalBid}
 import com.thetradedesk.plutus.data.schema._
 import com.thetradedesk.plutus.data.{envForRead, envForWrite, loadParquetDataDailyV2}
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
@@ -57,8 +56,8 @@ object PlutusDashboardDataTransform extends Logger {
       ).agg(
 //        avg(when(col("PredictiveClearingMode") === 3, col("plutusPushdown_beforeAdj")).otherwise(null)).alias("avg_plutusPushdown"),
 //        avg(col("BidsFirstPriceAdjustment")).alias("avg_FirstPriceAdjustment"),
-        sum(when(col("PredictiveClearingMode") === WithFeeUsingOriginalBid, col("mode_logNorm")).otherwise(null)).alias("sum_mode_logNorm"),
-        sum(when(col("PredictiveClearingMode") === WithFeeUsingOriginalBid, col("plutusPushdown_beforeAdj")).otherwise(null)).alias("sum_plutusPushdown"),
+        sum(when(col("PredictiveClearingMode") === 3, col("mode_logNorm")).otherwise(null)).alias("sum_mode_logNorm"),
+        sum(when(col("PredictiveClearingMode") === 3, col("plutusPushdown_beforeAdj")).otherwise(null)).alias("sum_plutusPushdown"),
         sum(col("BidsFirstPriceAdjustment")).alias("sum_FirstPriceAdjustment"),
         sum(col("FinalBidPrice")).alias("FinalBidPrice"),
         sum(col("MediaCostCPMInUSD")).alias("MediaCostCPMInUSD"),
@@ -68,63 +67,63 @@ object PlutusDashboardDataTransform extends Logger {
         count(when(col("IsImp"), "*")).alias("ImpressionCount"),
         count("*").alias("BidCount"),
         sum(when(
-          col("PredictiveClearingMode") === WithFeeUsingOriginalBid &&
+          col("PredictiveClearingMode") === 3 &&
             col("FloorPrice") > 0 &&
             abs(col("FinalBidPrice") - col("FloorPrice")) < 0.001, 1).otherwise(0)
         ).alias("bidsAtFloorPlutus"),
         sum(when(
-          col("PredictiveClearingMode") === WithFeeUsingOriginalBid &&
+          col("PredictiveClearingMode") === 3 &&
             col("IsImp") &&
             !col("BidBelowFloorExceptedSource").isin(1, 2),
           greatest(lit(0), round(col("FinalBidPrice") - col("FloorPrice"), scale = 3))).otherwise(0)
         ).alias("AvailableSurplus"),
         sum(when(
-          col("PredictiveClearingMode") === WithFeeUsingOriginalBid,
+          col("PredictiveClearingMode") === 3,
           greatest(lit(0), round(col("AdjustedBidCPMInUSD") - col("FinalBidPrice"), scale = 3))).otherwise(0)
         ).alias("Surplus"),
         sum(when(
-          col("PredictiveClearingMode") === WithFeeUsingOriginalBid &&
+          col("PredictiveClearingMode") === 3 &&
             col("IsImp"),
           greatest(lit(0), round(col("AdjustedBidCPMInUSD") - col("FinalBidPrice"), scale = 3))).otherwise(0)
         ).alias("Savings_FinalBid"),
         sum(when(
-          col("PredictiveClearingMode") === WithFeeUsingOriginalBid &&
+          col("PredictiveClearingMode") === 3 &&
             col("IsImp"),
           greatest(lit(0), round(col("AdjustedBidCPMInUSD") - col("MediaCostCPMInUSD"), scale = 3))).otherwise(0)
         ).alias("Savings_MediaCost"),
         round(sum(when(
-          col("PredictiveClearingMode") === WithFeeUsingOriginalBid &&
+          col("PredictiveClearingMode") === 3 &&
             col("IsImp") &&
             col("hasMBTW"),
           col("FinalBidPrice") - col("mbtw")).otherwise(0)), scale = 3
         ).alias("overbid_cpm"),
         round(sum(when(
-          col("PredictiveClearingMode") === WithFeeUsingOriginalBid &&
+          col("PredictiveClearingMode") === 3 &&
             col("IsImp") &&
             col("hasMBTW"),
           col("FinalBidPrice")).otherwise(0)), scale = 3
         ).alias("spend_cpm"),
         sum(when(
-          col("PredictiveClearingMode") === WithFeeUsingOriginalBid &&
+          col("PredictiveClearingMode") === 3 &&
             col("IsImp") &&
             col("hasMBTW") &&
             (col("FinalBidPrice") - col("mbtw")) > 0,
           1).otherwise(0)
         ).alias("num_overbid"),
         round(sum(when(
-          col("PredictiveClearingMode") === WithFeeUsingOriginalBid &&
+          col("PredictiveClearingMode") === 3 &&
             !col("IsImp") &&
             col("hasMBTW"),
           col("mbtw") - col("FinalBidPrice")).otherwise(0)), scale = 3
         ).alias("underbid_cpm"),
         round(sum(when(
-          col("PredictiveClearingMode") === WithFeeUsingOriginalBid &&
+          col("PredictiveClearingMode") === 3 &&
             !col("IsImp") &&
             col("hasMBTW"),
           col("FinalBidPrice")).otherwise(0)), scale = 3
         ).alias("non_spend_cpm"),
         sum(when(
-          col("PredictiveClearingMode") === WithFeeUsingOriginalBid &&
+          col("PredictiveClearingMode") === 3 &&
             !col("IsImp") &&
             col("hasMBTW") &&
             (col("mbtw") - col("FinalBidPrice")) > 0,
@@ -164,9 +163,9 @@ object PlutusDashboardDataTransform extends Logger {
       .withColumn("plutusPushdown_excess",
         greatest(lit(0), col("EffectiveDiscrepancy") - col("plutusPushdown_beforeAdj"))
       ).withColumn("plutusPushdown_afterAdj",
-        when(col("PredictiveClearingMode").isin(Disabled, AdjustmentNotFound), AdjustmentNotFound)
+        when(col("PredictiveClearingMode").isin(0, 1), 1)
           .when(
-            col("PredictiveClearingMode") === WithFeeUsingOriginalBid,
+            col("PredictiveClearingMode") === 3,
             when(col("plutusPushdown_beforeAdj") >= col("EffectiveDiscrepancy"), col("EffectiveDiscrepancy"))
               .otherwise(col("EffectiveDiscrepancy") - col("plutusPushdown_excess") * (col("Strategy") / 100))
           )
@@ -174,8 +173,8 @@ object PlutusDashboardDataTransform extends Logger {
       // Calculate FinalBid from adjusted pushdown and compare to floor cap
       .withColumn("proposedBid", col("AdjustedBidCPMInUSD") * coalesce(col("plutusPushdown_afterAdj"), lit(1)))
       .withColumn("calc_FinalBidPrice",
-        when(col("proposedBid") > col("FloorPrice") || (col("BidBelowFloorExceptedSource").isin(1, 2) && col("PredictiveClearingMode") === WithFeeUsingOriginalBid), col("proposedBid"))
-          .when((col("BidBelowFloorExceptedSource").isin(1) && col("PredictiveClearingMode") =!= WithFeeUsingOriginalBid), col("proposedBid") * coalesce(col("Discrepancy"), lit(1)))
+        when(col("proposedBid") > col("FloorPrice") || (col("BidBelowFloorExceptedSource").isin(1, 2) && col("PredictiveClearingMode") === 3), col("proposedBid"))
+          .when((col("BidBelowFloorExceptedSource").isin(1) && col("PredictiveClearingMode") =!= 3), col("proposedBid") * coalesce(col("Discrepancy"), lit(1)))
           .otherwise(col("FloorPrice"))
       )
 
@@ -188,28 +187,28 @@ object PlutusDashboardDataTransform extends Logger {
 
     // Determine MarginAttribution based on how the FinalBid was calculated
     df.withColumn("UseBBAO",
-        when(col("BaseBidAutoOpt") =!= 1 && col("PredictiveClearingMode") === WithFeeUsingOriginalBid, 1).otherwise(0)
+        when(col("BaseBidAutoOpt") =!= 1 && col("PredictiveClearingMode") === 3, 1).otherwise(0)
       )
       .withColumn("UseDiscrepancy",
-        when(col("plutusPushdown_beforeAdj") >= col("EffectiveDiscrepancy") && col("PredictiveClearingMode") === WithFeeUsingOriginalBid, 1).otherwise(0)
+        when(col("plutusPushdown_beforeAdj") >= col("EffectiveDiscrepancy") && col("PredictiveClearingMode") === 3, 1).otherwise(0)
       )
       .withColumn("UseOpenPathDiscrepancy",
-        when(col("OpenPathEnabled") === true && col("Strategy") === OpenPathAdjustment && col("PredictiveClearingMode") === WithFeeUsingOriginalBid, 1).otherwise(0)
+        when(col("OpenPathEnabled") === true && col("Strategy") === OpenPathAdjustment && col("PredictiveClearingMode") === 3, 1).otherwise(0)
       )
       .withColumn("UseCampaignPCAdjustment",
-        when(((col("OpenPathEnabled") === false && col("Strategy") === OpenPathAdjustment) || (!col("Strategy").isin(OpenPathAdjustment, PressureReducer))) && col("PredictiveClearingMode") === WithFeeUsingOriginalBid, 1).otherwise(0)
+        when(((col("OpenPathEnabled") === false && col("Strategy") === OpenPathAdjustment) || (!col("Strategy").isin(OpenPathAdjustment, PressureReducer))) && col("PredictiveClearingMode") === 3, 1).otherwise(0)
       )
       .withColumn("UseFloor",
-        when(col("proposedBid") < col("FloorPrice") && !col("BidBelowFloorExceptedSource").isin(1, 2) && col("PredictiveClearingMode") === WithFeeUsingOriginalBid, 1).otherwise(0)
+        when(col("proposedBid") < col("FloorPrice") && !col("BidBelowFloorExceptedSource").isin(1, 2) && col("PredictiveClearingMode") === 3, 1).otherwise(0)
       )
       .withColumn("UseBBFGauntlet",
-        when(col("BidBelowFloorExceptedSource").isin(1) && col("PredictiveClearingMode") === WithFeeUsingOriginalBid, 1).otherwise(0)
+        when(col("BidBelowFloorExceptedSource").isin(1) && col("PredictiveClearingMode") === 3, 1).otherwise(0)
       )
       .withColumn("UseBBFPC",
-        when(col("BidBelowFloorExceptedSource").isin(2) && col("PredictiveClearingMode") === WithFeeUsingOriginalBid, 1).otherwise(0)
+        when(col("BidBelowFloorExceptedSource").isin(2) && col("PredictiveClearingMode") === 3, 1).otherwise(0)
       )
       .withColumn("NoPlutus",
-        when(col("PredictiveClearingMode").isin(Disabled, AdjustmentNotFound), 1).otherwise(0)
+        when(col("PredictiveClearingMode").isin(0, 1), 1).otherwise(0)
       )
       .withColumn("FactorCombination",
         when(col("UseBBAO") === 0 && col("UseDiscrepancy") === 0 && col("UseOpenPathDiscrepancy") === 0 && col("UseCampaignPCAdjustment") === 0 && col("UseFloor") === 0 && col("UseBBFGauntlet") === 0 && col("UseBBFPC") === 0 && col("NoPlutus") === 0, lit("OnlyFullPlutus_NonBBF"))

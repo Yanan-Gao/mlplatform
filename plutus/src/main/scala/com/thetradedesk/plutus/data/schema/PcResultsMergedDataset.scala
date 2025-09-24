@@ -207,7 +207,7 @@ case class PcResultsMergedSchema(
                                    CurrencyCodeId: Option[String],
 
                                    PredictiveClearingEnabled: Boolean,
-                                   PredictiveClearingMode: String,
+                                   PredictiveClearingMode: Int,
                                    TtdLibraryFloorPrice: Option[Double]
 
                                    // Note: I've removed a bunch of fields from the Geronimo schema since

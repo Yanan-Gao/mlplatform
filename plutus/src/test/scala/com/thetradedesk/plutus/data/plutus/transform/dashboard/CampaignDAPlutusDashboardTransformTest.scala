@@ -1,7 +1,6 @@
 package com.thetradedesk.plutus.data.plutus.transform.dashboard
 
 import com.thetradedesk.TestUtils.TTDSparkTest
-import com.thetradedesk.plutus.data.PredictiveClearingMode.Disabled
 import com.thetradedesk.plutus.data.mockdata.MockData.{adGroupMock, pcResultsMergedMock}
 import com.thetradedesk.plutus.data.schema.PcResultsMergedSchema
 import com.thetradedesk.plutus.data.transform.dashboard.CampaignDAPlutusDashboardDataTransform.getCampaignDAPlutusMetrics
@@ -38,7 +37,7 @@ class CampaignDAPlutusDashboardTransformTest extends TTDSparkTest {
 
   test("Campaign DA Plutus Dashboard data transform test 2 for schema/column correctness") {
 
-    val pcResultsMergedData = Seq(pcResultsMergedMock(fpa = null, pcMode = Disabled, model = "noPcApplied")).toDS().as[PcResultsMergedSchema]
+    val pcResultsMergedData = Seq(pcResultsMergedMock(fpa = null, pcMode = 0, model = "noPcApplied")).toDS().as[PcResultsMergedSchema]
     val adGroupData = Seq(adGroupMock.copy()).toDS().as[AdGroupRecord]
 
     val agg_daplutusmetrics = getCampaignDAPlutusMetrics(pcResultsMergedData, adGroupData)

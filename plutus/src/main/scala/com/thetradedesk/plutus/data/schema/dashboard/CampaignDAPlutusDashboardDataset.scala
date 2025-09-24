@@ -14,7 +14,7 @@ case class CampaignDAPlutusDashboardSchema(
                                               DetailedMarketType: String,
                                               PredictiveClearingEnabled: Boolean,
                                               AggPredictiveClearingEnabled: Boolean,
-                                              PredictiveClearingMode: String,
+                                              PredictiveClearingMode: Int,
                                               IsValuePacing: Option[Boolean],
                                               //PushdownDial: Int,
 
