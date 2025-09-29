@@ -144,7 +144,7 @@ abstract class DensityFeatureBaseJob {
 
   def readActiveCampaigns(date: LocalDate): DataFrame = {
     val campaignStartDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.plusDays(campaignFlightStartingBufferInDays))
-    val campaignEndDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date)
+    val campaignEndDateTimeStr = DateTimeFormatter.ofPattern("yyyy-MM-dd 00:00:00").format(date.plusDays(campaignFlightEndingBufferInDays))
     CampaignFlightDataSet()
       .readLatestPartition()
       .where('IsDeleted === false
