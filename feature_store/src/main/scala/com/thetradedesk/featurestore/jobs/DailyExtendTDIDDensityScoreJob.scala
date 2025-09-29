@@ -97,11 +97,15 @@ object DailyExtendTDIDDensityScoreJob extends DensityFeatureBaseJob {
     }
   }
 
+  val remainingQuotaCol = "remainingQuotaCol"
+
   def extendDensityFeature(tdidDensityFeature: DataFrame, aggregatedGroupFeaturesByTdid: DataFrame, syntheticIdToMappingId: Map[Int, (Int, Int)]): DataFrame = {
     tdidDensityFeature
       .join(aggregatedGroupFeaturesByTdid, Seq("TDID"), "left")
+      .withColumn(remainingQuotaCol, lit(maxNumMappingIdsInAerospike))
       .transform(df => buildSyntheticAndMapping(df, 1, "Graph_SyntheticId", "SyntheticId_Level1", syntheticIdToMappingId))
       .transform(df => buildSyntheticAndMapping(df, 2, "Graph_SyntheticId", "SyntheticId_Level2", syntheticIdToMappingId))
+      .drop(remainingQuotaCol)
   }
 
   def buildSyntheticAndMapping(
@@ -129,7 +133,7 @@ object DailyExtendTDIDDensityScoreJob extends DensityFeatureBaseJob {
       // mapping col
       .withColumn(groupMapCol,
         when(col(synCol).isNotNull,
-          syntheticIdToMappingIdUdf(col(synCol), lit(maxNumMappingIdsInAerospike))
+          syntheticIdToMappingIdUdf(col(synCol), col(remainingQuotaCol))
         ).otherwise(lit(null))
       )
       // mapping split
@@ -139,5 +143,6 @@ object DailyExtendTDIDDensityScoreJob extends DensityFeatureBaseJob {
       .withColumn(groupMapCol,
         when(col(groupMapCol).isNotNull, MappingIdSplitUDF(0)(col(groupMapCol))).otherwise(lit(null))
       )
+      .withColumn(remainingQuotaCol, col(remainingQuotaCol) - size(col(groupMapColS1)) - size(col(groupMapCol)))
   }
 }
