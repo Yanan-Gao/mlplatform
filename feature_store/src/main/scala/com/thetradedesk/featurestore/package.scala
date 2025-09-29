@@ -45,6 +45,7 @@ package object featurestore {
   val userDownSampleHitPopulation = config.getInt("userDownSampleHitPopulation", default = 10000)
 
   val campaignFlightStartingBufferInDays = config.getInt("campaignFlightStartingBufferInDays", 14)
+  val campaignFlightEndingBufferInDays = config.getInt("campaignFlightEndingBufferInDays", 0)
   val newSeedBufferInDays = config.getInt("newSeedBufferInDays", 7)
 
   val userIsInSampleUDF = udf[Boolean, String, Long, Long](userIsInSample)
