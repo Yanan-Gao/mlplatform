@@ -322,7 +322,8 @@ object MockData {
     Country = "USA",
     DealFloorMultiplierCap = 2.0,
     TtdLibraryFloorPrice = 1.2,
-    PredictiveClearingEnabled = true
+    PredictiveClearingEnabled = true,
+    PredictiveClearingModeString = "WithFeeUsingOriginalBid"
   )
 
   val mbtwDataMock = MinimumBidToWinData(
@@ -543,7 +544,8 @@ object MockData {
     ImpressionMultiplier = Some(1.0),
     CurrencyCodeId = currencyCodeId,
     PredictiveClearingEnabled = true,
-    TtdLibraryFloorPrice = Some(1.2)
+    TtdLibraryFloorPrice = Some(1.2),
+    PredictiveClearingModeString = "WithFeeUsingOriginalBid"
   )
 
   def supplyVendorMock(supplyVendorName: String = "google", openPathEnabled: Boolean = false) = SupplyVendorRecord(

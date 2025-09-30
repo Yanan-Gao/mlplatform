@@ -62,6 +62,7 @@ case class PlutusLogsData(
                            DealFloorMultiplierCap: Double,
                            TtdLibraryFloorPrice: Double,
                            PredictiveClearingEnabled: Boolean,
+                           PredictiveClearingModeString: String
                          )
 
 case object PlutusLogsData {
@@ -127,6 +128,7 @@ case object PlutusLogsData {
           DealFloorMultiplierCap = i.getDealFloorMultiplierCap,
           TtdLibraryFloorPrice = i.getTtdLibraryFloorPrice,
           PredictiveClearingEnabled = i.getPredictiveClearingEnabled,
+          PredictiveClearingModeString = i.getPredictiveClearingMode,
         )
       ).toDS()
       .where(

@@ -208,6 +208,7 @@ case class PcResultsMergedSchema(
 
                                    PredictiveClearingEnabled: Boolean,
                                    PredictiveClearingMode: Int,
+                                   PredictiveClearingModeString: String,
                                    TtdLibraryFloorPrice: Option[Double]
 
                                    // Note: I've removed a bunch of fields from the Geronimo schema since
