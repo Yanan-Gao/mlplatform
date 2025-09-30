@@ -103,37 +103,36 @@ object DailyExtendTDIDDensityScoreJob extends DensityFeatureBaseJob {
     tdidDensityFeature
       .join(aggregatedGroupFeaturesByTdid, Seq("TDID"), "left")
       .withColumn(remainingQuotaCol, lit(maxNumMappingIdsInAerospike))
-      .transform(df => buildSyntheticAndMapping(df, 1, "Graph_SyntheticId", "SyntheticId_Level1", syntheticIdToMappingId))
-      .transform(df => buildSyntheticAndMapping(df, 2, "Graph_SyntheticId", "SyntheticId_Level2", syntheticIdToMappingId))
+      .transform(df => buildSyntheticAndMapping(df, 2, syntheticIdToMappingId))
+      .transform(df => buildSyntheticAndMapping(df, 1, syntheticIdToMappingId))
       .drop(remainingQuotaCol)
   }
 
   def buildSyntheticAndMapping(
                                 df: DataFrame,
                                 level: Int,
-                                groupSyntheticCol: String,
-                                tdidSyntheticCol: String,
                                 syntheticIdToMappingId: Map[Int, (Int, Int)]
                               ): DataFrame = {
 
 
     val syntheticIdToMappingIdUdf = getSyntheticIdToMappingIdUdf(syntheticIdToMappingId)
 
-    val synCol = s"${groupSyntheticCol}_Level$level"
+    val groupSyntheticCol = s"Graph_SyntheticId_Level$level"
     val groupMapCol = s"GraphMappingIdLevel$level"
     val groupMapColS1 = s"${groupMapCol}S1"
+    val tdidSyntheticCol = s"SyntheticId_Level$level"
 
     df
       // group synthetic column, except TDID IDs
-      .withColumn(synCol,
-        when(col(synCol).isNotNull,
-          array_distinct(array_except(col(synCol), col(tdidSyntheticCol)))
+      .withColumn(groupSyntheticCol,
+        when(col(groupSyntheticCol).isNotNull,
+          array_distinct(array_except(col(groupSyntheticCol), col(tdidSyntheticCol)))
         ).otherwise(lit(null))
       )
       // mapping col
       .withColumn(groupMapCol,
-        when(col(synCol).isNotNull,
-          syntheticIdToMappingIdUdf(col(synCol), col(remainingQuotaCol))
+        when(col(groupSyntheticCol).isNotNull,
+          syntheticIdToMappingIdUdf(col(groupSyntheticCol), col(remainingQuotaCol))
         ).otherwise(lit(null))
       )
       // mapping split
