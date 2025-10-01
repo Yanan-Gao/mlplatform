@@ -28,7 +28,7 @@ object HourlySeedFeaturePairCount extends DensityFeatureBaseJob {
       return
     }
     val bidreq = readBidsImpressionsWithIDExploded(featurePairs, date, Some(hourInt))
-    val policyTable = readPolicyTable(date.minusDays(1), DataSource.Seed.id, DataSource.TTDOwnData.id)
+    val policyTable = readPolicyTable(date, DataSource.Seed.id, DataSource.TTDOwnData.id)
     val seedsToExtend = spark.sparkContext.broadcast(
       policyTable.filter('NeedGraphExtension)
         .select('SeedId)
@@ -37,7 +37,7 @@ object HourlySeedFeaturePairCount extends DensityFeatureBaseJob {
         .collect()
         .toSet
     )
-    val aggregatedSeed = if (enableSeedExtension) readAggregatedSeed(date.minusDays(1), seedsToExtend) else readAggregatedSeed(date.minusDays(1))
+    val aggregatedSeed = if (enableSeedExtension) readAggregatedSeed(date, seedsToExtend) else readAggregatedSeed(date)
 
     val hourlyAggregatedFeatureCount = aggregateFeatureCount(bidreq, aggregatedSeed, policyTable)
 
