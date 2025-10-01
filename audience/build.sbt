@@ -58,6 +58,7 @@ libraryDependencies ++= Seq(
   "com.thetradedesk" %% "availspipeline.spark-common_no_uniform" % availsVersion,
   "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
   "com.thetradedesk" %% "feature_store" % "20250804031454-SNAPSHOT",
+  "com.thetradedesk.deals" %% "dealqualityspark" % "0.1.92-SNAPSHOT",
 
   "io.prometheus" % "simpleclient" % prometheusVersion,
   "io.prometheus" % "simpleclient_common" % prometheusVersion,
