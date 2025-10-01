@@ -69,19 +69,19 @@ object DailySeedDensityScore extends DensityFeatureBaseJob {
       .as[DailySeedDensityScoreEntity]
 
     // union new seed densityScore
-    val densityScores = featurePairStrings.map { featurePair =>
-      val siteZipScoreNewSeedPathPreFix = s"$MLPlatformS3Root/$newSeedEnv/profiles/source=bidsimpression/index=SeedId/config=$newSeedJobConfigName$featurePair/v=1"
-      val siteZipScoreNewSeedPath = s"${siteZipScoreNewSeedPathPreFix}/date=${dateStr}"
-
-      spark.read.parquet(siteZipScoreNewSeedPath).withColumn("FeatureKey", lit(featurePair))
-        .select("FeatureKey", "FeatureValueHashed", "SeedId", "DensityScore")
-        .as[DailySeedDensityScoreEntity]
-    }
-
-    val result = densityScores.reduce(_.union(_)).union(seedDensityScore)
+    //    val densityScores = featurePairStrings.map { featurePair =>
+    //      val siteZipScoreNewSeedPathPreFix = s"$MLPlatformS3Root/$newSeedEnv/profiles/source=bidsimpression/index=SeedId/config=$newSeedJobConfigName$featurePair/v=1"
+    //      val siteZipScoreNewSeedPath = s"${siteZipScoreNewSeedPathPreFix}/date=${dateStr}"
+    //
+    //      spark.read.parquet(siteZipScoreNewSeedPath).withColumn("FeatureKey", lit(featurePair))
+    //        .select("FeatureKey", "FeatureValueHashed", "SeedId", "DensityScore")
+    //        .as[DailySeedDensityScoreEntity]
+    //    }
+    //
+    //    val result = densityScores.reduce(_.union(_)).union(seedDensityScore)
 
     val writePath = s"$MLPlatformS3Root/$writeEnv/profiles/source=bidsimpression/index=SeedId/job=$jobName/v=1/date=${dateStr}/"
-    result.write.mode(SaveMode.Overwrite).parquet(writePath)
+    seedDensityScore.write.mode(SaveMode.Overwrite).parquet(writePath)
   }
 
 
