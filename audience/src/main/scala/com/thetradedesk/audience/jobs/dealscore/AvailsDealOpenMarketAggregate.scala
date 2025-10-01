@@ -10,15 +10,16 @@ import org.apache.spark.sql.functions._
 
 import java.time.format.DateTimeFormatter
 
-object AvailsDealAggregate {
+object AvailsDealOpenMarketAggregate {
   val otelClient = new OtelClient("DealScoreJob", "AvailsDealAggregateJob")
   val dateStr = date.format(dateFormatter)
   val dateStrDash = date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
   val deal_sv_path = config.getString("deal_sv_path", s"s3://ttd-deal-quality/env=prod/VerticaExportDealRelevanceSeedMapping/VerticaAws/date=${dateStr}/")
-  val tdids_by_dcsv_path = config.getString("tdids_by_dcsv_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/deal_score_tdids/v=1")
+  val tdids_by_pc_path = config.getString("tdids_by_pc_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/deal_score_tdids/v=1")
   val users_scores_path = config.getString("users_scores_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/tdid2seedid/v=1/date=${dateStr}/")
   val seed_id_path = config.getString(
     "seed_id_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/scores/seedids/v=2/date=${dateStr}/")
+  val deals_OM_equivalents_path  = config.getString("deals_OM_equivalents_path", s"s3://ttd-deal-quality/env=prod/DealQualityMetrics/DealOpenMarketEquivalents/v=1/date=${dateStr}/" )
 
   val out_path = config.getString("out_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/deal_score/v=1/date=${dateStr}/")
   val agg_score_out_path = config.getString("agg_score_out_path", s"s3://thetradedesk-mlplatform-us-east-1/data/${ttdEnv}/audience/deal_score_agg/v=1/date=${dateStr}/")
@@ -31,49 +32,60 @@ object AvailsDealAggregate {
   val min_users = config.getInt("min_users", 8000)
   val lookback = config.getInt("look_back", 6)
 
-  val dealCount = otelClient.createGauge(s"audience_deal_score_job_num_deal_svs", "Deal Score number unique DealCode supplyVendorIds")
+  val min_adInfoCount = config.getInt("min_adInfoCount", 100000)
+  
+  // Aggregation dimensions configuration
+  val aggregation_mode = config.getString("aggregation_mode", "full") // "full" or "property_country"
 
-  def getPartitionColumns(): Seq[String] = {
-       Seq("DealCode", "SupplyVendorId")
+  // Helper functions to get aggregation dimensions based on mode
+  def getPartitionColumns(aggregationMode: String): Seq[String] = {
+    aggregationMode match {
+      case "propertyId_country" => Seq("PropertyIdString", "Country")
+      case _ => Seq("InventoryChannel", "PropertyIdString", "Country") // default "full" mode
+    }
   }
 
   def runETLPipeline(): Unit = {
+
+    val numberOfPartitions = num_workers * 1 * cpu_per_worker
     val dealSv = spark.read.parquet(deal_sv_path)
-    val dealSvSeedDS = dealSv.select("DealCode", "SupplyVendorId", "SeedId").distinct().cache();
-    val dealSvDS = dealSvSeedDS.select("DealCode", "SupplyVendorId").distinct()
+    //hardcode for now, filter out low volume combos
+    val deals_om_equivalent = spark.read.parquet(deals_OM_equivalents_path)
+      .filter(col("AdInfoCounts") > min_adInfoCount)
+      .withColumnRenamed("PropertyId", "PropertyIdString")
+      .repartition(numberOfPartitions, col("SupplyVendorId"), col("DealCode"))
+    val deal_open_market = deals_om_equivalent.select((getPartitionColumns(aggregation_mode) :+ "SupplyVendorId" :+ "DealCode").map(col): _*).distinct().join(dealSv, Seq("SupplyVendorId", "DealCode"))
+    val pc_om_seed = deal_open_market.select((getPartitionColumns(aggregation_mode) :+ "SeedId").map(col): _*).distinct()//.cache()
 
-    dealCount.labels(Map("date" -> dateStr, "type" -> "total")).set(dealSvDS.count())
-
-    // formula is 4 * cpu * number of machines
-    val numberOfPartitions = num_workers * 3 * cpu_per_worker
 
     DealScoreUtils.getScoredTdids(
-      tdidsByPropsPath = tdids_by_dcsv_path,
+      tdidsByPropsPath = tdids_by_pc_path,
       usersScoresPath = users_scores_path,
       numberOfPartitions = numberOfPartitions,
       capUsers = cap_users,
       date = date,
       lookback = lookback,
-      columns = getPartitionColumns(),
-      keepScores = true)
-      .joinWithSeedData(
-        seedsToScore = dealSvSeedDS,
-        partitionColumns = getPartitionColumns(),
-        hasScoreColumn = true,
-        broadcastSeedData = false
-      )
-      .extractSeedScore(
-      partitionColumns = getPartitionColumns(),
-      seedIdPath = seed_id_path
-      )
-      .capScoredUsers(
+      columns = getPartitionColumns(aggregation_mode),
+      keepScores = false).capScoredUsers(
         numberOfPartitions = numberOfPartitions,
         capUsers = cap_users,
-        columns = getPartitionColumns(),
-        seedScorePresent = true
+        columns = getPartitionColumns(aggregation_mode),
+        seedScorePresent = false
+      ).joinWithSeedData(
+        seedsToScore = pc_om_seed,
+        partitionColumns = getPartitionColumns(aggregation_mode),
+        hasScoreColumn = false,
+        broadcastSeedData = false
+      ).joinWithUserScore(
+        partitionColumns =  getPartitionColumns(aggregation_mode),
+        usersScoresPath =  users_scores_path,
+        numberOfPartitions =  numberOfPartitions,
       )
-      .collectScores(
-        partitionColumns = getPartitionColumns(),
+      .extractSeedScore(
+        partitionColumns = getPartitionColumns(aggregation_mode),
+        seedIdPath = seed_id_path
+      ).collectScores(
+        partitionColumns = getPartitionColumns(aggregation_mode),
         numberOfPartitions =  numberOfPartitions
       )
       .write
@@ -84,18 +96,12 @@ object AvailsDealAggregate {
 
     val raw_scores = spark.read.format("parquet").load(out_path)
     val dealSvSeed_avg_scores = raw_scores.withColumn("Score", explode($"Scores.Score"))
-      .groupBy("DealCode", "SupplyVendorId", "SeedId")
+      .groupBy((getPartitionColumns(aggregation_mode) :+ "SeedId").map(col): _*)
       .agg(
         count("Score").as("UserCount"),
         avg("Score").as("AverageScore")
-      ).cache()
+      )
 
-    val found_deals = dealSvSeed_avg_scores.groupBy("DealCode", "SupplyVendorId")
-      .agg(avg("UserCount").as("users")).cache()
-
-    dealCount.labels(Map("date" -> dateStr, "type" -> "total")).set(dealSvDS.count())
-    dealCount.labels(Map("date" -> dateStr, "type" -> "found")).set(found_deals.count())
-    dealCount.labels(Map("date" -> dateStr, "type" -> "scored")).set(found_deals.filter(col("users") >= min_users).count())
 
     dealSvSeed_avg_scores
       .filter(col("UserCount") >= min_users)
@@ -104,12 +110,9 @@ object AvailsDealAggregate {
       .mode("overwrite")
       .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
       .save(agg_score_out_path)
-
   }
 
   def main(args: Array[String]): Unit = {
     runETLPipeline()
-    otelClient.pushMetrics()
   }
 }
-

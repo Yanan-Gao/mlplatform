@@ -1,16 +1,10 @@
 package com.thetradedesk.audience.jobs.dealscore
 
-import com.thetradedesk.audience.jobs.modelinput.rsmv2.usersampling.SIBSampler.{_isDeviceIdSampled1Percent, _isDeviceIdSampledNPercent}
-import com.thetradedesk.availspipeline.spark.datasets.{DealAvailsAggDailyDataSet, IdentityAndDealAggHourlyDataSet}
 import com.thetradedesk.audience.{date, dateFormatter, ttdEnv}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
-import org.apache.spark.sql.expressions.{UserDefinedFunction, Window}
-import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.datasets.sources.SupplyVendorDealDataSet
 import org.apache.spark.sql.functions._
 
-import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
 object AvailsFindDealScores {
@@ -28,80 +22,36 @@ object AvailsFindDealScores {
   val max_hour = config.getInt("max_hour", 24)
   val limit_users = config.getInt("limit_users", 50000)
 
-  case class UserIdentifier(identitySource: Int, guidString: String)
-
-  // Define the function to coalesce all the ID to get final TDID
-  //TODO: create mapping for https://gitlab.adsrvr.org/thetradedesk/adplatform/-/blob/master/TTD/Domain/Shared/EnumsAndConstants/TTD.Domain.Shared.EnumsAndConstants.Identity/IdentitySource.cs
-  //public enum IdentitySource
-  //    {
-  //        Unknown = 0,
-  //        Tdid = 1,
-  //        MiscDeviceId = 2,
-  //        UnifiedId2 = 3, // when consuming this value, ensure there is equivalent handling for IdentitySource.EUID (or add a comment if explicitly excluding EUID)
-  //        IdentityLinkId = 4,
-  //        EUID = 5, // when consuming this value, ensure there is equivalent handling for IdentitySource.UnifiedId2 (or add a comment if explicitly excluding UnifiedId2)
-  //        Nebula = 6,
-  //        HashedIP = 7,
-  //        CrossDevice = 8, // !!Important!! This value is deliberately not in dbo.IdentitySource in the database.
-  //        // This is a fake value used when updating the adfrequency source used (see the function GetLoggedBitmapFromIdentitySources for example).
-  //        DATId = 9,
-  private def makeProcessUserIdentifiersUDF(samplingRate: Int): UserDefinedFunction = {
-    val f = (userIdentifiers: Seq[UserIdentifier]) => {
-      val priorityOrder = Seq(1, 2, 3, 4, 5)
-      userIdentifiers
-        .filter(ui => priorityOrder.contains(ui.identitySource))
-        .filter(ui => _isDeviceIdSampledNPercent(ui.guidString, samplingRate))
-        .filter(ui => ui.guidString.length > 8 && ui.guidString.charAt(8) == '-')
-        .map(_.guidString)
-    }
-    udf(f)
-  }
 
   def runETLPipeline(): Unit = {
 
     val dealSv = spark.read.parquet(deal_sv_path)
     val dealSvSeedDS = dealSv.select("DealCode", "SupplyVendorId", "SeedId").distinct().cache();
     val dealSvDS = dealSvSeedDS.select("DealCode", "SupplyVendorId").distinct()
-    SupplyVendorDealDataSet
 
-    val dayToRead = LocalDate.parse(dateStrDash).atStartOfDay()
-    val avails = IdentityAndDealAggHourlyDataSet.readFullDayPartition(dayToRead).filter(col("hour") >= min_hour && col("hour") < max_hour)
+    val avails = DealScoreUtils.loadAvailsData(dateStrDash, min_hour, max_hour)
 
-    val availsFiltered = avails.filter(
-        size(col("DealCodes")) > 0 && !col("DealCodes")(0).isNull && col("DealCodes")(0) =!= "" &&
-        expr("exists(UserIdentifiers, x -> x.identitySource IN (1,2,3,4,5))")
-    ).select("UserIdentifiers", "DealCodes", "SupplyVendorId")
+    val availsProcessed = DealScoreUtils
+      .processUserIdentifiers(avails, samplingRate, Seq("UserIdentifiers", "DealCodes", "SupplyVendorId"))
+      .filter(size(col("DealCodes")) > 0 && !col("DealCodes")(0).isNull && col("DealCodes")(0) =!= "")
 
-    val processUserIdentifiersUDF = makeProcessUserIdentifiersUDF(samplingRate)
-    val availsProcessed = availsFiltered.withColumn("Identifiers", processUserIdentifiersUDF(col("UserIdentifiers")))
-      .filter(size(col("Identifiers")) > 0)
-      .select("Identifiers", "DealCodes", "SupplyVendorId")
-
-    val availsProcessedExploded = availsProcessed.withColumn("TDID", explode(col("Identifiers"))).withColumn("DealCode", explode(col("DealCodes"))).select('TDID, 'DealCode, 'SupplyVendorId)
-
-    val matched_df = availsProcessedExploded.as("a").join(
-      broadcast(dealSvDS.as("d")),
-      trim(col("a.DealCode")) === trim(col("d.DealCode")) && col("a.SupplyVendorId") === col("d.SupplyVendorId")
-    ).select("TDID", "a.DealCode", "a.SupplyVendorId")
-
-    val TdidsByDCSV = matched_df.select("TDID", "DealCode", "SupplyVendorId").distinct()
+    val TdidsByDCSV = DealScoreUtils.explodeJoinAndDistinct(
+      sourceDF = availsProcessed,
+      explodeColumns = Map("Identifiers" -> "TDID", "DealCodes" -> "DealCode"),
+      selectAfterExplode = Seq("TDID", "DealCode", "SupplyVendorId"),
+      joinDF = dealSvDS,
+      joinColumns = Seq("DealCode", "SupplyVendorId")
+    )
 
     val numberOfPartitions = num_workers * 4 * cpu_per_worker
-    val windowSpec = Window.partitionBy("DealCode", "SupplyVendorId").orderBy(col("rand"))
-
-    TdidsByDCSV
-      .repartition(numberOfPartitions, col("DealCode"), col("SupplyVendorId"))
-      .withColumn("rand", rand())
-      .withColumn("row_num", row_number().over(windowSpec))
-      .filter(col("row_num") <= limit_users)
-      .drop("row_num")
-      .drop("rand")
-      .coalesce(findDealsCoalesce)
-      .write
-      .format("parquet")
-      .mode("overwrite")
-      .option("codec", "org.apache.hadoop.io.compress.GzipCodec")
-      .save(out_path)
+    DealScoreUtils.limitAndSave(
+      sourceDF = TdidsByDCSV,
+      partitionColumns = Seq("DealCode", "SupplyVendorId"),
+      numberOfPartitions = numberOfPartitions,
+      limitUsers = limit_users,
+      coalesceTo = findDealsCoalesce,
+      outPath = out_path
+    )
   }
 
   def main(args: Array[String]): Unit = {
