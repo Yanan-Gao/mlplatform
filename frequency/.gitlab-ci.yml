@@ -1,0 +1,180 @@
+include:
+  - component: $CI_SERVER_FQDN/thetradedesk/teams/infsrv/gitlab-cicd-cloudsmith/cloudsmith-auth@1
+
+default:
+  id_tokens:
+    DEVINFRA_SERVITOR_ID_TOKEN:
+      aud: https://servitor.gen.adsrvr.org
+    DEVINFRA_VAULT_ID_TOKEN:
+      aud: https://vault.adsrvr.org
+    SPIFFE_GITLAB_ID_TOKEN:
+      aud: https://spire.prod.adsrvr.net
+
+variables:
+  SCALA_BUILD_IMAGE_2_13_0: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+
+  FREQUENCY_LIBS_S3_LOCATION: "s3://thetradedesk-mlplatform-us-east-1/libs/frequency"
+  FREQUENCY_MERGEREQUESTS_JAR_FOLDER: "$FREQUENCY_LIBS_S3_LOCATION/jars/mergerequests"
+  FREQUENCY_SNAPSHOTS_JAR_FOLDER: "$FREQUENCY_LIBS_S3_LOCATION/jars/snapshots"
+  FREQUENCY_PROD_JAR_FOLDER: "$FREQUENCY_LIBS_S3_LOCATION/jars/prod"
+
+  FREQUENCY_DAILY_JAR_NAME: "frequency-daily-aggregation.jar"
+  FREQUENCY_DAILY_ASSEMBLY_OUT: "$CI_PROJECT_DIR/frequency/frequency_daily_aggregation/target/scala-2.12/frequency-daily-aggregation.jar"
+
+  FREQUENCY_SHORT_WINDOW_JAR_NAME: "short-window-frequency.jar"
+  FREQUENCY_SHORT_WINDOW_ASSEMBLY_OUT: "$CI_PROJECT_DIR/frequency/short_window_frequency/target/scala-2.12/short-window-frequency.jar"
+
+  FREQUENCY_SEVEN_DAY_JAR_NAME: "seven-day-uiid-aggregation.jar"
+  FREQUENCY_SEVEN_DAY_ASSEMBLY_OUT: "$CI_PROJECT_DIR/frequency/seven_day_uiid_aggregation/target/scala-2.12/seven-day-uiid-aggregation.jar"
+
+  FREQUENCY_RECENCY_JAR_NAME: "recency-features.jar"
+  FREQUENCY_RECENCY_ASSEMBLY_OUT: "$CI_PROJECT_DIR/frequency/recency_features/target/scala-2.12/recency-features.jar"
+
+  FREQUENCY_TRAINING_JAR_NAME: "training-table-assembly.jar"
+  FREQUENCY_TRAINING_ASSEMBLY_OUT: "$CI_PROJECT_DIR/frequency/training_table/target/scala-2.12/training-table-assembly.jar"
+
+frequency:test:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: test
+  cache:
+    policy: pull
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "frequency/**/src/**/*"
+        - "frequency/**/build.sbt"
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "frequency/**/src/**/*"
+        - "frequency/**/build.sbt"
+  before_script:
+    - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
+  script:
+    - echo "Fixing Debian Stretch repositories..."
+    - apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+    - echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [ .cloudsmith-auth, script ]
+    - pushd ./frequency/frequency_daily_aggregation/
+    - sbt test
+    - popd
+    - pushd ./frequency/short_window_frequency/
+    - sbt test
+    - popd
+    - pushd ./frequency/seven_day_uiid_aggregation/
+    - sbt test
+    - popd
+    - pushd ./frequency/recency_features/
+    - sbt test
+    - popd
+    - pushd ./frequency/training_table/
+    - sbt test
+    - popd
+    - echo "ran frequency_test"
+
+frequency:push_bits_merge_request:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: assembly_upload
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "frequency/**/src/**/*"
+        - "frequency/**/build.sbt"
+  script:
+    - echo "Fixing Debian Stretch repositories..."
+    - apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+    - echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [ .cloudsmith-auth, script ]
+    - pushd ./frequency/frequency_daily_aggregation/
+    - sbt "set test in assembly := {}" clean assembly
+    - popd
+    - pushd ./frequency/short_window_frequency/
+    - sbt "set test in assembly := {}" clean assembly
+    - popd
+    - pushd ./frequency/seven_day_uiid_aggregation/
+    - sbt "set test in assembly := {}" clean assembly
+    - popd
+    - pushd ./frequency/recency_features/
+    - sbt "set test in assembly := {}" clean assembly
+    - popd
+    - pushd ./frequency/training_table/
+    - sbt "set test in assembly := {}" clean assembly
+    - popd
+    - DEST=${FREQUENCY_MERGEREQUESTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}
+    - aws s3 cp ${FREQUENCY_DAILY_ASSEMBLY_OUT} ${DEST}/${FREQUENCY_DAILY_JAR_NAME}
+    - aws s3 cp ${FREQUENCY_SHORT_WINDOW_ASSEMBLY_OUT} ${DEST}/${FREQUENCY_SHORT_WINDOW_JAR_NAME}
+    - aws s3 cp ${FREQUENCY_SEVEN_DAY_ASSEMBLY_OUT} ${DEST}/${FREQUENCY_SEVEN_DAY_JAR_NAME}
+    - aws s3 cp ${FREQUENCY_RECENCY_ASSEMBLY_OUT} ${DEST}/${FREQUENCY_RECENCY_JAR_NAME}
+    - aws s3 cp ${FREQUENCY_TRAINING_ASSEMBLY_OUT} ${DEST}/${FREQUENCY_TRAINING_JAR_NAME}
+    - echo "ran frequency_push_bits_merge_request"
+
+frequency:push_bits_master_snapshot:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: assembly_upload
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "frequency/**/src/**/*"
+        - "frequency/**/build.sbt"
+  script:
+    - echo "Fixing Debian Stretch repositories..."
+    - apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+    - echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [ .cloudsmith-auth, script ]
+    - pushd ./frequency/frequency_daily_aggregation/
+    - sbt "set test in assembly := {}" clean assembly
+    - popd
+    - pushd ./frequency/short_window_frequency/
+    - sbt "set test in assembly := {}" clean assembly
+    - popd
+    - pushd ./frequency/seven_day_uiid_aggregation/
+    - sbt "set test in assembly := {}" clean assembly
+    - popd
+    - pushd ./frequency/recency_features/
+    - sbt "set test in assembly := {}" clean assembly
+    - popd
+    - pushd ./frequency/training_table/
+    - sbt "set test in assembly := {}" clean assembly
+    - popd
+    - DEST=${FREQUENCY_SNAPSHOTS_JAR_FOLDER}/${CI_COMMIT_REF_NAME}/${CI_PIPELINE_ID}-${CI_COMMIT_SHORT_SHA}
+    - aws s3 cp ${FREQUENCY_DAILY_ASSEMBLY_OUT} ${DEST}/${FREQUENCY_DAILY_JAR_NAME}
+    - aws s3 cp ${FREQUENCY_SHORT_WINDOW_ASSEMBLY_OUT} ${DEST}/${FREQUENCY_SHORT_WINDOW_JAR_NAME}
+    - aws s3 cp ${FREQUENCY_SEVEN_DAY_ASSEMBLY_OUT} ${DEST}/${FREQUENCY_SEVEN_DAY_JAR_NAME}
+    - aws s3 cp ${FREQUENCY_RECENCY_ASSEMBLY_OUT} ${DEST}/${FREQUENCY_RECENCY_JAR_NAME}
+    - aws s3 cp ${FREQUENCY_TRAINING_ASSEMBLY_OUT} ${DEST}/${FREQUENCY_TRAINING_JAR_NAME}
+    - echo "ran frequency_push_bits_master_snapshot"
+
+frequency:deploy_release:
+  image: "$SCALA_BUILD_IMAGE_2_13_0"
+  stage: deploy
+  rules:
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "frequency/**/src/**/*"
+        - "frequency/**/build.sbt"
+      allow_failure: false
+  script:
+    - echo "Fixing Debian Stretch repositories..."
+    - apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+    - echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [ .cloudsmith-auth, script ]
+    - pushd ./frequency/frequency_daily_aggregation/
+    - sbt "set test in assembly := {}" clean assembly
+    - popd
+    - pushd ./frequency/short_window_frequency/
+    - sbt "set test in assembly := {}" clean assembly
+    - popd
+    - pushd ./frequency/seven_day_uiid_aggregation/
+    - sbt "set test in assembly := {}" clean assembly
+    - popd
+    - pushd ./frequency/recency_features/
+    - sbt "set test in assembly := {}" clean assembly
+    - popd
+    - pushd ./frequency/training_table/
+    - sbt "set test in assembly := {}" clean assembly
+    - popd
+    - aws s3 cp ${FREQUENCY_DAILY_ASSEMBLY_OUT} ${FREQUENCY_PROD_JAR_FOLDER}/${FREQUENCY_DAILY_JAR_NAME}
+    - aws s3 cp ${FREQUENCY_SHORT_WINDOW_ASSEMBLY_OUT} ${FREQUENCY_PROD_JAR_FOLDER}/${FREQUENCY_SHORT_WINDOW_JAR_NAME}
+    - aws s3 cp ${FREQUENCY_SEVEN_DAY_ASSEMBLY_OUT} ${FREQUENCY_PROD_JAR_FOLDER}/${FREQUENCY_SEVEN_DAY_JAR_NAME}
+    - aws s3 cp ${FREQUENCY_RECENCY_ASSEMBLY_OUT} ${FREQUENCY_PROD_JAR_FOLDER}/${FREQUENCY_RECENCY_JAR_NAME}
+    - aws s3 cp ${FREQUENCY_TRAINING_ASSEMBLY_OUT} ${FREQUENCY_PROD_JAR_FOLDER}/${FREQUENCY_TRAINING_JAR_NAME}
+    - echo "ran frequency_deploy_release"

@@ -64,4 +64,5 @@ include:
   - local: 'audience/.gitlab-ci.yml'
   - local: 'pythia/.gitlab-ci.yml'
   - local: 'feature_store/.gitlab-ci.yml'
+  - local: 'frequency/.gitlab-ci.yml'
 
