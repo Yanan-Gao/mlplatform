@@ -230,6 +230,7 @@ object VirtualMaxBidBackoffTransform {
         (sum("CappedInitialBid") / sum("MaxBidCPMInBucks")).as("SumInternalBidOverMaxBid_Fraction"),
         expr("percentile_approx(UncappedBidOverMaxBid, array(0.1, 0.3, 0.5, 0.7, 0.9), 100)").as("VirtualMaxBid_Multiplier_Options"),
       )
+      .filter($"BidsCloseToMaxBid_Fraction".isNotNull && $"SumInternalBidOverMaxBid_Fraction".isNotNull && $"VirtualMaxBid_Multiplier_Options".isNotNull)
       .cache()
 
     val relevantCampaignsWithAggData = relevantCampaigns
