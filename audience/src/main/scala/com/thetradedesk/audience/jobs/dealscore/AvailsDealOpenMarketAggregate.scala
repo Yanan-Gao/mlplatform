@@ -31,6 +31,9 @@ object AvailsDealOpenMarketAggregate {
   val cap_users = config.getInt("cap_users", 15000)
   val min_users = config.getInt("min_users", 8000)
   val lookback = config.getInt("look_back", 6)
+  val partitionPerCore = config.getInt("partition_per_core", 1)
+  // This multiplier is used for multiplying the partitions when collecting at the ent to ease memory usage.
+  val partitionMultiplier = config.getInt("partition_mult", 1)
 
   val min_adInfoCount = config.getInt("min_adInfoCount", 100000)
   
@@ -47,7 +50,7 @@ object AvailsDealOpenMarketAggregate {
 
   def runETLPipeline(): Unit = {
 
-    val numberOfPartitions = num_workers * 1 * cpu_per_worker
+    val numberOfPartitions = num_workers * partitionPerCore * cpu_per_worker
     val dealSv = spark.read.parquet(deal_sv_path)
     //hardcode for now, filter out low volume combos
     val deals_om_equivalent = spark.read.parquet(deals_OM_equivalents_path)
@@ -86,7 +89,7 @@ object AvailsDealOpenMarketAggregate {
         seedIdPath = seed_id_path
       ).collectScores(
         partitionColumns = getPartitionColumns(aggregation_mode),
-        numberOfPartitions =  numberOfPartitions
+        numberOfPartitions =  numberOfPartitions * partitionMultiplier
       )
       .write
       .format("parquet")
