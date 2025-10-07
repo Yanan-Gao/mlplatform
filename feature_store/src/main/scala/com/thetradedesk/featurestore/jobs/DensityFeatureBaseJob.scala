@@ -49,9 +49,18 @@ abstract class DensityFeatureBaseJob {
     date.format(dtf)
   }
 
-  def readBidsImpressionsWithIDExploded(featurePairs: List[(String, String)], date: LocalDate, hour: Option[Int]) = {
+  def readBidsImpressionsWithIDExploded(
+                                         featurePairs: List[(String, String)],
+                                         date: LocalDate,
+                                         hour: Option[Int]
+                                       ): DataFrame = {
+    val userWindowSpec = if (hour.isDefined) Window.partitionBy("TDID") else Window.partitionBy("TDID", "hourPart")
+
     readBidsImpressions(featurePairs, date, hour)
       .withColumn("TDID", allIdType)
+      .withColumn("UserFrequency", count("*").over(userWindowSpec))
+      .where(col("UserFrequency") < lit(normalUserBidCountPerHour))
+      .drop("UserFrequency")
       .select("TDID", (featurePairs.map(e => s"${e._1}${e._2}Hashed") :+ "BidRequestId"): _*)
   }
 
