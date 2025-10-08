@@ -105,7 +105,10 @@ abstract class DensityFeatureBaseJob {
         )
       }
 
-      val colsToKeep = colsToRead ++ featurePairs.map(e => s"${e._1}${e._2}Hashed") :+ "DeviceAdvertisingId" :+ "CookieTDID" :+ "UnifiedId2" :+ "EUID" :+ "IdentityLinkId"
+      val baseCols = colsToRead ++ featurePairs.map(e => s"${e._1}${e._2}Hashed") ++ 
+        Seq("DeviceAdvertisingId", "CookieTDID", "UnifiedId2", "EUID", "IdentityLinkId")
+      
+      val colsToKeep = if (hour.isDefined) baseCols else baseCols :+ "hourPart"
 
       bidsImpressions
         .select("BidRequestId", colsToKeep: _*)
