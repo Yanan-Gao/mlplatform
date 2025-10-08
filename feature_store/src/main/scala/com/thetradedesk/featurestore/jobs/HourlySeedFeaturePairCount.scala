@@ -42,7 +42,7 @@ object HourlySeedFeaturePairCount extends DensityFeatureBaseJob {
     val hourlyAggregatedFeatureCount = aggregateFeatureCount(bidreq, aggregatedSeed, policyTable)
 
     // hack to 8192, change back later
-    hourlyAggregatedFeatureCount.write.mode(SaveMode.Overwrite).parquet(writePath)
+    hourlyAggregatedFeatureCount.repartition(defaultNumPartitions).write.mode(SaveMode.Overwrite).parquet(writePath)
   }
 
   def aggregateFeatureCount(bidreq: DataFrame, aggregatedSeed: DataFrame, policyTable: DataFrame): DataFrame = {
