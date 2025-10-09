@@ -1,6 +1,7 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience._
+import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.paddingColumnsWithLength
 import com.thetradedesk.audience.utils.S3Utils
 import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.featurestore.data.cbuffer.SchemaHelper.{CBufferDataFrameReader, CBufferDataFrameWriter}
@@ -143,7 +144,10 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
     }
     }
 
-    val result = dfs.reduce(_.unionByName(_)).cache
+    val colMaxLength = Map("MatchedSegments" -> 200)
+    val result = paddingColumnsWithLength(
+      dfs.reduce(_.unionByName(_)), colMaxLength, 0)
+      .cache
 
     result.coalesce(conf.audienceResultCoalesce)
       .write.mode(SaveMode.Overwrite)
