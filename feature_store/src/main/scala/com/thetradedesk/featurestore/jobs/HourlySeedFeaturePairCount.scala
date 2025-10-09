@@ -1,13 +1,14 @@
 package com.thetradedesk.featurestore.jobs
 
 import com.thetradedesk.featurestore._
+import com.thetradedesk.featurestore.datasets.DatasetWriter
 import com.thetradedesk.featurestore.rsm.CommonEnums.DataSource
 import com.thetradedesk.featurestore.transform.{BatchSeedCountAgg, SeedMergerAgg}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.util.io.FSUtils
+import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.{DataFrame, SaveMode}
 
 object HourlySeedFeaturePairCount extends DensityFeatureBaseJob {
   override val jobName = "HourlySeedFeaturePairCount"
@@ -41,8 +42,8 @@ object HourlySeedFeaturePairCount extends DensityFeatureBaseJob {
 
     val hourlyAggregatedFeatureCount = aggregateFeatureCount(bidreq, aggregatedSeed, policyTable)
 
-    // hack to 8192, change back later
-    hourlyAggregatedFeatureCount.repartition(defaultNumPartitions).write.mode(SaveMode.Overwrite).parquet(writePath)
+    //    hourlyAggregatedFeatureCount.repartition(defaultNumPartitions).write.mode(SaveMode.Overwrite).parquet(writePath)
+    DatasetWriter.writeDataSet(dataset = hourlyAggregatedFeatureCount, writePath = writePath, numPartitions = Some(defaultNumPartitions), repartitionColumn = Some(""), writeThroughHdfs = true)
   }
 
   def aggregateFeatureCount(bidreq: DataFrame, aggregatedSeed: DataFrame, policyTable: DataFrame): DataFrame = {
