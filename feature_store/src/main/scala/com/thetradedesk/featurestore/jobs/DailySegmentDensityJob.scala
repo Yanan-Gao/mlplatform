@@ -21,6 +21,8 @@ object DailySegmentDensityJob extends DensityFeatureBaseJob {
 
   val writePartitions = config.getInt("writePartitions", 16)
 
+  val logBuffer =  config.getDouble("log_buffer", 1.0).toFloat
+
   val outputPath = config.getString("outputPath", s"$MLPlatformS3Root/$ttdEnv/profiles/SegmentDensity/date=${getDateStr(date)}")
 
   def readAllLalResults(date: LocalDate): DataFrame = {
@@ -85,6 +87,6 @@ object DailySegmentDensityJob extends DensityFeatureBaseJob {
       .join(audienceTargetingData.filter($"Included" === true), Seq("AudienceId"))
       .join(campaignSeed, Seq("CampaignId"))
       .join(smoothedLalResults, Seq("SeedId", "TargetingDataId"))
-      .select($"SeedId", $"TargetingDataId", $"IsFirstParty", $"RelevanceRatio".as("DensityScore"))
+      .select($"SeedId", $"TargetingDataId", $"IsFirstParty", log($"RelevanceRatio" + lit(logBuffer)).as("DensityScore"))
   }
 }
