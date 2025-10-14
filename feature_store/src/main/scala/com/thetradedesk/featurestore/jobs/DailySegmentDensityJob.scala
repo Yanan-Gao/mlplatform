@@ -86,6 +86,8 @@ object DailySegmentDensityJob extends DensityFeatureBaseJob {
       .join(activeCampaigns, Seq("CampaignId"), "leftsemi")
       .join(audienceTargetingData.filter($"Included" === true), Seq("AudienceId"))
       .join(campaignSeed, Seq("CampaignId"))
+      .select($"SeedId", $"TargetingDataId")
+      .distinct()
       .join(smoothedLalResults, Seq("SeedId", "TargetingDataId"))
       .select($"SeedId", $"TargetingDataId", $"IsFirstParty", log($"RelevanceRatio" + lit(logBuffer)).as("DensityScore"))
   }
