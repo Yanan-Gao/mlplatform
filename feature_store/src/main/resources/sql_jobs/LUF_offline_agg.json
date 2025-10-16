@@ -58,30 +58,30 @@
     group by tdid
   ),
   conversion_yesterday_last10 as (
-    select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip
+    select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip, monetaryvalue, monetaryvaluecurrency
     from (
-      select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip, row_number() over (partition by tdid order by timestamp desc) rnk
+      select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip, monetaryvalue, monetaryvaluecurrency, row_number() over (partition by tdid order by timestamp desc) rnk
       from (
-        select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip
+        select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip, cast(monetaryvalue as float) monetaryvalue, monetaryvaluecurrency
         from event_yesterday
         union all
-        select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip
+        select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip, cast(monetaryvalue as float) monetaryvalue, monetaryvaluecurrency
         from conversion_yesterday
       )
     ) where rnk <= 10
   ),
   conversion_unioned as (
-    select tdid, collect_list(struct(timestamp, advertiserid, trackingtagid, referralurl, normalizedReferralurl, ipaddress, country, region, city, zip)) as conversion
+    select tdid, collect_list(struct(timestamp, advertiserid, trackingtagid, referralurl, normalizedReferralurl, ipaddress, country, region, city, zip, monetaryvalue, monetaryvaluecurrency)) as conversion
     from (
-      select tdid, timestamp, advertiserid, trackingtagid, referralurl, split(referralurl, '\\\\?')[0] as normalizedReferralurl, ipaddress, country, region, city, zip
+      select tdid, timestamp, advertiserid, trackingtagid, referralurl, split(referralurl, '\\\\?')[0] as normalizedReferralurl, ipaddress, country, region, city, zip, monetaryvalue, monetaryvaluecurrency
       from (
-        select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip
+        select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip, monetaryvalue, monetaryvaluecurrency
         from conversion_yesterday_last10
         union all
-        select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip
+        select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip, cast(monetaryvalue as float) monetaryvalue, monetaryvaluecurrency
         from event_today
         union all
-        select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip
+        select tdid, timestamp, advertiserid, trackingtagid, referralurl, ipaddress, country, region, city, zip, cast(monetaryvalue as float) monetaryvalue, monetaryvaluecurrency
         from conversion_today
       )
     )
