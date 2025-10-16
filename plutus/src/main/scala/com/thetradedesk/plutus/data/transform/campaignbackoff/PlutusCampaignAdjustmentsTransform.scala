@@ -8,7 +8,7 @@ import com.thetradedesk.plutus.data.utils.S3NoFilesFoundException
 import com.thetradedesk.plutus.data.{envForRead, envForReadInternal, envForWrite}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.datasets.sources.vertica.UnifiedRtbPlatformReportDataSet
+import com.thetradedesk.spark.datasets.sources.vertica.RtbPlatformReportDataSetV2
 import com.thetradedesk.spark.datasets.sources.{CountryDataSet, CountryRecord}
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import job.campaignbackoff.CampaignAdjustmentsJob.campaignCounts
@@ -554,7 +554,7 @@ object PlutusCampaignAdjustmentsTransform extends Logger {
     val pcResultsMergedData = PcResultsMergedDataset
       .readDate(date, env = envForRead, nullIfColAbsent = true)
 
-    val platformReportData = UnifiedRtbPlatformReportDataSet
+    val platformReportData = RtbPlatformReportDataSetV2()
       .readRange(date, date.plusDays(1))
       .selectAs[RtbPlatformReportCondensedData]
 

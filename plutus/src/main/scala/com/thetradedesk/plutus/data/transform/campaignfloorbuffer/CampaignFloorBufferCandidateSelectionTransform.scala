@@ -8,7 +8,7 @@ import com.thetradedesk.plutus.data.utils.S3NoFilesFoundException
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
 import com.thetradedesk.spark.datasets.sources.SupplyVendorDataSet
-import com.thetradedesk.spark.datasets.sources.vertica.UnifiedRtbPlatformReportDataSet
+import com.thetradedesk.spark.datasets.sources.vertica.RtbPlatformReportDataSetV2
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import job.campaignbackoff.CampaignBbfFloorBufferCandidateSelectionJob.{floorBufferMetrics, numFloorBufferRollbackRowsWritten, numFloorBufferRowsWritten}
 import org.apache.spark.sql.functions._
@@ -217,8 +217,8 @@ object CampaignFloorBufferCandidateSelectionTransform {
     }
 
     // Read RtbPlatformReportCondensedData for yesterday and day before yesterday
-    val platformReportData = UnifiedRtbPlatformReportDataSet
-      .readRange(date.minusDays(2), date, isInclusive = true)
+    val platformReportData = RtbPlatformReportDataSetV2()
+      .readRange(date.minusDays(2), date)
       .selectAs[RtbPlatformReportCondensedData]
 
     // Read supply vendor data

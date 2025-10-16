@@ -5,7 +5,7 @@ import com.thetradedesk.plutus.data.schema.campaignbackoff._
 import com.thetradedesk.plutus.data.transform.SharedTransforms.{AddChannel, AddDeviceTypeIdAndRenderingContextId}
 import com.thetradedesk.plutus.data.envForWrite
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
-import com.thetradedesk.spark.datasets.sources.vertica.UnifiedRtbPlatformReportDataSet
+import com.thetradedesk.spark.datasets.sources.vertica.RtbPlatformReportDataSetV2
 import com.thetradedesk.spark.datasets.sources.{CountryDataSet, CountryRecord}
 import com.thetradedesk.spark.sql.SQLFunctions.DataSetExtensions
 import org.apache.spark.sql.functions._
@@ -70,7 +70,7 @@ object PlatformWideStatsTransform extends Logger {
 
   def transform(date: LocalDate, fileCount: Int): Unit = {
 
-    val platformReportData = UnifiedRtbPlatformReportDataSet.readRange(date, date.plusDays(1))
+    val platformReportData = RtbPlatformReportDataSetV2().readRange(date, date.plusDays(1))
       .selectAs[RtbPlatformReportCondensedData]
 
     val countryData = CountryDataSet().readLatestPartitionUpTo(date)
