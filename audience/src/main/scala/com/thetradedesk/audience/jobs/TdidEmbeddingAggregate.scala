@@ -1,6 +1,5 @@
 package com.thetradedesk.audience.jobs
 
-import com.thetradedesk.audience.{date, dateFormatter}
 import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.TTDSparkContext.spark.implicits._
