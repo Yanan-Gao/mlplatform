@@ -53,7 +53,7 @@ libraryDependencies ++= Seq(
 
   "com.typesafe" % "config" % "1.3.0",
   "com.thetradedesk" %% "geronimo" % "0.2.32-SNAPSHOT",
-  "com.thetradedesk.segment.client" % "spark_3" % "2.0.9" % "provided",
+  "com.thetradedesk.segment.client" % "spark_3" % "2.16.37" % "provided" exclude("org.roaringbitmap", "RoaringBitmap"),
   "com.thetradedesk" %% "eldorado-core" % eldoradoVersion,
   "com.thetradedesk" %% "availspipeline.spark-common_no_uniform" % availsVersion,
   "com.linkedin.sparktfrecord" %% "spark-tfrecord" % "0.3.4",
