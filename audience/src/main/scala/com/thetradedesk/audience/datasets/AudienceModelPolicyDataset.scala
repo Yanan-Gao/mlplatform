@@ -57,7 +57,8 @@ final case class AudienceModelPolicyRecord(TargetingDataId: Long,
                                           MappingId: Int,
                                           AdvertiserId: String,
                                           IndustryCategoryId: BigInt,
-                                          IsSensitive: Boolean
+                                          IsSensitive: Boolean,
+                                          NeedGraphExtension: Boolean
                                           )
 
 case class AudienceModelPolicyWritableDataset(model: Model) extends

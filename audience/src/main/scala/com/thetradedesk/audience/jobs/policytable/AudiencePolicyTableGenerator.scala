@@ -73,22 +73,45 @@ abstract class AudiencePolicyTableGenerator(
     val restrictedAdvertiser = RestrictedAdvertiserDataSet().readPartition(date)(spark)
 
     // generate needGraphExtension
-    val campaign = CampaignDataSet().readPartition(date).select("CampaignId","PrimaryChannelId")
+    val campaign = CampaignDataSet().readPartition(date).select("CampaignId","PrimaryChannelId","BudgetInAdvertiserCurrency","AdvertiserId")
       .join(CampaignFlightDataSet.activeCampaigns(date, startShift = 2, endShift = -1), "CampaignId")
-
     val campaignSeed = CampaignSeedDataset().readPartition(date)
-    
-    val seedCampaignNeedGE = campaign.join(campaignSeed,Seq("CampaignId"))
+    val dailyExchangeRateDataset = DailyExchangeRateDataset().readPartition(date)
+
+    val channel_budget = campaign.join(campaignSeed, Seq("CampaignId"))
+      .join(advertiser.select("AdvertiserId", "CurrencyCodeId"), Seq("AdvertiserId"), "left")
+      .join(dailyExchangeRateDataset, Seq("CurrencyCodeId"), "left")
+      .withColumn("BudgetInAdvertiserCurrencyInUSD", col("BudgetInAdvertiserCurrency") / col("FromUSD"))
+      .groupBy("SeedId", "PrimaryChannelId")
+      .agg(
+        sum(col("BudgetInAdvertiserCurrencyInUSD")).alias("channel_budget"),
+        count("*").alias("ChannelCampaignCount")
+      )
+
+    val seed_total_composite_weight = channel_budget
       .groupBy("SeedId")
       .agg(
-        count("*").alias("total_campaigns"),
-        sum(when(col("PrimaryChannelId") === 4, 1).otherwise(0)).alias("ctv_count"),
-        sum(when(col("PrimaryChannelId") === 3, 1).otherwise(0)).alias("audio_count")
+        sum(col("channel_budget") * col("ChannelCampaignCount")).alias("TotalCompositeWeight")
       )
+
+    val seedCampaignNeedGE = seed_total_composite_weight
+      .join(channel_budget, Seq("SeedId"), "inner")
       .withColumnRenamed("SeedId", "SourceId")
-      .withColumn("NeedGraphExtension", col("ctv_count") / col("total_campaigns") >= conf.ctvGraphExtensionRatio ||
-        col("audio_count") / col("total_campaigns") >= conf.audioGraphExtensionRatio
+      .withColumn("channel_composite_weight", col("channel_budget") * col("ChannelCampaignCount"))
+      .withColumn(
+        "NeedGraphExtension",
+        when(
+          (col("PrimaryChannelId") === 4) &&
+            (col("channel_composite_weight") / col("TotalCompositeWeight") > conf.ctvGraphExtensionRatio),
+          true
+        ).when(
+          (col("PrimaryChannelId") === 3) &&
+            (col("channel_composite_weight") / col("TotalCompositeWeight") > conf.audioGraphExtensionRatio),
+          true
+        ).otherwise(false)
       )
+      .groupBy("SourceId")
+      .agg(max("NeedGraphExtension").alias("NeedGraphExtension"))
 
     val seedAdvertiserDataset = seedAdvertiserMetaDataset
         .join(advertiser, Seq("AdvertiserId"), "left")
@@ -97,15 +120,21 @@ abstract class AudiencePolicyTableGenerator(
           "IsSensitive",
           when(col("IsRestricted")===1, lit(true)).otherwise(false)
         ).drop("IsRestricted")
-
+    val recentVersionOption = if (conf.seedMetaDataRecentVersion.isDefined) Some(LocalDateTime.parse(conf.seedMetaDataRecentVersion.get.split("=")(1), DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss.SSS")).toLocalDate.atStartOfDay())
+    else availablePolicyTableVersions.find(_.isBefore(dateTime))
     val policyTable = retrieveSourceData(dateTime.toLocalDate)
-
+    val policyTablePrev =AudienceModelPolicyReadableDataset(Model.RSM)
+      .readSinglePartition(recentVersionOption.get.asInstanceOf[java.time.LocalDateTime])(spark).select("NeedGraphExtension","SourceId","Source","CrossDeviceVendorId").withColumnRenamed("NeedGraphExtension","PrevNeedGraphExtension")
     val policyTableResult = allocateSyntheticId(dateTime, policyTable)
                             .join(seedAdvertiserDataset, Seq("SourceId"), "left")
                             .withColumn("IsSensitive", coalesce(col("IsSensitive"), lit(false))) // in case ttd segment data does not include in seeddetail
                             .join(seedCampaignNeedGE, Seq("SourceId"), "left")
-                            .withColumn("NeedGraphExtension", coalesce(col("NeedGraphExtension"), lit(false)))
-
+                            .join(policyTablePrev.as("yesterday"), Seq("SourceId","Source","CrossDeviceVendorId"), "left")
+                            .withColumn(
+                              "NeedGraphExtension",
+                              (col("yesterday.PrevNeedGraphExtension") === true && col("IsActive") === true) ||
+                                col("NeedGraphExtension") === true
+                            ).drop("channel_budget","weighted_count","PrevNeedGraphExtension","ChannelCampaignCount")
     AudienceModelPolicyWritableDatasetWithExperiment(model, confettiEnv, experimentName)
       .writePartition(
         policyTableResult.as[AudienceModelPolicyRecord],
@@ -194,7 +223,7 @@ abstract class AudiencePolicyTableGenerator(
 
     // use current date's seed id as active id, should be replaced with other table later
     val activeIds = policyTable.select('SourceId, 'Source, 'CrossDeviceVendorId, 'StorageCloud).distinct().cache
-    val previousPolicyTable = previousPolicyTableRaw.drop("AdvertiserId", "IndustryCategoryId", "IsSensitive")
+    val previousPolicyTable = previousPolicyTableRaw.drop("AdvertiserId", "IndustryCategoryId", "IsSensitive","NeedGraphExtension")
     // get retired sourceId
     val policyTableDayChange = ChronoUnit.DAYS.between(previousPolicyTableDate, date).toInt
 
@@ -210,7 +239,6 @@ abstract class AudiencePolicyTableGenerator(
       .withColumn("IsActive", lit(false))
       .withColumn("Tag", lit(Tag.Retention.id))
       .withColumn("SampleWeight", lit(1.0))
-
     // get new sourceId
     val newIds = activeIds.join(previousPolicyTable.filter('StorageCloud === storageCloud)
       .select('SourceId, 'Source, 'CrossDeviceVendorId, 'StorageCloud), Seq("SourceId", "Source", "CrossDeviceVendorId", "StorageCloud"), "left_anti")
@@ -228,7 +256,7 @@ abstract class AudiencePolicyTableGenerator(
       .withColumn("Tag", when('IsActive, lit(Tag.Existing.id)).otherwise(lit(Tag.Recall.id)))
       .withColumn("IsActive", lit(true))
       .withColumn("SampleWeight", lit(1.0)) // todo optimize this with performance/monitoring
-
+      .drop("NeedGraphExtension")
     logger.info("currentActiveIds: " + currentActiveIds.count())
 
     val otherSourcePreviousPolicyTable = previousPolicyTable.filter('StorageCloud =!= storageCloud).toDF()

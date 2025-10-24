@@ -6,6 +6,7 @@ import java.sql.Timestamp
 
 case class CampaignRecord(CampaignId: String,
                           PartnerId: String,
+                          AdvertiserId: String,
                           StartDate: Timestamp,
                           EndDate: Timestamp,
                           CustomCPATypeId: Int)

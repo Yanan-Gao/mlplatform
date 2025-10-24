@@ -7,7 +7,8 @@ import java.sql.Timestamp
 
 case class AdvertiserRecord(
                           AdvertiserId: String,
-                          IndustryCategoryId: BigInt
+                          IndustryCategoryId: BigInt,
+                          CurrencyCodeId: String
                           )
 case class AdvertiserDataSet() 
   extends LightReadableDataset[AdvertiserRecord](

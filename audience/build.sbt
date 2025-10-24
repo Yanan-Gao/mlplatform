@@ -60,6 +60,7 @@ libraryDependencies ++= Seq(
   "com.thetradedesk" %% "feature_store" % "20250804031454-SNAPSHOT",
   "com.thetradedesk.deals" %% "dealqualityspark" % "0.1.92-SNAPSHOT",
 
+
   "io.prometheus" % "simpleclient" % prometheusVersion,
   "io.prometheus" % "simpleclient_common" % prometheusVersion,
   "io.prometheus" % "simpleclient_pushgateway" % prometheusVersion,
@@ -108,4 +109,3 @@ assembly / assemblyShadeRules := Seq(
   ShadeRule.rename("okhttp3.**" -> "shade.okhttp3.@1").inAll,
   ShadeRule.rename("okio.**" -> "shade.okio.@1").inAll
 )
-
