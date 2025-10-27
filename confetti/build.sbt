@@ -31,6 +31,7 @@ libraryDependencies ++= Seq(
   "io.prometheus" % "simpleclient" % prometheusVersion,
   "io.prometheus" % "simpleclient_common" % prometheusVersion,
   "io.prometheus" % "simpleclient_pushgateway" % prometheusVersion,
+  "com.hubspot.jinjava" % "jinjava" % "2.7.3",
   "com.thetradedesk" %% "eldorado-core" % "1.0.285-spark-3.2.1"
 )
 
