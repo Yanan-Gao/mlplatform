@@ -1,5 +1,8 @@
 package com.thetradedesk.confetti
 
+import com.hubspot.jinjava.Jinjava
+import com.hubspot.jinjava.interpret.JinjavaConfig
+import com.hubspot.jinjava.objects.date.PyishDate
 import com.thetradedesk.confetti.utils.{HashUtils, S3Utils}
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.yaml.snakeyaml.{DumperOptions, Yaml}
@@ -10,6 +13,8 @@ import scala.collection.JavaConverters._
 import scala.util.Try
 
 class ManualConfigLoader(env: String, experimentName: Option[String], groupName: String, jobName: String) {
+
+  private val jinjava = new Jinjava(JinjavaConfig.newBuilder().withFailOnUnknownTokens(true).build())
 
   private val IdentityTemplate = "identity_config.yml.j2"
   private val OutputTemplate = "output_config.yml.j2"
@@ -66,11 +71,13 @@ class ManualConfigLoader(env: String, experimentName: Option[String], groupName:
   }
 
   private def renderTemplate(template: String, context: TemplateContext): String = {
-    val placeholderRegex = "\\{\\{\\s*([^}]+)\\s*\\}\\}".r
-    placeholderRegex.replaceAllIn(template, m => {
-      val expression = m.group(1).trim
-      evaluateExpression(expression, context).getOrElse(m.matched)
-    })
+    val result = jinjava.renderForResult(template, context.values.asJava)
+    val errors = result.getErrors.asScala
+    if (errors.nonEmpty) {
+      val details = errors.map(_.toString).mkString("; ")
+      throw new IllegalArgumentException(s"Failed to render template: $details")
+    }
+    result.getOutput
   }
 
   private def parseYaml(content: String, yaml: Yaml): Map[String, String] = {
@@ -109,15 +116,20 @@ class ManualConfigLoader(env: String, experimentName: Option[String], groupName:
     val effectiveExperiment = configuredExperiment.orElse(experimentName.filter(_.nonEmpty))
 
     val runDate = determineRunDate(runtimeVars.get("run_date"))
+    val runDateValue = new PyishDate(runDate.atStartOfDay(ZoneOffset.UTC)).withDateFormat("yyyy-MM-dd")
 
-    val baseContext = Map(
+    val baseContextEntries: Map[String, AnyRef] = Map(
       "environment" -> environment,
       "data_namespace" -> effectiveExperiment.map(exp => s"$environment/$exp").getOrElse(environment),
-      "run_date" -> runDate.format(DateTimeFormatter.ISO_LOCAL_DATE),
+      "run_date" -> runDateValue,
       "run_date_format" -> "%Y-%m-%d",
       "version_date_format" -> "%Y%m%d",
       "full_version_date_format" -> "%Y%m%d000000"
-    ) ++ effectiveExperiment.map(exp => "experimentName" -> exp)
+    )
+    val experimentContext = effectiveExperiment
+      .map(exp => Map[String, AnyRef]("experimentName" -> exp))
+      .getOrElse(Map.empty)
+    val baseContext = baseContextEntries ++ experimentContext
 
     val audienceJarBranch = config.getStringOption("audienceJarBranch").orElse(runtimeVars.get("audienceJarBranch"))
     val audienceJarVersion = config.getStringOption("audienceJarVersion").orElse(runtimeVars.get("audienceJarVersion"))
@@ -125,11 +137,13 @@ class ManualConfigLoader(env: String, experimentName: Option[String], groupName:
       Seq(
         audienceJarBranch.map("audienceJarBranch" -> _),
         audienceJarVersion.map("audienceJarVersion" -> _)
-      ).flatten.toMap
+      ).flatten.map { case (k, v) => k -> v.asInstanceOf[AnyRef] }.toMap
 
     val sanitizedRuntimeVars = runtimeVars - "run_date"
 
-    TemplateContext(baseContext ++ sanitizedRuntimeVars ++ audienceJarContext, runDate)
+    val runtimeContext = sanitizedRuntimeVars.map { case (k, v) => k -> v.asInstanceOf[AnyRef] }.toMap
+
+    TemplateContext(baseContext ++ runtimeContext ++ audienceJarContext)
   }
 
   private def determineRunDate(runtimeOverride: Option[String]): LocalDate = {
@@ -217,59 +231,6 @@ class ManualConfigLoader(env: String, experimentName: Option[String], groupName:
     yaml.dump(value)
   }
 
-  private def evaluateExpression(expression: String, context: TemplateContext): Option[String] = {
-    expression match {
-      case strftime if strftime.startsWith("run_date.strftime") =>
-        extractStrftimePattern(strftime, context).map(formatRunDate(_, context.runDate))
-      case other => context.values.get(other)
-    }
-  }
-
-  private def extractStrftimePattern(expression: String, context: TemplateContext): Option[String] = {
-    val patternRegex = "run_date\\.strftime\\((.*)\\)".r
-    expression match {
-      case patternRegex(arg) =>
-        val trimmed = arg.trim
-        if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) || (trimmed.startsWith("'") && trimmed.endsWith("'")))) {
-          Some(trimmed.substring(1, trimmed.length - 1))
-        } else {
-          context.values.get(trimmed)
-        }
-      case _ => None
-    }
-  }
-
-  private def formatRunDate(pattern: String, runDate: LocalDate): String = {
-    val sb = new StringBuilder
-    var idx = 0
-    while (idx < pattern.length) {
-      val ch = pattern.charAt(idx)
-      if (ch == '%') {
-        if (idx + 1 >= pattern.length) {
-          throw new IllegalArgumentException("Trailing '%' in strftime pattern")
-        }
-        val code = pattern.charAt(idx + 1)
-        val replacement = code match {
-          case 'Y' => f"${runDate.getYear}%04d"
-          case 'y' => f"${runDate.getYear % 100}%02d"
-          case 'm' => f"${runDate.getMonthValue}%02d"
-          case 'd' => f"${runDate.getDayOfMonth}%02d"
-          case 'H' => "00"
-          case 'M' => "00"
-          case 'S' => "00"
-          case '%' => "%"
-          case other => throw new IllegalArgumentException(s"Unsupported strftime code: %$other")
-        }
-        sb.append(replacement)
-        idx += 2
-      } else {
-        sb.append(ch)
-        idx += 1
-      }
-    }
-    sb.toString()
-  }
-
   private case class AudienceConfig(renderedContent: String, data: java.util.Map[String, Any]) {
     lazy val hashInput: String = canonicalizeForHash(data)
   }
@@ -295,7 +256,7 @@ class ManualConfigLoader(env: String, experimentName: Option[String], groupName:
     }
   }
 
-  private case class TemplateContext(values: Map[String, String], runDate: LocalDate)
+  private case class TemplateContext(values: Map[String, AnyRef])
 
   private def getJobTemplatePath(): String = {
     s"s3://thetradedesk-mlplatform-us-east-1/configdata/confetti/config-templates/$groupName/$jobName"
