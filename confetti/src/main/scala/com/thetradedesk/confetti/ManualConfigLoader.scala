@@ -1,7 +1,6 @@
 package com.thetradedesk.confetti
 
-import com.hubspot.jinjava.Jinjava
-import com.hubspot.jinjava.interpret.JinjavaConfig
+import com.hubspot.jinjava.{Jinjava, JinjavaConfig}
 import com.hubspot.jinjava.objects.date.PyishDate
 import com.thetradedesk.confetti.utils.{HashUtils, S3Utils}
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -12,7 +11,7 @@ import java.time.{LocalDate, ZoneOffset}
 import scala.collection.JavaConverters._
 import scala.util.Try
 
-class ManualConfigLoader(env: String, experimentName: Option[String], groupName: String, jobName: String) {
+class ManualConfigLoader[C](env: String, experimentName: Option[String], groupName: String, jobName: String) {
 
   private val jinjava = new Jinjava(JinjavaConfig.newBuilder().withFailOnUnknownTokens(true).build())
 
@@ -25,7 +24,10 @@ class ManualConfigLoader(env: String, experimentName: Option[String], groupName:
    * runtime variables and config derived values. Returns the flattened key/value
    * map used by downstream config readers with an additional identity hash.
    */
-  def loadRuntimeConfigs(runtimeVars: Map[String, String]): Map[String, String] = {
+  def loadRuntimeConfigs(runtimeVars: Map[String, String]): C = {
+
+
+    // todo remove runtimeVars and dynamically load from config.
     val context = buildTemplateContext(runtimeVars)
 
     val yamlParser = new Yaml()
@@ -61,6 +63,8 @@ class ManualConfigLoader(env: String, experimentName: Option[String], groupName:
     val identityHash = hashCanonical(processedIdentity.hashInput)
 
     combinedConfig + ("identity_config_id" -> identityHash)
+
+    // TODO return C
   }
 
   private def readTemplate(templateName: String): String = {
@@ -108,28 +112,21 @@ class ManualConfigLoader(env: String, experimentName: Option[String], groupName:
   private def hashCanonical(canonical: String): String = HashUtils.sha256Base64(canonical)
 
   private def buildTemplateContext(runtimeVars: Map[String, String]): TemplateContext = {
-    val environment = config.getStringOption("confettiEnv")
-      .orElse(config.getStringOption("ttd.env"))
-      .getOrElse(env)
-
-    val configuredExperiment = config.getStringOption("experimentName").filter(_.nonEmpty)
-    val effectiveExperiment = configuredExperiment.orElse(experimentName.filter(_.nonEmpty))
-
     val runDate = determineRunDate(runtimeVars.get("run_date"))
     val runDateValue = new PyishDate(runDate.atStartOfDay(ZoneOffset.UTC)).withDateFormat("yyyy-MM-dd")
 
     val baseContextEntries: Map[String, AnyRef] = Map(
-      "environment" -> environment,
-      "data_namespace" -> effectiveExperiment.map(exp => s"$environment/$exp").getOrElse(environment),
+      "environment" -> env,
+      "data_namespace" -> experimentName.map(exp => s"$env/$exp").getOrElse(env),
       "run_date" -> runDateValue,
       "run_date_format" -> "%Y-%m-%d",
       "version_date_format" -> "%Y%m%d",
       "full_version_date_format" -> "%Y%m%d000000"
     )
-    val experimentContext = effectiveExperiment
-      .map(exp => Map[String, AnyRef]("experimentName" -> exp))
-      .getOrElse(Map.empty)
-    val baseContext = baseContextEntries ++ experimentContext
+//    val experimentContext = experimentName
+//      .map(exp => Map[String, AnyRef]("experimentName" -> exp))
+//      .getOrElse(Map.empty)
+//    val baseContext = baseContextEntries ++ experimentContext
 
     val audienceJarBranch = config.getStringOption("audienceJarBranch").orElse(runtimeVars.get("audienceJarBranch"))
     val audienceJarVersion = config.getStringOption("audienceJarVersion").orElse(runtimeVars.get("audienceJarVersion"))
@@ -143,7 +140,7 @@ class ManualConfigLoader(env: String, experimentName: Option[String], groupName:
 
     val runtimeContext = sanitizedRuntimeVars.map { case (k, v) => k -> v.asInstanceOf[AnyRef] }.toMap
 
-    TemplateContext(baseContext ++ runtimeContext ++ audienceJarContext)
+    TemplateContext(baseContextEntries ++ runtimeContext ++ audienceJarContext)
   }
 
   private def determineRunDate(runtimeOverride: Option[String]): LocalDate = {
