@@ -2,7 +2,7 @@ package com.thetradedesk.confetti
 
 import com.thetradedesk.confetti.utils.{HashUtils, S3Utils}
 import com.thetradedesk.spark.util.TTDConfig.config
-import org.yaml.snakeyaml.Yaml
+import org.yaml.snakeyaml.{DumperOptions, Yaml}
 
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneOffset}
@@ -23,24 +23,37 @@ class ManualConfigLoader(env: String, experimentName: Option[String], groupName:
   def loadRuntimeConfigs(runtimeVars: Map[String, String]): Map[String, String] = {
     val context = buildTemplateContext(runtimeVars)
 
+    val yamlParser = new Yaml()
     val renderedTemplates = Map(
       IdentityTemplate -> "identity_config.yml",
       OutputTemplate -> "output_config.yml",
       ExecutionTemplate -> "execution_config.yml"
     ).map { case (templateName, outputName) =>
       val templateContent = readTemplate(templateName)
-      val renderedContent = renderTemplate(templateContent, context)
-      checkForUnresolvedVariables(renderedContent, templateName)
-      outputName -> renderedContent
+      val rendered = renderTemplate(templateContent, context)
+      outputName -> (templateName -> rendered)
     }
 
-    val yamlParser = new Yaml()
-    val combinedConfig = renderedTemplates.values
+    val processedIdentity = {
+      val (templateName, identityContent) = renderedTemplates("identity_config.yml")
+      val injectionResult = injectAudienceJarPath(identityContent, yamlParser)
+      checkForUnresolvedVariables(injectionResult.renderedContent, templateName)
+      injectionResult
+    }
+
+    val finalizedTemplates = renderedTemplates.map {
+      case (outputName, (templateName, content)) if outputName == "identity_config.yml" =>
+        outputName -> processedIdentity.renderedContent
+      case (outputName, (templateName, content)) =>
+        checkForUnresolvedVariables(content, templateName)
+        outputName -> content
+    }
+
+    val combinedConfig = finalizedTemplates.values
       .map(parseYaml(_, yamlParser))
       .foldLeft(Map.empty[String, String])(_ ++ _)
 
-    val identityConfig = parseYaml(renderedTemplates("identity_config.yml"), yamlParser)
-    val identityHash = hashSorted(identityConfig)
+    val identityHash = hashCanonical(processedIdentity.hashInput)
 
     combinedConfig + ("identity_config_id" -> identityHash)
   }
@@ -52,11 +65,11 @@ class ManualConfigLoader(env: String, experimentName: Option[String], groupName:
     S3Utils.readFromS3(path)
   }
 
-  private def renderTemplate(template: String, context: Map[String, String]): String = {
+  private def renderTemplate(template: String, context: TemplateContext): String = {
     val placeholderRegex = "\\{\\{\\s*([^}]+)\\s*\\}\\}".r
     placeholderRegex.replaceAllIn(template, m => {
-      val key = m.group(1).trim
-      context.getOrElse(key, m.matched)
+      val expression = m.group(1).trim
+      evaluateExpression(expression, context).getOrElse(m.matched)
     })
   }
 
@@ -85,12 +98,9 @@ class ManualConfigLoader(env: String, experimentName: Option[String], groupName:
     }
   }
 
-  private def hashSorted(values: Map[String, String]): String = {
-    val canonical = values.toSeq.sortBy(_._1).map { case (k, v) => s"$k=$v" }.mkString("\n")
-    HashUtils.sha256Base64(canonical)
-  }
+  private def hashCanonical(canonical: String): String = HashUtils.sha256Base64(canonical)
 
-  private def buildTemplateContext(runtimeVars: Map[String, String]): Map[String, String] = {
+  private def buildTemplateContext(runtimeVars: Map[String, String]): TemplateContext = {
     val environment = config.getStringOption("confettiEnv")
       .orElse(config.getStringOption("ttd.env"))
       .getOrElse(env)
@@ -111,27 +121,181 @@ class ManualConfigLoader(env: String, experimentName: Option[String], groupName:
 
     val audienceJarBranch = config.getStringOption("audienceJarBranch").orElse(runtimeVars.get("audienceJarBranch"))
     val audienceJarVersion = config.getStringOption("audienceJarVersion").orElse(runtimeVars.get("audienceJarVersion"))
-    val audienceJarContext = resolveAudienceJarPath(audienceJarBranch, audienceJarVersion).map("audienceJarPath" -> _).toMap
+    val audienceJarContext =
+      Seq(
+        audienceJarBranch.map("audienceJarBranch" -> _),
+        audienceJarVersion.map("audienceJarVersion" -> _)
+      ).flatten.toMap
 
-    runtimeVars ++ baseContext ++ audienceJarContext
+    val sanitizedRuntimeVars = runtimeVars - "run_date"
+
+    TemplateContext(baseContext ++ sanitizedRuntimeVars ++ audienceJarContext, runDate)
   }
 
   private def determineRunDate(runtimeOverride: Option[String]): LocalDate = {
     val configDate = config.getStringOption("runDate")
       .orElse(config.getStringOption("confetti.runDate"))
-      .flatMap(parseDate)
+      .map(value => parseRequiredDate(value, "confetti runDate configuration"))
 
-    configDate
-      .orElse(runtimeOverride.flatMap(parseDate))
-      .getOrElse(LocalDate.now(ZoneOffset.UTC))
+    val runtimeDate = runtimeOverride.map(value => parseRequiredDate(value, "runtime run_date"))
+
+    configDate.orElse(runtimeDate).getOrElse(LocalDate.now(ZoneOffset.UTC))
   }
 
-  private def parseDate(value: String): Option[LocalDate] = Try(LocalDate.parse(value.trim)).toOption
-
-  private def resolveAudienceJarPath(branch: Option[String], version: Option[String]): Option[String] = {
-    // Placeholder implementation; real resolution logic will be provided later.
-    None
+  private def parseDate(value: String): Option[LocalDate] = {
+    val trimmed = value.trim
+    Try(LocalDate.parse(trimmed)).orElse(Try(LocalDate.parse(trimmed, DateTimeFormatter.BASIC_ISO_DATE))).toOption
   }
+
+  private def parseRequiredDate(value: String, source: String): LocalDate = {
+    parseDate(value).getOrElse(
+      throw new IllegalArgumentException(s"Invalid date '$value' supplied for $source. Expected yyyy-MM-dd or yyyyMMdd")
+    )
+  }
+
+  private def injectAudienceJarPath(content: String, yaml: Yaml): AudienceConfig = {
+    val parsed = Option(yaml.load[Any](content)).getOrElse(new java.util.LinkedHashMap[String, Any]())
+    val data = parsed match {
+      case map: java.util.Map[_, _] =>
+        new java.util.LinkedHashMap[String, Any](map.asInstanceOf[java.util.Map[String, Any]])
+      case other =>
+        throw new IllegalArgumentException(s"identity_config.yml must be a YAML mapping but found ${other.getClass.getSimpleName}")
+    }
+
+    val branch = Option(data.get("audienceJarBranch")).map(_.toString)
+      .getOrElse(throw new IllegalArgumentException("audienceJarBranch is required in Confetti config"))
+    val version = Option(data.get("audienceJarVersion")).map(_.toString)
+      .getOrElse(throw new IllegalArgumentException("audienceJarVersion is required in Confetti config"))
+
+    val resolvedVersion = resolveAudienceJarVersion(branch, version)
+    val jarPath = buildAudienceJarPath(branch, resolvedVersion)
+
+    data.remove("audienceJarBranch")
+    data.remove("audienceJarVersion")
+    data.put("audienceJarPath", jarPath)
+
+    val renderedContent = dumpSortedYaml(data)
+    AudienceConfig(renderedContent, data)
+  }
+
+  private def resolveAudienceJarVersion(branch: String, version: String): String = {
+    if (!version.equalsIgnoreCase("latest")) {
+      version
+    } else {
+      val currentKey =
+        if (branch == "master")
+          "s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/prod/_CURRENT"
+        else
+          s"s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/mergerequests/$branch/_CURRENT"
+
+      val content = S3Utils.readFromS3(currentKey)
+      content.split("\n").find(_.trim.nonEmpty).map(_.trim)
+        .getOrElse(throw new IllegalStateException(s"No version found in $currentKey"))
+    }
+  }
+
+  private def buildAudienceJarPath(branch: String, version: String): String = {
+    if (branch == "master") {
+      s"s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/snapshots/master/$version/audience.jar"
+    } else {
+      s"s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/mergerequests/$branch/$version/audience.jar"
+    }
+  }
+
+  private def dumpSortedYaml(value: java.util.Map[String, Any]): String = {
+    val options = new DumperOptions()
+    options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK)
+    options.setPrettyFlow(false)
+    options.setSortKeys(true)
+    options.setExplicitStart(false)
+    options.setExplicitEnd(false)
+    options.setLineBreak(DumperOptions.LineBreak.UNIX)
+    options.setIndent(2)
+    options.setIndicatorIndent(2)
+    options.setWidth(4096)
+    val yaml = new Yaml(options)
+    yaml.dump(value)
+  }
+
+  private def evaluateExpression(expression: String, context: TemplateContext): Option[String] = {
+    expression match {
+      case strftime if strftime.startsWith("run_date.strftime") =>
+        extractStrftimePattern(strftime, context).map(formatRunDate(_, context.runDate))
+      case other => context.values.get(other)
+    }
+  }
+
+  private def extractStrftimePattern(expression: String, context: TemplateContext): Option[String] = {
+    val patternRegex = "run_date\\.strftime\\((.*)\\)".r
+    expression match {
+      case patternRegex(arg) =>
+        val trimmed = arg.trim
+        if ((trimmed.startsWith("\"") && trimmed.endsWith("\"")) || (trimmed.startsWith("'") && trimmed.endsWith("'")))) {
+          Some(trimmed.substring(1, trimmed.length - 1))
+        } else {
+          context.values.get(trimmed)
+        }
+      case _ => None
+    }
+  }
+
+  private def formatRunDate(pattern: String, runDate: LocalDate): String = {
+    val sb = new StringBuilder
+    var idx = 0
+    while (idx < pattern.length) {
+      val ch = pattern.charAt(idx)
+      if (ch == '%') {
+        if (idx + 1 >= pattern.length) {
+          throw new IllegalArgumentException("Trailing '%' in strftime pattern")
+        }
+        val code = pattern.charAt(idx + 1)
+        val replacement = code match {
+          case 'Y' => f"${runDate.getYear}%04d"
+          case 'y' => f"${runDate.getYear % 100}%02d"
+          case 'm' => f"${runDate.getMonthValue}%02d"
+          case 'd' => f"${runDate.getDayOfMonth}%02d"
+          case 'H' => "00"
+          case 'M' => "00"
+          case 'S' => "00"
+          case '%' => "%"
+          case other => throw new IllegalArgumentException(s"Unsupported strftime code: %$other")
+        }
+        sb.append(replacement)
+        idx += 2
+      } else {
+        sb.append(ch)
+        idx += 1
+      }
+    }
+    sb.toString()
+  }
+
+  private case class AudienceConfig(renderedContent: String, data: java.util.Map[String, Any]) {
+    lazy val hashInput: String = canonicalizeForHash(data)
+  }
+
+  private def canonicalizeForHash(value: Any): String = {
+    flattenYaml(value).sortBy(_._1).map { case (k, v) => s"$k=$v" }.mkString("\n")
+  }
+
+  private def flattenYaml(value: Any, prefix: String = ""): Seq[(String, String)] = {
+    value match {
+      case map: java.util.Map[_, _] =>
+        map.asScala.toSeq.flatMap { case (k, v) =>
+          val key = if (prefix.isEmpty) k.toString else s"$prefix.${k.toString}"
+          flattenYaml(v, key)
+        }
+      case list: java.util.List[_] =>
+        list.asScala.zipWithIndex.flatMap { case (elem, idx) =>
+          val key = if (prefix.isEmpty) s"[$idx]" else s"$prefix[$idx]"
+          flattenYaml(elem, key)
+        }
+      case null => Seq(prefix -> "")
+      case other => Seq(prefix -> other.toString)
+    }
+  }
+
+  private case class TemplateContext(values: Map[String, String], runDate: LocalDate)
 
   private def getJobTemplatePath(): String = {
     s"s3://thetradedesk-mlplatform-us-east-1/configdata/confetti/config-templates/$groupName/$jobName"
