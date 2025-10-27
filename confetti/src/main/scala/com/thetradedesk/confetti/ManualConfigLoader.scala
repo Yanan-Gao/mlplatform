@@ -2,15 +2,13 @@ package com.thetradedesk.confetti
 
 import com.hubspot.jinjava.Jinjava
 import com.hubspot.jinjava.interpret.JinjavaConfig
+import com.hubspot.jinjava.objects.date.PyishDate
 import com.thetradedesk.confetti.utils.{HashUtils, S3Utils}
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.yaml.snakeyaml.{DumperOptions, Yaml}
 
-import java.time.format.{DateTimeFormatter, DateTimeFormatterBuilder}
-import java.time.temporal.ChronoField
+import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneOffset}
-import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
 import scala.collection.JavaConverters._
 import scala.util.Try
 
@@ -118,7 +116,7 @@ class ManualConfigLoader(env: String, experimentName: Option[String], groupName:
     val effectiveExperiment = configuredExperiment.orElse(experimentName.filter(_.nonEmpty))
 
     val runDate = determineRunDate(runtimeVars.get("run_date"))
-    val runDateValue = RunDateValue(runDate)
+    val runDateValue = new PyishDate(runDate.atStartOfDay(ZoneOffset.UTC)).withDateFormat("yyyy-MM-dd")
 
     val baseContextEntries: Map[String, AnyRef] = Map(
       "environment" -> environment,
@@ -231,50 +229,6 @@ class ManualConfigLoader(env: String, experimentName: Option[String], groupName:
     options.setWidth(4096)
     val yaml = new Yaml(options)
     yaml.dump(value)
-  }
-
-  private case class RunDateValue(runDate: LocalDate) {
-    def strftime(pattern: String): String = StrftimeFormatter.format(pattern, runDate)
-    override def toString: String = runDate.format(DateTimeFormatter.ISO_LOCAL_DATE)
-  }
-
-  private object StrftimeFormatter {
-    private val cachedFormatters = new ConcurrentHashMap[String, DateTimeFormatter]()
-
-    def format(pattern: String, runDate: LocalDate): String = {
-      val formatter = cachedFormatters.computeIfAbsent(pattern, buildFormatter)
-      formatter.format(runDate.atStartOfDay())
-    }
-
-    private def buildFormatter(pattern: String): DateTimeFormatter = {
-      val builder = new DateTimeFormatterBuilder()
-      var idx = 0
-      while (idx < pattern.length) {
-        val ch = pattern.charAt(idx)
-        if (ch == '%') {
-          if (idx + 1 >= pattern.length) {
-            throw new IllegalArgumentException("Trailing '%' in strftime pattern")
-          }
-          val code = pattern.charAt(idx + 1)
-          code match {
-            case '%' => builder.appendLiteral('%')
-            case 'Y' => builder.appendValue(ChronoField.YEAR, 4)
-            case 'y' => builder.appendValueReduced(ChronoField.YEAR, 2, 2, 0)
-            case 'm' => builder.appendValue(ChronoField.MONTH_OF_YEAR, 2)
-            case 'd' => builder.appendValue(ChronoField.DAY_OF_MONTH, 2)
-            case 'H' => builder.appendValue(ChronoField.HOUR_OF_DAY, 2)
-            case 'M' => builder.appendValue(ChronoField.MINUTE_OF_HOUR, 2)
-            case 'S' => builder.appendValue(ChronoField.SECOND_OF_MINUTE, 2)
-            case other => throw new IllegalArgumentException(s"Unsupported strftime code: %$other")
-          }
-          idx += 2
-        } else {
-          builder.appendLiteral(ch)
-          idx += 1
-        }
-      }
-      builder.toFormatter(Locale.US)
-    }
   }
 
   private case class AudienceConfig(renderedContent: String, data: java.util.Map[String, Any]) {
