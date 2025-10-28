@@ -167,8 +167,8 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
   }
 
   private def determineRunDate(runtimeOverride: Option[String]): LocalDate = {
-    val configDate = config.getStringOption("runDate")
-      .orElse(config.getStringOption("confetti.runDate"))
+    val configDate = config.getStringOption("date")
+      .orElse(config.getStringOption("runDate"))
       .map(value => parseRequiredDate(value, "confetti runDate configuration"))
 
     val runtimeDate = runtimeOverride.map(value => parseRequiredDate(value, "runtime run_date"))
