@@ -9,6 +9,7 @@ import org.mockito.invocation.InvocationOnMock
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
+import scala.reflect.runtime.universe._
 
 import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
@@ -106,6 +107,7 @@ class ManualConfigLoaderSpec
     )
 
     val result = loader.loadRuntimeConfigs(baseConfig)
+    printCaseClass(result)
 
     val expectedNamespace = "test/yanan-demo"
     val expectedVersionSuffix = baseConfig.runDate.format(DateTimeFormatter.BASIC_ISO_DATE) + "000000"
@@ -129,6 +131,23 @@ class ManualConfigLoaderSpec
     result.audienceResultCoalesce shouldBe baseConfig.audienceResultCoalesce
     result.outputPath shouldBe expectedOutputPath
     result.outputCBPath shouldBe expectedOutputCBPath
+  }
+
+  private def printCaseClass[C <: Product](value: C): Unit = {
+    val mirror = runtimeMirror(value.getClass.getClassLoader)
+    val classSymbol = mirror.classSymbol(value.getClass)
+    val classType = classSymbol.toType
+    val instanceMirror = mirror.reflect(value)
+    val ctorParams = classSymbol.primaryConstructor.asMethod.paramLists.flatten
+
+    val formattedFields = ctorParams.map { param =>
+      val accessor = classType.member(param.name).asMethod
+      val accessorMirror = instanceMirror.reflectMethod(accessor)
+      val fieldValue = accessorMirror.apply()
+      s"${param.name.toString}=$fieldValue"
+    }
+
+    println(s"${classSymbol.name.toString}(${formattedFields.mkString(", ")})")
   }
 
   private def stubS3Client(): AnyRef = {
