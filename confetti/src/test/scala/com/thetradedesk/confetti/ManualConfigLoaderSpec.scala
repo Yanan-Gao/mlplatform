@@ -5,7 +5,8 @@ import com.amazonaws.services.s3.model.S3Object
 import com.thetradedesk.confetti.utils.HashUtils
 import com.typesafe.config.ConfigFactory
 import org.mockito.ArgumentMatchers.anyString
-import org.mockito.scalatest.MockitoSugar
+import org.mockito.MockitoSugar
+//import org.mockito.scalatest.MockitoSugar
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
