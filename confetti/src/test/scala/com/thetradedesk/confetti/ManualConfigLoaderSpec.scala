@@ -7,7 +7,7 @@ import com.thetradedesk.confetti.utils.HashUtils
 import com.typesafe.config.ConfigFactory
 import org.mockito.ArgumentMatchers.anyString
 import org.mockito.MockitoSugar
-//import org.mockito.scalatest.MockitoSugar
+import org.mockito.invocation.InvocationOnMock
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.matchers.should.Matchers
@@ -180,7 +180,7 @@ class ManualConfigLoaderSpec
     val original = field.get(module)
 
     val s3Mock = mock[AmazonS3]
-    when(s3Mock.getObject(anyString(), anyString())).thenAnswer { invocation =>
+    when(s3Mock.getObject(anyString(), anyString())).thenAnswer { invocation: InvocationOnMock =>
       val bucket = invocation.getArgument[String](0)
       val key = invocation.getArgument[String](1)
       val path = s"s3://$bucket/$key"
