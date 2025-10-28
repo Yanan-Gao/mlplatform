@@ -2,16 +2,19 @@ package com.thetradedesk.confetti
 
 import com.hubspot.jinjava.{Jinjava, JinjavaConfig}
 import com.hubspot.jinjava.objects.date.PyishDate
-import com.thetradedesk.confetti.utils.{HashUtils, S3Utils}
+import com.thetradedesk.confetti.utils.{HashUtils, MapConfigReader, S3Utils}
+import com.thetradedesk.confetti.utils.Logger
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.yaml.snakeyaml.{DumperOptions, Yaml}
 
 import java.time.format.DateTimeFormatter
 import java.time.{LocalDate, ZoneOffset}
 import scala.collection.JavaConverters._
+import scala.reflect.ClassTag
+import scala.reflect.runtime.universe._
 import scala.util.Try
 
-class ManualConfigLoader[C](env: String, experimentName: Option[String], groupName: String, jobName: String) {
+class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Option[String], groupName: String, jobName: String) {
 
   private val jinjava = new Jinjava(JinjavaConfig.newBuilder().withFailOnUnknownTokens(true).build())
 
@@ -24,11 +27,10 @@ class ManualConfigLoader[C](env: String, experimentName: Option[String], groupNa
    * runtime variables and config derived values. Returns the flattened key/value
    * map used by downstream config readers with an additional identity hash.
    */
-  def loadRuntimeConfigs(runtimeVars: Map[String, String]): C = {
-
-
-    // todo remove runtimeVars and dynamically load from config.
-    val context = buildTemplateContext(runtimeVars)
+  def loadRuntimeConfigs(baseConfig: C): C = {
+    val resolvedFieldValues = resolveFieldValues(baseConfig)
+    val runtimeContextVariables = buildRuntimeVariables(resolvedFieldValues)
+    val context = buildTemplateContext(runtimeContextVariables)
 
     val yamlParser = new Yaml()
     val renderedTemplates = Map(
@@ -62,9 +64,9 @@ class ManualConfigLoader[C](env: String, experimentName: Option[String], groupNa
 
     val identityHash = hashCanonical(processedIdentity.hashInput)
 
-    combinedConfig + ("identity_config_id" -> identityHash)
+    val mergedConfig = (combinedConfig ++ runtimeContextVariables) + ("identity_config_id" -> identityHash)
 
-    // TODO return C
+    new MapConfigReader(mergedConfig, manualConfigLogger).as[C]
   }
 
   private def readTemplate(templateName: String): String = {
@@ -112,7 +114,7 @@ class ManualConfigLoader[C](env: String, experimentName: Option[String], groupNa
   private def hashCanonical(canonical: String): String = HashUtils.sha256Base64(canonical)
 
   private def buildTemplateContext(runtimeVars: Map[String, String]): TemplateContext = {
-    val runDate = determineRunDate(runtimeVars.get("run_date"))
+    val runDate = determineRunDate(runtimeVars.get("run_date").orElse(runtimeVars.get("runDate")))
     val runDateValue = new PyishDate(runDate.atStartOfDay(ZoneOffset.UTC)).withDateFormat("yyyy-MM-dd")
 
     val baseContextEntries: Map[String, AnyRef] = Map(
@@ -162,6 +164,109 @@ class ManualConfigLoader[C](env: String, experimentName: Option[String], groupNa
     parseDate(value).getOrElse(
       throw new IllegalArgumentException(s"Invalid date '$value' supplied for $source. Expected yyyy-MM-dd or yyyyMMdd")
     )
+  }
+
+  private def resolveFieldValues(baseConfig: C): Map[String, Any] = {
+    val mirror = runtimeMirror(getClass.getClassLoader)
+    val instanceMirror = mirror.reflect(baseConfig)
+    val accessors = typeOf[C].members.collect {
+      case m: MethodSymbol if m.isCaseAccessor => m
+    }
+
+    accessors.flatMap { accessor =>
+      val fieldName = accessor.name.toString
+      val fieldType = accessor.returnType
+      val defaultValue = instanceMirror.reflectMethod(accessor).apply()
+      resolveFieldValue(fieldName, fieldType, defaultValue)
+    }.toMap
+  }
+
+  private def resolveFieldValue(fieldName: String, fieldType: Type, defaultValue: Any): Option[(String, Any)] = {
+    if (fieldType <:< typeOf[Option[_]]) {
+      val innerType = fieldType.typeArgs.head
+      val defaultOpt = defaultValue.asInstanceOf[Option[Any]]
+      val overrideValue = fetchOverride(fieldName, innerType)
+      overrideValue.orElse(defaultOpt).map(fieldName -> _)
+    } else {
+      val overrideValue = fetchOverride(fieldName, fieldType)
+      Some(fieldName -> overrideValue.getOrElse(defaultValue))
+    }
+  }
+
+  private def fetchOverride(fieldName: String, fieldType: Type): Option[Any] = {
+    parseOverrideValue(fieldName, fieldType, fieldName)
+  }
+
+  private def parseOverrideValue(configKey: String, fieldType: Type, fieldName: String): Option[Any] = {
+    config.getStringOption(configKey).map { rawValue =>
+      convertValue(rawValue.trim, fieldType, fieldName)
+    }
+  }
+
+  private def convertValue(raw: String, fieldType: Type, fieldName: String): Any = {
+    fieldType match {
+      case t if t =:= typeOf[String] => raw
+      case t if t =:= typeOf[Int] =>
+        Try(raw.toInt).getOrElse(throw new IllegalArgumentException(s"Invalid Int override for $fieldName: '$raw'"))
+      case t if t =:= typeOf[Long] =>
+        Try(raw.toLong).getOrElse(throw new IllegalArgumentException(s"Invalid Long override for $fieldName: '$raw'"))
+      case t if t =:= typeOf[Double] =>
+        Try(raw.toDouble).getOrElse(throw new IllegalArgumentException(s"Invalid Double override for $fieldName: '$raw'"))
+      case t if t =:= typeOf[Float] =>
+        Try(raw.toFloat).getOrElse(throw new IllegalArgumentException(s"Invalid Float override for $fieldName: '$raw'"))
+      case t if t =:= typeOf[Boolean] => parseBoolean(raw, fieldName)
+      case t if t =:= typeOf[LocalDate] =>
+        parseRequiredDate(raw, s"override for $fieldName")
+      case t if t =:= typeOf[Seq[String]] => parseSeq(raw, identity[String])
+      case t if t =:= typeOf[Seq[Int]] => parseSeq(raw, (v: String) =>
+        Try(v.toInt).getOrElse(throw new IllegalArgumentException(s"Invalid Int value '$v' for $fieldName")))
+      case t if t =:= typeOf[Seq[Long]] => parseSeq(raw, (v: String) =>
+        Try(v.toLong).getOrElse(throw new IllegalArgumentException(s"Invalid Long value '$v' for $fieldName")))
+      case t if t =:= typeOf[Seq[Double]] => parseSeq(raw, (v: String) =>
+        Try(v.toDouble).getOrElse(throw new IllegalArgumentException(s"Invalid Double value '$v' for $fieldName")))
+      case t if t =:= typeOf[Seq[Float]] => parseSeq(raw, (v: String) =>
+        Try(v.toFloat).getOrElse(throw new IllegalArgumentException(s"Invalid Float value '$v' for $fieldName")))
+      case t if t =:= typeOf[Seq[Boolean]] => parseSeq(raw, (v: String) => parseBoolean(v, fieldName))
+      case t if t =:= typeOf[Seq[LocalDate]] => parseSeq(raw, (v: String) =>
+        parseDate(v).getOrElse(throw new IllegalArgumentException(s"Invalid date '$v' for $fieldName")))
+      case other =>
+        throw new IllegalArgumentException(s"Unsupported override type $other for field $fieldName")
+    }
+  }
+
+  private def parseSeq[T](raw: String, parse: String => T): Seq[T] = {
+    if (raw.isEmpty) Seq.empty
+    else raw.split(",").toSeq.map(_.trim).filter(_.nonEmpty).map(parse)
+  }
+
+  private def parseBoolean(raw: String, fieldName: String): Boolean = {
+    raw.toLowerCase match {
+      case "true" => true
+      case "false" => false
+      case other => throw new IllegalArgumentException(s"Invalid Boolean override for $fieldName: '$other'")
+    }
+  }
+
+  private def buildRuntimeVariables(resolvedFieldValues: Map[String, Any]): Map[String, String] = {
+    resolvedFieldValues.map { case (name, value) =>
+      name -> valueToString(value)
+    }
+  }
+
+  private def valueToString(value: Any): String = {
+    value match {
+      case null => ""
+      case d: LocalDate => d.toString
+      case iterable: Iterable[_] => iterable.mkString(",")
+      case other => other.toString
+    }
+  }
+
+  private val manualConfigLogger: Logger = new Logger {
+    override def debug(message: String): Unit = ()
+    override def info(message: String): Unit = ()
+    override def warn(message: String): Unit = Console.err.println(s"[ManualConfigLoader][WARN] $message")
+    override def error(message: String): Unit = Console.err.println(s"[ManualConfigLoader][ERROR] $message")
   }
 
   private def injectAudienceJarPath(content: String, yaml: Yaml): AudienceConfig = {
