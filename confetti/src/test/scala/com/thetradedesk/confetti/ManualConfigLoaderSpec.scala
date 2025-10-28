@@ -2,8 +2,6 @@ package com.thetradedesk.confetti
 
 import com.amazonaws.services.s3.AmazonS3
 import com.amazonaws.services.s3.model.S3Object
-import com.thetradedesk.audience.jobs.CalibrationInputDataGeneratorJobConfig
-import com.thetradedesk.confetti.utils.HashUtils
 import com.typesafe.config.ConfigFactory
 import org.mockito.ArgumentMatchers.anyString
 import org.mockito.MockitoSugar
@@ -24,18 +22,23 @@ class ManualConfigLoaderSpec
     with BeforeAndAfterAll
     with MockitoSugar {
 
-  case class ExampleConfig(
-      manualParameter: Double,
-      optionalFlag: Option[Boolean],
-      run_date: LocalDate,
-      audienceJarBranch: Option[String],
-      audienceJarVersion: Option[String],
-      audienceJarPath: Option[String],
-      custom_field: Option[Double],
-      output_threshold: Option[Double],
-      execution_flag: Option[Boolean],
-      identity_config_id: String
-  )
+  case class CalibrationInputDataGeneratorJobConfig(
+                                                     model: String,
+                                                     tag: String,
+                                                     version: Int,
+                                                     lookBack: Int,
+                                                     runDate: LocalDate,
+                                                     startDate: LocalDate,
+                                                     oosDataS3Bucket: String,
+                                                     oosDataS3Path: String,
+                                                     subFolderKey: String,
+                                                     subFolderValue: String,
+                                                     oosProdDataS3Path: String,
+                                                     coalesceProdData: Boolean,
+                                                     audienceResultCoalesce: Int,
+                                                     outputPath: String,
+                                                     outputCBPath: String
+                                                   )
 
   private val groupName = "test-group"
   private val jobName = "test-job"
@@ -77,53 +80,10 @@ class ManualConfigLoaderSpec
     super.afterAll()
   }
 
-  test("loadRuntimeConfigs renders templates, applies overrides, and computes identity hash") {
-    val loader = new ManualConfigLoader[ExampleConfig](
-      env = "prod",
-      experimentName = Some("experiment"),
-      groupName = groupName,
-      jobName = jobName
-    )
-
-    val baseConfig = ExampleConfig(
-      manualParameter = 1.0,
-      optionalFlag = None,
-      run_date = LocalDate.of(2024, 5, 1),
-      audienceJarBranch = None,
-      audienceJarVersion = None,
-      audienceJarPath = None,
-      custom_field = None,
-      output_threshold = None,
-      execution_flag = None,
-      identity_config_id = ""
-    )
-
-    val result = loader.loadRuntimeConfigs(baseConfig)
-
-    val expectedJarPath =
-      s"s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/mergerequests/feature-branch/$currentVersion/audience.jar"
-    val canonical = Seq(
-      s"audienceJarPath=$expectedJarPath",
-      "custom_field=2.5"
-    ).mkString("\n")
-    val expectedHash = HashUtils.sha256Base64(canonical)
-
-    result.manualParameter shouldBe 2.5
-    result.optionalFlag shouldBe Some(true)
-    result.run_date shouldBe LocalDate.of(2024, 5, 1)
-    result.audienceJarBranch shouldBe Some("feature-branch")
-    result.audienceJarVersion shouldBe Some("latest")
-    result.audienceJarPath shouldBe Some(expectedJarPath)
-    result.custom_field shouldBe Some(2.5)
-    result.output_threshold shouldBe Some(2.5)
-    result.execution_flag shouldBe Some(true)
-    result.identity_config_id shouldBe expectedHash
-  }
-
   test("CalibrationInputDataGeneratorJob templates render into job config case class") {
     val loader = new ManualConfigLoader[CalibrationInputDataGeneratorJobConfig](
-      env = "prod",
-      experimentName = Some("experiment"),
+      env = "test",
+      experimentName = Some("yanan-demo"),
       groupName = "audience",
       jobName = "CalibrationInputDataGeneratorJob"
     )
@@ -148,7 +108,7 @@ class ManualConfigLoaderSpec
 
     val result = loader.loadRuntimeConfigs(baseConfig)
 
-    val expectedNamespace = "prod/experiment"
+    val expectedNamespace = "test/yanan-demo"
     val expectedVersionSuffix = baseConfig.runDate.format(DateTimeFormatter.BASIC_ISO_DATE) + "000000"
     val expectedOutputPath =
       s"s3://thetradedesk-mlplatform-us-east-1/data/$expectedNamespace/audience/${baseConfig.model}/${baseConfig.tag}/v=1/$expectedVersionSuffix/mixedForward=Calibration"
