@@ -27,7 +27,7 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
    * runtime variables and config derived values. Returns the flattened key/value
    * map used by downstream config readers with an additional identity hash.
    */
-  def loadRuntimeConfigs(): C = {
+  def loadRuntimeConfigs(): ManualConfigLoader.RuntimeConfig[C] = {
     val resolvedFieldValues = resolveFieldValues()
     val runtimeContextVariables = buildRuntimeVariables(resolvedFieldValues)
     val context = buildTemplateContext(runtimeContextVariables)
@@ -47,7 +47,8 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
 
     val mergedConfig = (combinedConfig ++ runtimeContextVariables) + ("identity_config_id" -> identityHash)
 
-    new MapConfigReader(mergedConfig, manualConfigLogger).as[C]
+    val configInstance = new MapConfigReader(mergedConfig, manualConfigLogger).as[C]
+    ManualConfigLoader.RuntimeConfig(configInstance, identityHash)
   }
 
   private def renderTemplates(specs: Seq[TemplateSpec], context: TemplateContext): Seq[RenderedTemplate] = {
@@ -415,4 +416,8 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
   private def getJobTemplatePath(): String = {
     s"s3://thetradedesk-mlplatform-us-east-1/configdata/confetti/config-templates/$groupName/$jobName"
   }
+}
+
+object ManualConfigLoader {
+  case class RuntimeConfig[C](config: C, identityHash: String)
 }

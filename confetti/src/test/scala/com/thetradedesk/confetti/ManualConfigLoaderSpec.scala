@@ -100,7 +100,8 @@ class ManualConfigLoaderSpec
     val expectedVersion = 2
     val expectedLookBack = 10
 
-    val result = loader.loadRuntimeConfigs()
+    val runtimeConfig = loader.loadRuntimeConfigs()
+    val result = runtimeConfig.config
 
     val expectedNamespace = "test/yanan-demo"
     val expectedVersionSuffix = expectedRunDate.format(DateTimeFormatter.BASIC_ISO_DATE) + "000000"
@@ -124,6 +125,30 @@ class ManualConfigLoaderSpec
     result.audienceResultCoalesce shouldBe 4096
     result.outputPath shouldBe expectedOutputPath
     result.outputCBPath shouldBe expectedOutputCBPath
+
+    val expectedIdentityMap = Map[
+      String, Any
+    ](
+      "audienceJarPath" ->
+        s"s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/mergerequests/feature-branch/$currentVersion/audience.jar",
+      "audienceResultCoalesce" -> 4096,
+      "coalesceProdData" -> "false",
+      "lookBack" -> expectedLookBack,
+      "model" -> expectedModel,
+      "oosDataS3Bucket" -> "thetradedesk-mlplatform-us-east-1",
+      "oosDataS3Path" -> s"data/$expectedNamespace/audience/$expectedModel/$expectedTag/v=2",
+      "oosProdDataS3Path" -> "data/prod/audience/RSMV2/Seed_None/v=1",
+      "runDate" -> expectedRunDate.format(DateTimeFormatter.ISO_DATE),
+      "startDate" -> expectedStartDate.format(DateTimeFormatter.ISO_DATE),
+      "subFolderKey" -> "mixedForward",
+      "subFolderValue" -> "Calibration",
+      "tag" -> expectedTag,
+      "version" -> expectedVersion
+    )
+
+    val canonicalIdentity = expectedIdentityMap.toSeq.sortBy(_._1).map { case (k, v) => s"$k=${v.toString}" }.mkString("\n")
+    val expectedIdentityHash = com.thetradedesk.confetti.utils.HashUtils.sha256Base64(canonicalIdentity)
+    runtimeConfig.identityHash shouldBe expectedIdentityHash
   }
 
   private def stubS3Client(): AnyRef = {
