@@ -318,7 +318,6 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
     val options = new DumperOptions()
     options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK)
     options.setPrettyFlow(false)
-    options.setSortKeys(true)
     options.setExplicitStart(false)
     options.setExplicitEnd(false)
     options.setLineBreak(DumperOptions.LineBreak.UNIX)
@@ -326,7 +325,26 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
     options.setIndicatorIndent(2)
     options.setWidth(4096)
     val yaml = new Yaml(options)
-    yaml.dump(value)
+    val sorted = deepSortMaps(value).asInstanceOf[java.util.Map[String, Any]]
+    yaml.dump(sorted)
+  }
+
+  private def deepSortMaps(value: Any): Any = {
+    value match {
+      case map: java.util.Map[_, _] =>
+        val sortedEntries = map.asScala.toSeq.sortBy { case (k, _) => Option(k).map(_.toString).getOrElse("") }
+        val linked = new java.util.LinkedHashMap[String, Any]()
+        sortedEntries.foreach { case (k, v) =>
+          val key = Option(k).map(_.toString).orNull
+          linked.put(key, deepSortMaps(v))
+        }
+        linked
+      case list: java.util.List[_] =>
+        val collected = new java.util.ArrayList[Any](list.size())
+        list.asScala.foreach(elem => collected.add(deepSortMaps(elem)))
+        collected
+      case other => other
+    }
   }
 
   private case class AudienceConfig(renderedContent: String, data: java.util.Map[String, Any]) {
