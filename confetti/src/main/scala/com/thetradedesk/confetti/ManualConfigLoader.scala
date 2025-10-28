@@ -27,8 +27,8 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
    * runtime variables and config derived values. Returns the flattened key/value
    * map used by downstream config readers with an additional identity hash.
    */
-  def loadRuntimeConfigs(baseConfig: C): C = {
-    val resolvedFieldValues = resolveFieldValues(baseConfig)
+  def loadRuntimeConfigs(): C = {
+    val resolvedFieldValues = resolveFieldValues()
     val runtimeContextVariables = buildRuntimeVariables(resolvedFieldValues)
     val context = buildTemplateContext(runtimeContextVariables)
 
@@ -162,9 +162,8 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
     )
   }
 
-  private def resolveFieldValues(baseConfig: C): Map[String, Any] = {
+  private def resolveFieldValues(): Map[String, Any] = {
     val mirror = runtimeMirror(getClass.getClassLoader)
-    val instanceMirror = mirror.reflect(baseConfig)
     val accessors = typeOf[C].members.collect {
       case m: MethodSymbol if m.isCaseAccessor => m
     }
@@ -172,20 +171,18 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
     accessors.flatMap { accessor =>
       val fieldName = accessor.name.toString
       val fieldType = accessor.returnType
-      val defaultValue = instanceMirror.reflectMethod(accessor).apply()
-      resolveFieldValue(fieldName, fieldType, defaultValue)
+      resolveFieldValue(fieldName, fieldType)
     }.toMap
   }
 
-  private def resolveFieldValue(fieldName: String, fieldType: Type, defaultValue: Any): Option[(String, Any)] = {
+  private def resolveFieldValue(fieldName: String, fieldType: Type): Option[(String, Any)] = {
     if (fieldType <:< typeOf[Option[_]]) {
       val innerType = fieldType.typeArgs.head
-      val defaultOpt = defaultValue.asInstanceOf[Option[Any]]
       val overrideValue = fetchOverride(fieldName, innerType)
-      overrideValue.orElse(defaultOpt).map(fieldName -> _)
+      overrideValue.map(fieldName -> _)
     } else {
       val overrideValue = fetchOverride(fieldName, fieldType)
-      Some(fieldName -> overrideValue.getOrElse(defaultValue))
+      overrideValue.map(fieldName -> _)
     }
   }
 
