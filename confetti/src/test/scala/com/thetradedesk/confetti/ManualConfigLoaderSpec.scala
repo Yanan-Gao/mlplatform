@@ -15,30 +15,29 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+case class CalibrationInputDataGeneratorJobConfig(
+                                                   model: String,
+                                                   tag: String,
+                                                   version: Int,
+                                                   lookBack: Int,
+                                                   runDate: LocalDate,
+                                                   startDate: LocalDate,
+                                                   oosDataS3Bucket: String,
+                                                   oosDataS3Path: String,
+                                                   subFolderKey: String,
+                                                   subFolderValue: String,
+                                                   oosProdDataS3Path: String,
+                                                   coalesceProdData: Boolean,
+                                                   audienceResultCoalesce: Int,
+                                                   outputPath: String,
+                                                   outputCBPath: String
+                                                 )
 
 class ManualConfigLoaderSpec
     extends AnyFunSuite
     with Matchers
     with BeforeAndAfterAll
     with MockitoSugar {
-
-  case class CalibrationInputDataGeneratorJobConfig(
-                                                     model: String,
-                                                     tag: String,
-                                                     version: Int,
-                                                     lookBack: Int,
-                                                     runDate: LocalDate,
-                                                     startDate: LocalDate,
-                                                     oosDataS3Bucket: String,
-                                                     oosDataS3Path: String,
-                                                     subFolderKey: String,
-                                                     subFolderValue: String,
-                                                     oosProdDataS3Path: String,
-                                                     coalesceProdData: Boolean,
-                                                     audienceResultCoalesce: Int,
-                                                     outputPath: String,
-                                                     outputCBPath: String
-                                                   )
 
   private val groupName = "test-group"
   private val jobName = "test-job"

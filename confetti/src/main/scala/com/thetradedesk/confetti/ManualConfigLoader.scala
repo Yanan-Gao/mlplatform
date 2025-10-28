@@ -322,7 +322,7 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
     options.setExplicitEnd(false)
     options.setLineBreak(DumperOptions.LineBreak.UNIX)
     options.setIndent(2)
-    options.setIndicatorIndent(2)
+    options.setIndicatorIndent(1)
     options.setWidth(4096)
     val yaml = new Yaml(options)
     val sorted = deepSortMaps(value).asInstanceOf[java.util.Map[String, Any]]
