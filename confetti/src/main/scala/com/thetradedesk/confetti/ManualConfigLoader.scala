@@ -32,41 +32,66 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
     val runtimeContextVariables = buildRuntimeVariables(resolvedFieldValues)
     val context = buildTemplateContext(runtimeContextVariables)
 
+    val templateSpecs = Seq(
+      TemplateSpec(IdentityTemplate, "identity_config.yml", requiresIdentityProcessing = true),
+      TemplateSpec(OutputTemplate, "output_config.yml"),
+      TemplateSpec(ExecutionTemplate, "execution_config.yml")
+    )
+
     val yamlParser = new Yaml()
-    val renderedTemplates = Map(
-      IdentityTemplate -> "identity_config.yml",
-      OutputTemplate -> "output_config.yml",
-      ExecutionTemplate -> "execution_config.yml"
-    ).map { case (templateName, outputName) =>
-      val templateContent = readTemplate(templateName)
-      val rendered = renderTemplate(templateContent, context)
-      outputName -> (templateName -> rendered)
-    }
+    val renderedTemplates = renderTemplates(templateSpecs, context)
+    val finalizedTemplates = finalizeRenderedTemplates(renderedTemplates, yamlParser)
 
-    val processedIdentity = {
-      val (templateName, identityContent) = renderedTemplates("identity_config.yml")
-      val injectionResult = injectAudienceJarPath(identityContent, yamlParser)
-      checkForUnresolvedVariables(injectionResult.renderedContent, templateName)
-      injectionResult
-    }
-
-    val finalizedTemplates = renderedTemplates.map {
-      case (outputName, (templateName, content)) if outputName == "identity_config.yml" =>
-        outputName -> processedIdentity.renderedContent
-      case (outputName, (templateName, content)) =>
-        checkForUnresolvedVariables(content, templateName)
-        outputName -> content
-    }
-
-    val combinedConfig = finalizedTemplates.values
-      .map(parseYaml(_, yamlParser))
-      .foldLeft(Map.empty[String, String])(_ ++ _)
-
-    val identityHash = hashCanonical(processedIdentity.hashInput)
+    val combinedConfig = mergeRenderedConfigs(finalizedTemplates, yamlParser)
+    val identityHash = hashCanonical(finalizedTemplates.identity.hashInput)
 
     val mergedConfig = (combinedConfig ++ runtimeContextVariables) + ("identity_config_id" -> identityHash)
 
     new MapConfigReader(mergedConfig, manualConfigLogger).as[C]
+  }
+
+  private def renderTemplates(specs: Seq[TemplateSpec], context: TemplateContext): Seq[RenderedTemplate] = {
+    specs.map { spec =>
+      val templateContent = readTemplate(spec.templateName)
+      val rendered = renderTemplate(templateContent, context)
+      RenderedTemplate(spec, rendered)
+    }
+  }
+
+  private def finalizeRenderedTemplates(renderedTemplates: Seq[RenderedTemplate], yaml: Yaml): FinalizedTemplates = {
+    val (identityTemplates, otherTemplates) = renderedTemplates.partition(_.spec.requiresIdentityProcessing)
+    val identityTemplate = identityTemplates.headOption.getOrElse(
+      throw new IllegalStateException("identity_config template is required but was not rendered")
+    )
+
+    val processedIdentity = {
+      val injectionResult = injectAudienceJarPath(identityTemplate.renderedContent, yaml)
+      checkForUnresolvedVariables(injectionResult.renderedContent, identityTemplate.spec.templateName)
+      injectionResult
+    }
+
+    val finalizedOthers = otherTemplates.map { template =>
+      checkForUnresolvedVariables(template.renderedContent, template.spec.templateName)
+      template.spec.outputName -> template.renderedContent
+    }.toMap
+
+    val finalizedOutputs = finalizedOthers + (identityTemplate.spec.outputName -> processedIdentity.renderedContent)
+
+    FinalizedTemplates(identityTemplate.spec, processedIdentity, finalizedOutputs)
+  }
+
+  private def mergeRenderedConfigs(finalizedTemplates: FinalizedTemplates, yaml: Yaml): Map[String, String] = {
+    val identityOutputName = finalizedTemplates.identitySpec.outputName
+    val identityMap = mapValuesToStrings(finalizedTemplates.identity.data)
+
+    finalizedTemplates.outputs.foldLeft(identityMap) {
+      case (acc, (outputName, content)) if outputName == identityOutputName => acc
+      case (acc, (_, content)) => acc ++ parseYaml(content, yaml)
+    }
+  }
+
+  private def mapValuesToStrings(data: java.util.Map[String, Any]): Map[String, String] = {
+    data.asScala.map { case (k, v) => k.toString -> Option(v).map(_.toString).getOrElse("") }.toMap
   }
 
   private def readTemplate(templateName: String): String = {
@@ -354,9 +379,15 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
     }
   }
 
+  private case class FinalizedTemplates(identitySpec: TemplateSpec, identity: AudienceConfig, outputs: Map[String, String])
+
   private case class AudienceConfig(renderedContent: String, data: java.util.Map[String, Any]) {
     lazy val hashInput: String = canonicalizeForHash(data)
   }
+
+  private case class RenderedTemplate(spec: TemplateSpec, renderedContent: String)
+
+  private case class TemplateSpec(templateName: String, outputName: String, requiresIdentityProcessing: Boolean = false)
 
   private def canonicalizeForHash(value: Any): String = {
     flattenYaml(value).sortBy(_._1).map { case (k, v) => s"$k=$v" }.mkString("\n")
