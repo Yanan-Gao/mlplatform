@@ -21,6 +21,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
   @transient lazy val confettiEnv = config.getString("confettiEnv", config.getString("ttd.env", "dev"))
   @transient lazy val experimentName = config.getStringOption("experimentName")
   @transient lazy val runtimeConfigBasePath = config.getStringOption("confettiRuntimeConfigBasePath")
+  @transient lazy val manualConfetti = config.getBoolean("manualConfetti", default = false)
 
   /** Optional Prometheus client for pushing metrics. */
   protected val prometheus: Option[PrometheusClient]
@@ -78,7 +79,10 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
 //    }
 //    logger.info(s"Wrote running marker to $runningPath")
 
-    if (runtimeConfigBasePath.exists(_.nonEmpty)) {
+    if(manualConfetti){
+      val configLoader = new ManualConfigLoader[C](env = confettiEnv, experimentName = experimentName, groupName = groupName, jobName = jobName)
+      jobConfig = Some(configLoader.loadRuntimeConfigs().config)
+    }else if (runtimeConfigBasePath.exists(_.nonEmpty)) {
       // provided confetti runtime path
       val configLoader = new RuntimeConfigLoader[C](logger)
       jobConfig = Some(configLoader.loadConfig(runtimeConfigBasePath.get))

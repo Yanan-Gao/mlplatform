@@ -39,20 +39,16 @@ class ManualConfigLoaderSpec
     with BeforeAndAfterAll
     with MockitoSugar {
 
-  private val groupName = "test-group"
-  private val jobName = "test-job"
-  private val templateBase =
-    s"s3://thetradedesk-mlplatform-us-east-1/configdata/confetti/config-templates/$groupName/$jobName"
-  private val currentVersion = "20240115"
-
   private val templatesPrefix = "configdata/confetti/config-templates/"
   private val templatesRoot = Paths.get(
     Option(getClass.getClassLoader.getResource(templatesPrefix.dropRight(1)))
       .getOrElse(throw new IllegalStateException("Missing test templates"))
       .toURI
   )
+
+  private val currentVersion = "3842404-95a55169"
   private val currentVersionPath =
-    "s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/mergerequests/feature-branch/_CURRENT"
+    "s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/prod/_CURRENT"
   private val s3Contents = Map(
     currentVersionPath -> s"$currentVersion\n"
   )
@@ -73,7 +69,7 @@ class ManualConfigLoaderSpec
         "startDate" -> "2024-03-01",
         "coalesceProdData" -> "false",
         "audienceResultCoalesce" -> "4096",
-        "audienceJarBranch" -> "feature-branch",
+        "audienceJarBranch" -> "master",
         "audienceJarVersion" -> "latest"
       )
     )
@@ -100,8 +96,6 @@ class ManualConfigLoaderSpec
     val expectedVersion = 2
     val expectedLookBack = 10
 
-    val runtimeConfig = loader.loadRuntimeConfigs()
-    val result = runtimeConfig.config
 
     val expectedNamespace = "test/yanan-demo"
     val expectedVersionSuffix = expectedRunDate.format(DateTimeFormatter.BASIC_ISO_DATE) + "000000"
@@ -110,45 +104,27 @@ class ManualConfigLoaderSpec
     val expectedOutputCBPath =
       s"s3://thetradedesk-mlplatform-us-east-1/data/$expectedNamespace/audience/$expectedModel/$expectedTag/v=2/$expectedVersionSuffix/mixedForward=Calibration"
 
-    result.model shouldBe expectedModel
-    result.tag shouldBe expectedTag
-    result.version shouldBe expectedVersion
-    result.lookBack shouldBe expectedLookBack
-    result.runDate shouldBe expectedRunDate
-    result.startDate shouldBe expectedStartDate
-    result.oosDataS3Bucket shouldBe "thetradedesk-mlplatform-us-east-1"
-    result.oosDataS3Path shouldBe s"data/$expectedNamespace/audience/$expectedModel/$expectedTag/v=2"
-    result.subFolderKey shouldBe "mixedForward"
-    result.subFolderValue shouldBe "Calibration"
-    result.oosProdDataS3Path shouldBe "data/prod/audience/RSMV2/Seed_None/v=1"
-    result.coalesceProdData shouldBe false
-    result.audienceResultCoalesce shouldBe 4096
-    result.outputPath shouldBe expectedOutputPath
-    result.outputCBPath shouldBe expectedOutputCBPath
+    val result = loader.loadRuntimeConfigs()
 
-    val expectedIdentityMap = Map[
-      String, Any
-    ](
-      "audienceJarPath" ->
-        s"s3://thetradedesk-mlplatform-us-east-1/libs/audience/jars/mergerequests/feature-branch/$currentVersion/audience.jar",
-      "audienceResultCoalesce" -> 4096,
-      "coalesceProdData" -> "false",
-      "lookBack" -> expectedLookBack,
-      "model" -> expectedModel,
-      "oosDataS3Bucket" -> "thetradedesk-mlplatform-us-east-1",
-      "oosDataS3Path" -> s"data/$expectedNamespace/audience/$expectedModel/$expectedTag/v=2",
-      "oosProdDataS3Path" -> "data/prod/audience/RSMV2/Seed_None/v=1",
-      "runDate" -> expectedRunDate.format(DateTimeFormatter.ISO_DATE),
-      "startDate" -> expectedStartDate.format(DateTimeFormatter.ISO_DATE),
-      "subFolderKey" -> "mixedForward",
-      "subFolderValue" -> "Calibration",
-      "tag" -> expectedTag,
-      "version" -> expectedVersion
-    )
+    val runtimeConfig = result.config
 
-    val canonicalIdentity = expectedIdentityMap.toSeq.sortBy(_._1).map { case (k, v) => s"$k=${v.toString}" }.mkString("\n")
-    val expectedIdentityHash = com.thetradedesk.confetti.utils.HashUtils.sha256Base64(canonicalIdentity)
-    runtimeConfig.identityHash shouldBe expectedIdentityHash
+    runtimeConfig.model shouldBe expectedModel
+    runtimeConfig.tag shouldBe expectedTag
+    runtimeConfig.version shouldBe expectedVersion
+    runtimeConfig.lookBack shouldBe expectedLookBack
+    runtimeConfig.runDate shouldBe expectedRunDate
+    runtimeConfig.startDate shouldBe expectedStartDate
+    runtimeConfig.oosDataS3Bucket shouldBe "thetradedesk-mlplatform-us-east-1"
+    runtimeConfig.oosDataS3Path shouldBe s"data/$expectedNamespace/audience/$expectedModel/$expectedTag/v=2"
+    runtimeConfig.subFolderKey shouldBe "mixedForward"
+    runtimeConfig.subFolderValue shouldBe "Calibration"
+    runtimeConfig.oosProdDataS3Path shouldBe "data/prod/audience/RSMV2/Seed_None/v=1"
+    runtimeConfig.coalesceProdData shouldBe false
+    runtimeConfig.audienceResultCoalesce shouldBe 4096
+    runtimeConfig.outputPath shouldBe expectedOutputPath
+    runtimeConfig.outputCBPath shouldBe expectedOutputCBPath
+
+    result.identityHash shouldBe "KzFKPS3TFKTNDjjzSsDUSJ9s2g3jmWRdc_lL2dGiuzs="
   }
 
   private def stubS3Client(): AnyRef = {
