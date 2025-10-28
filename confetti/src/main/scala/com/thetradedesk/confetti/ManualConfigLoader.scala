@@ -244,8 +244,18 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
   }
 
   private def buildRuntimeVariables(resolvedFieldValues: Map[String, Any]): Map[String, String] = {
-    resolvedFieldValues.map { case (name, value) =>
-      name -> valueToString(value)
+    resolvedFieldValues.collect {
+      case (name, value) if shouldIncludeRuntimeVariable(value) =>
+        name -> valueToString(value)
+    }
+  }
+
+  private def shouldIncludeRuntimeVariable(value: Any): Boolean = {
+    value match {
+      case null => false
+      case s: String => s.trim.nonEmpty
+      case opt: Option[_] => opt.exists(shouldIncludeRuntimeVariable)
+      case _ => true
     }
   }
 
