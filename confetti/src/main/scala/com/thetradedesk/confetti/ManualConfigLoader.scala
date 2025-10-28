@@ -125,10 +125,6 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
       "version_date_format" -> "%Y%m%d",
       "full_version_date_format" -> "%Y%m%d000000"
     )
-//    val experimentContext = experimentName
-//      .map(exp => Map[String, AnyRef]("experimentName" -> exp))
-//      .getOrElse(Map.empty)
-//    val baseContext = baseContextEntries ++ experimentContext
 
     val audienceJarBranch = config.getStringOption("audienceJarBranch").orElse(runtimeVars.get("audienceJarBranch"))
     val audienceJarVersion = config.getStringOption("audienceJarVersion").orElse(runtimeVars.get("audienceJarVersion"))

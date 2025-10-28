@@ -7,7 +7,7 @@ import java.util.Base64
 object HashUtils {
   def sha256Base64(content: String): String = {
     val digest = MessageDigest.getInstance("SHA-256").digest(content.getBytes(StandardCharsets.UTF_8))
-    Base64.getEncoder.encodeToString(digest)
+    Base64.getUrlEncoder.encodeToString(digest)
   }
 }
 
