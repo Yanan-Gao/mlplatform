@@ -63,12 +63,13 @@ class ManualConfigLoaderSpec
       Map(
         "model" -> "RSMV2",
         "tag" -> "Seed_None",
-        "version" -> "2",
+        "version" -> "1",
         "lookBack" -> "10",
-        "runDate" -> "2024-04-05",
-        "startDate" -> "2024-03-01",
-        "coalesceProdData" -> "false",
+        "runDate" -> "2025-10-27",
+        "startDate" -> "2025-03-20",
+        "coalesceProdData" -> "False",
         "audienceResultCoalesce" -> "4096",
+        "oosDataS3Path" -> "data/prod/audience/RSMV2/Seed_None/v=2",
         "audienceJarBranch" -> "master",
         "audienceJarVersion" -> "latest"
       )
@@ -89,11 +90,11 @@ class ManualConfigLoaderSpec
       jobName = "CalibrationInputDataGeneratorJob"
     )
 
-    val expectedRunDate = LocalDate.of(2024, 4, 5)
-    val expectedStartDate = LocalDate.of(2024, 3, 1)
+    val expectedRunDate = LocalDate.of(2025, 10, 27)
+    val expectedStartDate = LocalDate.of(2025, 3, 20)
     val expectedModel = "RSMV2"
     val expectedTag = "Seed_None"
-    val expectedVersion = 2
+    val expectedVersion = 1
     val expectedLookBack = 10
 
 
@@ -115,7 +116,7 @@ class ManualConfigLoaderSpec
     runtimeConfig.runDate shouldBe expectedRunDate
     runtimeConfig.startDate shouldBe expectedStartDate
     runtimeConfig.oosDataS3Bucket shouldBe "thetradedesk-mlplatform-us-east-1"
-    runtimeConfig.oosDataS3Path shouldBe s"data/$expectedNamespace/audience/$expectedModel/$expectedTag/v=2"
+    runtimeConfig.oosDataS3Path shouldBe "data/prod/audience/RSMV2/Seed_None/v=2"
     runtimeConfig.subFolderKey shouldBe "mixedForward"
     runtimeConfig.subFolderValue shouldBe "Calibration"
     runtimeConfig.oosProdDataS3Path shouldBe "data/prod/audience/RSMV2/Seed_None/v=1"
