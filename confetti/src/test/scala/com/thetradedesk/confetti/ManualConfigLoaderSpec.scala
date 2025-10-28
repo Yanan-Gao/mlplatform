@@ -2,6 +2,7 @@ package com.thetradedesk.confetti
 
 import com.amazonaws.services.s3.AmazonS3
 import com.amazonaws.services.s3.model.S3Object
+import com.thetradedesk.audience.jobs.CalibrationInputDataGeneratorJobConfig
 import com.thetradedesk.confetti.utils.HashUtils
 import com.typesafe.config.ConfigFactory
 import org.mockito.ArgumentMatchers.anyString
@@ -15,6 +16,7 @@ import java.io.ByteArrayInputStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Paths}
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
 class ManualConfigLoaderSpec
     extends AnyFunSuite
@@ -116,6 +118,58 @@ class ManualConfigLoaderSpec
     result.output_threshold shouldBe Some(2.5)
     result.execution_flag shouldBe Some(true)
     result.identity_config_id shouldBe expectedHash
+  }
+
+  test("CalibrationInputDataGeneratorJob templates render into job config case class") {
+    val loader = new ManualConfigLoader[CalibrationInputDataGeneratorJobConfig](
+      env = "prod",
+      experimentName = Some("experiment"),
+      groupName = "audience",
+      jobName = "CalibrationInputDataGeneratorJob"
+    )
+
+    val baseConfig = CalibrationInputDataGeneratorJobConfig(
+      model = "RSMV2",
+      tag = "Seed_None",
+      version = 2,
+      lookBack = 10,
+      runDate = LocalDate.of(2024, 4, 5),
+      startDate = LocalDate.of(2024, 3, 1),
+      oosDataS3Bucket = "",
+      oosDataS3Path = "",
+      subFolderKey = "",
+      subFolderValue = "",
+      oosProdDataS3Path = "",
+      coalesceProdData = false,
+      audienceResultCoalesce = 4096,
+      outputPath = "",
+      outputCBPath = ""
+    )
+
+    val result = loader.loadRuntimeConfigs(baseConfig)
+
+    val expectedNamespace = "prod/experiment"
+    val expectedVersionSuffix = baseConfig.runDate.format(DateTimeFormatter.BASIC_ISO_DATE) + "000000"
+    val expectedOutputPath =
+      s"s3://thetradedesk-mlplatform-us-east-1/data/$expectedNamespace/audience/${baseConfig.model}/${baseConfig.tag}/v=1/$expectedVersionSuffix/mixedForward=Calibration"
+    val expectedOutputCBPath =
+      s"s3://thetradedesk-mlplatform-us-east-1/data/$expectedNamespace/audience/${baseConfig.model}/${baseConfig.tag}/v=2/$expectedVersionSuffix/mixedForward=Calibration"
+
+    result.model shouldBe baseConfig.model
+    result.tag shouldBe baseConfig.tag
+    result.version shouldBe baseConfig.version
+    result.lookBack shouldBe baseConfig.lookBack
+    result.runDate shouldBe baseConfig.runDate
+    result.startDate shouldBe baseConfig.startDate
+    result.oosDataS3Bucket shouldBe "thetradedesk-mlplatform-us-east-1"
+    result.oosDataS3Path shouldBe s"data/$expectedNamespace/audience/${baseConfig.model}/${baseConfig.tag}/v=2"
+    result.subFolderKey shouldBe "mixedForward"
+    result.subFolderValue shouldBe "Calibration"
+    result.oosProdDataS3Path shouldBe "data/prod/audience/RSMV2/Seed_None/v=1"
+    result.coalesceProdData shouldBe false
+    result.audienceResultCoalesce shouldBe baseConfig.audienceResultCoalesce
+    result.outputPath shouldBe expectedOutputPath
+    result.outputCBPath shouldBe expectedOutputCBPath
   }
 
   private def stubS3Client(): AnyRef = {
