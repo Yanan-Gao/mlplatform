@@ -1,0 +1,23 @@
+variables:
+  CONFETTI_SCALA_BUILD_IMAGE: "hseeberger/scala-sbt:11.0.12_1.5.5_2.12.15"
+
+confetti:test:
+  image: "$CONFETTI_SCALA_BUILD_IMAGE"
+  stage: test
+  cache:
+    policy: pull
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "confetti/**/*"
+        - "confetti/build.sbt"
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "confetti/**/*"
+        - "confetti/build.sbt"
+  before_script:
+    - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
+  script:
+    - pushd confetti
+    - sbt test
+    - popd
