@@ -2,6 +2,7 @@ package com.thetradedesk.confetti
 
 import com.amazonaws.services.s3.AmazonS3
 import com.amazonaws.services.s3.model.S3Object
+import com.thetradedesk.confetti.utils.Logger
 import com.typesafe.config.ConfigFactory
 import org.mockito.ArgumentMatchers.anyString
 import org.mockito.MockitoSugar
@@ -48,6 +49,12 @@ class ManualConfigLoaderSpec
       .getOrElse(throw new IllegalStateException("Missing test templates"))
       .toURI
   )
+  private val simpleLogger: Logger = new Logger {
+    override def debug(message: String): Unit = println(s"[ManualConfigLoader][DEBUG] $message")
+    override def info(message: String): Unit = println(s"[ManualConfigLoader][INFO] $message")
+    override def warn(message: String): Unit = Console.err.println(s"[ManualConfigLoader][WARN] $message")
+    override def error(message: String): Unit = Console.err.println(s"[ManualConfigLoader][ERROR] $message")
+  }
 
   private val currentVersion = "3842404-95a55169"
   private val currentVersionPath =
@@ -114,7 +121,8 @@ class ManualConfigLoaderSpec
         env = "test",
         experimentName = Some("yanan-demo"),
         groupName = "audience",
-        jobName = "CalibrationInputDataGeneratorJob"
+        jobName = "CalibrationInputDataGeneratorJob",
+        simpleLogger
       )
 
       val result = loader.loadRuntimeConfigs()

@@ -13,8 +13,18 @@ import scala.collection.JavaConverters._
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 import scala.util.Try
+import com.fasterxml.jackson.dataformat.yaml.{YAMLFactory, YAMLMapper}
+import com.fasterxml.jackson.module.scala.DefaultScalaModule
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule
+import com.fasterxml.jackson.databind.SerializationFeature
+import com.fasterxml.jackson.dataformat.yaml.YAMLGenerator
 
-class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Option[String], groupName: String, jobName: String) {
+class ManualConfigLoader[C: TypeTag : ClassTag](env: String,
+                                                experimentName: Option[String],
+                                                groupName: String,
+                                                jobName: String,
+                                                logger: Logger
+                                               ) {
 
   private val jinjava = new Jinjava(JinjavaConfig.newBuilder().withFailOnUnknownTokens(true).build())
 
@@ -28,6 +38,8 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
    * map used by downstream config readers with an additional identity hash.
    */
   def loadRuntimeConfigs(): ManualConfigLoader.RuntimeConfig[C] = {
+    logger.info("Starting on manual resolving mode:")
+
     val resolvedFieldValues = resolveFieldValues()
     val runtimeContextVariables = buildRuntimeVariables(resolvedFieldValues)
     val context = buildTemplateContext(runtimeContextVariables)
@@ -46,10 +58,27 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
     val identityHash = hashCanonical(finalizedTemplates.identity.hashInput)
 
     val mergedConfig = (combinedConfig ++ runtimeContextVariables) + ("identity_config_id" -> identityHash)
+    logger.info("Job identityHash: " + identityHash)
+    logger.info("Final merged config : " + new Yaml().dump(mergedConfig.asJava))
+    val configInstance = new MapConfigReader(mergedConfig, logger).as[C]
+    logger.info("Final resolved config:\n" + YamlUtils.toYaml(configInstance))
 
-    val configInstance = new MapConfigReader(mergedConfig, manualConfigLogger).as[C]
     ManualConfigLoader.RuntimeConfig(configInstance, identityHash)
   }
+
+  object YamlUtils {
+    private val mapper = YAMLMapper.builder(new YAMLFactory()
+        .disable(YAMLGenerator.Feature.WRITE_DOC_START_MARKER)
+      )
+      .addModule(DefaultScalaModule)
+      .addModule(new JavaTimeModule)
+      .disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS)
+      .build()
+
+    def toYaml(value: Any): String =
+      mapper.writerWithDefaultPrettyPrinter().writeValueAsString(value)
+  }
+
 
   private def renderTemplates(specs: Seq[TemplateSpec], context: TemplateContext): Seq[RenderedTemplate] = {
     specs.map { spec =>
@@ -289,13 +318,6 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String, experimentName: Opt
       case iterable: Iterable[_] => iterable.mkString(",")
       case other => other.toString
     }
-  }
-
-  private val manualConfigLogger: Logger = new Logger {
-    override def debug(message: String): Unit = ()
-    override def info(message: String): Unit = ()
-    override def warn(message: String): Unit = Console.err.println(s"[ManualConfigLoader][WARN] $message")
-    override def error(message: String): Unit = Console.err.println(s"[ManualConfigLoader][ERROR] $message")
   }
 
   private def injectAudienceJarPath(content: String, yaml: Yaml): AudienceConfig = {

@@ -14,6 +14,7 @@ val cloudsmithUser = Option(System.getenv("TTD_CLOUDSMITHUSERNAME"))
   .getOrElse(throw new IllegalStateException("TTD_CLOUDSMITHUSERNAME not defined - check README.md on how to set"))
 val cloudsmithPassword = Option(System.getenv("TTD_CLOUDSMITHAPITOKEN"))
   .getOrElse(throw new IllegalStateException("TTD_CLOUDSMITHAPITOKEN not defined - check README.md on how to set"))
+val jacksonVersion = "2.14.3"
 
 credentials += Credentials("Private Repository: thetradedesk/libs-dev", "pkgs.adsrvr.org", cloudsmithUser, cloudsmithPassword)
 credentials += Credentials("Private Repository: thetradedesk/libs-staging", "pkgs.adsrvr.org", cloudsmithUser, cloudsmithPassword)
@@ -36,6 +37,9 @@ libraryDependencies ++= Seq(
   "com.thetradedesk" %% "eldorado-core" % "1.0.285-spark-3.2.1",
   "org.scalatest" %% "scalatest" % "3.2.17" % Test,
   "org.mockito" %% "mockito-scala" % "1.17.27" % Test,
-  "com.typesafe" % "config" % "1.4.2" % Test
+  "com.typesafe" % "config" % "1.4.2" % Test,
+  "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+  "com.fasterxml.jackson.module" %% "jackson-module-scala" % jacksonVersion,
+  "com.fasterxml.jackson.dataformat" % "jackson-dataformat-yaml" % jacksonVersion,
+  "com.fasterxml.jackson.datatype" % "jackson-datatype-jsr310" % jacksonVersion
 )
-

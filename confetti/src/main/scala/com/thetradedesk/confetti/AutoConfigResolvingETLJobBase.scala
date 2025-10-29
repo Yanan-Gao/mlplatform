@@ -80,7 +80,11 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
 //    logger.info(s"Wrote running marker to $runningPath")
 
     if(manualConfetti){
-      val configLoader = new ManualConfigLoader[C](env = confettiEnv, experimentName = experimentName, groupName = groupName, jobName = jobName)
+      val configLoader = new ManualConfigLoader[C](env = confettiEnv,
+        experimentName = experimentName,
+        groupName = groupName,
+        jobName = jobName,
+        logger = logger)
       jobConfig = Some(configLoader.loadRuntimeConfigs().config)
     }else if (runtimeConfigBasePath.exists(_.nonEmpty)) {
       // provided confetti runtime path
