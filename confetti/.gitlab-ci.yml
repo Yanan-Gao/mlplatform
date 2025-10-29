@@ -1,0 +1,35 @@
+include:
+  - component: $CI_SERVER_FQDN/thetradedesk/teams/infsrv/gitlab-cicd-cloudsmith/cloudsmith-auth@1
+
+variables:
+  CONFETTI_SCALA_BUILD_IMAGE: "hseeberger/scala-sbt:8u212_1.2.8_2.13.0"
+
+confetti:test:
+  image: "$CONFETTI_SCALA_BUILD_IMAGE"
+  stage: test
+  cache:
+    policy: pull
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+      changes:
+        - "confetti/**/*"
+        - "confetti/build.sbt"
+    - if: '$CI_COMMIT_BRANCH == "master"'
+      changes:
+        - "confetti/**/*"
+        - "confetti/build.sbt"
+  before_script:
+    # fix debian stretch issues before running cloudsmith-auth
+    - |
+      echo "Fixing Debian Stretch repositories..."
+      apt-key adv --keyserver keyserver.ubuntu.com --recv-keys 648ACFD622F3D138  0E98404D386FA1D9
+      echo 'deb http://archive.debian.org/debian stretch main' > /etc/apt/sources.list
+    - !reference [ .cloudsmith-auth, script ]
+    - apt-get update
+    - apt-get install -y python3-pip
+    - pip3 install awscli
+    - git checkout -B "$CI_COMMIT_REF_NAME" "$CI_COMMIT_SHA"
+  script:
+    - pushd confetti
+    - sbt test
+    - popd

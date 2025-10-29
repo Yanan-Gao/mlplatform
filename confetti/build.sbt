@@ -27,10 +27,15 @@ libraryDependencies ++= Seq(
   "org.yaml" % "snakeyaml" % "2.2",
   "com.amazonaws" % "aws-java-sdk-s3" % awsVersion,
   "com.amazonaws" % "aws-java-sdk-logs" % awsVersion,
+  "com.hubspot.jinjava" % "jinjava" % "2.7.3",
   "org.scala-lang" % "scala-reflect" % scalaVersion.value,
   "io.prometheus" % "simpleclient" % prometheusVersion,
   "io.prometheus" % "simpleclient_common" % prometheusVersion,
   "io.prometheus" % "simpleclient_pushgateway" % prometheusVersion,
-  "com.thetradedesk" %% "eldorado-core" % "1.0.285-spark-3.2.1"
+  "com.hubspot.jinjava" % "jinjava" % "2.7.3",
+  "com.thetradedesk" %% "eldorado-core" % "1.0.285-spark-3.2.1",
+  "org.scalatest" %% "scalatest" % "3.2.17" % Test,
+  "org.mockito" %% "mockito-scala" % "1.17.27" % Test,
+  "com.typesafe" % "config" % "1.4.2" % Test
 )
 
