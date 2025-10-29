@@ -1,7 +1,7 @@
 package com.thetradedesk.audience.jobs
 
 import com.thetradedesk.audience.configs.AudienceModelInputGeneratorConfig
-import com.thetradedesk.audience.datasets.{AggregatedSeedReadableDataset, CampaignFlightDataSet, CampaignSeedDataset, HitRateRecord, HitRateWritableDataset}
+import com.thetradedesk.audience.datasets.{AggregatedSeedReadableDataset, HitRateRecord, HitRateWritableDataset}
 import com.thetradedesk.audience.jobs.HitRateReportingTableGeneratorJob.prometheus
 import com.thetradedesk.audience.transform.IDTransform.{IDType, filterOnIdTypes, joinOnIdType}
 import com.thetradedesk.audience._
