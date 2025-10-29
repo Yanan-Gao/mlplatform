@@ -54,78 +54,76 @@ class ManualConfigLoaderSpec
   )
 
   private var originalS3Client: AnyRef = _
-  private var originalConfig: AnyRef = _
 
   override protected def beforeAll(): Unit = {
     super.beforeAll()
     originalS3Client = stubS3Client()
-    originalConfig = stubConfig(
-      Map(
-        "model" -> "RSMV2",
-        "tag" -> "Seed_None",
-        "version" -> "1",
-        "lookBack" -> "10",
-        "runDate" -> "2025-10-27",
-        "startDate" -> "2025-03-20",
-        "coalesceProdData" -> "False",
-        "audienceResultCoalesce" -> "4096",
-        "oosDataS3Path" -> "data/prod/audience/RSMV2/Seed_None/v=2",
-        "audienceJarBranch" -> "master",
-        "audienceJarVersion" -> "latest"
-      )
-    )
   }
 
   override protected def afterAll(): Unit = {
     restoreS3Client(originalS3Client)
-    restoreConfig(originalConfig)
     super.afterAll()
   }
 
   test("CalibrationInputDataGeneratorJob templates render into job config case class") {
-    val loader = new ManualConfigLoader[CalibrationInputDataGeneratorJobConfig](
-      env = "test",
-      experimentName = Some("yanan-demo"),
-      groupName = "audience",
-      jobName = "CalibrationInputDataGeneratorJob"
-    )
-
     val expectedRunDate = LocalDate.of(2025, 10, 27)
     val expectedStartDate = LocalDate.of(2025, 3, 20)
-    val expectedModel = "RSMV2"
-    val expectedTag = "Seed_None"
-    val expectedVersion = 1
-    val expectedLookBack = 10
-
-
     val expectedNamespace = "test/yanan-demo"
     val expectedVersionSuffix = expectedRunDate.format(DateTimeFormatter.BASIC_ISO_DATE) + "000000"
-    val expectedOutputPath =
-      s"s3://thetradedesk-mlplatform-us-east-1/data/$expectedNamespace/audience/$expectedModel/$expectedTag/v=1/$expectedVersionSuffix/mixedForward=Calibration"
-    val expectedOutputCBPath =
-      s"s3://thetradedesk-mlplatform-us-east-1/data/$expectedNamespace/audience/$expectedModel/$expectedTag/v=2/$expectedVersionSuffix/mixedForward=Calibration"
+    val expectedModel = "RSMV2"
+    val expectedTag = "Seed_None"
 
-    val result = loader.loadRuntimeConfigs()
+    val expectedConfig = CalibrationInputDataGeneratorJobConfig(
+      model = expectedModel,
+      tag = expectedTag,
+      version = 1,
+      lookBack = 10,
+      runDate = expectedRunDate,
+      startDate = expectedStartDate,
+      oosDataS3Bucket = "thetradedesk-mlplatform-us-east-1",
+      oosDataS3Path = s"data/prod/audience/$expectedModel/$expectedTag/v=2",
+      subFolderKey = "mixedForward",
+      subFolderValue = "Calibration",
+      oosProdDataS3Path = s"data/prod/audience/$expectedModel/$expectedTag/v=1",
+      coalesceProdData = false,
+      audienceResultCoalesce = 4096,
+      outputPath =
+        s"s3://thetradedesk-mlplatform-us-east-1/data/$expectedNamespace/audience/$expectedModel/$expectedTag/v=1/$expectedVersionSuffix/mixedForward=Calibration",
+      outputCBPath =
+        s"s3://thetradedesk-mlplatform-us-east-1/data/$expectedNamespace/audience/$expectedModel/$expectedTag/v=2/$expectedVersionSuffix/mixedForward=Calibration"
+    )
 
-    val runtimeConfig = result.config
+    val originalConfig = stubConfig(
+      Map(
+        "model" -> expectedConfig.model,
+        "tag" -> expectedConfig.tag,
+        "version" -> expectedConfig.version.toString,
+        "lookBack" -> expectedConfig.lookBack.toString,
+        "runDate" -> expectedConfig.runDate.toString,
+        "startDate" -> expectedConfig.startDate.toString,
+        "coalesceProdData" -> expectedConfig.coalesceProdData.toString,
+        "audienceResultCoalesce" -> expectedConfig.audienceResultCoalesce.toString,
+        "oosDataS3Path" -> expectedConfig.oosDataS3Path,
+        "audienceJarBranch" -> "master",
+        "audienceJarVersion" -> "latest"
+      )
+    )
 
-    runtimeConfig.model shouldBe expectedModel
-    runtimeConfig.tag shouldBe expectedTag
-    runtimeConfig.version shouldBe expectedVersion
-    runtimeConfig.lookBack shouldBe expectedLookBack
-    runtimeConfig.runDate shouldBe expectedRunDate
-    runtimeConfig.startDate shouldBe expectedStartDate
-    runtimeConfig.oosDataS3Bucket shouldBe "thetradedesk-mlplatform-us-east-1"
-    runtimeConfig.oosDataS3Path shouldBe "data/prod/audience/RSMV2/Seed_None/v=2"
-    runtimeConfig.subFolderKey shouldBe "mixedForward"
-    runtimeConfig.subFolderValue shouldBe "Calibration"
-    runtimeConfig.oosProdDataS3Path shouldBe "data/prod/audience/RSMV2/Seed_None/v=1"
-    runtimeConfig.coalesceProdData shouldBe false
-    runtimeConfig.audienceResultCoalesce shouldBe 4096
-    runtimeConfig.outputPath shouldBe expectedOutputPath
-    runtimeConfig.outputCBPath shouldBe expectedOutputCBPath
+    try {
+      val loader = new ManualConfigLoader[CalibrationInputDataGeneratorJobConfig](
+        env = "test",
+        experimentName = Some("yanan-demo"),
+        groupName = "audience",
+        jobName = "CalibrationInputDataGeneratorJob"
+      )
 
-    result.identityHash shouldBe "KzFKPS3TFKTNDjjzSsDUSJ9s2g3jmWRdc_lL2dGiuzs="
+      val result = loader.loadRuntimeConfigs()
+
+      result.config shouldBe expectedConfig
+      result.identityHash shouldBe "KzFKPS3TFKTNDjjzSsDUSJ9s2g3jmWRdc_lL2dGiuzs="
+    } finally {
+      restoreConfig(originalConfig)
+    }
   }
 
   private def stubS3Client(): AnyRef = {
