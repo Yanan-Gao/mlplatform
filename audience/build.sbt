@@ -80,7 +80,9 @@ libraryDependencySchemes += "com.thetradedesk" %% "geronimo" % VersionScheme.Alw
 dependencyOverrides ++= Seq(
   "com.fasterxml.jackson.core" % "jackson-core" % "2.12.7",
   "com.fasterxml.jackson.core" % "jackson-databind" % "2.12.7",
-  "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.7"
+  "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.7",
+  // Ensure the assembly pulls in the Java 8-compatible Guava that Jinjava requires.
+  "com.google.guava" % "guava" % "32.1.2-jre"
 )
 
 assemblyOption in assembly := (assemblyOption in assembly).value.copy(includeScala = false)
@@ -94,6 +96,8 @@ assemblyMergeStrategy in assembly := {
       case PathList("META-INF", "services", file) if file.startsWith("io.opentelemetry.exporter.internal.grpc.GrpcSenderProvider") => MergeStrategy.first
       case PathList("META-INF", "services", _*) if sparkVersion.startsWith("3.5") => MergeStrategy.concat
       case PathList("META-INF", _@_*) => MergeStrategy.discard
+      // Keep the newest Guava classes so Jinjava can call ImmutableMap.toImmutableMap on EMR.
+      case PathList("com", "google", "common", _ @ _*) => MergeStrategy.last
 
       case _ => MergeStrategy.first
 }

@@ -3,6 +3,7 @@ package com.thetradedesk.confetti
 import com.thetradedesk.confetti.utils.{CloudWatchLoggerFactory, Logger, LoggerFactory, RuntimeConfigLoader}
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
+import scala.sys
 
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
@@ -17,6 +18,7 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
     jobName: String,
     loggerFactory: LoggerFactory = CloudWatchLoggerFactory
   ) extends Serializable {
+  AutoConfigResolvingETLJobBase.ensureSparkUserClasspathFirst()
   // todo after fully onboard confetti, make this required, as well as runtimeConfigBasePath
   @transient lazy val confettiEnv = config.getString("confettiEnv", config.getString("ttd.env", "dev"))
   @transient lazy val experimentName = config.getStringOption("experimentName")
@@ -106,4 +108,20 @@ abstract class AutoConfigResolvingETLJobBase[C: TypeTag : ClassTag](
 //    logger.info(s"Wrote success marker to $successPath")
   }
 
+}
+
+object AutoConfigResolvingETLJobBase {
+  private val ClasspathFirstProperties = Seq(
+    "spark.driver.userClassPathFirst" -> "true",
+    "spark.executor.userClassPathFirst" -> "true",
+    "spark.yarn.user.classpath.first" -> "true"
+  )
+
+  private[confetti] def ensureSparkUserClasspathFirst(): Unit = {
+    ClasspathFirstProperties.foreach { case (key, value) =>
+      if (!sys.props.contains(key)) {
+        System.setProperty(key, value)
+      }
+    }
+  }
 }
