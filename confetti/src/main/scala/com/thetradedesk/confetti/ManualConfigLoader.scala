@@ -26,7 +26,18 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String,
                                                 logger: Logger
                                                ) {
 
-  private val jinjava = new Jinjava(JinjavaConfig.newBuilder().withFailOnUnknownTokens(true).build())
+  private val jinjava = try {
+    new Jinjava(JinjavaConfig.newBuilder().withFailOnUnknownTokens(true).build())
+  } catch {
+    case e: NoSuchMethodError if e.getMessage != null &&
+      e.getMessage.contains("com/google/common/collect/ImmutableMap.toImmutableMap") =>
+      throw new IllegalStateException(
+        "Guava on the application classpath does not expose ImmutableMap.toImmutableMap(Function, Function). " +
+          "Confetti's manual configuration rendering still requires a Java 8-compatible Guava (for example 32.1.2-jre). " +
+          "Package the job with a compatible Guava or ensure it wins on the classpath.",
+        e
+      )
+  }
 
   private val IdentityTemplate = "identity_config.yml.j2"
   private val OutputTemplate = "output_config.yml.j2"
