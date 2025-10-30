@@ -29,7 +29,7 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-s3" % awsVersion,
   "com.amazonaws" % "aws-java-sdk-logs" % awsVersion,
   "com.hubspot.jinjava" % "jinjava" % "2.7.3",
-  "com.google.guava" % "guava" % "32.1.2-jre",
+  "com.google.guava" % "guava" % "33.1.0-jre",
   "org.scala-lang" % "scala-reflect" % scalaVersion.value,
   "io.prometheus" % "simpleclient" % prometheusVersion,
   "io.prometheus" % "simpleclient_common" % prometheusVersion,
