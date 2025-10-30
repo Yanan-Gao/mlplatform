@@ -3,7 +3,6 @@ package com.thetradedesk.confetti
 import com.thetradedesk.confetti.utils.{CloudWatchLoggerFactory, Logger, LoggerFactory, RuntimeConfigLoader}
 import com.thetradedesk.spark.util.TTDConfig.config
 import com.thetradedesk.spark.util.prometheus.PrometheusClient
-
 import scala.reflect.ClassTag
 import scala.reflect.runtime.universe._
 
