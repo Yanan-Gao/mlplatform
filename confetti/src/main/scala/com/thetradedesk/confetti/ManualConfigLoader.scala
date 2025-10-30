@@ -2,7 +2,7 @@ package com.thetradedesk.confetti
 
 import com.hubspot.jinjava.{Jinjava, JinjavaConfig}
 import com.hubspot.jinjava.objects.date.PyishDate
-import com.thetradedesk.confetti.utils.{GuavaCompatibility, HashUtils, MapConfigReader, S3Utils}
+import com.thetradedesk.confetti.utils.{HashUtils, MapConfigReader, S3Utils}
 import com.thetradedesk.confetti.utils.Logger
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.yaml.snakeyaml.{DumperOptions, Yaml}
@@ -26,9 +26,18 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String,
                                                 logger: Logger
                                                ) {
 
-  GuavaCompatibility.requireImmutableMapCollector()
-
-  private val jinjava = new Jinjava(JinjavaConfig.newBuilder().withFailOnUnknownTokens(true).build())
+  private val jinjava = try {
+    new Jinjava(JinjavaConfig.newBuilder().withFailOnUnknownTokens(true).build())
+  } catch {
+    case e: NoSuchMethodError if e.getMessage != null &&
+      e.getMessage.contains("com/google/common/collect/ImmutableMap.toImmutableMap") =>
+      throw new IllegalStateException(
+        "Guava on the application classpath does not expose ImmutableMap.toImmutableMap(Function, Function). " +
+          "Confetti's manual configuration rendering still requires a Java 8-compatible Guava (for example 32.1.2-jre). " +
+          "Package the job with a compatible Guava or ensure it wins on the classpath.",
+        e
+      )
+  }
 
   private val IdentityTemplate = "identity_config.yml.j2"
   private val OutputTemplate = "output_config.yml.j2"
