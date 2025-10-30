@@ -2,7 +2,7 @@ package com.thetradedesk.confetti
 
 import com.hubspot.jinjava.{Jinjava, JinjavaConfig}
 import com.hubspot.jinjava.objects.date.PyishDate
-import com.thetradedesk.confetti.utils.{HashUtils, MapConfigReader, S3Utils}
+import com.thetradedesk.confetti.utils.{GuavaCompatibility, HashUtils, MapConfigReader, S3Utils}
 import com.thetradedesk.confetti.utils.Logger
 import com.thetradedesk.spark.util.TTDConfig.config
 import org.yaml.snakeyaml.{DumperOptions, Yaml}
@@ -25,6 +25,8 @@ class ManualConfigLoader[C: TypeTag : ClassTag](env: String,
                                                 jobName: String,
                                                 logger: Logger
                                                ) {
+
+  GuavaCompatibility.requireImmutableMapCollector()
 
   private val jinjava = new Jinjava(JinjavaConfig.newBuilder().withFailOnUnknownTokens(true).build())
 
