@@ -72,7 +72,8 @@ libraryDependencies ++= Seq(
   "mobi.mtld.da"      % "deviceatlas-common"       % "1.2",
   "mobi.mtld.da"      % "deviceatlas-deviceapi"    % "2.1.2",
   "com.deviceatlas"   % "deviceatlas-enterprise-java"    % "3.2",
-  "com.adbrain" %% "neocortex-spark-3" % "3.0.1-SNAPSHOT" excludeAll(guava, awsJavaSdkBundle, logback, jacksonCore) withSources()
+  "com.adbrain" %% "neocortex-spark-3" % "3.0.1-SNAPSHOT" excludeAll(guava, awsJavaSdkBundle, logback, jacksonCore) withSources(),
+  "com.google.guava" % "guava" % "33.1.0-jre"
 )
 
 libraryDependencySchemes += "com.thetradedesk" %% "geronimo" % VersionScheme.Always
@@ -95,9 +96,8 @@ assemblyMergeStrategy in assembly := {
       case PathList("META-INF", "services", file) if file.startsWith("io.openlineage.client.transports.TransportBuilder") => MergeStrategy.first
       case PathList("META-INF", "services", file) if file.startsWith("io.opentelemetry.exporter.internal.grpc.GrpcSenderProvider") => MergeStrategy.first
       case PathList("META-INF", "services", _*) if sparkVersion.startsWith("3.5") => MergeStrategy.concat
+      case PathList("com", "google", "common", xs @ _*) => MergeStrategy.first
       case PathList("META-INF", _@_*) => MergeStrategy.discard
-      // Keep the newest Guava classes so Jinjava can call ImmutableMap.toImmutableMap on EMR.
-      case PathList("com", "google", "common", _ @ _*) => MergeStrategy.last
 
       case _ => MergeStrategy.first
 }
