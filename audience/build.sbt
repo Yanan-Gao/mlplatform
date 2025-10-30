@@ -34,6 +34,7 @@ val logback = ExclusionRule("ch.qos.logback")
 val jacksonCore = ExclusionRule("com.fasterxml.jackson.core")
 val guava = ExclusionRule("com.google.guava")
 val awsJavaSdkBundle = ExclusionRule("com.amazonaws", "aws-java-sdk-bundle")
+val jacksonVersion = "2.14.3"
 
 val eldoradoVersion = sparkVersion match {
   case v if v.startsWith("3.5") => "1.0.330-spark-3.5.0"
@@ -79,9 +80,9 @@ libraryDependencies ++= Seq(
 libraryDependencySchemes += "com.thetradedesk" %% "geronimo" % VersionScheme.Always
 
 dependencyOverrides ++= Seq(
-  "com.fasterxml.jackson.core" % "jackson-core" % "2.12.7",
-  "com.fasterxml.jackson.core" % "jackson-databind" % "2.12.7",
-  "com.fasterxml.jackson.module" %% "jackson-module-scala" % "2.12.7",
+  "com.fasterxml.jackson.core" % "jackson-core" % jacksonVersion,
+  "com.fasterxml.jackson.core" % "jackson-databind" % jacksonVersion,
+  "com.fasterxml.jackson.module" %% "jackson-module-scala" % jacksonVersion,
   // Ensure the assembly pulls in the Java 8-compatible Guava that Jinjava requires.
   "com.google.guava" % "guava" % "33.1.0-jre"
 )
@@ -111,5 +112,7 @@ assembly / assemblyShadeRules := Seq(
   ShadeRule.rename("cats.kernel.**" -> s"new_cats.kernel.@1").inAll,
   ShadeRule.rename("kotlin.**"-> "shade.kotlin.@1").inAll,
   ShadeRule.rename("okhttp3.**" -> "shade.okhttp3.@1").inAll,
-  ShadeRule.rename("okio.**" -> "shade.okio.@1").inAll
+  ShadeRule.rename("okio.**" -> "shade.okio.@1").inAll,
+  ShadeRule.rename("com.google.common.**" -> "shaded.com.google.common.@1").inAll,
+  ShadeRule.rename("com.fasterxml.jackson.**" -> "shaded.com.fasterxml.jackson.@1").inAll
 )
