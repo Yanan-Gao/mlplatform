@@ -4,6 +4,7 @@ import com.thetradedesk.audience._
 import com.thetradedesk.audience.jobs.modelinput.rsmv2.RSMV2SharedFunction.paddingColumnsWithLength
 import com.thetradedesk.audience.utils.S3Utils
 import com.thetradedesk.confetti.AutoConfigResolvingETLJobBase
+import com.thetradedesk.confetti.utils.Logger
 import com.thetradedesk.featurestore.data.cbuffer.SchemaHelper.{CBufferDataFrameReader, CBufferDataFrameWriter}
 import com.thetradedesk.spark.TTDSparkContext.spark
 import com.thetradedesk.spark.util.TTDConfig.config
@@ -47,7 +48,9 @@ object CalibrationInputDataGeneratorJob
       oosDataS3Bucket = S3Utils.refinePath(conf.oosDataS3Bucket),
       oosDataS3Path = S3Utils.refinePath(conf.oosDataS3Path),
     )
-    RSMCalibrationInputDataGenerator.generateMixedOOSData(conf.runDate, jobConf)
+    val logger = getLogger
+    logger.info("Going to trigger calibration input job. Finished the config resolving")
+    RSMCalibrationInputDataGenerator.generateMixedOOSData(conf.runDate, jobConf, logger)
   }
 
   /**
@@ -91,7 +94,9 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
   val resultTableSize = prometheus.createGauge(s"audience_calibration_input_data_generation_size", "RSMCalibrationInputDataGenerator table size", "date")
   val sampleUDF = shouldConsiderTDID3(config.getInt("hitRateUserDownSampleHitPopulation", default = 1000000), config.getString("saltToSampleHitRate", default = "0BgGCE"))(_)
 
-  def generateMixedOOSData(date: LocalDate, conf: CalibrationInputDataGeneratorJobConfig): Unit = {
+  def generateMixedOOSData(date: LocalDate, conf: CalibrationInputDataGeneratorJobConfig, logger: Logger): Unit = {
+
+    logger.info("Start.")
 
     val start = System.currentTimeMillis()
 
@@ -100,6 +105,7 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
     val targetPath = constructPath(date, basePath)
 
     if (!pathExists(targetPath)(spark)) {
+      logger.error(s"Target date path $targetPath does not exist.")
       throw new Exception(s"Target date path $targetPath does not exist.")
     }
 
@@ -111,6 +117,7 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
     }.reverse
 
     if (validPaths.isEmpty) {
+      logger.error("No valid paths found within the lookback window.")
       throw new Exception("No valid paths found within the lookback window.")
     }
 
@@ -143,11 +150,14 @@ abstract class CalibrationInputDataGenerator(prometheus: PrometheusClient) {
       addMissingColumns(df, potentiallyMissingColumns)
     }
     }
+    logger.info("Before get results...")
 
     val colMaxLength = Map("MatchedSegments" -> 200)
     val result = paddingColumnsWithLength(
       dfs.reduce(_.unionByName(_)), colMaxLength, 0)
       .cache
+
+    logger.info("Finished everything, trying to produce results...")
 
     result.coalesce(conf.audienceResultCoalesce)
       .write.mode(SaveMode.Overwrite)
